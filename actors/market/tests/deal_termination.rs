@@ -187,7 +187,7 @@ fn settle_payments_then_terminate_deal_in_the_same_epoch() {
     let expected_payment = deal_duration * &proposal.storage_price_per_epoch;
     let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id], &[], &[]);
     assert_eq!(
-        ret.settlements.get(0).unwrap(),
+        &ret.settlements[0],
         &DealSettlementSummary { completed: false, payment: expected_payment.clone() }
     );
     terminate_deals_and_assert_balances(

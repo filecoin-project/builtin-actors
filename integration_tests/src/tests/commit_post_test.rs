@@ -325,7 +325,7 @@ pub fn overdue_precommit_test(v: &dyn VM) {
         true,
         None,
     )
-    .get(0)
+    .first()
     .unwrap()
     .clone();
 

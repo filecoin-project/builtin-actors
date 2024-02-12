@@ -167,7 +167,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     let mut batcher = DealBatcher::new(v, opts);
     batcher.stage_with_label(client, maddr, "s4p1".to_string());
     let deal_ids_s4 = batcher.publish_ok(worker).ids;
-    let alloc_ids_s4 = vec![alloc_ids_s2[alloc_ids_s2.len() - 1] + 1];
+    let alloc_ids_s4 = [alloc_ids_s2[alloc_ids_s2.len() - 1] + 1];
 
     // Update all sectors with a mix of data pieces, claims, and deals.
     let first_sector_number: SectorNumber = 100;

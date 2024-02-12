@@ -222,7 +222,7 @@ impl Actor {
             })?;
 
             // Check to make sure transaction proposer is caller address
-            if tx.approved.get(0) != Some(&caller_addr) {
+            if tx.approved.first() != Some(&caller_addr) {
                 return Err(actor_error!(forbidden; "Cannot cancel another signers transaction"));
             }
 
@@ -534,7 +534,7 @@ where
 /// of the transaction associated with an ID, which might change under chain re-orgs.
 pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow::Result<[u8; 32]> {
     let proposal_hash = ProposalHashData {
-        requester: txn.approved.get(0),
+        requester: txn.approved.first(),
         to: &txn.to,
         value: &txn.value,
         method: &txn.method,

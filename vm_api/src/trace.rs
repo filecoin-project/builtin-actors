@@ -157,18 +157,19 @@ impl ExpectInvocation {
     }
 
     pub fn fmt_invocs(&self, invocs: &[InvocationTrace]) -> String {
-        invocs
-            .iter()
-            .enumerate()
-            .map(|(i, invoc)| format!("{}: [{}:{}],\n", i, invoc.to, invoc.method))
-            .collect()
+        invocs.iter().enumerate().fold(String::new(), |mut s, (i, invoc)| {
+            use std::fmt::Write;
+            let _ = writeln!(s, "{}: [{}:{}],", i, invoc.to, invoc.method);
+            s
+        })
     }
 
     pub fn fmt_expect_invocs(&self, exs: &[ExpectInvocation]) -> String {
-        exs.iter()
-            .enumerate()
-            .map(|(i, ex)| format!("{}: [{}:{}],\n", i, ex.to, ex.method))
-            .collect()
+        exs.iter().enumerate().fold(String::new(), |mut s, (i, ex)| {
+            use std::fmt::Write;
+            let _ = writeln!(s, "{}: [{}:{}],", i, ex.to, ex.method);
+            s
+        })
     }
 
     pub fn quick_match(&self, invoc: &InvocationTrace, extra_msg: String) {

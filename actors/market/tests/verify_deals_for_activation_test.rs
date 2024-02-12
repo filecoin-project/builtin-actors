@@ -53,7 +53,7 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
     );
     let a_response =
         activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &[deal_id]);
-    let s_response = a_response.activations.get(0).unwrap();
+    let s_response = a_response.activations.first().unwrap();
     assert_eq!(1, v_response.unsealed_cids.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.unsealed_cids[0]);
     assert_eq!(1, s_response.activated.len());
@@ -64,7 +64,7 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
             data: deal_proposal.piece_cid,
             size: deal_proposal.piece_size
         },
-        *s_response.activated.get(0).unwrap()
+        *s_response.activated.first().unwrap()
     );
 
     check_state(&rt);
@@ -98,7 +98,7 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
 
     let a_response =
         activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &[deal_id]);
-    let s_response = a_response.activations.get(0).unwrap();
+    let s_response = a_response.activations.first().unwrap();
 
     assert_eq!(1, response.unsealed_cids.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), response.unsealed_cids[0]);
@@ -155,7 +155,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
 
     let a_response =
         activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &deal_ids);
-    let s_response = a_response.activations.get(0).unwrap();
+    let s_response = a_response.activations.first().unwrap();
     assert_eq!(4, s_response.activated.len());
     assert_eq!(
         &ActivatedDeal {
@@ -164,7 +164,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
             data: verified_deal_1.piece_cid,
             size: verified_deal_1.piece_size,
         },
-        s_response.activated.get(0).unwrap()
+        &s_response.activated[0],
     );
     assert_eq!(
         &ActivatedDeal {
@@ -173,7 +173,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
             data: verified_deal_2.piece_cid,
             size: verified_deal_2.piece_size,
         },
-        s_response.activated.get(1).unwrap()
+        &s_response.activated[1],
     );
     assert_eq!(
         &ActivatedDeal {
@@ -182,7 +182,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
             data: unverified_deal_1.piece_cid,
             size: unverified_deal_1.piece_size,
         },
-        s_response.activated.get(2).unwrap()
+        &s_response.activated[2],
     );
     assert_eq!(
         &ActivatedDeal {
@@ -191,7 +191,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
             data: unverified_deal_2.piece_cid,
             size: unverified_deal_2.piece_size,
         },
-        s_response.activated.get(3).unwrap()
+        &s_response.activated[3],
     );
 
     check_state(&rt);

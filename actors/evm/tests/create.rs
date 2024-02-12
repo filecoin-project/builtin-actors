@@ -60,7 +60,7 @@ fn test_create() {
     let fake_ret = eam::CreateReturn {
         actor_id: 12345,
         eth_address: fake_eth_addr,
-        robust_address: Some((&fake_eth_addr).try_into().unwrap()),
+        robust_address: Some((&fake_eth_addr).into()),
     };
 
     let salt =
