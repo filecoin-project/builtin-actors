@@ -9,7 +9,6 @@ use fil_actors_runtime::{runtime::Policy, ActorError};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::CborStore;
-use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
 use fvm_shared::{clock::ChainEpoch, sector::RegisteredPoStProof};
@@ -68,7 +67,7 @@ impl StateHarness {
     pub fn delete_precommitted_sectors(
         &mut self,
         sector_nums: &[SectorNumber],
-    ) -> Result<(), HamtError> {
+    ) -> Result<(), ActorError> {
         self.st.delete_precommitted_sectors(&self.store, sector_nums)
     }
 

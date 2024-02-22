@@ -8,20 +8,12 @@ use std::ops::Neg;
 use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
-use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorDowncast,
-    ActorError, Array, AsActorError,
-};
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{strict_bytes, BytesDe, CborStore};
-use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
-
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -29,6 +21,13 @@ use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize};
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use itertools::Itertools;
 use num_traits::Zero;
+
+use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::{
+    actor_error, ActorContext, ActorDowncast, ActorError, Array, AsActorError, Config, Map2,
+    DEFAULT_HAMT_CONFIG,
+};
 
 use super::beneficiary::*;
 use super::deadlines::new_deadline_info;
@@ -39,6 +38,9 @@ use super::{
     quant_spec_for_deadline, BitFieldQueue, Deadline, DeadlineInfo, DeadlineSectorMap, Deadlines,
     PowerPair, QuantSpec, Sectors, TerminationResult, VestingFunds,
 };
+
+pub type PreCommitMap<BS> = Map2<BS, SectorNumber, SectorPreCommitOnChainInfo>;
+pub const PRECOMMIT_CONFIG: Config = Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
 const PRECOMMIT_EXPIRY_AMT_BITWIDTH: u32 = 6;
 pub const SECTORS_AMT_BITWIDTH: u32 = 5;
@@ -126,14 +128,10 @@ impl State {
         info_cid: Cid,
         period_start: ChainEpoch,
         deadline_idx: u64,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, ActorError> {
         let empty_precommit_map =
-            make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to construct empty precommit map",
-                )
-            })?;
+            PreCommitMap::empty(store, PRECOMMIT_CONFIG, "precommits").flush()?;
+
         let empty_precommits_cleanup_array =
             Array::<BitField, BS>::new_with_bit_width(store, PRECOMMIT_EXPIRY_AMT_BITWIDTH)
                 .flush()
@@ -292,14 +290,12 @@ impl State {
         precommits: Vec<SectorPreCommitOnChainInfo>,
     ) -> anyhow::Result<()> {
         let mut precommitted =
-            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
         for precommit in precommits.into_iter() {
             let sector_no = precommit.info.sector_number;
             let modified = precommitted
-                .set_if_absent(u64_key(precommit.info.sector_number), precommit)
-                .map_err(|e| {
-                    e.downcast_wrap(format!("failed to store precommitment for {:?}", sector_no,))
-                })?;
+                .set_if_absent(&sector_no, precommit)
+                .with_context(|| format!("storing precommit for {}", sector_no))?;
             if !modified {
                 return Err(anyhow!("sector {} already pre-commited", sector_no));
             }
@@ -313,10 +309,10 @@ impl State {
         &self,
         store: &BS,
         sector_num: SectorNumber,
-    ) -> Result<Option<SectorPreCommitOnChainInfo>, HamtError> {
+    ) -> Result<Option<SectorPreCommitOnChainInfo>, ActorError> {
         let precommitted =
-            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
-        Ok(precommitted.get(&u64_key(sector_num))?.cloned())
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
+        Ok(precommitted.get(&sector_num)?.cloned())
     }
 
     /// Gets and returns the requested pre-committed sectors, skipping missing sectors.
@@ -325,17 +321,15 @@ impl State {
         store: &BS,
         sector_numbers: &[SectorNumber],
     ) -> anyhow::Result<Vec<SectorPreCommitOnChainInfo>> {
-        let precommitted = make_map_with_root_and_bitwidth::<_, SectorPreCommitOnChainInfo>(
-            &self.pre_committed_sectors,
-            store,
-            HAMT_BIT_WIDTH,
-        )?;
+        let precommitted =
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
         let mut result = Vec::with_capacity(sector_numbers.len());
 
         for &sector_number in sector_numbers {
-            let info = match precommitted.get(&u64_key(sector_number)).map_err(|e| {
-                e.downcast_wrap(format!("failed to load precommitment for {}", sector_number))
-            })? {
+            let info = match precommitted
+                .get(&sector_number)
+                .with_context(|| format!("loading precommit {}", sector_number))?
+            {
                 Some(info) => info.clone(),
                 None => continue,
             };
@@ -350,17 +344,13 @@ impl State {
         &mut self,
         store: &BS,
         sector_nums: &[SectorNumber],
-    ) -> Result<(), HamtError> {
-        let mut precommitted = make_map_with_root_and_bitwidth::<_, SectorPreCommitOnChainInfo>(
-            &self.pre_committed_sectors,
-            store,
-            HAMT_BIT_WIDTH,
-        )?;
-
+    ) -> Result<(), ActorError> {
+        let mut precommitted =
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
         for &sector_num in sector_nums {
-            let prev_entry = precommitted.delete(&u64_key(sector_num))?;
+            let prev_entry = precommitted.delete(&sector_num)?;
             if prev_entry.is_none() {
-                return Err(format!("sector {} doesn't exist", sector_num).into());
+                return Err(actor_error!(illegal_state, "sector {} not pre-committed", sector_num));
             }
         }
 
@@ -1052,13 +1042,12 @@ impl State {
 
         let mut precommits_to_delete = Vec::new();
         let precommitted =
-            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
 
         for i in sectors.iter() {
             let sector_number = i as SectorNumber;
-
             let sector: SectorPreCommitOnChainInfo =
-                match precommitted.get(&u64_key(sector_number))?.cloned() {
+                match precommitted.get(&sector_number)?.cloned() {
                     Some(sector) => sector,
                     // already committed/deleted
                     None => continue,
@@ -1179,15 +1168,14 @@ impl State {
     ) -> Result<Vec<SectorPreCommitOnChainInfo>, ActorError> {
         let mut precommits = Vec::new();
         let precommitted =
-            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load precommitted sectors")?;
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
         for sector_no in sector_nos.into_iter() {
             let sector_no = *sector_no.borrow();
             if sector_no > MAX_SECTOR_NUMBER {
                 return Err(actor_error!(illegal_argument; "sector number greater than maximum"));
             }
             let info: &SectorPreCommitOnChainInfo = precommitted
-                .get(&u64_key(sector_no))
+                .get(&sector_no)
                 .exit_code(ExitCode::USR_ILLEGAL_STATE)?
                 .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
             precommits.push(info.clone());
