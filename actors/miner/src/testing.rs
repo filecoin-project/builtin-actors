@@ -1,12 +1,10 @@
 use crate::{
     power_for_sectors, BitFieldQueue, Deadline, ExpirationQueue, MinerInfo, Partition, PowerPair,
-    QuantSpec, SectorOnChainInfo, SectorOnChainInfoFlags, SectorPreCommitOnChainInfo, Sectors,
-    State, NO_QUANTIZATION,
+    PreCommitMap, QuantSpec, SectorOnChainInfo, SectorOnChainInfoFlags, Sectors, State,
+    NO_QUANTIZATION, PRECOMMIT_CONFIG,
 };
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
-    parse_uint_key, DealWeight, Map, MessageAccumulator, DEFAULT_HAMT_CONFIG,
-};
+use fil_actors_runtime::{DealWeight, MessageAccumulator};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
@@ -349,23 +347,11 @@ fn check_precommits<BS: Blockstore>(
 
     let mut precommit_total = TokenAmount::zero();
 
-    let precommited_sectors = Map::<_, SectorPreCommitOnChainInfo>::load_with_config(
-        &state.pre_committed_sectors,
-        store,
-        DEFAULT_HAMT_CONFIG,
-    );
-
+    let precommited_sectors =
+        PreCommitMap::load(store, &state.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits");
     match precommited_sectors {
         Ok(precommited_sectors) => {
-            let ret = precommited_sectors.for_each(|key, precommit| {
-                let sector_number = match parse_uint_key(key) {
-                    Ok(sector_number) => sector_number,
-                    Err(e) => {
-                        acc.add(format!("error parsing pre-commit key as uint: {e}"));
-                        return Ok(());
-                    }
-                };
-
+            let ret = precommited_sectors.for_each(|sector_number, precommit| {
                 acc.require(
                     allocated_sectors.contains(&sector_number),
                     format!("pre-commited sector number has not been allocated {sector_number}"),

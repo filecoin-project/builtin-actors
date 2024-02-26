@@ -54,8 +54,6 @@ use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-
-use crate::ext::market::NO_ALLOCATION_ID;
 pub use monies::*;
 pub use partition_state::*;
 pub use policy::*;
@@ -67,6 +65,7 @@ pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
 
+use crate::ext::market::NO_ALLOCATION_ID;
 use crate::notifications::{notify_data_consumers, ActivationNotifications};
 
 // The following errors are particular cases of illegal state.
@@ -239,12 +238,8 @@ impl Actor {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
         })?;
 
-        let st =
-            State::new(policy, rt.store(), info_cid, period_start, deadline_idx).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
-            })?;
+        let st = State::new(policy, rt.store(), info_cid, period_start, deadline_idx)?;
         rt.create(&st)?;
-
         Ok(())
     }
 
@@ -1555,7 +1550,7 @@ impl Actor {
                 None => return Err(actor_error!(
                                 illegal_argument,
                                 "unspecified CompactCommD not allowed past nv21, need explicit None value for CC or CommD")),
-                _ => {},
+                _ => {}
             }
 
             // Require sector lifetime meets minimum by assuming activation happens at last epoch permitted for seal proof.
@@ -1977,12 +1972,7 @@ impl Actor {
         // Validate pre-commit.
         let precommit = st
             .get_precommitted_sector(store, params.sector_number)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to load pre-committed sector {}", params.sector_number),
-                )
-            })?
+            .with_context(|| format!("loading pre-commit {}", params.sector_number))?
             .ok_or_else(|| {
                 actor_error!(not_found, "no pre-commited sector {}", params.sector_number)
             })?;
@@ -5316,11 +5306,7 @@ fn activate_new_sector_infos(
         state.put_sectors(store, new_sectors.clone()).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to put new sectors")
         })?;
-
-        state.delete_precommitted_sectors(store, &new_sector_numbers).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete precommited sectors")
-        })?;
-
+        state.delete_precommitted_sectors(store, &new_sector_numbers)?;
         state
             .assign_sectors_to_deadlines(
                 policy,
