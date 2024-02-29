@@ -10,6 +10,7 @@ pub use self::message_accumulator::MessageAccumulator;
 pub use self::multimap::*;
 pub use self::set::Set;
 pub use self::set_multimap::SetMultimap;
+pub use self::set_multimap::SetMultimapConfig;
 
 mod batch_return;
 pub mod cbor;

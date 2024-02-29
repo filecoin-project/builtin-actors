@@ -87,6 +87,11 @@ where
         })
     }
 
+    /// Returns a reference to the underlying blockstore.
+    pub fn store(&self) -> &BS {
+        self.hamt.store()
+    }
+
     /// Returns whether the map is empty.
     pub fn is_empty(&self) -> bool {
         self.hamt.is_empty()

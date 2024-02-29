@@ -1,19 +1,20 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 //! TODO: remove tests for legacy behaviour: https://github.com/filecoin-project/builtin-actors/issues/1389
-use fil_actor_market::EX_DEAL_EXPIRED;
-use fil_actor_market::{deal_cid, State};
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::{parse_uint_key, u64_key, SetMultimap, BURNT_FUNDS_ACTOR_ADDR};
+
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::METHOD_SEND;
 
-mod harness;
-
+use fil_actor_market::EX_DEAL_EXPIRED;
+use fil_actor_market::{deal_cid, State};
+use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use harness::*;
+
+mod harness;
 
 const START_EPOCH: ChainEpoch = 50;
 const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
@@ -59,21 +60,16 @@ fn cron_processing_happens_at_processing_epoch_not_start_epoch() {
 
     // check that deal was not rescheduled
     let state: State = rt.get_state();
-    let deal_ops = SetMultimap::from_root(rt.store(), &state.deal_ops_by_epoch).unwrap();
-
-    // get into internals just to iterate through full data structure
+    let deal_ops = state.load_deal_ops(&rt.store).unwrap();
     deal_ops
-        .0
-        .for_each(|key, _| {
-            let epoch = parse_uint_key(key)? as i64;
-            let epoch_ops = deal_ops.get(epoch).unwrap().unwrap();
-            assert!(!epoch_ops.has(&u64_key(deal_id))?);
+        .for_each(|epoch, _| {
+            let epoch_ops = deal_ops.get(&epoch).unwrap().unwrap();
+            assert!(!epoch_ops.has(&deal_id).unwrap());
             Ok(())
         })
         .unwrap();
 
-    assert!(!state.has_pending_deal(rt.store(), &dcid).unwrap());
-
+    assert!(!state.has_pending_deal(&rt.store(), &dcid).unwrap());
     check_state(&rt);
 }
 
