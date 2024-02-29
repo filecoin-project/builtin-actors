@@ -15,8 +15,7 @@ pub struct SetMultimapConfig {
     pub inner: Config,
 }
 
-/// SetMultimap is a hamt with values that are also a hamt but are of the set variant.
-/// This allows hash sets to be indexable by an address.
+/// SetMultimap is a HAMT with values that are also a HAMT treated as a set of keys.
 pub struct SetMultimap<BS, K, V>
 where
     BS: Blockstore,
@@ -63,43 +62,34 @@ where
         self.outer.flush()
     }
 
-    /// Puts the DealID in the hash set of the key.
+    /// Puts a value in the set associated with a key.
     pub fn put(&mut self, key: &K, value: V) -> Result<(), ActorError> {
-        // Get construct amt from retrieved cid or create new
-        let mut set = self.get(key)?.unwrap_or_else(|| {
+        // Load HAMT from retrieved cid or create a new empty one.
+        let mut inner = self.get(key)?.unwrap_or_else(|| {
             Set::empty(self.outer.store().clone(), self.inner_config.clone(), "multimap inner")
         });
 
-        set.put(&value)?;
-
-        // Save and calculate new root
-        let new_root = set.flush()?;
-
-        // Set hamt node to set new root
+        inner.put(&value)?;
+        let new_root = inner.flush()?;
         self.outer.set(key, new_root)?;
         Ok(())
     }
 
-    /// Puts slice of DealIDs in the hash set of the key.
+    /// Puts slice of values in the hash set associated with a key.
     pub fn put_many(&mut self, key: &K, values: &[V]) -> Result<(), ActorError> {
-        // Get construct amt from retrieved cid or create new
-        let mut set = self.get(key)?.unwrap_or_else(|| {
+        let mut inner = self.get(key)?.unwrap_or_else(|| {
             Set::empty(self.outer.store().clone(), self.inner_config.clone(), "multimap inner")
         });
 
         for v in values {
-            set.put(v)?;
+            inner.put(v)?;
         }
-
-        // Save and calculate new root
-        let new_root = set.flush()?;
-
-        // Set hamt node to set new root
+        let new_root = inner.flush()?;
         self.outer.set(key, new_root)?;
         Ok(())
     }
 
-    /// Gets the set at the given index of the `SetMultimap`
+    /// Gets the set of values for a key.
     #[inline]
     pub fn get(&self, key: &K) -> Result<Option<Set<BS, V>>, ActorError> {
         match self.outer.get(key)? {
@@ -113,18 +103,15 @@ where
         }
     }
 
-    /// Removes a DealID from a key hash set.
+    /// Removes a value from the set associated with a key, if it was present.
     #[inline]
-    pub fn remove(&mut self, key: &K, v: V) -> Result<(), ActorError> {
-        // Get construct amt from retrieved cid and return if no set exists
+    pub fn remove(&mut self, key: &K, value: V) -> Result<(), ActorError> {
         let mut set = match self.get(key)? {
             Some(s) => s,
             None => return Ok(()),
         };
 
-        set.delete(&v)?;
-
-        // Save and calculate new root
+        set.delete(&value)?;
         let new_root = set.flush()?;
         self.outer.set(key, new_root)?;
         Ok(())
@@ -133,7 +120,6 @@ where
     /// Removes set at index.
     #[inline]
     pub fn remove_all(&mut self, key: &K) -> Result<(), ActorError> {
-        // Remove entry from table
         self.outer.delete(key)?;
         Ok(())
     }
