@@ -33,7 +33,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, ActorContext, ActorDowncast, ActorError,
-    AsActorError, Set, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
+    AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{extract_send_result, BatchReturnGen, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
@@ -1425,7 +1425,7 @@ fn preactivate_deal<BS: Blockstore>(
     deal_id: DealID,
     proposals: &DealArray<BS>,
     states: &DealMetaArray<BS>,
-    pending_proposals: &Set<BS>,
+    pending_proposals: &PendingProposalsSet<&BS>,
     provider: &Address,
     sector_commitment: ChainEpoch,
     curr_epoch: ChainEpoch,
@@ -1456,7 +1456,7 @@ fn preactivate_deal<BS: Blockstore>(
     // The pending deals set exists to prevent duplicate proposals.
     // It should be impossible to have a proposal, no deal state, and not be in pending deals.
     let deal_cid = deal_cid(rt, &proposal)?;
-    if !has_pending_deal(pending_proposals, &deal_cid)? {
+    if !pending_proposals.has(&deal_cid)? {
         return Ok(Err(actor_error!(illegal_state, "deal {} is not in pending set", deal_cid)));
     }
 

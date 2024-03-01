@@ -17,7 +17,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 
@@ -27,18 +27,19 @@ use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationsResponse};
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     ext, Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal, DealArray,
-    DealMetaArray, Label, MarketNotifyDealParams, Method, PendingDealAllocationsMap,
-    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
-    WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, PENDING_ALLOCATIONS_CONFIG,
-    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    DealMetaArray, DealOpsByEpoch, Label, MarketNotifyDealParams, Method,
+    PendingDealAllocationsMap, PendingProposalsSet, PublishStorageDealsParams,
+    PublishStorageDealsReturn, SectorDeals, State, WithdrawBalanceParams, DEAL_OPS_BY_EPOCH_CONFIG,
+    EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, PENDING_ALLOCATIONS_CONFIG,
+    PENDING_PROPOSALS_CONFIG, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, BatchReturn, SetMultimap, BURNT_FUNDS_ACTOR_ADDR,
-    DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorError, BatchReturn, SetMultimap, SetMultimapConfig, BURNT_FUNDS_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, DEFAULT_HAMT_CONFIG, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use harness::*;
 
@@ -48,8 +49,10 @@ mod harness;
 fn test_remove_all_error() {
     let market_actor = Address::new_id(100);
     let rt = MockRuntime { receiver: market_actor, ..Default::default() };
-
-    SetMultimap::new(&rt.store()).remove_all(42).expect("expected no error");
+    let config = SetMultimapConfig { outer: DEFAULT_HAMT_CONFIG, inner: DEFAULT_HAMT_CONFIG };
+    SetMultimap::<_, u64, u64>::empty(&rt.store(), config, "test")
+        .remove_all(&42u64)
+        .expect("expected no error");
 }
 
 #[test]
@@ -71,22 +74,24 @@ fn simple_construction() {
     let store = &rt.store;
 
     let empty_balance_table = BalanceTable::new(store, "empty").root().unwrap();
-    let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().unwrap();
+    let empty_pending_proposals =
+        PendingProposalsSet::empty(store, PENDING_PROPOSALS_CONFIG, "empty").flush().unwrap();
     let empty_proposals_array =
         Amt::<(), _>::new_with_bit_width(store, PROPOSALS_AMT_BITWIDTH).flush().unwrap();
     let empty_states_array =
         Amt::<(), _>::new_with_bit_width(store, STATES_AMT_BITWIDTH).flush().unwrap();
-    let empty_multimap = SetMultimap::new(store).root().unwrap();
+    let empty_deal_ops =
+        DealOpsByEpoch::empty(store, DEAL_OPS_BY_EPOCH_CONFIG, "empty").flush().unwrap();
 
     let state_data: State = rt.get_state();
 
     assert_eq!(empty_proposals_array, state_data.proposals);
     assert_eq!(empty_states_array, state_data.states);
-    assert_eq!(empty_map, state_data.pending_proposals);
+    assert_eq!(empty_pending_proposals, state_data.pending_proposals);
     assert_eq!(empty_balance_table, state_data.escrow_table);
     assert_eq!(empty_balance_table, state_data.locked_table);
     assert_eq!(0, state_data.next_id);
-    assert_eq!(empty_multimap, state_data.deal_ops_by_epoch);
+    assert_eq!(empty_deal_ops, state_data.deal_ops_by_epoch);
     assert_eq!(state_data.last_cron, EPOCH_UNDEFINED);
 }
 
@@ -579,7 +584,7 @@ fn deal_starts_on_day_boundary() {
     // Check that DOBE has exactly 3 deals scheduled every epoch in the day following the start time
     let st: State = rt.get_state();
     let store = &rt.store;
-    let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
+    let dobe = st.load_deal_ops(store).unwrap();
     for e in interval..(2 * interval) {
         assert_n_good_deals(&dobe, interval, e, 3);
     }
@@ -622,7 +627,7 @@ fn deal_starts_partway_through_day() {
     }
     let st: State = rt.get_state();
     let store = &rt.store;
-    let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
+    let dobe = st.load_deal_ops(store).unwrap();
     for e in interval..(interval + start_epoch) {
         assert_n_good_deals(&dobe, interval, e, 1);
     }
@@ -647,7 +652,7 @@ fn deal_starts_partway_through_day() {
     }
     let st: State = rt.get_state();
     let store = &rt.store;
-    let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
+    let dobe = st.load_deal_ops(store).unwrap();
     for e in start_epoch..(start_epoch + 50) {
         assert_n_good_deals(&dobe, interval, e, 1);
     }

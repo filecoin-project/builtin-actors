@@ -1,20 +1,19 @@
 use export_macro::vm_test;
 use fil_actor_init::ExecReturn;
 use fil_actor_multisig::{
-    compute_proposal_hash, Method as MsigMethod, ProposeParams, RemoveSignerParams,
-    State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams,
+    compute_proposal_hash, Method as MsigMethod, PendingTxnMap, ProposeParams, RemoveSignerParams,
+    State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams, PENDING_TXN_CONFIG,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{make_map_with_root, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
-use integer_encoding::VarInt;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use vm_api::trace::ExpectInvocation;
@@ -300,11 +299,10 @@ fn create_msig(v: &dyn VM, signers: &[Address], threshold: u64) -> Address {
 fn check_txs(v: &dyn VM, msig_addr: Address, mut expect_txns: Vec<(TxnID, Transaction)>) {
     let st: MsigState = get_state(v, &msig_addr).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
-    let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &store).unwrap();
+    let ptx = PendingTxnMap::load(&store, &st.pending_txs, PENDING_TXN_CONFIG, "pending").unwrap();
     let mut actual_txns = Vec::new();
     ptx.for_each(|k, txn: &Transaction| {
-        let id = i64::decode_var(k).unwrap().0;
-        actual_txns.push((TxnID(id), txn.clone()));
+        actual_txns.push((k, txn.clone()));
         Ok(())
     })
     .unwrap();

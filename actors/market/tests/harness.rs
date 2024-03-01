@@ -30,9 +30,9 @@ use fil_actor_market::ext::miner::{
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
     deal_cid, deal_get_payment_remaining, BatchActivateDealsParams, BatchActivateDealsResult,
-    PendingDealAllocationsMap, ProviderSectorsMap, SectorDealsMap, SettleDealPaymentsParams,
-    SettleDealPaymentsReturn, PENDING_ALLOCATIONS_CONFIG, PROVIDER_SECTORS_CONFIG,
-    SECTOR_DEALS_CONFIG,
+    DealOpsByEpoch, PendingDealAllocationsMap, PendingProposalsSet, ProviderSectorsMap,
+    SectorDealsMap, SettleDealPaymentsParams, SettleDealPaymentsReturn, PENDING_ALLOCATIONS_CONFIG,
+    PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, SECTOR_DEALS_CONFIG,
 };
 use fil_actor_market::{
     ext, ext::miner::GetControlAddressesReturnParams, next_update_epoch,
@@ -45,13 +45,12 @@ use fil_actor_market::{
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::parse_uint_key;
 use fil_actors_runtime::{
     network::EPOCHS_IN_DAY,
     runtime::{builtins::Type, Policy, Runtime},
     test_utils::*,
-    ActorError, BatchReturn, EventBuilder, Set, SetMultimap, BURNT_FUNDS_ACTOR_ADDR,
-    CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    ActorError, BatchReturn, EventBuilder, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
@@ -133,21 +132,16 @@ pub fn assert_deal_ops_clean(rt: &MockRuntime) {
         })
         .unwrap();
 
-    let deal_ops = SetMultimap::from_root(rt.store(), &st.deal_ops_by_epoch).unwrap();
-    deal_ops
-        .0
-        .for_each(|key, _| {
-            let epoch = parse_uint_key(key).unwrap() as i64;
-
-            deal_ops
-                .for_each(epoch, |ref deal_id| {
-                    assert!(proposal_set.contains(deal_id), "deal op found for deal id {deal_id} with missing proposal at epoch {epoch}");
-                    Ok(())
-                })
-                .unwrap();
-            Ok(())
-        })
-        .unwrap();
+    let deal_ops = st.load_deal_ops(rt.store()).unwrap();
+    deal_ops.for_each(|epoch, _| {
+        deal_ops
+            .for_each_in(&epoch, |deal_id| {
+                assert!(proposal_set.contains(&deal_id), "deal op found for deal id {deal_id} with missing proposal at epoch {epoch}");
+                Ok(())
+            })
+            .unwrap();
+        Ok(())
+    }).unwrap();
 }
 
 /// Checks internal invariants of market state asserting none of them are broken.
@@ -1171,7 +1165,7 @@ pub fn expect_query_network_info(rt: &MockRuntime) {
 }
 
 pub fn assert_n_good_deals<BS>(
-    dobe: &SetMultimap<BS>,
+    dobe: &DealOpsByEpoch<BS>,
     updates_interval: ChainEpoch,
     epoch: ChainEpoch,
     n: isize,
@@ -1179,7 +1173,7 @@ pub fn assert_n_good_deals<BS>(
     BS: fvm_ipld_blockstore::Blockstore,
 {
     let mut count = 0;
-    dobe.for_each(epoch, |id| {
+    dobe.for_each_in(&epoch, |id| {
         assert_eq!(epoch % updates_interval, (id as i64) % updates_interval);
         count += 1;
         Ok(())
@@ -1203,7 +1197,6 @@ pub fn assert_deal_deleted(
 ) {
     use cid::multihash::Code;
     use cid::multihash::MultihashDigest;
-    use fvm_ipld_hamt::BytesKey;
 
     let st: State = rt.get_state();
 
@@ -1220,8 +1213,14 @@ pub fn assert_deal_deleted(
     let mh_code = Code::Blake2b256;
     let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(p).unwrap()));
     // Check that the deal_id is not in st.pending_proposals.
-    let pending_deals = Set::from_root(rt.store(), &st.pending_proposals).unwrap();
-    assert!(!pending_deals.has(&BytesKey(p_cid.to_bytes())).unwrap());
+    let pending_deals = PendingProposalsSet::load(
+        rt.store(),
+        &st.pending_proposals,
+        PENDING_PROPOSALS_CONFIG,
+        "pending proposals",
+    )
+    .unwrap();
+    assert!(!pending_deals.has(&p_cid).unwrap());
 
     // Check deal is no longer associated with sector
     let sector_deals = get_sector_deal_ids(rt, p.provider.id().unwrap(), &[sector_number]);

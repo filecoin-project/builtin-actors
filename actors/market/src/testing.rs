@@ -8,6 +8,7 @@ use cid::multihash::{Code, MultihashDigest};
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::DAG_CBOR;
+use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{
     address::{Address, Protocol},
@@ -22,13 +23,14 @@ use num_traits::Zero;
 use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, parse_uint_key, ActorError, MessageAccumulator, SetMultimap,
+    make_map_with_root_and_bitwidth, ActorError, AsActorError, MessageAccumulator,
 };
 
 use crate::ext::verifreg::AllocationID;
 use crate::{
-    balance_table::BalanceTable, DealArray, DealMetaArray, DealProposal, ProviderSectorsMap,
-    SectorDealsMap, State, PROPOSALS_AMT_BITWIDTH, PROVIDER_SECTORS_CONFIG, SECTOR_DEALS_CONFIG,
+    balance_table::BalanceTable, DealArray, DealMetaArray, DealOpsByEpoch, DealProposal,
+    PendingProposalsSet, ProviderSectorsMap, SectorDealsMap, State, DEAL_OPS_BY_EPOCH_CONFIG,
+    PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, SECTOR_DEALS_CONFIG,
 };
 
 #[derive(Clone)]
@@ -292,15 +294,16 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // pending proposals
     let mut pending_proposal_count = 0;
-    match make_map_with_root_and_bitwidth::<_, ()>(
-        &state.pending_proposals,
+    match PendingProposalsSet::load(
         store,
-        PROPOSALS_AMT_BITWIDTH,
+        &state.pending_proposals,
+        PENDING_PROPOSALS_CONFIG,
+        "pending proposals",
     ) {
         Ok(pending_proposals) => {
-            let ret = pending_proposals.for_each(|key, _| {
-                let proposal_cid = Cid::try_from(key.0.to_owned())?;
-
+            let ret = pending_proposals.for_each(|key| {
+                let proposal_cid = Cid::try_from(key.to_owned())
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "not a CID")?;
                 acc.require(
                     proposal_cids.contains(&proposal_cid),
                     format!("pending proposal with cid {proposal_cid} not found within proposals"),
@@ -364,23 +367,20 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // deals ops by epoch
     let (mut deal_op_epoch_count, mut deal_op_count) = (0, 0);
-    match SetMultimap::from_root(store, &state.deal_ops_by_epoch) {
+    match DealOpsByEpoch::load(
+        store,
+        &state.deal_ops_by_epoch,
+        DEAL_OPS_BY_EPOCH_CONFIG,
+        "deal ops",
+    ) {
         Ok(deal_ops) => {
-            // get into internals just to iterate through full data structure
-            let ret = deal_ops.0.for_each(|key, _| {
-                let epoch = parse_uint_key(key)? as i64;
-
+            let ret = deal_ops.for_each(|epoch: ChainEpoch, _| {
                 deal_op_epoch_count += 1;
-
-                deal_ops
-                    .for_each(epoch, |deal_id| {
-                        expected_deal_ops.remove(&deal_id);
-                        deal_op_count += 1;
-                        Ok(())
-                    })
-                    .map_err(|e| {
-                        anyhow::anyhow!("error iterating deal ops for epoch {}: {}", epoch, e)
-                    })
+                deal_ops.for_each_in(&epoch, |deal_id: DealID| {
+                    expected_deal_ops.remove(&deal_id);
+                    deal_op_count += 1;
+                    Ok(())
+                })
             });
             acc.require_no_error(ret, "error iterating all deal ops");
         }

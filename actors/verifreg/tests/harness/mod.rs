@@ -15,9 +15,10 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
+use fvm_shared::{ActorID, MethodNum};
 use num_traits::{ToPrimitive, Zero};
 
+use fil_actor_verifreg::state::{DataCapMap, DATACAP_MAP_CONFIG};
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
@@ -35,7 +36,7 @@ use fil_actors_runtime::runtime::policy_constants::{
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, AsActorError, BatchReturn, EventBuilder, DATACAP_TOKEN_ACTOR_ADDR,
+    ActorError, AsActorError, BatchReturn, EventBuilder, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
@@ -101,7 +102,7 @@ impl Harness {
         assert!(ret.is_none());
         rt.verify();
 
-        let empty_map = make_empty_map::<_, ()>(&rt.store, HAMT_BIT_WIDTH).flush().unwrap();
+        let empty_map = DataCapMap::empty(&rt.store, DATACAP_MAP_CONFIG, "empty").flush().unwrap();
         let state: State = rt.get_state();
         assert_eq!(self.root, state.root_key);
         assert_eq!(empty_map, state.verifiers);

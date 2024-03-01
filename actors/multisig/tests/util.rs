@@ -1,17 +1,16 @@
 use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,
-    ProposeParams, ProposeReturn, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID,
-    TxnIDParams,
+    PendingTxnMap, ProposeParams, ProposeReturn, RemoveSignerParams, State, SwapSignerParams,
+    Transaction, TxnID, TxnIDParams, PENDING_TXN_CONFIG,
 };
 use fil_actor_multisig::{ChangeNumApprovalsThresholdParams, LockBalanceParams};
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::ActorError;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
-use fil_actors_runtime::{make_map_with_root, ActorError};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use integer_encoding::VarInt;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::error::ExitCode;
@@ -207,11 +206,11 @@ impl ActorHarness {
         mut expect_txns: Vec<(TxnID, Transaction)>,
     ) {
         let st: State = rt.get_state();
-        let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &rt.store).unwrap();
+        let ptx =
+            PendingTxnMap::load(&rt.store, &st.pending_txs, PENDING_TXN_CONFIG, "pending").unwrap();
         let mut actual_txns = Vec::new();
         ptx.for_each(|k, txn: &Transaction| {
-            let id = i64::decode_var(k).unwrap().0;
-            actual_txns.push((TxnID(id), txn.clone()));
+            actual_txns.push((k, txn.clone()));
             Ok(())
         })
         .unwrap();

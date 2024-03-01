@@ -69,19 +69,6 @@ where
 
 /// Create a map with a root cid.
 #[inline]
-pub fn make_map_with_root<'bs, BS, V>(
-    root: &Cid,
-    store: &'bs BS,
-) -> Result<Map<'bs, BS, V>, HamtError>
-where
-    BS: Blockstore,
-    V: DeserializeOwned + Serialize,
-{
-    Map::<_, V>::load_with_bit_width(root, store, HAMT_BIT_WIDTH)
-}
-
-/// Create a map with a root cid.
-#[inline]
 pub fn make_map_with_root_and_bitwidth<'bs, BS, V>(
     root: &Cid,
     store: &'bs BS,
