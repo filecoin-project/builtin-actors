@@ -29,7 +29,7 @@ where
 
 impl<BS, K, V> SetMultimap<BS, K, V>
 where
-    BS: Blockstore + Clone,
+    BS: Blockstore,
     K: MapKey,
     V: MapKey,
 {
@@ -66,7 +66,7 @@ where
     pub fn put(&mut self, key: &K, value: V) -> Result<(), ActorError> {
         // Load HAMT from retrieved cid or create a new empty one.
         let mut inner = self.get(key)?.unwrap_or_else(|| {
-            Set::empty(self.outer.store().clone(), self.inner_config.clone(), "multimap inner")
+            Set::empty(self.outer.store(), self.inner_config.clone(), "multimap inner")
         });
 
         inner.put(&value)?;
@@ -78,7 +78,7 @@ where
     /// Puts slice of values in the hash set associated with a key.
     pub fn put_many(&mut self, key: &K, values: &[V]) -> Result<(), ActorError> {
         let mut inner = self.get(key)?.unwrap_or_else(|| {
-            Set::empty(self.outer.store().clone(), self.inner_config.clone(), "multimap inner")
+            Set::empty(self.outer.store(), self.inner_config.clone(), "multimap inner")
         });
 
         for v in values {
@@ -91,10 +91,10 @@ where
 
     /// Gets the set of values for a key.
     #[inline]
-    pub fn get(&self, key: &K) -> Result<Option<Set<BS, V>>, ActorError> {
+    pub fn get(&self, key: &K) -> Result<Option<Set<&BS, V>>, ActorError> {
         match self.outer.get(key)? {
             Some(cid) => Ok(Some(Set::load(
-                self.outer.store().clone(),
+                self.outer.store(),
                 cid,
                 self.inner_config.clone(),
                 "multimap inner",

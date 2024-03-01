@@ -1170,7 +1170,7 @@ pub fn assert_n_good_deals<BS>(
     epoch: ChainEpoch,
     n: isize,
 ) where
-    BS: fvm_ipld_blockstore::Blockstore + Clone,
+    BS: fvm_ipld_blockstore::Blockstore,
 {
     let mut count = 0;
     dobe.for_each_in(&epoch, |id| {
