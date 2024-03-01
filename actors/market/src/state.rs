@@ -390,7 +390,7 @@ impl State {
         store: BS,
     ) -> Result<SetMultimap<BS, ChainEpoch, DealID>, ActorError>
     where
-        BS: Blockstore + Clone,
+        BS: Blockstore,
     {
         DealOpsByEpoch::load(store, &self.deal_ops_by_epoch, DEAL_OPS_BY_EPOCH_CONFIG, "deal ops")
     }
