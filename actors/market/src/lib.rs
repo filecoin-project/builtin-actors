@@ -746,6 +746,13 @@ impl Actor {
                     // No continue below here, to ensure state changes are consistent.
                     activated_deals.insert(deal_id);
 
+                    emit::deal_activated(
+                        rt,
+                        deal_id,
+                        proposal.client.id().unwrap(),
+                        proposal.provider.id().unwrap(),
+                    )?;
+
                     // Remove any verified allocation ID for the pending deal.
                     pending_deal_allocation_ids.delete(&deal_id)?;
 
