@@ -73,6 +73,15 @@ fn simple_one_sector() {
         minimum_commitment_epoch: END_EPOCH + 10,
         added: pieces,
     }];
+    for deal_id in deal_ids.iter().rev() {
+        harness::expect_emitted(
+            &rt,
+            "deal-activated",
+            *deal_id,
+            CLIENT_ADDR.id().unwrap(),
+            MINER_ADDRESSES.provider.id().unwrap(),
+        );
+    }
     let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
     assert_eq!(1, ret.sectors.len());
     assert_eq!(3, ret.sectors[0].added.len());
@@ -117,6 +126,15 @@ fn simple_multiple_sectors() {
             added: pieces[2..3].to_vec(),
         },
     ];
+    for deal_id in deal_ids.iter() {
+        harness::expect_emitted(
+            &rt,
+            "deal-activated",
+            *deal_id,
+            CLIENT_ADDR.id().unwrap(),
+            MINER_ADDRESSES.provider.id().unwrap(),
+        );
+    }
     let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
     assert_eq!(3, ret.sectors.len());
     assert_eq!(vec![PieceReturn { accepted: true }], ret.sectors[0].added);
@@ -142,6 +160,15 @@ fn new_deal_existing_sector() {
         minimum_commitment_epoch: END_EPOCH + 10,
         added: pieces[1..3].to_vec(),
     }];
+    for deal_id in deal_ids[1..3].iter() {
+        harness::expect_emitted(
+            &rt,
+            "deal-activated",
+            *deal_id,
+            CLIENT_ADDR.id().unwrap(),
+            MINER_ADDRESSES.provider.id().unwrap(),
+        );
+    }
     sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
 
     let changes = vec![SectorChanges {
@@ -149,6 +176,15 @@ fn new_deal_existing_sector() {
         minimum_commitment_epoch: END_EPOCH + 10,
         added: pieces[0..1].to_vec(),
     }];
+    for deal_id in deal_ids[0..1].iter() {
+        harness::expect_emitted(
+            &rt,
+            "deal-activated",
+            *deal_id,
+            CLIENT_ADDR.id().unwrap(),
+            MINER_ADDRESSES.provider.id().unwrap(),
+        );
+    }
     sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
 
     // All deal IDs are stored under the right sector, in correct order.
@@ -244,6 +280,16 @@ fn failures_isolated() {
         },
     ];
 
+    // only first and last pieces emit an event
+    for deal_id in [deal_ids.first().unwrap(), deal_ids.last().unwrap()] {
+        harness::expect_emitted(
+            &rt,
+            "deal-activated",
+            *deal_id,
+            CLIENT_ADDR.id().unwrap(),
+            MINER_ADDRESSES.provider.id().unwrap(),
+        );
+    }
     let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
     assert_eq!(3, ret.sectors.len());
     // Broken second piece still allows first piece in same sector to activate.
@@ -278,6 +324,15 @@ fn rejects_duplicates_in_same_sector() {
             added: vec![pieces[0].clone(), pieces[0].clone(), pieces[1].clone()],
         },
     ];
+    for deal_id in deal_ids.iter() {
+        harness::expect_emitted(
+            &rt,
+            "deal-activated",
+            *deal_id,
+            CLIENT_ADDR.id().unwrap(),
+            MINER_ADDRESSES.provider.id().unwrap(),
+        );
+    }
     let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
     assert_eq!(1, ret.sectors.len());
     // The first piece succeeds just once, the second piece succeeds too.
@@ -323,6 +378,15 @@ fn rejects_duplicates_across_sectors() {
             added: vec![pieces[0].clone(), pieces[1].clone(), pieces[2].clone()],
         },
     ];
+    for deal_id in deal_ids.iter() {
+        harness::expect_emitted(
+            &rt,
+            "deal-activated",
+            *deal_id,
+            CLIENT_ADDR.id().unwrap(),
+            MINER_ADDRESSES.provider.id().unwrap(),
+        );
+    }
     let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
     assert_eq!(3, ret.sectors.len());
     // Succeeds in the first time.
