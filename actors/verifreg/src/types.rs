@@ -254,7 +254,7 @@ pub struct RemoveExpiredClaimsParams {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveExpiredClaimsReturn {
     // Ids of the claims that were either specified by the caller or discovered to be expired.
-    pub considered: Vec<AllocationID>,
+    pub considered: Vec<ClaimID>,
     // Results for each processed claim.
     pub results: BatchReturn,
 }
