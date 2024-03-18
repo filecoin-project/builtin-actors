@@ -874,7 +874,14 @@ impl ActorHarness {
         for (i, sc) in precommits.iter().enumerate() {
             let num = &sc.info.sector_number;
             let piece_info = pieces.get(&num).unwrap();
-            expect_sector_event(rt, "sector-activated", &num, unsealed_cids[i], &piece_info);
+            expect_sector_event(
+                rt,
+                "sector-activated",
+                &num,
+                unsealed_cids[i],
+                &piece_info,
+                &sc.info.expiration,
+            );
         }
 
         // burn network fee
@@ -938,6 +945,7 @@ impl ActorHarness {
                 &num,
                 unsealed_cid,
                 pieces.get(&num).unwrap(),
+                &sc.info.expiration,
             );
         }
 
@@ -1371,6 +1379,7 @@ impl ActorHarness {
                 &sm.sector_number,
                 *unsealed_cids.get(&sm.sector_number).unwrap(),
                 &pieces,
+                &self.get_precommit(rt, sm.sector_number).info.expiration,
             )
         }
 
@@ -1577,6 +1586,7 @@ impl ActorHarness {
                 &sm.sector,
                 *unsealed_cids.get(&sm.sector).unwrap(),
                 &pieces,
+                &self.get_sector(rt, sm.sector).expiration,
             )
         }
 
@@ -2916,6 +2926,7 @@ pub fn expect_sector_event(
     sector: &SectorNumber,
     unsealed_cid: Option<Cid>,
     pieces: &Vec<(Cid, u64)>,
+    expiration: &ChainEpoch,
 ) {
     let mut base_event = EventBuilder::new()
         .typ(typ)
@@ -2925,6 +2936,8 @@ pub fn expect_sector_event(
     for piece in pieces {
         base_event = base_event.field_indexed("piece-cid", &piece.0).field("piece-size", &piece.1);
     }
+
+    base_event = base_event.field("expiration", &expiration);
 
     rt.expect_emitted_event(base_event.build().unwrap());
 }

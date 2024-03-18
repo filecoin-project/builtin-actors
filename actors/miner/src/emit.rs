@@ -1,6 +1,7 @@
 use cid::Cid;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{ActorError, EventBuilder};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::SectorNumber;
 
 /// Indicates a sector has been pre-committed.
@@ -16,11 +17,13 @@ pub fn sector_activated(
     sector: SectorNumber,
     unsealed_cid: Option<Cid>,
     pieces: &[(Cid, u64)],
+    expiration: &ChainEpoch,
 ) -> Result<(), ActorError> {
     rt.emit_event(
         &EventBuilder::new()
             .typ("sector-activated")
             .with_sector_info(sector, unsealed_cid, pieces)
+            .field("expiration", expiration)
             .build()?,
     )
 }
@@ -31,11 +34,13 @@ pub fn sector_updated(
     sector: SectorNumber,
     unsealed_cid: Option<Cid>,
     pieces: &[(Cid, u64)],
+    expiration: &ChainEpoch,
 ) -> Result<(), ActorError> {
     rt.emit_event(
         &EventBuilder::new()
             .typ("sector-updated")
             .with_sector_info(sector, unsealed_cid, pieces)
+            .field("expiration", expiration)
             .build()?,
     )
 }

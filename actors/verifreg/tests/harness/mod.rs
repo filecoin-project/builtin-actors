@@ -1,3 +1,4 @@
+use cid::Cid;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -12,6 +13,7 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sys::SendFlags;
@@ -38,7 +40,6 @@ use fil_actors_runtime::{
     make_empty_map, ActorError, AsActorError, BatchReturn, EventBuilder, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-
 pub const ROOT_ADDR: Address = Address::new_id(101);
 
 const TEST_VERIFIER_ADDR: u64 = 201;
@@ -139,13 +140,12 @@ impl Harness {
             None,
         );
 
-        rt.expect_emitted_event(
-            EventBuilder::new()
-                .typ("verifier-balance")
-                .field_indexed("verifier", &verifier_resolved.id().unwrap())
-                .field("balance", &BigIntSer(allowance))
-                .build()?,
-        );
+        rt.expect_emitted_event(build_verifier_balance_event(
+            verifier_resolved.id().unwrap(),
+            &None,
+            &DataCap::zero(),
+            allowance,
+        ));
 
         let params = AddVerifierParams { address: *verifier, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
@@ -159,16 +159,21 @@ impl Harness {
         Ok(())
     }
 
-    pub fn remove_verifier(&self, rt: &MockRuntime, verifier: &Address) -> Result<(), ActorError> {
+    pub fn remove_verifier(
+        &self,
+        rt: &MockRuntime,
+        verifier: &Address,
+        allowance: &DataCap,
+    ) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.root]);
 
-        rt.expect_emitted_event(
-            EventBuilder::new()
-                .typ("verifier-balance")
-                .field_indexed("verifier", &verifier.id().unwrap())
-                .field("balance", &BigIntSer(&DataCap::zero()))
-                .build()?,
-        );
+        rt.expect_emitted_event(build_verifier_balance_event(
+            verifier.id().unwrap(),
+            &None,
+            allowance,
+            &DataCap::zero(),
+        ));
+
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let ret = rt.call::<VerifregActor>(
             Method::RemoveVerifier as MethodNum,
@@ -230,13 +235,16 @@ impl Harness {
         );
 
         let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
-        rt.expect_emitted_event(
-            EventBuilder::new()
-                .typ("verifier-balance")
-                .field_indexed("verifier", &verifier.id().unwrap())
-                .field("balance", &BigIntSer(&(verifier_balance - allowance)))
-                .build()?,
-        );
+
+        if client_resolved.id().is_ok() {
+            rt.expect_emitted_event(build_verifier_balance_event(
+                verifier.id().unwrap(),
+                &Some(client_resolved.id().unwrap()),
+                verifier_balance,
+                &(verifier_balance - allowance),
+            ));
+        }
+
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
@@ -289,13 +297,24 @@ impl Harness {
         claim_allocs: Vec<SectorAllocationClaims>,
         datacap_burnt: u64,
         all_or_nothing: bool,
-        expect_claimed: Vec<(AllocationID, Allocation)>,
+        expect_claimed: Vec<(AllocationID, Allocation, SectorNumber)>,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
+        let curr_epoch = *rt.epoch.borrow();
 
-        for (id, alloc) in expect_claimed.iter() {
-            expect_emitted(rt, "claim", id, alloc.client, alloc.provider);
+        for (id, alloc, sector) in expect_claimed.iter() {
+            rt.expect_emitted_event(build_claim_event(
+                id,
+                &alloc.client,
+                &alloc.provider,
+                sector,
+                &alloc.data,
+                &alloc.size.0,
+                &alloc.term_min,
+                &alloc.term_max,
+                &(curr_epoch + alloc.term_max),
+            ))
         }
 
         if datacap_burnt > 0 {
@@ -338,8 +357,16 @@ impl Harness {
         let mut expected_datacap = 0u64;
         for (id, alloc) in expect_removed {
             expected_datacap += alloc.size.0;
-
-            expect_emitted(rt, "allocation-removed", &id, alloc.client, alloc.provider);
+            rt.expect_emitted_event(build_allocation_removed_event(
+                &id,
+                &alloc.client,
+                &alloc.provider,
+                &alloc.data,
+                &alloc.size.0,
+                &alloc.term_min,
+                &alloc.term_max,
+                &alloc.expiration,
+            ));
         }
         rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
@@ -374,13 +401,24 @@ impl Harness {
         rt: &MockRuntime,
         provider: ActorID,
         claim_ids: Vec<ClaimID>,
-        expect_removed: Vec<(ClaimID, Claim)>,
+        expect_removed: Vec<(ClaimID, Claim, SectorNumber)>,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
         rt.expect_validate_caller_any();
 
-        for (id, claim) in expect_removed {
-            expect_emitted(rt, "claim-removed", &id, claim.client, claim.provider);
+        for (id, claim, sector) in expect_removed {
+            rt.expect_emitted_event(build_claim_removed_event(
+                &id,
+                &claim.client,
+                &claim.provider,
+                &sector,
+                &claim.data,
+                &claim.size.0,
+                &claim.term_min,
+                &claim.term_max,
+                &claim.expiration(),
+            ))
         }
+
         let params = RemoveExpiredClaimsParams { provider, claim_ids };
         let ret = rt
             .call::<VerifregActor>(
@@ -431,12 +469,32 @@ impl Harness {
 
         let allocs_req: AllocationRequests = payload.operator_data.deserialize().unwrap();
         for (alloc, id) in allocs_req.allocations.iter().zip(expected_alloc_ids.iter()) {
-            expect_emitted(rt, "allocation", id, payload.from, alloc.provider);
+            rt.expect_emitted_event(build_allocation_event(
+                id,
+                &payload.from,
+                &alloc.provider,
+                &alloc.data,
+                &alloc.size.0,
+                &alloc.term_min,
+                &alloc.term_max,
+                &alloc.expiration,
+            ))
         }
 
         for ext in allocs_req.extensions {
             let claim = self.load_claim(rt, ext.provider, ext.claim).unwrap();
-            expect_emitted(rt, "claim-updated", &ext.claim, claim.client, claim.provider);
+            rt.expect_emitted_event(build_claim_updated_event(
+                &ext.claim,
+                &claim.client,
+                &claim.provider,
+                &claim.sector,
+                &claim.data,
+                &claim.size.0,
+                &claim.term_min,
+                &ext.term_max,
+                &(claim.term_start + ext.term_max),
+                &claim.term_max,
+            ))
         }
 
         rt.expect_validate_caller_addr(vec![DATACAP_TOKEN_ACTOR_ADDR]);
@@ -497,7 +555,20 @@ impl Harness {
         expected: Vec<(ClaimID, Claim)>,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
         for (id, new_claim) in expected.iter() {
-            expect_emitted(rt, "claim-updated", id, new_claim.client, new_claim.provider);
+            let ext = params.terms.iter().find(|c| c.claim_id == *id).unwrap();
+
+            rt.expect_emitted_event(build_claim_updated_event(
+                id,
+                &new_claim.client,
+                &new_claim.provider,
+                &new_claim.sector,
+                &new_claim.data,
+                &new_claim.size.0,
+                &new_claim.term_min,
+                &ext.term_max,
+                &(new_claim.term_start + ext.term_max),
+                &new_claim.term_max,
+            ))
         }
 
         rt.expect_validate_caller_any();
@@ -536,18 +607,6 @@ pub fn make_alloc_req(rt: &MockRuntime, provider: ActorID, size: u64) -> Allocat
         term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM,
         expiration: *rt.epoch.borrow() + 100,
     }
-}
-
-pub fn expect_emitted(rt: &MockRuntime, typ: &str, id: &u64, client: ActorID, provider: ActorID) {
-    rt.expect_emitted_event(
-        EventBuilder::new()
-            .typ(typ)
-            .field_indexed("id", &id)
-            .field_indexed("client", &client)
-            .field_indexed("provider", &provider)
-            .build()
-            .unwrap(),
-    );
 }
 
 pub fn make_extension_req(
@@ -690,4 +749,153 @@ pub fn assert_alloc_claimed(
     let mut claims = st.load_claims(store).unwrap();
     assert_eq!(&expected_claim, claims.get(provider, id).unwrap().unwrap());
     expected_claim
+}
+
+pub fn build_verifier_balance_event(
+    verifier: ActorID,
+    client: &Option<ActorID>,
+    prev_balance: &DataCap,
+    balance: &DataCap,
+) -> ActorEvent {
+    EventBuilder::new()
+        .typ("verifier-balance")
+        .field_indexed("verifier", &verifier)
+        .field_indexed("client", client)
+        .field("prev-balance,", &BigIntSer(prev_balance))
+        .field("balance", &BigIntSer(balance))
+        .build()
+        .unwrap()
+}
+
+use fil_actor_verifreg::emit::build_base_event;
+use fil_actor_verifreg::expiration::Expires;
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_allocation_event(
+    id: &AllocationID,
+    client: &ActorID,
+    provider: &ActorID,
+    piece_cid: &Cid,
+    piece_size: &u64,
+    term_min: &ChainEpoch,
+    term_max: &ChainEpoch,
+    expiration: &ChainEpoch,
+) -> ActorEvent {
+    build_base_event(
+        "allocation",
+        id,
+        client,
+        provider,
+        piece_cid,
+        piece_size,
+        term_min,
+        term_max,
+        expiration,
+    )
+    .build()
+    .unwrap()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_claim_event(
+    id: &ClaimID,
+    client: &ActorID,
+    provider: &ActorID,
+    sector: &SectorNumber,
+    piece_cid: &Cid,
+    piece_size: &u64,
+    term_min: &ChainEpoch,
+    term_max: &ChainEpoch,
+    expiration: &ChainEpoch,
+) -> ActorEvent {
+    build_base_event(
+        "claim", id, client, provider, piece_cid, piece_size, term_min, term_max, expiration,
+    )
+    .field_indexed("sector", &sector)
+    .build()
+    .unwrap()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_claim_updated_event(
+    id: &ClaimID,
+    client: &ActorID,
+    provider: &ActorID,
+    sector: &SectorNumber,
+    piece_cid: &Cid,
+    piece_size: &u64,
+    term_min: &ChainEpoch,
+    term_max: &ChainEpoch,
+    expiration: &ChainEpoch,
+    prev_term_max: &ChainEpoch,
+) -> ActorEvent {
+    build_base_event(
+        "claim-updated",
+        id,
+        client,
+        provider,
+        piece_cid,
+        piece_size,
+        term_min,
+        term_max,
+        expiration,
+    )
+    .field_indexed("sector", &sector)
+    .field("prev-term-max", &prev_term_max)
+    .build()
+    .unwrap()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_claim_removed_event(
+    id: &ClaimID,
+    client: &ActorID,
+    provider: &ActorID,
+    sector: &SectorNumber,
+    piece_cid: &Cid,
+    piece_size: &u64,
+    term_min: &ChainEpoch,
+    term_max: &ChainEpoch,
+    expiration: &ChainEpoch,
+) -> ActorEvent {
+    build_base_event(
+        "claim-removed",
+        id,
+        client,
+        provider,
+        piece_cid,
+        piece_size,
+        term_min,
+        term_max,
+        expiration,
+    )
+    .field_indexed("sector", sector)
+    .build()
+    .unwrap()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_allocation_removed_event(
+    id: &AllocationID,
+    client: &ActorID,
+    provider: &ActorID,
+    piece_cid: &Cid,
+    piece_size: &u64,
+    term_min: &ChainEpoch,
+    term_max: &ChainEpoch,
+    expiration: &ChainEpoch,
+) -> ActorEvent {
+    build_base_event(
+        "allocation-removed",
+        id,
+        client,
+        provider,
+        piece_cid,
+        piece_size,
+        term_min,
+        term_max,
+        expiration,
+    )
+    .build()
+    .unwrap()
 }
