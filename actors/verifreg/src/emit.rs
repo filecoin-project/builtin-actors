@@ -9,23 +9,63 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::ActorID;
 
-/// Indicates a new value for a verifier's datacap balance.
-/// Note that receiving this event does not necessarily mean the balance has changed.
+/// Indicates the addition of a new verifier.
 /// The value is in datacap whole units (not TokenAmount).
-pub fn verifier_balance(
+pub fn add_verifier(
     rt: &impl Runtime,
     verifier: ActorID,
-    prev_balance: &DataCap,
-    new_balance: &DataCap,
-    client: Option<ActorID>,
+    balance: &DataCap,
 ) -> Result<(), ActorError> {
     rt.emit_event(
         &EventBuilder::new()
-            .typ("verifier-balance")
+            .typ("add-verifier")
+            .field_indexed("verifier", &verifier)
+            .field("balance", &BigIntSer(balance))
+            .build()?,
+    )
+}
+
+/// Indicates the removal of a verifier.
+pub fn remove_verifier(rt: &impl Runtime, verifier: ActorID) -> Result<(), ActorError> {
+    rt.emit_event(
+        &EventBuilder::new().typ("remove-verifier").field_indexed("verifier", &verifier).build()?,
+    )
+}
+
+/// Indicates the transfer of datacap from verifier to a client.
+/// The value is in datacap whole units (not TokenAmount).
+pub fn allocate_datacap(
+    rt: &impl Runtime,
+    verifier: ActorID,
+    client: ActorID,
+    amount: &DataCap,
+) -> Result<(), ActorError> {
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("allocate-datacap")
             .field_indexed("verifier", &verifier)
             .field_indexed("client", &client)
-            .field("prev-balance,", &BigIntSer(prev_balance))
-            .field("balance", &BigIntSer(new_balance))
+            .field("amount", &BigIntSer(amount))
+            .build()?,
+    )
+}
+
+/// Indicates the removal of datacap from a client.
+/// The value is in datacap whole units (not TokenAmount).
+pub fn remove_datacap(
+    rt: &impl Runtime,
+    verifier1: ActorID,
+    verifier2: ActorID,
+    client: ActorID,
+    amount: &DataCap,
+) -> Result<(), ActorError> {
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("remove-datacap")
+            .field_indexed("verifier", &verifier1)
+            .field_indexed("verifier", &verifier2)
+            .field_indexed("client", &client)
+            .field("amount", &BigIntSer(amount))
             .build()?,
     )
 }

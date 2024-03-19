@@ -140,10 +140,8 @@ impl Harness {
             None,
         );
 
-        rt.expect_emitted_event(build_verifier_balance_event(
+        rt.expect_emitted_event(build_add_verifier_event(
             verifier_resolved.id().unwrap(),
-            &None,
-            &DataCap::zero(),
             allowance,
         ));
 
@@ -159,20 +157,10 @@ impl Harness {
         Ok(())
     }
 
-    pub fn remove_verifier(
-        &self,
-        rt: &MockRuntime,
-        verifier: &Address,
-        allowance: &DataCap,
-    ) -> Result<(), ActorError> {
+    pub fn remove_verifier(&self, rt: &MockRuntime, verifier: &Address) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.root]);
 
-        rt.expect_emitted_event(build_verifier_balance_event(
-            verifier.id().unwrap(),
-            &None,
-            allowance,
-            &DataCap::zero(),
-        ));
+        rt.expect_emitted_event(build_remove_verifier_event(verifier.id().unwrap()));
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let ret = rt.call::<VerifregActor>(
@@ -213,7 +201,6 @@ impl Harness {
         verifier: &Address,
         client: &Address,
         allowance: &DataCap,
-        verifier_balance: &DataCap,
     ) -> Result<(), ActorError> {
         rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *verifier);
@@ -237,11 +224,10 @@ impl Harness {
         let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
 
         if client_resolved.id().is_ok() {
-            rt.expect_emitted_event(build_verifier_balance_event(
+            rt.expect_emitted_event(build_allocate_datacap_event(
                 verifier.id().unwrap(),
-                &Some(client_resolved.id().unwrap()),
-                verifier_balance,
-                &(verifier_balance - allowance),
+                client_resolved.id().unwrap(),
+                allowance,
             ));
         }
 
@@ -751,21 +737,48 @@ pub fn assert_alloc_claimed(
     expected_claim
 }
 
-pub fn build_verifier_balance_event(
-    verifier: ActorID,
-    client: &Option<ActorID>,
-    prev_balance: &DataCap,
-    balance: &DataCap,
-) -> ActorEvent {
+pub fn build_add_verifier_event(verifier: ActorID, balance: &DataCap) -> ActorEvent {
     EventBuilder::new()
-        .typ("verifier-balance")
+        .typ("add-verifier")
         .field_indexed("verifier", &verifier)
-        .field_indexed("client", client)
-        .field("prev-balance,", &BigIntSer(prev_balance))
         .field("balance", &BigIntSer(balance))
         .build()
         .unwrap()
 }
+
+pub fn build_remove_verifier_event(verifier: ActorID) -> ActorEvent {
+    EventBuilder::new().typ("remove-verifier").field_indexed("verifier", &verifier).build().unwrap()
+}
+
+pub fn build_allocate_datacap_event(
+    verifier: ActorID,
+    client: ActorID,
+    amount: &DataCap,
+) -> ActorEvent {
+    EventBuilder::new()
+        .typ("allocate-datacap")
+        .field_indexed("verifier", &verifier)
+        .field_indexed("client", &client)
+        .field("amount", &BigIntSer(amount))
+        .build()
+        .unwrap()
+}
+
+/* Unused so far, needs unit tests for removal case
+pub fn build_remove_datacap_event(
+    verifier1: ActorID,
+    verifier2: ActorID,
+    client: ActorID,
+) -> ActorEvent {
+    EventBuilder::new()
+        .typ("remove-datacap")
+        .field_indexed("verifier", &verifier1)
+        .field_indexed("verifier", &verifier2)
+        .field_indexed("client", &client)
+        .build()
+        .unwrap()
+}
+*/
 
 use fil_actor_verifreg::emit::build_base_event;
 use fil_actor_verifreg::expiration::Expires;
