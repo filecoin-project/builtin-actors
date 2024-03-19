@@ -88,7 +88,6 @@ pub fn claim(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorE
 }
 
 /// Indicates an existing claim has been updated (e.g. with a longer term).
-#[allow(clippy::too_many_arguments)]
 pub fn claim_updated(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
     let event = build_base_event(
         "claim-updated",
@@ -106,7 +105,6 @@ pub fn claim_updated(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<()
 }
 
 /// Indicates an expired claim has been removed.
-#[allow(clippy::too_many_arguments)]
 pub fn claim_removed(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
     let event = build_base_event(
         "claim-removed",
