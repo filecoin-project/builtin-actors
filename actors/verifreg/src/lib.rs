@@ -133,7 +133,7 @@ impl Actor {
                 .context("failed to add verifier")
         })?;
 
-        emit::verifier_balance(rt, verifier, &DataCap::zero(), &params.allowance, None)
+        emit::add_verifier(rt, verifier, &params.allowance)
     }
 
     pub fn remove_verifier(
@@ -144,14 +144,9 @@ impl Actor {
         let verifier_addr = Address::new_id(verifier);
 
         rt.transaction(|st: &mut State, rt| {
-            let existing_cap =
-                st.get_verifier_cap(rt.store(), &verifier_addr)?.ok_or_else(|| {
-                    actor_error!(illegal_argument, "verifier {} not found", verifier_addr)
-                })?;
-
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
             st.remove_verifier(rt.store(), &verifier_addr).context("failed to remove verifier")?;
-            emit::verifier_balance(rt, verifier, &existing_cap, &DataCap::zero(), None)
+            emit::remove_verifier(rt, verifier)
         })?;
         Ok(())
     }
@@ -207,17 +202,11 @@ impl Actor {
             }
 
             // Reduce verifier's cap.
-            let new_verifier_cap = verifier_cap.clone() - &params.allowance;
+            let new_verifier_cap = verifier_cap - &params.allowance;
             st.put_verifier(rt.store(), &verifier_addr, &new_verifier_cap)
                 .context("failed to update verifier allowance")?;
 
-            emit::verifier_balance(
-                rt,
-                verifier_addr.id().unwrap(),
-                &verifier_cap,
-                &new_verifier_cap,
-                Some(client_id),
-            )
+            emit::allocate_datacap(rt, verifier_addr.id().unwrap(), client_id, &params.allowance)
         })?;
 
         // Credit client token allowance.
@@ -308,6 +297,14 @@ impl Actor {
         let burnt = std::cmp::min(balance, params.data_cap_amount_to_remove);
         destroy(rt, &client, &burnt)
             .context(format!("failed to destroy {} from allowance for {}", &burnt, &client))?;
+
+        emit::remove_datacap(
+            rt,
+            verifier_1.id().unwrap(),
+            verifier_2.id().unwrap(),
+            client.id().unwrap(),
+            &burnt,
+        )?;
 
         Ok(RemoveDataCapReturn {
             verified_client: client, // Changed to the resolved address

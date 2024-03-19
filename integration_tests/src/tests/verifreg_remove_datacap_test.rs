@@ -32,7 +32,8 @@ use vm_api::VM;
 use crate::expects::Expect;
 
 use crate::util::{
-    assert_invariants, create_accounts, verifier_balance_event, verifreg_add_verifier,
+    allocate_datacap_event, assert_invariants, create_accounts, remove_datacap_event,
+    verifreg_add_verifier,
 };
 use crate::{TEST_VERIFREG_ROOT_ADDR, TEST_VERIFREG_ROOT_ID};
 
@@ -69,8 +70,6 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
         Some(add_verified_client_params.clone()),
     );
 
-    let verifier_datacap = DataCap::from(0);
-
     ExpectInvocation {
         from: verifier1_id,
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -84,7 +83,11 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
             subinvocs: None,
             ..Default::default()
         }]),
-        events: vec![verifier_balance_event(verifier1.id().unwrap(), verifier_datacap)],
+        events: vec![allocate_datacap_event(
+            verifier1.id().unwrap(),
+            verified_client_id_addr.id().unwrap(),
+            verifier_allowance.clone(),
+        )],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -435,6 +438,12 @@ fn expect_remove_datacap(
                 ..Default::default()
             },
         ]),
+        events: vec![remove_datacap_event(
+            params.verifier_request_1.verifier.id().unwrap(),
+            params.verifier_request_2.verifier.id().unwrap(),
+            params.verified_client_to_remove.id().unwrap(),
+            params.data_cap_amount_to_remove.clone(),
+        )],
         ..Default::default()
     }
 }

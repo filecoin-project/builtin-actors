@@ -759,13 +759,56 @@ pub fn submit_invalid_post(
     );
 }
 
-pub fn verifier_balance_event(verifier: ActorID, data_cap: DataCap) -> EmittedEvent {
+pub fn add_verifier_event(verifier: ActorID, data_cap: DataCap) -> EmittedEvent {
     EmittedEvent {
         emitter: VERIFIED_REGISTRY_ACTOR_ID,
         event: EventBuilder::new()
-            .typ("verifier-balance")
+            .typ("add-verifier")
             .field_indexed("verifier", &verifier)
             .field("balance", &BigIntSer(&data_cap))
+            .build()
+            .unwrap(),
+    }
+}
+
+pub fn remove_verifier_event(verifier: ActorID) -> EmittedEvent {
+    EmittedEvent {
+        emitter: VERIFIED_REGISTRY_ACTOR_ID,
+        event: EventBuilder::new()
+            .typ("remove-verifier")
+            .field_indexed("verifier", &verifier)
+            .build()
+            .unwrap(),
+    }
+}
+
+pub fn allocate_datacap_event(verifier: ActorID, client: ActorID, amount: DataCap) -> EmittedEvent {
+    EmittedEvent {
+        emitter: VERIFIED_REGISTRY_ACTOR_ID,
+        event: EventBuilder::new()
+            .typ("allocate-datacap")
+            .field_indexed("verifier", &verifier)
+            .field_indexed("client", &client)
+            .field("amount", &BigIntSer(&amount))
+            .build()
+            .unwrap(),
+    }
+}
+
+pub fn remove_datacap_event(
+    verifier1: ActorID,
+    verifier2: ActorID,
+    client: ActorID,
+    amount: DataCap,
+) -> EmittedEvent {
+    EmittedEvent {
+        emitter: VERIFIED_REGISTRY_ACTOR_ID,
+        event: EventBuilder::new()
+            .typ("remove-datacap")
+            .field_indexed("verifier", &verifier1)
+            .field_indexed("verifier", &verifier2)
+            .field_indexed("client", &client)
+            .field("amount", &BigIntSer(&amount))
             .build()
             .unwrap(),
     }
@@ -803,7 +846,7 @@ pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePo
                 DATACAP_TOKEN_ACTOR_ADDR,
                 *verifier,
             )]),
-            events: vec![verifier_balance_event(verifier.id().unwrap(), data_cap)],
+            events: vec![add_verifier_event(verifier.id().unwrap(), data_cap)],
             ..Default::default()
         }]),
         ..Default::default()
@@ -817,13 +860,6 @@ pub fn verifreg_add_client(
     client: &Address,
     allowance: StoragePower,
 ) {
-    let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-
-    let verifier_cap = v_st.get_verifier_cap(&store, verifier).unwrap().unwrap();
-
-    let updated_verifier_balance = verifier_cap - allowance.clone();
-
     let verifier_id = v.resolve_id_address(verifier).unwrap().id().unwrap();
     let add_client_params =
         AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
@@ -835,7 +871,7 @@ pub fn verifreg_add_client(
         VerifregMethod::AddVerifiedClient as u64,
         Some(add_client_params),
     );
-    let allowance_tokens = TokenAmount::from_whole(allowance);
+    let allowance_tokens = TokenAmount::from_whole(allowance.clone());
     ExpectInvocation {
         from: verifier_id,
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -863,7 +899,11 @@ pub fn verifreg_add_client(
             )]),
             ..Default::default()
         }]),
-        events: vec![verifier_balance_event(verifier.id().unwrap(), updated_verifier_balance)],
+        events: vec![allocate_datacap_event(
+            verifier.id().unwrap(),
+            client.id().unwrap(),
+            allowance,
+        )],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
