@@ -368,24 +368,6 @@ impl Expect {
         }
     }
 
-    pub fn build_verifreg_event(
-        typ: &str,
-        id: u64,
-        client: ActorID,
-        provider: ActorID,
-    ) -> EmittedEvent {
-        EmittedEvent {
-            emitter: VERIFIED_REGISTRY_ACTOR_ID,
-            event: EventBuilder::new()
-                .typ(typ)
-                .field_indexed("id", &id)
-                .field_indexed("client", &client)
-                .field_indexed("provider", &provider)
-                .build()
-                .unwrap(),
-        }
-    }
-
     pub fn build_market_event(
         typ: &str,
         deal_id: DealID,

@@ -1,9 +1,11 @@
 use cid::Cid;
 use export_macro::vm_test;
-use fil_actor_verifreg::Method as VerifregMethod;
+use fil_actor_verifreg::{emit, Claim, Method as VerifregMethod};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
-use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, VERIFIED_REGISTRY_ACTOR_ADDR};
+use fil_actors_runtime::{
+    DealWeight, EPOCHS_IN_DAY, VERIFIED_REGISTRY_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ID,
+};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -18,7 +20,8 @@ use fil_actor_miner::{
     ProveReplicaUpdatesParams, ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors,
     State as MinerState,
 };
-use vm_api::trace::ExpectInvocation;
+use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::{apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
 
@@ -617,6 +620,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     // create 1 verified deal for total sector capacity
     let deal_start = v.epoch() + EPOCHS_IN_DAY;
+    let deal_lifetime = 340 * EPOCHS_IN_DAY;
     let deal_ids = market_publish_deal(
         v,
         &worker,
@@ -626,7 +630,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         piece_size,
         true,
         deal_start,
-        340 * EPOCHS_IN_DAY,
+        deal_lifetime,
     )
     .ids;
 
@@ -663,6 +667,25 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let pis: Vec<PieceInfo> = vec![PieceInfo { cid: piece_cid, size: piece_size }];
     let unsealed_cid = v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
 
+    let start_epoch = deal_start;
+    let end_epoch = deal_start + deal_lifetime;
+    let deal_term = end_epoch - start_epoch;
+
+    let claim_event = emit::build_claim_event(
+        claim_id,
+        &Claim {
+            provider: miner_id,
+            client: verified_client.id().unwrap(),
+            data: piece_cid,
+            size: piece_size,
+            sector: sector_number,
+            term_min: deal_term,
+            term_max: deal_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
+            term_start: deal_start,
+        },
+    )
+    .unwrap();
+
     // check for the expected subcalls
     ExpectInvocation {
         from: worker_id,
@@ -682,12 +705,10 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::ClaimAllocations as u64,
-                events: vec![Expect::build_verifreg_event(
-                    "claim",
-                    claim_id,
-                    verified_client.id().unwrap(),
-                    miner_id,
-                )],
+                events: vec![EmittedEvent {
+                    emitter: VERIFIED_REGISTRY_ACTOR_ID,
+                    event: claim_event,
+                }],
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),

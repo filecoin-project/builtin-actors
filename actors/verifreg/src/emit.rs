@@ -7,6 +7,7 @@ use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::EventBuilder;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::event::ActorEvent;
 use fvm_shared::ActorID;
 
 /// Indicates a new value for a verifier's datacap balance.
@@ -18,14 +19,8 @@ pub fn verifier_balance(
     client: Option<ActorID>,
     new_balance: &DataCap,
 ) -> Result<(), ActorError> {
-    rt.emit_event(
-        &EventBuilder::new()
-            .typ("verifier-balance")
-            .field_indexed("verifier", &verifier)
-            .field_indexed("client", &client)
-            .field("balance", &BigIntSer(new_balance))
-            .build()?,
-    )
+    let event = build_verifier_balance_event(verifier, &client, new_balance)?;
+    rt.emit_event(&event)
 }
 
 /// Indicates a new allocation has been made.
@@ -34,7 +29,56 @@ pub fn allocation(
     id: AllocationID,
     alloc: &Allocation,
 ) -> Result<(), ActorError> {
-    let event = build_base_event(
+    let event = build_allocation_event(id, alloc)?;
+    rt.emit_event(&event)
+}
+
+/// Indicates an expired allocation has been removed.
+pub fn allocation_removed(
+    rt: &impl Runtime,
+    id: AllocationID,
+    alloc: &Allocation,
+) -> Result<(), ActorError> {
+    let event = build_allocation_removed_event(id, alloc)?;
+    rt.emit_event(&event)
+}
+
+/// Indicates an allocation has been claimed.
+pub fn claim(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
+    let event = build_claim_event(id, claim)?;
+    rt.emit_event(&event)
+}
+
+/// Indicates an existing claim has been updated (e.g. with a longer term).
+pub fn claim_updated(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
+    let event = build_claim_updated_event(id, claim)?;
+    rt.emit_event(&event)
+}
+
+/// Indicates an expired claim has been removed.
+pub fn claim_removed(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
+    let event = build_claim_removed_event(id, claim)?;
+    rt.emit_event(&event)
+}
+
+pub fn build_verifier_balance_event(
+    verifier: ActorID,
+    client: &Option<ActorID>,
+    balance: &DataCap,
+) -> Result<ActorEvent, ActorError> {
+    EventBuilder::new()
+        .typ("verifier-balance")
+        .field_indexed("verifier", &verifier)
+        .field_indexed("client", client)
+        .field("balance", &BigIntSer(balance))
+        .build()
+}
+
+pub fn build_allocation_event(
+    id: AllocationID,
+    alloc: &Allocation,
+) -> Result<ActorEvent, ActorError> {
+    build_base_event(
         "allocation",
         id,
         alloc.client,
@@ -45,34 +89,11 @@ pub fn allocation(
         alloc.term_max,
     )
     .field("expiration", &alloc.expiration)
-    .build()?;
-    rt.emit_event(&event)
+    .build()
 }
 
-/// Indicates an expired allocation has been removed.
-pub fn allocation_removed(
-    rt: &impl Runtime,
-    id: AllocationID,
-    alloc: &Allocation,
-) -> Result<(), ActorError> {
-    let event = build_base_event(
-        "allocation-removed",
-        id,
-        alloc.client,
-        alloc.provider,
-        &alloc.data,
-        alloc.size.0,
-        alloc.term_min,
-        alloc.term_max,
-    )
-    .field("expiration", &alloc.expiration)
-    .build()?;
-    rt.emit_event(&event)
-}
-
-/// Indicates an allocation has been claimed.
-pub fn claim(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    let event = build_base_event(
+pub fn build_claim_event(id: ClaimID, claim: &Claim) -> Result<ActorEvent, ActorError> {
+    build_base_event(
         "claim",
         id,
         claim.client,
@@ -83,13 +104,11 @@ pub fn claim(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorE
         claim.term_max,
     )
     .field_indexed("sector", &claim.sector)
-    .build()?;
-    rt.emit_event(&event)
+    .build()
 }
 
-/// Indicates an existing claim has been updated (e.g. with a longer term).
-pub fn claim_updated(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    let event = build_base_event(
+pub fn build_claim_updated_event(id: ClaimID, claim: &Claim) -> Result<ActorEvent, ActorError> {
+    build_base_event(
         "claim-updated",
         id,
         claim.client,
@@ -100,13 +119,11 @@ pub fn claim_updated(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<()
         claim.term_max,
     )
     .field_indexed("sector", &claim.sector)
-    .build()?;
-    rt.emit_event(&event)
+    .build()
 }
 
-/// Indicates an expired claim has been removed.
-pub fn claim_removed(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    let event = build_base_event(
+pub fn build_claim_removed_event(id: ClaimID, claim: &Claim) -> Result<ActorEvent, ActorError> {
+    build_base_event(
         "claim-removed",
         id,
         claim.client,
@@ -117,12 +134,29 @@ pub fn claim_removed(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<()
         claim.term_max,
     )
     .field_indexed("sector", &claim.sector)
-    .build()?;
-    rt.emit_event(&event)
+    .build()
+}
+
+pub fn build_allocation_removed_event(
+    id: AllocationID,
+    alloc: &Allocation,
+) -> Result<ActorEvent, ActorError> {
+    build_base_event(
+        "allocation-removed",
+        id,
+        alloc.client,
+        alloc.provider,
+        &alloc.data,
+        alloc.size.0,
+        alloc.term_min,
+        alloc.term_max,
+    )
+    .field("expiration", &alloc.expiration)
+    .build()
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn build_base_event(
+fn build_base_event(
     typ: &str,
     id: u64,
     client: ActorID,
@@ -140,7 +174,7 @@ pub fn build_base_event(
 }
 
 // Private helpers //
-pub trait WithParties {
+trait WithParties {
     fn with_parties(self, id: AllocationID, client: ActorID, provider: ActorID) -> EventBuilder;
 }
 
@@ -152,7 +186,7 @@ impl WithParties for EventBuilder {
     }
 }
 
-pub trait WithPiece {
+trait WithPiece {
     fn with_piece(self, piece_cid: &Cid, piece_size: u64) -> EventBuilder;
 }
 
@@ -162,7 +196,7 @@ impl crate::emit::WithPiece for EventBuilder {
     }
 }
 
-pub trait WithTerm {
+trait WithTerm {
     fn with_term(self, term_min: ChainEpoch, term_max: ChainEpoch) -> EventBuilder;
 }
 

@@ -443,11 +443,14 @@ mod clients {
             ExitCode::OK,
         );
 
-        rt.expect_emitted_event(build_verifier_balance_event(
-            VERIFIER.id().unwrap(),
-            &Some(CLIENT.id().unwrap()),
-            &(allowance_verifier - allowance_client),
-        ));
+        rt.expect_emitted_event(
+            fil_actor_verifreg::emit::build_verifier_balance_event(
+                VERIFIER.id().unwrap(),
+                &Some(CLIENT.id().unwrap()),
+                &(allowance_verifier - allowance_client),
+            )
+            .unwrap(),
+        );
 
         rt.expect_validate_caller_any();
         rt.call::<VerifregActor>(
