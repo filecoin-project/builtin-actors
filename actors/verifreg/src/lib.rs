@@ -1,6 +1,15 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actors_runtime::cbor::deserialize;
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
+use fil_actors_runtime::{
+    actor_dispatch, actor_error, deserialize_block, extract_send_result, resolve_to_actor_id,
+    ActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
+use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{BurnParams, TransferParams};
 use frc46_token::token::TOKEN_PRECISION;
@@ -18,18 +27,6 @@ use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
 use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{Signed, Zero};
-use std::collections::HashMap;
-
-use crate::expiration::Expires;
-use fil_actors_runtime::cbor::deserialize;
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
-use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, extract_send_result, resolve_to_actor_id,
-    ActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
-use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 
 use crate::ext::datacap::{DestroyParams, MintParams};
 use crate::state::{
@@ -133,7 +130,7 @@ impl Actor {
                 .context("failed to add verifier")
         })?;
 
-        emit::verifier_balance(rt, verifier, &DataCap::zero(), &params.allowance, None)
+        emit::verifier_balance(rt, verifier, None, &params.allowance)
     }
 
     pub fn remove_verifier(
@@ -144,14 +141,9 @@ impl Actor {
         let verifier_addr = Address::new_id(verifier);
 
         rt.transaction(|st: &mut State, rt| {
-            let existing_cap =
-                st.get_verifier_cap(rt.store(), &verifier_addr)?.ok_or_else(|| {
-                    actor_error!(illegal_argument, "verifier {} not found", verifier_addr)
-                })?;
-
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
             st.remove_verifier(rt.store(), &verifier_addr).context("failed to remove verifier")?;
-            emit::verifier_balance(rt, verifier, &existing_cap, &DataCap::zero(), None)
+            emit::verifier_balance(rt, verifier, None, &DataCap::zero())
         })?;
         Ok(())
     }
@@ -207,16 +199,15 @@ impl Actor {
             }
 
             // Reduce verifier's cap.
-            let new_verifier_cap = verifier_cap.clone() - &params.allowance;
+            let new_verifier_cap = verifier_cap - &params.allowance;
             st.put_verifier(rt.store(), &verifier_addr, &new_verifier_cap)
                 .context("failed to update verifier allowance")?;
 
             emit::verifier_balance(
                 rt,
                 verifier_addr.id().unwrap(),
-                &verifier_cap,
-                &new_verifier_cap,
                 Some(client_id),
+                &new_verifier_cap,
             )
         })?;
 
@@ -358,17 +349,7 @@ impl Actor {
                         )?
                         .unwrap(); // Unwrapping here as both paths to here should ensure the allocation exists.
 
-                    emit::allocation_removed(
-                        rt,
-                        *id,
-                        existing.client,
-                        existing.provider,
-                        &existing.data,
-                        &existing.size.0,
-                        &existing.term_min,
-                        &existing.term_max,
-                        &existing.expiration,
-                    )?;
+                    emit::allocation_removed(rt, *id, &existing)?;
 
                     // Unwrapping here as both paths to here should ensure the allocation exists.
                     recovered_datacap += existing.size.0;
@@ -472,18 +453,7 @@ impl Actor {
                     }
 
                     // Emit a claim event below
-                    emit::claim(
-                        rt,
-                        id,
-                        new_claim.client,
-                        new_claim.provider,
-                        &new_claim.data,
-                        &new_claim.size.0,
-                        &new_claim.term_min,
-                        &new_claim.term_max,
-                        &new_claim.expiration(),
-                        &new_claim.sector,
-                    )?;
+                    emit::claim(rt, id, &new_claim)?;
 
                     allocs.remove(new_claim.client, id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -594,26 +564,13 @@ impl Actor {
                         continue;
                     }
 
-                    let prev_max = claim.term_max;
                     let new_claim = Claim { term_max: term.term_max, ..*claim };
                     st_claims.put(term.provider, term.claim_id, new_claim.clone()).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         "HAMT put failure storing new claims",
                     )?;
                     batch_gen.add_success();
-                    emit::claim_updated(
-                        rt,
-                        term.claim_id,
-                        new_claim.client,
-                        new_claim.provider,
-                        &new_claim.data,
-                        &new_claim.size.0,
-                        &new_claim.term_min,
-                        &new_claim.term_max,
-                        &new_claim.expiration(),
-                        &new_claim.sector,
-                        &prev_max,
-                    )?;
+                    emit::claim_updated(rt, term.claim_id, &new_claim)?;
                 } else {
                     batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
                     info!("no claim {} for provider {}", term.claim_id, term.provider);
@@ -665,18 +622,7 @@ impl Actor {
                     )?
                     .unwrap();
 
-                emit::claim_removed(
-                    rt,
-                    *id,
-                    removed.client,
-                    removed.provider,
-                    &removed.data,
-                    &removed.size.0,
-                    &removed.term_min,
-                    &removed.term_max,
-                    &removed.expiration(),
-                    &removed.sector,
-                )?;
+                emit::claim_removed(rt, *id, &removed)?;
             }
 
             st.save_claims(&mut claims)?;
@@ -734,7 +680,6 @@ impl Actor {
         let st: State = rt.state()?;
         let mut claims = st.load_claims(rt.store())?;
         let mut updated_claims = Vec::<(ClaimID, Claim)>::new();
-        let mut prev_term_max_map: HashMap<ClaimID, ChainEpoch> = HashMap::new();
         let mut extension_total = DataCap::zero();
         for req in &reqs.extensions {
             // Note: we don't check the client address here, by design.
@@ -744,7 +689,6 @@ impl Actor {
                     format!("no claim {} for provider {}", req.claim, req.provider)
                 })?;
             let policy = rt.policy();
-            prev_term_max_map.insert(req.claim, claim.term_max);
 
             validate_claim_extension(req, claim, policy, curr_epoch)?;
             // The claim's client is not changed to be the address of the token sender.
@@ -778,37 +722,13 @@ impl Actor {
             let ids = st.insert_allocations(rt.store(), client, new_allocs.clone())?;
 
             for (id, alloc) in ids.iter().zip(new_allocs.iter()) {
-                emit::allocation(
-                    rt,
-                    *id,
-                    alloc.client,
-                    alloc.provider,
-                    &alloc.data,
-                    &alloc.size.0,
-                    &alloc.term_min,
-                    &alloc.term_max,
-                    &alloc.expiration,
-                )?;
+                emit::allocation(rt, *id, alloc)?;
             }
 
             st.put_claims(rt.store(), updated_claims.clone())?;
 
             for (id, claim) in updated_claims {
-                let prev_term_max = prev_term_max_map.get(&id).unwrap();
-
-                emit::claim_updated(
-                    rt,
-                    id,
-                    claim.client,
-                    claim.provider,
-                    &claim.data,
-                    &claim.size.0,
-                    &claim.term_min,
-                    &claim.term_max,
-                    &claim.expiration(),
-                    &claim.sector,
-                    prev_term_max,
-                )?;
+                emit::claim_updated(rt, id, &claim)?;
             }
 
             Ok(ids)

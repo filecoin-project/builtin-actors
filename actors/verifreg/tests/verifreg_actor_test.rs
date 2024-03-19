@@ -80,7 +80,6 @@ mod verifiers {
 
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
-    use fvm_shared::bigint::BigInt;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
@@ -211,10 +210,7 @@ mod verifiers {
     #[test]
     fn remove_requires_verifier_exists() {
         let (h, rt) = new_harness();
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.remove_verifier(&rt, &VERIFIER, &BigInt::from(0)),
-        );
+        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.remove_verifier(&rt, &VERIFIER));
         h.check_state(&rt);
         rt.reset();
     }
@@ -224,7 +220,7 @@ mod verifiers {
         let (h, rt) = new_harness();
         let allowance = verifier_allowance(&rt);
         h.add_verifier(&rt, &VERIFIER, &allowance).unwrap();
-        h.remove_verifier(&rt, &VERIFIER, &allowance).unwrap();
+        h.remove_verifier(&rt, &VERIFIER).unwrap();
         h.check_state(&rt);
     }
 
@@ -237,7 +233,7 @@ mod verifiers {
         // Add using pubkey address.
         h.add_verifier(&rt, &VERIFIER, &allowance).unwrap();
         // Remove using ID address.
-        h.remove_verifier(&rt, &VERIFIER, &allowance).unwrap();
+        h.remove_verifier(&rt, &VERIFIER).unwrap();
         h.check_state(&rt);
     }
 }
@@ -450,8 +446,7 @@ mod clients {
         rt.expect_emitted_event(build_verifier_balance_event(
             VERIFIER.id().unwrap(),
             &Some(CLIENT.id().unwrap()),
-            &allowance_verifier,
-            &(allowance_verifier.clone() - allowance_client),
+            &(allowance_verifier - allowance_client),
         ));
 
         rt.expect_validate_caller_any();
@@ -1075,9 +1070,9 @@ mod allocs_claims {
         // The full test suite is not duplicated here,   simple ones to ensure that the expiration
         // is correctly computed.
 
-        let expect_1 = vec![(id1, claim1.clone(), sector)];
-        let expect_2 = vec![(id2, claim2.clone(), sector)];
-        let expect_both = vec![(id1, claim1, sector), (id2, claim2, sector)];
+        let expect_1 = vec![(id1, claim1.clone())];
+        let expect_2 = vec![(id2, claim2.clone())];
+        let expect_both = vec![(id1, claim1), (id2, claim2)];
 
         // None expired yet
         rt.set_epoch(term_start + term_min + 99);

@@ -837,13 +837,7 @@ impl Actor {
 
         for (pc, data) in activated_precommits.iter().zip(activated_data.iter()) {
             let unsealed_cid = pc.info.unsealed_cid.0;
-            emit::sector_activated(
-                rt,
-                pc.info.sector_number,
-                unsealed_cid,
-                &data.pieces,
-                &pc.info.expiration,
-            )?;
+            emit::sector_activated(rt, pc.info.sector_number, unsealed_cid, &data.pieces)?;
         }
 
         // The aggregate fee is paid on the sectors successfully proven.
@@ -990,7 +984,6 @@ impl Actor {
                 usi.update.sector_number,
                 data_activation.unsealed_cid,
                 &data_activation.pieces,
-                &usi.sector_info.expiration,
             )?;
         }
 
@@ -1232,7 +1225,6 @@ impl Actor {
                 update.sector,
                 sector_commds.get(&update.sector).unwrap().0,
                 &pieces,
-                &sector_info.expiration,
             )?;
         }
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
@@ -1948,13 +1940,7 @@ impl Actor {
                 activations.pieces.iter().map(|p| (p.cid, p.size.0)).collect();
             let unsealed_cid = sector.info.unsealed_cid.0;
 
-            emit::sector_activated(
-                rt,
-                sector.info.sector_number,
-                unsealed_cid,
-                &pieces,
-                &sector.info.expiration,
-            )?;
+            emit::sector_activated(rt, sector.info.sector_number, unsealed_cid, &pieces)?;
         }
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
@@ -2071,13 +2057,7 @@ impl Actor {
 
         for (pc, data) in successful_activations.iter().zip(data_activations.iter()) {
             let unsealed_cid = pc.info.unsealed_cid.0;
-            emit::sector_activated(
-                rt,
-                pc.info.sector_number,
-                unsealed_cid,
-                &data.pieces,
-                &pc.info.expiration,
-            )?;
+            emit::sector_activated(rt, pc.info.sector_number, unsealed_cid, &data.pieces)?;
         }
 
         Ok(())
