@@ -1,15 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::cbor::deserialize;
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
-use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, extract_send_result, resolve_to_actor_id,
-    ActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
-use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{BurnParams, TransferParams};
 use frc46_token::token::TOKEN_PRECISION;
@@ -28,6 +19,16 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{Signed, Zero};
 
+use fil_actors_runtime::cbor::deserialize;
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
+use fil_actors_runtime::{
+    actor_dispatch, actor_error, deserialize_block, extract_send_result, resolve_to_actor_id,
+    ActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
+use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
+
 use crate::ext::datacap::{DestroyParams, MintParams};
 use crate::state::{
     DataCapMap, RemoveDataCapProposalMap, DATACAP_MAP_CONFIG, REMOVE_DATACAP_PROPOSALS_CONFIG,
@@ -41,7 +42,7 @@ pub use self::types::*;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
-pub mod emit;
+mod emit;
 
 pub mod expiration;
 pub mod ext;
@@ -142,10 +143,10 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
-            st.remove_verifier(rt.store(), &verifier_addr).context("failed to remove verifier")?;
-            emit::verifier_balance(rt, verifier, &DataCap::zero())
+            st.remove_verifier(rt.store(), &verifier_addr).context("failed to remove verifier")
         })?;
-        Ok(())
+
+        emit::verifier_balance(rt, verifier, &DataCap::zero())
     }
 
     pub fn add_verified_client(

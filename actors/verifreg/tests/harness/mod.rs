@@ -40,6 +40,7 @@ use fil_actors_runtime::{
     make_empty_map, ActorError, AsActorError, BatchReturn, EventBuilder, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+
 pub const ROOT_ADDR: Address = Address::new_id(101);
 
 const TEST_VERIFIER_ADDR: u64 = 201;
@@ -170,7 +171,6 @@ impl Harness {
                 .field("balance", &BigIntSer(&DataCap::zero()))
                 .build()?,
         );
-
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let ret = rt.call::<VerifregActor>(
             Method::RemoveVerifier as MethodNum,
@@ -232,7 +232,6 @@ impl Harness {
         );
 
         let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
-
         rt.expect_emitted_event(
             EventBuilder::new()
                 .typ("verifier-balance")
@@ -240,7 +239,6 @@ impl Harness {
                 .field("balance", &BigIntSer(&(verifier_balance - allowance)))
                 .build()?,
         );
-
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),

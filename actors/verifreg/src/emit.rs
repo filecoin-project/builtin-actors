@@ -7,7 +7,6 @@ use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::EventBuilder;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::event::ActorEvent;
 use fvm_shared::ActorID;
 
 /// Indicates a new value for a verifier's datacap balance.
@@ -18,8 +17,13 @@ pub fn verifier_balance(
     verifier: ActorID,
     new_balance: &DataCap,
 ) -> Result<(), ActorError> {
-    let event = build_verifier_balance_event(verifier, new_balance)?;
-    rt.emit_event(&event)
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("verifier-balance")
+            .field_indexed("verifier", &verifier)
+            .field("balance", &BigIntSer(new_balance))
+            .build()?,
+    )
 }
 
 /// Indicates a new allocation has been made.
@@ -28,8 +32,15 @@ pub fn allocation(
     id: AllocationID,
     alloc: &Allocation,
 ) -> Result<(), ActorError> {
-    let event = build_allocation_event(id, alloc)?;
-    rt.emit_event(&event)
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("allocation")
+            .with_parties(id, alloc.client, alloc.provider)
+            .with_piece(&alloc.data, alloc.size.0)
+            .with_term(alloc.term_min, alloc.term_max)
+            .field("expiration", &alloc.expiration)
+            .build()?,
+    )
 }
 
 /// Indicates an expired allocation has been removed.
@@ -38,136 +49,54 @@ pub fn allocation_removed(
     id: AllocationID,
     alloc: &Allocation,
 ) -> Result<(), ActorError> {
-    let event = build_allocation_removed_event(id, alloc)?;
-    rt.emit_event(&event)
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("allocation-removed")
+            .with_parties(id, alloc.client, alloc.provider)
+            .with_piece(&alloc.data, alloc.size.0)
+            .with_term(alloc.term_min, alloc.term_max)
+            .field("expiration", &alloc.expiration)
+            .build()?,
+    )
 }
 
 /// Indicates an allocation has been claimed.
 pub fn claim(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    let event = build_claim_event(id, claim)?;
-    rt.emit_event(&event)
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("claim")
+            .with_parties(id, claim.client, claim.provider)
+            .with_piece(&claim.data, claim.size.0)
+            .with_term(claim.term_min, claim.term_max)
+            .field_indexed("sector", &claim.sector)
+            .build()?,
+    )
 }
 
 /// Indicates an existing claim has been updated (e.g. with a longer term).
 pub fn claim_updated(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    let event = build_claim_updated_event(id, claim)?;
-    rt.emit_event(&event)
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("claim-updated")
+            .with_parties(id, claim.client, claim.provider)
+            .with_piece(&claim.data, claim.size.0)
+            .with_term(claim.term_min, claim.term_max)
+            .field_indexed("sector", &claim.sector)
+            .build()?,
+    )
 }
 
 /// Indicates an expired claim has been removed.
 pub fn claim_removed(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    let event = build_claim_removed_event(id, claim)?;
-    rt.emit_event(&event)
-}
-
-pub fn build_verifier_balance_event(
-    verifier: ActorID,
-    balance: &DataCap,
-) -> Result<ActorEvent, ActorError> {
-    EventBuilder::new()
-        .typ("verifier-balance")
-        .field_indexed("verifier", &verifier)
-        .field("balance", &BigIntSer(balance))
-        .build()
-}
-
-pub fn build_allocation_event(
-    id: AllocationID,
-    alloc: &Allocation,
-) -> Result<ActorEvent, ActorError> {
-    build_base_event(
-        "allocation",
-        id,
-        alloc.client,
-        alloc.provider,
-        &alloc.data,
-        alloc.size.0,
-        alloc.term_min,
-        alloc.term_max,
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("claim-removed")
+            .with_parties(id, claim.client, claim.provider)
+            .with_piece(&claim.data, claim.size.0)
+            .with_term(claim.term_min, claim.term_max)
+            .field_indexed("sector", &claim.sector)
+            .build()?,
     )
-    .field("expiration", &alloc.expiration)
-    .build()
-}
-
-pub fn build_claim_event(id: ClaimID, claim: &Claim) -> Result<ActorEvent, ActorError> {
-    build_base_event(
-        "claim",
-        id,
-        claim.client,
-        claim.provider,
-        &claim.data,
-        claim.size.0,
-        claim.term_min,
-        claim.term_max,
-    )
-    .field_indexed("sector", &claim.sector)
-    .build()
-}
-
-pub fn build_claim_updated_event(id: ClaimID, claim: &Claim) -> Result<ActorEvent, ActorError> {
-    build_base_event(
-        "claim-updated",
-        id,
-        claim.client,
-        claim.provider,
-        &claim.data,
-        claim.size.0,
-        claim.term_min,
-        claim.term_max,
-    )
-    .field_indexed("sector", &claim.sector)
-    .build()
-}
-
-pub fn build_claim_removed_event(id: ClaimID, claim: &Claim) -> Result<ActorEvent, ActorError> {
-    build_base_event(
-        "claim-removed",
-        id,
-        claim.client,
-        claim.provider,
-        &claim.data,
-        claim.size.0,
-        claim.term_min,
-        claim.term_max,
-    )
-    .field_indexed("sector", &claim.sector)
-    .build()
-}
-
-pub fn build_allocation_removed_event(
-    id: AllocationID,
-    alloc: &Allocation,
-) -> Result<ActorEvent, ActorError> {
-    build_base_event(
-        "allocation-removed",
-        id,
-        alloc.client,
-        alloc.provider,
-        &alloc.data,
-        alloc.size.0,
-        alloc.term_min,
-        alloc.term_max,
-    )
-    .field("expiration", &alloc.expiration)
-    .build()
-}
-
-#[allow(clippy::too_many_arguments)]
-fn build_base_event(
-    typ: &str,
-    id: u64,
-    client: ActorID,
-    provider: ActorID,
-    piece_cid: &Cid,
-    piece_size: u64,
-    term_min: ChainEpoch,
-    term_max: ChainEpoch,
-) -> EventBuilder {
-    EventBuilder::new()
-        .typ(typ)
-        .with_parties(id, client, provider)
-        .with_piece(piece_cid, piece_size)
-        .with_term(term_min, term_max)
 }
 
 // Private helpers //
