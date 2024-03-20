@@ -19,15 +19,14 @@ use fil_actor_miner::{
 };
 use fil_actor_miner::{Method as MinerMethod, VerifiedAllocationKey};
 use fil_actor_verifreg::{
-    emit, AllocationClaim, AllocationRequest, Claim, ClaimAllocationsParams,
-    Method as VerifregMethod, SectorAllocationClaims,
+    AllocationClaim, AllocationRequest, ClaimAllocationsParams, Method as VerifregMethod,
+    SectorAllocationClaims,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fil_actors_runtime::{
     EPOCHS_IN_DAY, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ID,
 };
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::apply_ok;
@@ -251,57 +250,39 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         },
     ];
 
-    let claim_event_1 = EmittedEvent {
-        emitter: VERIFIED_REGISTRY_ACTOR_ID,
-        event: emit::build_claim_event(
-            alloc_ids_s2[0],
-            &Claim {
-                provider: miner_id,
-                client: client_id,
-                data: allocs[0].data,
-                size: allocs[0].size,
-                term_min: claim_term_min,
-                term_max: claim_term_max,
-                term_start: activation_epoch,
-                sector: first_sector_number + 2,
-            },
-        )
-        .unwrap(),
-    };
-    let claim_event_2 = EmittedEvent {
-        emitter: VERIFIED_REGISTRY_ACTOR_ID,
-        event: emit::build_claim_event(
-            alloc_ids_s2[1],
-            &Claim {
-                provider: miner_id,
-                client: client_id,
-                data: allocs[1].data,
-                size: allocs[1].size,
-                term_min: claim_term_min,
-                term_max: claim_term_max,
-                term_start: activation_epoch,
-                sector: first_sector_number + 2,
-            },
-        )
-        .unwrap(),
-    };
-    let claim_event_3 = EmittedEvent {
-        emitter: VERIFIED_REGISTRY_ACTOR_ID,
-        event: emit::build_claim_event(
-            alloc_ids_s4[0],
-            &Claim {
-                provider: miner_id,
-                client: client_id,
-                data: manifests[4].pieces[0].cid,
-                size: manifests[4].pieces[0].size,
-                term_min: claim_term_min,
-                term_max: claim_term_max,
-                term_start: activation_epoch,
-                sector: first_sector_number + 4,
-            },
-        )
-        .unwrap(),
-    };
+    let claim_event_1 = Expect::build_verifreg_claim_event(
+        "claim",
+        alloc_ids_s2[0],
+        client_id,
+        miner_id,
+        &allocs[0].data,
+        allocs[0].size.0,
+        claim_term_min,
+        claim_term_max,
+        first_sector_number + 2,
+    );
+    let claim_event_2 = Expect::build_verifreg_claim_event(
+        "claim",
+        alloc_ids_s2[1],
+        client_id,
+        miner_id,
+        &allocs[1].data,
+        allocs[1].size.0,
+        claim_term_min,
+        claim_term_max,
+        first_sector_number + 2,
+    );
+    let claim_event_3 = Expect::build_verifreg_claim_event(
+        "claim",
+        alloc_ids_s4[0],
+        client_id,
+        miner_id,
+        &manifests[4].pieces[0].cid,
+        manifests[4].pieces[0].size.0,
+        claim_term_min,
+        claim_term_max,
+        first_sector_number + 4,
+    );
 
     // Replica update
     let update_proof = seal_proof.registered_update_proof().unwrap();

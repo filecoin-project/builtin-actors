@@ -50,7 +50,7 @@ use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_verifreg::ext::datacap::MintParams;
-use fil_actor_verifreg::{emit, state, Allocation, AllocationRequests};
+use fil_actor_verifreg::{state, Allocation, AllocationRequests};
 use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     Method as VerifregMethod, RemoveExpiredAllocationsParams, State as VerifregState,
@@ -759,17 +759,12 @@ pub fn submit_invalid_post(
     );
 }
 
-pub fn verifier_balance_event(
-    verifier: ActorID,
-    data_cap: DataCap,
-    client: Option<ActorID>,
-) -> EmittedEvent {
+pub fn verifier_balance_event(verifier: ActorID, data_cap: DataCap) -> EmittedEvent {
     EmittedEvent {
         emitter: VERIFIED_REGISTRY_ACTOR_ID,
         event: EventBuilder::new()
             .typ("verifier-balance")
             .field_indexed("verifier", &verifier)
-            .field_indexed("client", &client)
             .field("balance", &BigIntSer(&data_cap))
             .build()
             .unwrap(),
@@ -808,7 +803,7 @@ pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePo
                 DATACAP_TOKEN_ACTOR_ADDR,
                 *verifier,
             )]),
-            events: vec![verifier_balance_event(verifier.id().unwrap(), data_cap, None)],
+            events: vec![verifier_balance_event(verifier.id().unwrap(), data_cap)],
             ..Default::default()
         }]),
         ..Default::default()
@@ -868,11 +863,7 @@ pub fn verifreg_add_client(
             )]),
             ..Default::default()
         }]),
-        events: vec![verifier_balance_event(
-            verifier.id().unwrap(),
-            updated_verifier_balance,
-            Some(client.id().unwrap()),
-        )],
+        events: vec![verifier_balance_event(verifier.id().unwrap(), updated_verifier_balance)],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -917,8 +908,17 @@ pub fn verifreg_remove_expired_allocations(
         .iter()
         .map(|id| {
             let alloc = allocs.get(client.id().unwrap(), *id).unwrap().unwrap();
-            let event = emit::build_allocation_removed_event(*id, alloc).unwrap();
-            EmittedEvent { emitter: VERIFIED_REGISTRY_ACTOR_ID, event }
+            Expect::build_verifreg_allocation_event(
+                "allocation-removed",
+                *id,
+                client.id().unwrap(),
+                alloc.provider,
+                &alloc.data,
+                alloc.size.0,
+                alloc.term_min,
+                alloc.term_max,
+                alloc.expiration,
+            )
         })
         .collect();
 
@@ -1009,21 +1009,18 @@ pub fn datacap_create_allocations(
         .new_allocations
         .iter()
         .enumerate()
-        .map(|(i, alloc_id)| EmittedEvent {
-            emitter: VERIFIED_REGISTRY_ACTOR_ID,
-            event: emit::build_allocation_event(
+        .map(|(i, alloc_id)| {
+            Expect::build_verifreg_allocation_event(
+                "allocation",
                 *alloc_id,
-                &Allocation {
-                    client: client.id().unwrap(),
-                    provider: reqs[i].provider,
-                    data: reqs[i].data,
-                    size: reqs[i].size,
-                    term_min: reqs[i].term_min,
-                    term_max: reqs[i].term_max,
-                    expiration: reqs[i].expiration,
-                },
+                client.id().unwrap(),
+                reqs[i].provider,
+                &reqs[i].data,
+                reqs[i].size.0,
+                reqs[i].term_min,
+                reqs[i].term_max,
+                reqs[i].expiration,
             )
-            .unwrap(),
         })
         .collect::<Vec<EmittedEvent>>();
 
@@ -1081,10 +1078,17 @@ pub fn datacap_extend_claim(
     );
 
     let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
-    let claim_updated_event = EmittedEvent {
-        emitter: VERIFIED_REGISTRY_ACTOR_ID,
-        event: emit::build_claim_updated_event(claim, &existing_claim).unwrap(),
-    };
+    let claim_updated_event = Expect::build_verifreg_claim_event(
+        "claim-updated",
+        claim,
+        existing_claim.client,
+        provider.id().unwrap(),
+        &existing_claim.data,
+        existing_claim.size.0,
+        existing_claim.term_min,
+        existing_claim.term_max,
+        existing_claim.sector,
+    );
 
     Expect::datacap_transfer_to_verifreg(
         client_id,
@@ -1207,22 +1211,17 @@ pub fn market_publish_deal(
         let v_st: fil_actor_verifreg::State = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
         let alloc_id = v_st.next_allocation_id - 1;
         let alloc_req = alloc_reqs.allocations[0].clone();
-        let alloc_event = EmittedEvent {
-            emitter: VERIFIED_REGISTRY_ACTOR_ID,
-            event: emit::build_allocation_event(
-                alloc_id,
-                &Allocation {
-                    client: deal_client.id().unwrap(),
-                    provider: miner_id.id().unwrap(),
-                    data: proposal.piece_cid,
-                    size: proposal.piece_size,
-                    term_min: alloc_req.term_min,
-                    term_max: alloc_req.term_max,
-                    expiration: alloc_req.expiration,
-                },
-            )
-            .unwrap(),
-        };
+        let alloc_event = Expect::build_verifreg_allocation_event(
+            "allocation",
+            alloc_id,
+            deal_client.id().unwrap(),
+            miner_id.id().unwrap(),
+            &proposal.piece_cid,
+            proposal.piece_size.0,
+            alloc_req.term_min,
+            alloc_req.term_max,
+            alloc_req.expiration,
+        );
 
         expect_publish_invocs.push(ExpectInvocation {
             from: STORAGE_MARKET_ACTOR_ID,

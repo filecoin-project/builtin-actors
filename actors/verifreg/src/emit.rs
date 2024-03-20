@@ -16,10 +16,9 @@ use fvm_shared::ActorID;
 pub fn verifier_balance(
     rt: &impl Runtime,
     verifier: ActorID,
-    client: Option<ActorID>,
     new_balance: &DataCap,
 ) -> Result<(), ActorError> {
-    let event = build_verifier_balance_event(verifier, &client, new_balance)?;
+    let event = build_verifier_balance_event(verifier, new_balance)?;
     rt.emit_event(&event)
 }
 
@@ -63,13 +62,11 @@ pub fn claim_removed(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<()
 
 pub fn build_verifier_balance_event(
     verifier: ActorID,
-    client: &Option<ActorID>,
     balance: &DataCap,
 ) -> Result<ActorEvent, ActorError> {
     EventBuilder::new()
         .typ("verifier-balance")
         .field_indexed("verifier", &verifier)
-        .field_indexed("client", client)
         .field("balance", &BigIntSer(balance))
         .build()
 }

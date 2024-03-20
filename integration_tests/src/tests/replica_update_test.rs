@@ -22,14 +22,14 @@ use fil_actor_miner::{
     ReplicaUpdate, SectorOnChainInfo, SectorOnChainInfoFlags, Sectors, State as MinerState,
     TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
-use fil_actor_verifreg::{emit, Claim, Method as VerifregMethod};
+use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
+use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::{
     Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
-use fil_actors_runtime::{VERIFIED_REGISTRY_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ID};
-use vm_api::trace::{EmittedEvent, ExpectInvocation};
+use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_code, apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
 
@@ -1044,23 +1044,17 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
 
     let claim_id = 1_u64;
     let allocation = get_allocation(v, claim_id, client.id().unwrap());
-    let claim_event = EmittedEvent {
-        emitter: VERIFIED_REGISTRY_ACTOR_ID,
-        event: emit::build_claim_event(
-            claim_id,
-            &Claim {
-                provider: maddr.id().unwrap(),
-                client: client.id().unwrap(),
-                data: proposal.piece_cid,
-                size: proposal.piece_size,
-                term_min: allocation.term_min,
-                term_max: allocation.term_max,
-                sector: sector_number,
-                term_start: proposal.start_epoch,
-            },
-        )
-        .unwrap(),
-    };
+    let claim_event = Expect::build_verifreg_claim_event(
+        "claim",
+        claim_id,
+        client.id().unwrap(),
+        maddr.id().unwrap(),
+        &proposal.piece_cid,
+        proposal.piece_size.0,
+        allocation.term_min,
+        allocation.term_max,
+        sector_number,
+    );
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);
 
     let pieces: Vec<(Cid, u64)> = vec![(proposal.piece_cid, proposal.piece_size.0)];

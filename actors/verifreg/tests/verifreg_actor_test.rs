@@ -1,4 +1,5 @@
 use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser::BigIntSer;
 use lazy_static::lazy_static;
 
 mod harness;
@@ -251,7 +252,7 @@ mod clients {
         ext, Actor as VerifregActor, AddVerifiedClientParams, DataCap, Method,
     };
     use fil_actors_runtime::test_utils::*;
-    use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
+    use fil_actors_runtime::{EventBuilder, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
     use harness::*;
     use util::*;
 
@@ -444,12 +445,12 @@ mod clients {
         );
 
         rt.expect_emitted_event(
-            fil_actor_verifreg::emit::build_verifier_balance_event(
-                VERIFIER.id().unwrap(),
-                &Some(CLIENT.id().unwrap()),
-                &(allowance_verifier - allowance_client),
-            )
-            .unwrap(),
+            EventBuilder::new()
+                .typ("verifier-balance")
+                .field_indexed("verifier", &VERIFIER.id().unwrap())
+                .field("balance", &BigIntSer(&(allowance_verifier - allowance_client)))
+                .build()
+                .unwrap(),
         );
 
         rt.expect_validate_caller_any();

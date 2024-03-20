@@ -130,7 +130,7 @@ impl Actor {
                 .context("failed to add verifier")
         })?;
 
-        emit::verifier_balance(rt, verifier, None, &params.allowance)
+        emit::verifier_balance(rt, verifier, &params.allowance)
     }
 
     pub fn remove_verifier(
@@ -143,7 +143,7 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
             st.remove_verifier(rt.store(), &verifier_addr).context("failed to remove verifier")?;
-            emit::verifier_balance(rt, verifier, None, &DataCap::zero())
+            emit::verifier_balance(rt, verifier, &DataCap::zero())
         })?;
         Ok(())
     }
@@ -203,12 +203,7 @@ impl Actor {
             st.put_verifier(rt.store(), &verifier_addr, &new_verifier_cap)
                 .context("failed to update verifier allowance")?;
 
-            emit::verifier_balance(
-                rt,
-                verifier_addr.id().unwrap(),
-                Some(client_id),
-                &new_verifier_cap,
-            )
+            emit::verifier_balance(rt, verifier_addr.id().unwrap(), &new_verifier_cap)
         })?;
 
         // Credit client token allowance.
