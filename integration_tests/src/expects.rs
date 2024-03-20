@@ -368,6 +368,7 @@ impl Expect {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn build_verifreg_allocation_event(
         typ: &str,
         id: u64,
@@ -396,6 +397,7 @@ impl Expect {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn build_verifreg_claim_event(
         typ: &str,
         id: u64,
@@ -423,7 +425,7 @@ impl Expect {
                 .unwrap(),
         }
     }
-
+    #[allow(clippy::too_many_arguments)]
     pub fn build_market_event(
         typ: &str,
         deal_id: DealID,

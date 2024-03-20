@@ -23,6 +23,7 @@ use fil_actor_miner::{
     TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
+use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
@@ -38,11 +39,11 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
-    create_miner, deadline_state, declare_recovery, expect_invariants, get_allocation,
-    get_deal_weights, get_network_stats, invariant_failure_patterns, make_bitfield,
-    market_publish_deal, miner_balance, miner_power, override_compute_unsealed_sector_cid,
-    precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    create_miner, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
+    get_network_stats, invariant_failure_patterns, make_bitfield, market_publish_deal,
+    miner_balance, miner_power, override_compute_unsealed_sector_cid, precommit_sectors_v2,
+    prove_commit_sectors, sector_info, submit_invalid_post, submit_windowed_post,
+    verifreg_add_client, verifreg_add_verifier,
 };
 
 #[vm_test]
@@ -1043,7 +1044,8 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     assert_eq!(vec![100], bf_all(updated_sectors));
 
     let claim_id = 1_u64;
-    let allocation = get_allocation(v, claim_id, client.id().unwrap());
+    let deal_term = proposal.end_epoch - proposal.start_epoch;
+    let term_max = deal_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
     let claim_event = Expect::build_verifreg_claim_event(
         "claim",
         claim_id,
@@ -1051,8 +1053,8 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         maddr.id().unwrap(),
         &proposal.piece_cid,
         proposal.piece_size.0,
-        allocation.term_min,
-        allocation.term_max,
+        deal_term,
+        term_max,
         sector_number,
     );
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);

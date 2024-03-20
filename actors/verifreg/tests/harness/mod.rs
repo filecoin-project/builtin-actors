@@ -587,6 +587,7 @@ impl Harness {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn expect_allocation_emitted(
     rt: &MockRuntime,
     typ: &str,
@@ -615,6 +616,7 @@ pub fn expect_allocation_emitted(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn expect_claim_emitted(
     rt: &MockRuntime,
     typ: &str,

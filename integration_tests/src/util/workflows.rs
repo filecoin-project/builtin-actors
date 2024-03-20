@@ -50,14 +50,14 @@ use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_verifreg::ext::datacap::MintParams;
-use fil_actor_verifreg::{state, Allocation, AllocationRequests};
+use fil_actor_verifreg::ClaimExtensionRequest;
+use fil_actor_verifreg::{state, AllocationRequests};
 use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     Method as VerifregMethod, RemoveExpiredAllocationsParams, State as VerifregState,
     VerifierParams,
 };
 use fil_actor_verifreg::{AllocationRequest, DataCap};
-use fil_actor_verifreg::{Claim, ClaimExtensionRequest};
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -1333,21 +1333,4 @@ pub fn get_deal_weights(
         return (DealWeight::zero(), DealWeight::from(deal.piece_size.0 * duration as u64));
     }
     (DealWeight::from(deal.piece_size.0 * duration as u64), DealWeight::zero())
-}
-
-pub fn get_allocation(v: &dyn VM, id: AllocationID, client: ActorID) -> Allocation {
-    let v_st: fil_actor_verifreg::State = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-    let mut allocations = v_st.load_allocs(&store).unwrap();
-    let existing_allocation =
-        state::get_allocation(&mut allocations, client, id).unwrap().unwrap().clone();
-    existing_allocation
-}
-
-pub fn get_claim(v: &dyn VM, id: ClaimID, provider: ActorID) -> Claim {
-    let v_st: fil_actor_verifreg::State = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-    let mut claims = v_st.load_claims(&store).unwrap();
-    let claim = state::get_claim(&mut claims, provider, id).unwrap().unwrap().clone();
-    claim
 }
