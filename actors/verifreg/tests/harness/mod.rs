@@ -146,6 +146,7 @@ impl Harness {
                 .typ("verifier-balance")
                 .field_indexed("verifier", &verifier_resolved.id().unwrap())
                 .field("balance", &BigIntSer(allowance))
+                .field_indexed("client", &Option::<ActorID>::None)
                 .build()?,
         );
 
@@ -169,6 +170,7 @@ impl Harness {
                 .typ("verifier-balance")
                 .field_indexed("verifier", &verifier.id().unwrap())
                 .field("balance", &BigIntSer(&DataCap::zero()))
+                .field_indexed("client", &Option::<ActorID>::None)
                 .build()?,
         );
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
@@ -232,13 +234,17 @@ impl Harness {
         );
 
         let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
-        rt.expect_emitted_event(
-            EventBuilder::new()
-                .typ("verifier-balance")
-                .field_indexed("verifier", &verifier.id().unwrap())
-                .field("balance", &BigIntSer(&(verifier_balance - allowance)))
-                .build()?,
-        );
+        if client_resolved.id().is_ok() {
+            // if the client isn't resolved, we don't expect an event because the call should abort
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .typ("verifier-balance")
+                    .field_indexed("verifier", &verifier.id().unwrap())
+                    .field("balance", &BigIntSer(&(verifier_balance - allowance)))
+                    .field_indexed("client", &client_resolved.id().unwrap())
+                    .build()?,
+            );
+        }
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),

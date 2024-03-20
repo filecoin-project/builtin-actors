@@ -84,7 +84,11 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
             subinvocs: None,
             ..Default::default()
         }]),
-        events: vec![verifier_balance_event(verifier1.id().unwrap(), verifier_datacap)],
+        events: vec![verifier_balance_event(
+            verifier1.id().unwrap(),
+            verifier_datacap,
+            Some(verified_client.id().unwrap()),
+        )],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

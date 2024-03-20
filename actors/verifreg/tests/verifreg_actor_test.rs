@@ -449,6 +449,7 @@ mod clients {
                 .typ("verifier-balance")
                 .field_indexed("verifier", &VERIFIER.id().unwrap())
                 .field("balance", &BigIntSer(&(allowance_verifier - allowance_client)))
+                .field_indexed("client", &CLIENT.id().unwrap())
                 .build()
                 .unwrap(),
         );

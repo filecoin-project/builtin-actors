@@ -16,12 +16,14 @@ pub fn verifier_balance(
     rt: &impl Runtime,
     verifier: ActorID,
     new_balance: &DataCap,
+    client: Option<ActorID>,
 ) -> Result<(), ActorError> {
     rt.emit_event(
         &EventBuilder::new()
             .typ("verifier-balance")
             .field_indexed("verifier", &verifier)
             .field("balance", &BigIntSer(new_balance))
+            .field_indexed("client", &client)
             .build()?,
     )
 }
