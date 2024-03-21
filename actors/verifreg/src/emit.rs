@@ -16,14 +16,16 @@ pub fn verifier_balance(
     rt: &impl Runtime,
     verifier: ActorID,
     new_balance: &DataCap,
+    client: Option<ActorID>,
 ) -> Result<(), ActorError> {
-    rt.emit_event(
-        &EventBuilder::new()
-            .typ("verifier-balance")
-            .field_indexed("verifier", &verifier)
-            .field("balance", &BigIntSer(new_balance))
-            .build()?,
-    )
+    let mut event: EventBuilder = EventBuilder::new()
+        .typ("verifier-balance")
+        .field_indexed("verifier", &verifier)
+        .field("balance", &BigIntSer(new_balance));
+    if let Some(client) = client {
+        event = event.field_indexed("client", &client);
+    }
+    rt.emit_event(&event.build()?)
 }
 
 /// Indicates a new allocation has been made.

@@ -777,6 +777,23 @@ pub fn verifier_balance_event(verifier: ActorID, data_cap: DataCap) -> EmittedEv
     }
 }
 
+pub fn verifier_balance_event_with_client(
+    verifier: ActorID,
+    data_cap: DataCap,
+    client: ActorID,
+) -> EmittedEvent {
+    EmittedEvent {
+        emitter: VERIFIED_REGISTRY_ACTOR_ID,
+        event: EventBuilder::new()
+            .typ("verifier-balance")
+            .field_indexed("verifier", &verifier)
+            .field("balance", &BigIntSer(&data_cap))
+            .field_indexed("client", &client)
+            .build()
+            .unwrap(),
+    }
+}
+
 pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePower) {
     let add_verifier_params = VerifierParams { address: *verifier, allowance: data_cap.clone() };
     // root address is msig, send proposal from root key
@@ -869,9 +886,10 @@ pub fn verifreg_add_client(
             )]),
             ..Default::default()
         }]),
-        events: Some(vec![verifier_balance_event(
+        events: Some(vec![verifier_balance_event_with_client(
             verifier.id().unwrap(),
             updated_verifier_balance,
+            client.id().unwrap(),
         )]),
         ..Default::default()
     }
