@@ -259,6 +259,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         allocs[0].size.0,
         claim_term_min,
         claim_term_max,
+        v.epoch(),
         first_sector_number + 2,
     );
     let claim_event_2 = Expect::build_verifreg_claim_event(
@@ -270,6 +271,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         allocs[1].size.0,
         claim_term_min,
         claim_term_max,
+        v.epoch(),
         first_sector_number + 2,
     );
     let claim_event_3 = Expect::build_verifreg_claim_event(
@@ -281,6 +283,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         manifests[4].pieces[0].size.0,
         claim_term_min,
         claim_term_max,
+        v.epoch(),
         first_sector_number + 4,
     );
 

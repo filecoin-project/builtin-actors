@@ -308,6 +308,7 @@ impl Harness {
                 *sector,
                 alloc.term_min,
                 alloc.term_max,
+                0,
             )
         }
 
@@ -413,6 +414,7 @@ impl Harness {
                 claim.sector,
                 claim.term_min,
                 claim.term_max,
+                claim.term_start,
             )
         }
 
@@ -494,6 +496,7 @@ impl Harness {
                 claim.sector,
                 claim.term_min,
                 claim.term_max,
+                claim.term_start,
             )
         }
 
@@ -568,6 +571,7 @@ impl Harness {
                 new_claim.sector,
                 new_claim.term_min,
                 new_claim.term_max,
+                new_claim.term_start,
             )
         }
 
@@ -626,6 +630,7 @@ pub fn expect_claim_emitted(
     sector: SectorNumber,
     term_min: ChainEpoch,
     term_max: ChainEpoch,
+    term_start: ChainEpoch,
 ) {
     rt.expect_emitted_event(
         EventBuilder::new()
@@ -637,6 +642,7 @@ pub fn expect_claim_emitted(
             .field("piece-size", &piece_size)
             .field("term-min", &term_min)
             .field("term-max", &term_max)
+            .field("term-start", &term_start)
             .field_indexed("sector", &sector)
             .build()
             .unwrap(),

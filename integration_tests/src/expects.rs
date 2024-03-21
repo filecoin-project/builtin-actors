@@ -407,6 +407,7 @@ impl Expect {
         piece_size: u64,
         term_min: ChainEpoch,
         term_max: ChainEpoch,
+        term_start: ChainEpoch,
         sector: SectorNumber,
     ) -> EmittedEvent {
         EmittedEvent {
@@ -420,6 +421,7 @@ impl Expect {
                 .field("piece-size", &piece_size)
                 .field("term-min", &term_min)
                 .field("term-max", &term_max)
+                .field("term-start", &term_start)
                 .field_indexed("sector", &sector)
                 .build()
                 .unwrap(),

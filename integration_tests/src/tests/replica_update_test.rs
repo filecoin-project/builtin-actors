@@ -1055,6 +1055,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         proposal.piece_size.0,
         deal_term,
         term_max,
+        v.epoch(),
         sector_number,
     );
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);

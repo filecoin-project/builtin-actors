@@ -68,6 +68,7 @@ pub fn claim(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorE
             .with_parties(id, claim.client, claim.provider)
             .with_piece(&claim.data, claim.size.0)
             .with_term(claim.term_min, claim.term_max)
+            .field("term-start", &claim.term_start)
             .field_indexed("sector", &claim.sector)
             .build()?,
     )
@@ -81,6 +82,7 @@ pub fn claim_updated(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<()
             .with_parties(id, claim.client, claim.provider)
             .with_piece(&claim.data, claim.size.0)
             .with_term(claim.term_min, claim.term_max)
+            .field("term-start", &claim.term_start)
             .field_indexed("sector", &claim.sector)
             .build()?,
     )
@@ -94,6 +96,7 @@ pub fn claim_removed(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<()
             .with_parties(id, claim.client, claim.provider)
             .with_piece(&claim.data, claim.size.0)
             .with_term(claim.term_min, claim.term_max)
+            .field("term-start", &claim.term_start)
             .field_indexed("sector", &claim.sector)
             .build()?,
     )

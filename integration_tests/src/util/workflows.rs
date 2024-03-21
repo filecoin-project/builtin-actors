@@ -1087,6 +1087,7 @@ pub fn datacap_extend_claim(
         existing_claim.size.0,
         existing_claim.term_min,
         existing_claim.term_max,
+        existing_claim.term_start,
         existing_claim.sector,
     );
 
