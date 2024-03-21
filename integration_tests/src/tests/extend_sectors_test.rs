@@ -697,7 +697,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                     piece_size.0,
                     deal_term,
                     deal_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
-                    deal_start,
+                    v.epoch(),
                     sector_number,
                 )],
                 ..Default::default()
