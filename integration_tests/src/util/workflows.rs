@@ -50,8 +50,8 @@ use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_verifreg::ext::datacap::MintParams;
-use fil_actor_verifreg::AllocationRequests;
 use fil_actor_verifreg::ClaimExtensionRequest;
+use fil_actor_verifreg::{state, AllocationRequests};
 use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     Method as VerifregMethod, RemoveExpiredAllocationsParams, State as VerifregState,
@@ -908,11 +908,16 @@ pub fn verifreg_remove_expired_allocations(
         .iter()
         .map(|id| {
             let alloc = allocs.get(client.id().unwrap(), *id).unwrap().unwrap();
-            Expect::build_verifreg_event(
+            Expect::build_verifreg_allocation_event(
                 "allocation-removed",
                 *id,
                 client.id().unwrap(),
                 alloc.provider,
+                &alloc.data,
+                alloc.size.0,
+                alloc.term_min,
+                alloc.term_max,
+                alloc.expiration,
             )
         })
         .collect();
@@ -1005,7 +1010,17 @@ pub fn datacap_create_allocations(
         .iter()
         .enumerate()
         .map(|(i, alloc_id)| {
-            Expect::build_verifreg_event("allocation", *alloc_id, client_id, reqs[i].provider)
+            Expect::build_verifreg_allocation_event(
+                "allocation",
+                *alloc_id,
+                client.id().unwrap(),
+                reqs[i].provider,
+                &reqs[i].data,
+                reqs[i].size.0,
+                reqs[i].term_min,
+                reqs[i].term_max,
+                reqs[i].expiration,
+            )
         })
         .collect::<Vec<EmittedEvent>>();
 
@@ -1028,8 +1043,15 @@ pub fn datacap_extend_claim(
     claim: ClaimID,
     size: u64,
     new_term: ChainEpoch,
-    claim_client: ActorID,
 ) {
+    // read existing claim with claim id from VerifReg state
+    let v_st: fil_actor_verifreg::State = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let mut claims = v_st.load_claims(&store).unwrap();
+    let mut existing_claim =
+        state::get_claim(&mut claims, provider.id().unwrap(), claim).unwrap().unwrap().clone();
+    existing_claim.term_max = new_term;
+
     let payload = AllocationRequests {
         allocations: vec![],
         extensions: vec![ClaimExtensionRequest {
@@ -1056,17 +1078,25 @@ pub fn datacap_extend_claim(
     );
 
     let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
+    let claim_updated_event = Expect::build_verifreg_claim_event(
+        "claim-updated",
+        claim,
+        existing_claim.client,
+        provider.id().unwrap(),
+        &existing_claim.data,
+        existing_claim.size.0,
+        existing_claim.term_min,
+        existing_claim.term_max,
+        existing_claim.term_start,
+        existing_claim.sector,
+    );
+
     Expect::datacap_transfer_to_verifreg(
         client_id,
         token_amount,
         operator_data,
         true, // Burn
-        vec![Expect::build_verifreg_event(
-            "claim-updated",
-            claim,
-            claim_client,
-            provider.id().unwrap(),
-        )],
+        vec![claim_updated_event],
     )
     .matches(v.take_invocations().last().unwrap());
 }
@@ -1181,6 +1211,18 @@ pub fn market_publish_deal(
 
         let v_st: fil_actor_verifreg::State = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
         let alloc_id = v_st.next_allocation_id - 1;
+        let alloc_req = alloc_reqs.allocations[0].clone();
+        let alloc_event = Expect::build_verifreg_allocation_event(
+            "allocation",
+            alloc_id,
+            deal_client.id().unwrap(),
+            miner_id.id().unwrap(),
+            &proposal.piece_cid,
+            proposal.piece_size.0,
+            alloc_req.term_min,
+            alloc_req.term_max,
+            alloc_req.expiration,
+        );
 
         expect_publish_invocs.push(ExpectInvocation {
             from: STORAGE_MARKET_ACTOR_ID,
@@ -1217,12 +1259,7 @@ pub fn market_publish_deal(
                     })
                     .unwrap(),
                 ),
-                events: vec![Expect::build_verifreg_event(
-                    "allocation",
-                    alloc_id,
-                    deal_client.id().unwrap(),
-                    miner_id.id().unwrap(),
-                )],
+                events: vec![alloc_event],
                 ..Default::default()
             }]),
             ..Default::default()

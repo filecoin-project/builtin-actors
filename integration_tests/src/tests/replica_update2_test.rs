@@ -250,6 +250,43 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         },
     ];
 
+    let claim_event_1 = Expect::build_verifreg_claim_event(
+        "claim",
+        alloc_ids_s2[0],
+        client_id,
+        miner_id,
+        &allocs[0].data,
+        allocs[0].size.0,
+        claim_term_min,
+        claim_term_max,
+        v.epoch(),
+        first_sector_number + 2,
+    );
+    let claim_event_2 = Expect::build_verifreg_claim_event(
+        "claim",
+        alloc_ids_s2[1],
+        client_id,
+        miner_id,
+        &allocs[1].data,
+        allocs[1].size.0,
+        claim_term_min,
+        claim_term_max,
+        v.epoch(),
+        first_sector_number + 2,
+    );
+    let claim_event_3 = Expect::build_verifreg_claim_event(
+        "claim",
+        alloc_ids_s4[0],
+        client_id,
+        miner_id,
+        &manifests[4].pieces[0].cid,
+        manifests[4].pieces[0].size.0,
+        claim_term_min,
+        claim_term_max,
+        v.epoch(),
+        first_sector_number + 4,
+    );
+
     // Replica update
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
@@ -352,11 +389,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
                     })
                     .unwrap(),
                 ),
-                events: vec![
-                    Expect::build_verifreg_event("claim", alloc_ids_s2[0], client_id, miner_id),
-                    Expect::build_verifreg_event("claim", alloc_ids_s2[1], client_id, miner_id),
-                    Expect::build_verifreg_event("claim", alloc_ids_s4[0], client_id, miner_id),
-                ],
+                events: vec![claim_event_1, claim_event_2, claim_event_3],
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
