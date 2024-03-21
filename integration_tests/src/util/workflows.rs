@@ -759,10 +759,22 @@ pub fn submit_invalid_post(
     );
 }
 
-pub fn verifier_balance_event(
+pub fn verifier_balance_event(verifier: ActorID, data_cap: DataCap) -> EmittedEvent {
+    EmittedEvent {
+        emitter: VERIFIED_REGISTRY_ACTOR_ID,
+        event: EventBuilder::new()
+            .typ("verifier-balance")
+            .field_indexed("verifier", &verifier)
+            .field("balance", &BigIntSer(&data_cap))
+            .build()
+            .unwrap(),
+    }
+}
+
+pub fn verifier_balance_event_with_client(
     verifier: ActorID,
     data_cap: DataCap,
-    client: Option<ActorID>,
+    client: ActorID,
 ) -> EmittedEvent {
     EmittedEvent {
         emitter: VERIFIED_REGISTRY_ACTOR_ID,
@@ -808,7 +820,7 @@ pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePo
                 DATACAP_TOKEN_ACTOR_ADDR,
                 *verifier,
             )]),
-            events: vec![verifier_balance_event(verifier.id().unwrap(), data_cap, None)],
+            events: vec![verifier_balance_event(verifier.id().unwrap(), data_cap)],
             ..Default::default()
         }]),
         ..Default::default()
@@ -868,10 +880,10 @@ pub fn verifreg_add_client(
             )]),
             ..Default::default()
         }]),
-        events: vec![verifier_balance_event(
+        events: vec![verifier_balance_event_with_client(
             verifier.id().unwrap(),
             updated_verifier_balance,
-            Some(client.id().unwrap()),
+            client.id().unwrap(),
         )],
         ..Default::default()
     }

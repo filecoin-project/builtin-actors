@@ -32,7 +32,7 @@ use vm_api::VM;
 use crate::expects::Expect;
 
 use crate::util::{
-    assert_invariants, create_accounts, verifier_balance_event, verifreg_add_verifier,
+    assert_invariants, create_accounts, verifier_balance_event_with_client, verifreg_add_verifier,
 };
 use crate::{TEST_VERIFREG_ROOT_ADDR, TEST_VERIFREG_ROOT_ID};
 
@@ -84,10 +84,10 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
             subinvocs: None,
             ..Default::default()
         }]),
-        events: vec![verifier_balance_event(
+        events: vec![verifier_balance_event_with_client(
             verifier1.id().unwrap(),
             verifier_datacap,
-            Some(verified_client.id().unwrap()),
+            verified_client.id().unwrap(),
         )],
         ..Default::default()
     }

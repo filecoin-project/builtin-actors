@@ -146,7 +146,6 @@ impl Harness {
                 .typ("verifier-balance")
                 .field_indexed("verifier", &verifier_resolved.id().unwrap())
                 .field("balance", &BigIntSer(allowance))
-                .field_indexed("client", &Option::<ActorID>::None)
                 .build()?,
         );
 
@@ -170,7 +169,6 @@ impl Harness {
                 .typ("verifier-balance")
                 .field_indexed("verifier", &verifier.id().unwrap())
                 .field("balance", &BigIntSer(&DataCap::zero()))
-                .field_indexed("client", &Option::<ActorID>::None)
                 .build()?,
         );
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
