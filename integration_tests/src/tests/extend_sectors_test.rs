@@ -667,7 +667,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     let start_epoch = deal_start;
     let end_epoch = deal_start + deal_lifetime;
-    let deal_term = end_epoch - start_epoch;
+    let claim_term = end_epoch - start_epoch;
 
     // check for the expected subcalls
     ExpectInvocation {
@@ -695,8 +695,8 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                     miner_id,
                     &piece_cid,
                     piece_size.0,
-                    deal_term,
-                    deal_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
+                    claim_term,
+                    claim_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
                     v.epoch(),
                     sector_number,
                 )],
