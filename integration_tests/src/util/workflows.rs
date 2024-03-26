@@ -85,8 +85,7 @@ use vm_api::util::{apply_code, apply_ok, apply_ok_implicit};
 use crate::expects::Expect;
 use crate::*;
 
-use super::CREATE_MINER_DEPOSIT;
-use super::make_bitfield;
+use super::get_minimum_initial_pledge;
 use super::market_pending_deal_allocations_raw;
 use super::miner_dline_info;
 use super::sector_deadline;
@@ -102,15 +101,18 @@ pub fn cron_tick(v: &dyn VM) {
     );
 }
 
-pub fn owner_add_create_miner_deposit(v: &dyn VM, owner: &Address) {
+pub fn owner_add_create_miner_deposit(v: &dyn VM, owner: &Address) -> TokenAmount {
+    let create_miner_deposit = get_minimum_initial_pledge(v);
     apply_ok(
         v,
         &TEST_FAUCET_ADDR,
         owner,
-        &TokenAmount::from_atto(CREATE_MINER_DEPOSIT),
+        &create_miner_deposit,
         fvm_shared::METHOD_SEND,
         None::<RawBytes>,
     );
+
+    create_miner_deposit
 }
 
 pub fn create_miner(
@@ -141,9 +143,8 @@ pub fn create_miner_internal(
 ) -> vm_api::MessageResult {
     let owner = &params.owner;
     // sent deposit to owner
-    owner_add_create_miner_deposit(v, owner);
+    let deposit = owner_add_create_miner_deposit(v, owner);
 
-    let deposit = TokenAmount::from_atto(CREATE_MINER_DEPOSIT);
     let params = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
     let ret = v
         .execute_message(
@@ -154,14 +155,13 @@ pub fn create_miner_internal(
             Some(params),
         )
         .unwrap();
-
     let res: CreateMinerReturn = ret.ret.as_ref().unwrap().deserialize().unwrap();
 
     let wrap_store = DynBlockstore::wrap(v.blockstore());
     vm_api::util::mutate_state(v, &res.id_address, |st: &mut MinerState| {
         // checkcreate miner deposit
         assert!(st.vesting_funds.load(&wrap_store).unwrap().len() == 180);
-        assert!(st.locked_funds == TokenAmount::from_atto(CREATE_MINER_DEPOSIT));
+        assert!(st.locked_funds == deposit);
 
         // reset create miner deposit vesting funds
         st.vesting_funds = Default::default();

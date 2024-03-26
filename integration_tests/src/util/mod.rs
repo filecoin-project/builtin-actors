@@ -3,13 +3,15 @@ use fil_actor_market::{DealProposal, DealState, State as MarketState, load_provi
 use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
     CompactCommD, Deadline, DeadlineInfo, GetBeneficiaryReturn, Method as MinerMethod, MinerInfo,
-    PowerPair, SectorOnChainInfo, State as MinerState, new_deadline_info_from_offset_and_epoch,
+    PowerPair, SectorOnChainInfo, State as MinerState, initial_pledge_for_power,
+    new_deadline_info_from_offset_and_epoch,
 };
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::policy_constants::MINIMUM_CONSENSUS_POWER;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
     MessageAccumulator, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -19,6 +21,7 @@ use fil_builtin_actors_state::check::check_state_invariants;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{CborStore, DAG_CBOR, RawBytes};
 use fvm_shared::address::Address;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PieceInfo;
@@ -283,6 +286,21 @@ pub fn get_network_stats(vm: &dyn VM) -> NetworkStats {
         total_provider_locked_collateral: market_state.total_provider_locked_collateral,
         total_client_storage_fee: market_state.total_client_storage_fee,
     }
+}
+
+pub fn get_minimum_initial_pledge(vm: &dyn VM) -> TokenAmount {
+    let power_state: PowerState = get_state(vm, &STORAGE_POWER_ACTOR_ADDR).unwrap();
+    let reward_state: RewardState = get_state(vm, &REWARD_ACTOR_ADDR).unwrap();
+
+    initial_pledge_for_power(
+        &BigInt::from(MINIMUM_CONSENSUS_POWER),
+        &reward_state.this_epoch_baseline_power,
+        &reward_state.this_epoch_reward_smoothed,
+        &power_state.this_epoch_qa_power_smoothed,
+        &vm.circulating_supply(),
+        vm.epoch() - power_state.ramp_start_epoch,
+        power_state.ramp_duration_epochs,
+    )
 }
 
 pub fn override_compute_unsealed_sector_cid(v: &dyn VM) {

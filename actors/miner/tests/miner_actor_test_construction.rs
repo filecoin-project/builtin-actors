@@ -1,12 +1,13 @@
+use fil_actors_runtime::reward::FilterEstimate;
+use fil_actors_runtime::{INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR};
+use fil_actors_runtime::{STORAGE_POWER_ACTOR_ADDR, test_utils::*};
+
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{
     Actor, Deadline, Deadlines, Method, MinerConstructorParams as ConstructorParams, State,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
-use fil_actors_runtime::reward::FilterEstimate;
-use fil_actors_runtime::{INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR};
-use fil_actors_runtime::{STORAGE_POWER_ACTOR_ADDR, test_utils::*};
 
 use fvm_ipld_encoding::{BytesDe, CborStore};
 use fvm_shared::address::Address;
@@ -20,6 +21,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use num_traits::{FromPrimitive, Zero};
 
 mod util;
+use util::minimum_initial_pledge;
 
 #[allow(dead_code)]
 struct TestEnv {
@@ -40,7 +42,6 @@ fn prepare_env() -> TestEnv {
     let reward = TokenAmount::from_whole(10);
     let power = StoragePower::from_i128(1 << 50).unwrap();
     let epoch_reward_smooth = FilterEstimate::new(reward.atto().clone(), BigInt::from(0u8));
-
     let mut env = TestEnv {
         receiver: Address::new_id(1000),
         owner: Address::new_id(100),
@@ -64,7 +65,7 @@ fn prepare_env() -> TestEnv {
     env.rt.caller.replace(INIT_ACTOR_ADDR);
     env.rt.caller_type.replace(*INIT_ACTOR_CODE_ID);
     // add balance for create miner deposit
-    env.rt.add_balance(TokenAmount::from_atto(798245441765376000u64));
+    env.rt.add_balance(minimum_initial_pledge(&env.rt, &env.power, &env.epoch_reward_smooth));
     env
 }
 
@@ -76,7 +77,6 @@ fn constructor_params(env: &TestEnv) -> ConstructorParams {
         window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         peer_id: env.peer_id.clone(),
         multi_addresses: env.multiaddrs.clone(),
-        network_qap: env.epoch_reward_smooth.clone(),
     }
 }
 
@@ -87,14 +87,7 @@ fn simple_construction() {
         this_epoch_baseline_power: env.power.clone(),
         this_epoch_reward_smoothed: env.epoch_reward_smooth.clone(),
     };
-    let current_total_power = CurrentTotalPowerReturn {
-        raw_byte_power: Default::default(),
-        quality_adj_power: Default::default(),
-        pledge_collateral: Default::default(),
-        quality_adj_power_smoothed: Default::default(),
-        ramp_start_epoch: Default::default(),
-        ramp_duration_epochs: Default::default(),
-    };
+    let current_total_power = CurrentTotalPowerReturn::default();
 
     let params = constructor_params(&env);
 
@@ -145,7 +138,10 @@ fn simple_construction() {
     assert_eq!(2349, info.window_post_partition_sectors);
 
     assert_eq!(TokenAmount::zero(), state.pre_commit_deposits);
-    assert_eq!(TokenAmount::from_atto(633318697598976000u64), state.locked_funds);
+    assert_eq!(
+        minimum_initial_pledge(&env.rt, &env.power, &env.epoch_reward_smooth),
+        state.locked_funds
+    );
     assert_eq!(180, state.vesting_funds.load(&env.rt.store).unwrap().len());
     assert_ne!(Cid::default(), state.pre_committed_sectors);
     assert_ne!(Cid::default(), state.sectors);
@@ -156,8 +152,8 @@ fn simple_construction() {
     env.rt.replace_state(&state);
 
     let state = env.rt.get_state::<State>();
-    let create_depost_vesting_funds = state.vesting_funds.load(&env.rt.store).unwrap();
-    assert!(create_depost_vesting_funds.is_empty());
+    let create_deposit_vesting_funds = state.vesting_funds.load(&env.rt.store).unwrap();
+    assert!(create_deposit_vesting_funds.is_empty());
     assert!(state.locked_funds.is_zero());
 
     // according to original specs-actors test, this is set by running the code; magic...
@@ -192,14 +188,7 @@ fn fails_if_insufficient_to_cover_the_miner_creation_deposit() {
         this_epoch_baseline_power: env.power.clone(),
         this_epoch_reward_smoothed: env.epoch_reward_smooth.clone(),
     };
-    let current_total_power = CurrentTotalPowerReturn {
-        raw_byte_power: Default::default(),
-        quality_adj_power: Default::default(),
-        pledge_collateral: Default::default(),
-        quality_adj_power_smoothed: Default::default(),
-        ramp_start_epoch: Default::default(),
-        ramp_duration_epochs: Default::default(),
-    };
+    let current_total_power = CurrentTotalPowerReturn::default();
 
     let params = constructor_params(&env);
 
@@ -237,14 +226,7 @@ fn control_addresses_are_resolved_during_construction() {
         this_epoch_baseline_power: env.power.clone(),
         this_epoch_reward_smoothed: env.epoch_reward_smooth.clone(),
     };
-    let current_total_power = CurrentTotalPowerReturn {
-        raw_byte_power: Default::default(),
-        quality_adj_power: Default::default(),
-        pledge_collateral: Default::default(),
-        quality_adj_power_smoothed: Default::default(),
-        ramp_start_epoch: Default::default(),
-        ramp_duration_epochs: Default::default(),
-    };
+    let current_total_power = CurrentTotalPowerReturn::default();
 
     let control1 = new_bls_addr(1);
     let control1id = Address::new_id(555);

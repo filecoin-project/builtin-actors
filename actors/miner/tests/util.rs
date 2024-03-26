@@ -8,6 +8,7 @@ use std::ops::Neg;
 use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::reward::FilterEstimate;
+use fil_actors_runtime::runtime::policy_constants::MINIMUM_CONSENSUS_POWER;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -38,7 +39,7 @@ use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_SEND};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use multihash_codetable::MultihashDigest;
-use num_traits::{FromPrimitive, Signed};
+use num_traits::Signed;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
@@ -132,6 +133,24 @@ pub fn setup() -> (ActorHarness, MockRuntime) {
     (h, rt)
 }
 
+pub fn minimum_initial_pledge(
+    rt: &MockRuntime,
+    baseline_power: &StoragePower,
+    reward_estimated: &FilterEstimate,
+) -> TokenAmount {
+    let pwr = CurrentTotalPowerReturn::default();
+
+    initial_pledge_for_power(
+        &BigInt::from(MINIMUM_CONSENSUS_POWER),
+        baseline_power,
+        reward_estimated,
+        &pwr.quality_adj_power_smoothed,
+        &rt.circulating_supply.borrow(),
+        *rt.epoch.borrow() - pwr.ramp_start_epoch,
+        pwr.ramp_duration_epochs,
+    )
+}
+
 pub struct ActorHarness {
     pub receiver: Address,
     pub owner: Address,
@@ -154,8 +173,6 @@ pub struct ActorHarness {
 
     pub epoch_reward_smooth: FilterEstimate,
     pub epoch_qa_power_smooth: FilterEstimate,
-
-    pub create_depost: TokenAmount,
 
     pub options: HarnessOptions,
 }
@@ -206,8 +223,6 @@ impl ActorHarness {
             epoch_reward_smooth: FilterEstimate::new(rwd.atto().clone(), BigInt::from(0)),
             epoch_qa_power_smooth: FilterEstimate::new(pwr, BigInt::from(0)),
 
-            create_depost: TokenAmount::from_atto(798245441765376000u64),
-
             options,
         }
     }
@@ -224,24 +239,27 @@ impl ActorHarness {
         check_state_invariants_from_mock_runtime(rt);
     }
 
-    pub fn check_create_miner_depost_and_reset_state(&self, rt: &MockRuntime) {
+    pub fn check_create_miner_deposit_and_reset_state(&self, rt: &MockRuntime) {
+        let create_deposit =
+            minimum_initial_pledge(rt, &self.baseline_power, &self.epoch_reward_smooth);
+
         let mut st = self.get_state(&rt);
-        let create_depost_vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
+        let create_deposit_vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
 
         // create miner deposit
-        assert!(create_depost_vesting_funds.len() == 180);
-        assert!(st.locked_funds == self.create_depost);
+        assert!(create_deposit_vesting_funds.len() == 180);
+        assert!(st.locked_funds == create_deposit);
 
         // reset create miner deposit vesting funds
         st.vesting_funds = Default::default();
         st.locked_funds = TokenAmount::zero();
         rt.replace_state(&st);
-        rt.set_balance(rt.get_balance() - &self.create_depost);
+        rt.set_balance(rt.get_balance() - &create_deposit);
 
         let st = self.get_state(&rt);
-        let create_depost_vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
+        let create_deposit_vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
 
-        assert!(create_depost_vesting_funds.is_empty());
+        assert!(create_deposit_vesting_funds.is_empty());
         assert!(st.locked_funds.is_zero());
     }
 
@@ -271,23 +289,12 @@ impl ActorHarness {
     }
 
     pub fn construct_and_verify(&self, rt: &MockRuntime) {
-        let reward = TokenAmount::from_whole(10);
-        let power = StoragePower::from_i128(1 << 50).unwrap();
-        let epoch_reward_smooth = FilterEstimate::new(reward.atto().clone(), BigInt::from(0u8));
-
         let current_reward = ThisEpochRewardReturn {
-            this_epoch_baseline_power: power.clone(),
-            this_epoch_reward_smoothed: epoch_reward_smooth.clone(),
+            this_epoch_baseline_power: self.baseline_power.clone(),
+            this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
         };
 
-        let current_total_power = CurrentTotalPowerReturn {
-            raw_byte_power: Default::default(),
-            quality_adj_power: Default::default(),
-            pledge_collateral: Default::default(),
-            quality_adj_power_smoothed: Default::default(),
-            ramp_start_epoch: Default::default(),
-            ramp_duration_epochs: Default::default(),
-        };
+        let current_total_power = CurrentTotalPowerReturn::default();
 
         let params = ConstructorParams {
             owner: self.owner,
@@ -296,7 +303,6 @@ impl ActorHarness {
             window_post_proof_type: self.window_post_proof_type,
             peer_id: vec![0],
             multi_addresses: vec![],
-            network_qap: epoch_reward_smooth,
         };
 
         rt.actor_code_cids.borrow_mut().insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
@@ -305,7 +311,9 @@ impl ActorHarness {
             rt.actor_code_cids.borrow_mut().insert(*a, *ACCOUNT_ACTOR_CODE_ID);
         }
 
-        rt.add_balance(self.create_depost.clone());
+        // set circulating supply non-zero so we get non-zero fees
+        rt.set_circulating_supply(TokenAmount::from_whole(500_000));
+        rt.add_balance(minimum_initial_pledge(rt, &self.baseline_power, &self.epoch_reward_smooth));
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.expect_send_simple(
@@ -332,15 +340,13 @@ impl ActorHarness {
             IpldBlock::serialize_cbor(&self.worker_key).unwrap(),
             ExitCode::OK,
         );
-        // set circulating supply non-zero so we get non-zero fees
-        rt.set_circulating_supply(TokenAmount::from_whole(500_000));
 
         let result = rt
             .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
         expect_empty(result);
         rt.verify();
-        self.check_create_miner_depost_and_reset_state(rt);
+        self.check_create_miner_deposit_and_reset_state(rt);
     }
 
     pub fn set_peer_id(&self, rt: &MockRuntime, new_id: Vec<u8>) {

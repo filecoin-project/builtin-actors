@@ -135,9 +135,6 @@ impl Harness {
         rt.set_balance(value.clone());
         rt.expect_validate_caller_any();
 
-        // set constructor miner expectation
-        let st: State = rt.get_state();
-        let network_qap = st.this_epoch_qa_power_smoothed.clone();
         let miner_ctor_params = MinerConstructorParams {
             owner: *owner,
             worker: *worker,
@@ -145,7 +142,6 @@ impl Harness {
             window_post_proof_type,
             peer_id: peer.clone(),
             multi_addresses: multiaddrs.clone(),
-            network_qap,
         };
         let expected_init_params = ExecParams {
             code_cid: *MINER_ACTOR_CODE_ID,
