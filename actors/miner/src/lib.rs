@@ -186,12 +186,7 @@ impl Actor {
         check_valid_post_proof_type(rt.policy(), params.window_post_proof_type)?;
 
         let balance = rt.current_balance();
-        let sector_size = params
-            .window_post_proof_type
-            .sector_size()
-            .map_err(|e| actor_error!(illegal_argument, "invalid sector size: {}", e))?;
-
-        let deposit = calculate_create_miner_deposit(rt, params.network_qap, sector_size)?;
+        let deposit = calculate_create_miner_deposit(rt)?;
         if balance < deposit {
             return Err(actor_error!(insufficient_funds;
                 "not enough balance to lock for create miner deposit: \
@@ -5266,36 +5261,19 @@ fn activate_new_sector_infos(
 
 /// Calculate create miner deposit by MINIMUM_CONSENSUS_POWER x StateMinerInitialPledgeCollateral
 /// See FIP-0077, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0077.md
-pub fn calculate_create_miner_deposit(
-    rt: &impl Runtime,
-    network_qap: FilterEstimate,
-    sector_size: SectorSize,
-) -> Result<TokenAmount, ActorError> {
-    // set network pledge inputs
+pub fn calculate_create_miner_deposit(rt: &impl Runtime) -> Result<TokenAmount, ActorError> {
     let rew = request_current_epoch_block_reward(rt)?;
     let pwr = request_current_total_power(rt)?;
-    let circulating_supply = rt.total_fil_circ_supply();
-    let pledge_inputs = NetworkPledgeInputs {
-        network_qap,
-        network_baseline: rew.this_epoch_baseline_power,
-        circulating_supply,
-        epoch_reward: rew.this_epoch_reward_smoothed,
-        epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
-        ramp_duration_epochs: pwr.ramp_duration_epochs,
-    };
 
-    let sector_number = MINIMUM_CONSENSUS_POWER / sector_size as i64;
-    let power = qa_power_for_weight(sector_size, MIN_SECTOR_EXPIRATION, &BigInt::zero());
-    let sector_initial_pledge = initial_pledge_for_power(
-        &power,
-        &pledge_inputs.network_baseline,
-        &pledge_inputs.epoch_reward,
-        &pledge_inputs.network_qap,
-        &pledge_inputs.circulating_supply,
-        pledge_inputs.epochs_since_ramp_start,
-        pledge_inputs.ramp_duration_epochs,
-    );
-    Ok(sector_initial_pledge * sector_number)
+    Ok(initial_pledge_for_power(
+        &BigInt::from(MINIMUM_CONSENSUS_POWER),
+        &rew.this_epoch_baseline_power,
+        &rew.this_epoch_reward_smoothed,
+        &pwr.quality_adj_power_smoothed,
+        &rt.total_fil_circ_supply(),
+        rt.curr_epoch() - pwr.ramp_start_epoch,
+        pwr.ramp_duration_epochs,
+    ))
 }
 
 pub struct SectorPiecesActivationInput {
