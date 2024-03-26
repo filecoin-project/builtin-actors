@@ -38,7 +38,7 @@ use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_SEND};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use multihash_codetable::MultihashDigest;
-use num_traits::Signed;
+use num_traits::{FromPrimitive, Signed};
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
@@ -156,6 +156,9 @@ pub struct ActorHarness {
     pub epoch_reward_smooth: FilterEstimate,
     pub epoch_qa_power_smooth: FilterEstimate,
 
+    pub base_fee: TokenAmount,
+    pub create_depost: TokenAmount,
+
     pub options: HarnessOptions,
 }
 
@@ -205,6 +208,8 @@ impl ActorHarness {
             epoch_reward_smooth: FilterEstimate::new(rwd.atto().clone(), BigInt::from(0)),
             epoch_qa_power_smooth: FilterEstimate::new(pwr, BigInt::from(0)),
 
+            base_fee: TokenAmount::zero(),
+            create_depost: TokenAmount::from_atto(633318697598976000u64),
             options,
         }
     }
@@ -219,6 +224,27 @@ impl ActorHarness {
 
     pub fn check_state(&self, rt: &MockRuntime) {
         check_state_invariants_from_mock_runtime(rt);
+    }
+
+    pub fn check_create_miner_depost_and_reset_state(&self, rt: &MockRuntime) {
+        let mut st = self.get_state(&rt);
+        let create_depost_vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
+
+        // create miner deposit
+        assert!(create_depost_vesting_funds.funds.len() == 180);
+        assert!(st.locked_funds == self.create_depost);
+
+        // reset create miner deposit vesting funds
+        st.save_vesting_funds(&rt.store(), &VestingFunds::new()).unwrap();
+        st.locked_funds = TokenAmount::zero();
+        rt.replace_state(&st);
+        rt.set_balance(rt.get_balance() - &self.create_depost);
+
+        let st = self.get_state(&rt);
+        let create_depost_vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
+
+        assert!(create_depost_vesting_funds.funds.is_empty());
+        assert!(st.locked_funds.is_zero());
     }
 
     pub fn new_runtime(&self) -> MockRuntime {
@@ -247,6 +273,24 @@ impl ActorHarness {
     }
 
     pub fn construct_and_verify(&self, rt: &MockRuntime) {
+        let reward = TokenAmount::from_whole(10);
+        let power = StoragePower::from_i128(1 << 50).unwrap();
+        let epoch_reward_smooth = FilterEstimate::new(reward.atto().clone(), BigInt::from(0u8));
+
+        let current_reward = ThisEpochRewardReturn {
+            this_epoch_baseline_power: power.clone(),
+            this_epoch_reward_smoothed: epoch_reward_smooth.clone(),
+        };
+
+        let current_total_power = CurrentTotalPowerReturn {
+            raw_byte_power: Default::default(),
+            quality_adj_power: Default::default(),
+            pledge_collateral: Default::default(),
+            quality_adj_power_smoothed: Default::default(),
+            ramp_start_epoch: Default::default(),
+            ramp_duration_epochs: Default::default(),
+        };
+
         let params = ConstructorParams {
             owner: self.owner,
             worker: self.worker,
@@ -254,6 +298,7 @@ impl ActorHarness {
             window_post_proof_type: self.window_post_proof_type,
             peer_id: vec![0],
             multi_addresses: vec![],
+            network_qap: epoch_reward_smooth,
         };
 
         rt.actor_code_cids.borrow_mut().insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
@@ -262,8 +307,25 @@ impl ActorHarness {
             rt.actor_code_cids.borrow_mut().insert(*a, *ACCOUNT_ACTOR_CODE_ID);
         }
 
+        rt.add_balance(self.create_depost.clone());
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.expect_send_simple(
+            REWARD_ACTOR_ADDR,
+            RewardMethod::ThisEpochReward as u64,
+            None,
+            TokenAmount::zero(),
+            IpldBlock::serialize_cbor(&current_reward).unwrap(),
+            ExitCode::OK,
+        );
+        rt.expect_send_simple(
+            STORAGE_POWER_ACTOR_ADDR,
+            ext::power::CURRENT_TOTAL_POWER_METHOD,
+            Default::default(),
+            TokenAmount::zero(),
+            IpldBlock::serialize_cbor(&current_total_power).unwrap(),
+            ExitCode::OK,
+        );
         rt.expect_send_simple(
             self.worker,
             AccountMethod::PubkeyAddress as u64,
@@ -280,6 +342,7 @@ impl ActorHarness {
             .unwrap();
         expect_empty(result);
         rt.verify();
+        self.check_create_miner_depost_and_reset_state(rt);
     }
 
     pub fn set_peer_id(&self, rt: &MockRuntime, new_id: Vec<u8>) {
@@ -1991,7 +2054,7 @@ impl ActorHarness {
             expect_burn(rt, penalty.clone());
         }
 
-        let params = ApplyRewardParams { reward: amt, penalty: penalty };
+        let params = ApplyRewardParams { reward: amt, penalty };
         rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
         rt.verify();

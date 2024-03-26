@@ -41,6 +41,7 @@ use crate::{MinerBalances, NetworkStats, TEST_FAUCET_ADDR};
 mod workflows;
 
 const ACCOUNT_SEED: u64 = 93837778;
+pub const CREATE_MINER_DEPOSIT: u128 = 319999994978159820800;
 
 /// Returns addresses of created accounts in ID format
 pub fn create_accounts(v: &dyn VM, count: u64, balance: &TokenAmount) -> Vec<Address> {
