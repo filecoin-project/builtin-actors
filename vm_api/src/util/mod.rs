@@ -72,6 +72,8 @@ pub fn apply_ok_implicit<S: Serialize>(
     assert_eq!(code, res.code, "expected code {}, got {} ({})", code, res.code, res.message);
     res.ret.map_or(RawBytes::default(), |b| RawBytes::new(b.data))
 }
+
+/// Convenience function to get the state of an actor
 pub fn get_state<T: DeserializeOwned>(v: &dyn VM, a: &Address) -> Option<T> {
     let cid = v.actor(a).unwrap().state;
     v.blockstore().get(&cid).unwrap().map(|slice| fvm_ipld_encoding::from_slice(&slice).unwrap())

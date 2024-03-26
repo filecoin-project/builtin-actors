@@ -85,6 +85,8 @@ use vm_api::util::{apply_code, apply_ok, apply_ok_implicit};
 use crate::expects::Expect;
 use crate::*;
 
+use super::CREATE_MINER_DEPOSIT;
+use super::make_bitfield;
 use super::market_pending_deal_allocations_raw;
 use super::miner_dline_info;
 use super::sector_deadline;
@@ -96,6 +98,17 @@ pub fn cron_tick(v: &dyn VM) {
         &CRON_ACTOR_ADDR,
         &TokenAmount::zero(),
         CronMethod::EpochTick as u64,
+        None::<RawBytes>,
+    );
+}
+
+pub fn owner_add_create_miner_deposit(v: &dyn VM, owner: &Address) {
+    apply_ok(
+        v,
+        &TEST_FAUCET_ADDR,
+        owner,
+        &TokenAmount::from_atto(CREATE_MINER_DEPOSIT),
+        fvm_shared::METHOD_SEND,
         None::<RawBytes>,
     );
 }
@@ -116,22 +129,57 @@ pub fn create_miner(
         peer: peer_id,
         multiaddrs,
     };
+    let res: CreateMinerReturn =
+        create_miner_internal(v, &params, balance).ret.unwrap().deserialize().unwrap();
+    (res.id_address, res.robust_address)
+}
 
+pub fn create_miner_internal(
+    v: &dyn VM,
+    params: &CreateMinerParams,
+    balance: &TokenAmount,
+) -> vm_api::MessageResult {
+    let owner = &params.owner;
+    // sent deposit to owner
+    owner_add_create_miner_deposit(v, owner);
+
+    let deposit = TokenAmount::from_atto(CREATE_MINER_DEPOSIT);
     let params = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
-    let res: CreateMinerReturn = v
+    let ret = v
         .execute_message(
             owner,
             &STORAGE_POWER_ACTOR_ADDR,
-            balance,
+            &deposit,
             PowerMethod::CreateMiner as u64,
             Some(params),
         )
-        .unwrap()
-        .ret
-        .unwrap()
-        .deserialize()
         .unwrap();
-    (res.id_address, res.robust_address)
+
+    let res: CreateMinerReturn = ret.ret.as_ref().unwrap().deserialize().unwrap();
+
+    let wrap_store = DynBlockstore::wrap(v.blockstore());
+    vm_api::util::mutate_state(v, &res.id_address, |st: &mut MinerState| {
+        // checkcreate miner deposit
+        assert!(st.vesting_funds.load(&wrap_store).unwrap().len() == 180);
+        assert!(st.locked_funds == TokenAmount::from_atto(CREATE_MINER_DEPOSIT));
+
+        // reset create miner deposit vesting funds
+        st.vesting_funds = Default::default();
+        st.locked_funds = TokenAmount::zero();
+    });
+
+    let state: MinerState = get_state(v, &res.id_address).unwrap();
+    assert!(state.vesting_funds.load(&wrap_store).unwrap().is_empty());
+    assert!(state.locked_funds.is_zero());
+
+    let mut actor_state = v.actor(&res.id_address).unwrap();
+    actor_state.balance = balance.clone();
+    v.set_actor(&res.id_address, actor_state);
+
+    let actual_balance = v.balance(&res.id_address);
+    assert_eq!(&actual_balance, balance);
+
+    ret
 }
 
 #[allow(clippy::too_many_arguments)]

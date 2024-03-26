@@ -45,6 +45,7 @@ pub struct MinerConstructorParams {
     #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
     pub multi_addresses: Vec<BytesDe>,
+    pub network_qap: FilterEstimate,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
