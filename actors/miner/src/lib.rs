@@ -155,6 +155,7 @@ pub enum Method {
     GetVestingFundsExported = frc42_dispatch::method_hash!("GetVestingFunds"),
     GetPeerIDExported = frc42_dispatch::method_hash!("GetPeerID"),
     GetMultiaddrsExported = frc42_dispatch::method_hash!("GetMultiaddrs"),
+    LockCreateMinerDepositExported = frc42_dispatch::method_hash!("LockCreateMinerDeposit"),
 }
 
 pub const SECTOR_CONTENT_CHANGED: MethodNum = frc42_dispatch::method_hash!("SectorContentChanged");
@@ -310,7 +311,13 @@ impl Actor {
         let vesting_funds = state
             .load_vesting_funds(rt.store())
             .map_err(|e| actor_error!(illegal_state, "failed to load vesting funds: {}", e))?;
-        let ret = vesting_funds.funds.into_iter().map(|v| (v.epoch, v.amount)).collect_vec();
+        let mut ret = vesting_funds.funds.into_iter().map(|v| (v.epoch, v.amount)).collect_vec();
+
+        // add create miner deposit into vest table
+        if let Some(CreateMinerDeposit { amount, epoch }) = &state.create_miner_deposit {
+            ret.push((*epoch, amount.clone()));
+        }
+
         Ok(GetVestingFundsReturn { vesting_funds: ret })
     }
 
@@ -755,6 +762,7 @@ impl Actor {
 
         Ok(())
     }
+
     /// Checks state of the corresponding sector pre-commitments and verifies aggregate proof of replication
     /// of these sectors. If valid, the sectors' deals are activated, sectors are assigned a deadline and charged pledge
     /// and precommit state is removed.
@@ -3417,6 +3425,20 @@ impl Actor {
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
         Ok(())
     }
+
+    /// Lock the create miner deposit for 180 days.
+    /// See FIP-0077, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0077.md
+    fn lock_create_miner_deposit(
+        rt: &impl Runtime,
+        params: LockCreateMinerDepositParams,
+    ) -> Result<(), ActorError> {
+        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
+        rt.transaction(|st: &mut State, rt| {
+            st.add_create_miner_deposit(params.amount, rt.curr_epoch());
+
+            Ok(())
+        })
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -5744,6 +5766,7 @@ impl ActorCode for Actor {
         GetMultiaddrsExported => get_multiaddresses,
         ProveCommitSectors3 => prove_commit_sectors3,
         ProveReplicaUpdates3 => prove_replica_updates3,
+        LockCreateMinerDepositExported => lock_create_miner_deposit,
     }
 }
 

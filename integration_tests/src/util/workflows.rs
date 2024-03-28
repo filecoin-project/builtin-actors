@@ -100,6 +100,17 @@ pub fn cron_tick(v: &dyn VM) {
     );
 }
 
+pub fn owner_add_create_miner_deposit(v: &dyn VM, owner: &Address) {
+    apply_ok(
+        v,
+        &TEST_FAUCET_ADDR,
+        owner,
+        &TokenAmount::from_atto(319999994978159820800u128),
+        fvm_shared::METHOD_SEND,
+        None::<RawBytes>,
+    );
+}
+
 pub fn create_miner(
     v: &dyn VM,
     owner: &Address,
@@ -107,6 +118,11 @@ pub fn create_miner(
     post_proof_type: RegisteredPoStProof,
     balance: &TokenAmount,
 ) -> (Address, Address) {
+    // sent deposit to owner
+    owner_add_create_miner_deposit(v, owner);
+
+    let deposit = TokenAmount::from_atto(319999994978159820800u128);
+    let total = balance + deposit;
     let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
     let peer_id = "miner".as_bytes().to_vec();
     let params = CreateMinerParams {
@@ -122,7 +138,7 @@ pub fn create_miner(
         .execute_message(
             owner,
             &STORAGE_POWER_ACTOR_ADDR,
-            balance,
+            &total,
             PowerMethod::CreateMiner as u64,
             Some(params),
         )

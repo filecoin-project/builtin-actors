@@ -6,19 +6,22 @@ use std::convert::TryInto;
 
 use anyhow::anyhow;
 use fil_actors_runtime::reward::ThisEpochRewardReturn;
+use fil_actors_runtime::runtime::policy_constants::{
+    MINIMUM_CONSENSUS_POWER, MIN_SECTOR_EXPIRATION,
+};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntSer;
+use fvm_shared::bigint::{bigint_ser::BigIntSer, BigInt};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::SealVerifyInfo;
+use fvm_shared::sector::{SealVerifyInfo, SectorSize};
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use log::{debug, error};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
 
-use ext::init;
+use ext::{init, miner::MinerNetworkPledgeInputs};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
@@ -76,6 +79,57 @@ pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
 /// Storage Power Actor
 pub struct Actor;
 
+/// Calculate create miner deposit by MINIMUM_CONSENSUS_POWER x StateMinerInitialPledgeCollateral
+/// See FIP-0077, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0077.md
+pub fn calculate_create_miner_deposit(rt: &impl Runtime) -> Result<TokenAmount, ActorError> {
+    // set network pledge inputs
+    let st: State = rt.state()?;
+    let rew = request_current_epoch_block_reward(rt)?;
+    let pwr = CurrentTotalPowerReturn {
+        raw_byte_power: st.this_epoch_raw_byte_power,
+        quality_adj_power: st.this_epoch_quality_adj_power,
+        pledge_collateral: st.this_epoch_pledge_collateral,
+        quality_adj_power_smoothed: st.this_epoch_qa_power_smoothed,
+    };
+    let circulating_supply = rt.total_fil_circ_supply();
+    let pledge_inputs = MinerNetworkPledgeInputs {
+        network_qap: pwr.quality_adj_power_smoothed,
+        network_baseline: rew.this_epoch_baseline_power,
+        circulating_supply,
+        epoch_reward: rew.this_epoch_reward_smoothed,
+    };
+
+    /// set sector size with min power
+    #[cfg(feature = "min-power-2k")]
+    let sector_size = SectorSize::_2KiB;
+    #[cfg(feature = "min-power-2g")]
+    let sector_size = SectorSize::_8MiB;
+    #[cfg(feature = "min-power-32g")]
+    let sector_size = SectorSize::_512MiB;
+    #[cfg(not(any(
+        feature = "min-power-2k",
+        feature = "min-power-2g",
+        feature = "min-power-32g"
+    )))]
+    let sector_size = SectorSize::_32GiB;
+
+    let sector_number = MINIMUM_CONSENSUS_POWER / sector_size as i64;
+    let power = ext::miner::qa_power_for_weight(
+        sector_size,
+        MIN_SECTOR_EXPIRATION,
+        &BigInt::zero(),
+        &BigInt::zero(),
+    );
+    let sector_initial_pledge = ext::miner::initial_pledge_for_power(
+        &power,
+        &pledge_inputs.network_baseline,
+        &pledge_inputs.epoch_reward,
+        &pledge_inputs.network_qap,
+        &pledge_inputs.circulating_supply,
+    );
+    Ok(sector_initial_pledge * sector_number)
+}
+
 impl Actor {
     /// Constructor for StoragePower actor
     fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
@@ -94,6 +148,14 @@ impl Actor {
     ) -> Result<CreateMinerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let value = rt.message().value_received();
+
+        let deposit = calculate_create_miner_deposit(rt)?;
+
+        if value < deposit {
+            return Err(actor_error!(insufficient_funds;
+                    "not enough balance to lock for create miner deposit: \
+                    sent balance {} < deposit {}", value, deposit));
+        }
 
         let constructor_params = RawBytes::serialize(ext::miner::MinerConstructorParams {
             owner: params.owner,
@@ -115,6 +177,16 @@ impl Actor {
                 })?,
                 value,
             ))?)?;
+
+        // call miner actor to lock deposit
+        extract_send_result(rt.send_simple(
+            &id_address,
+            ext::miner::LOCK_CREATE_MINER_DESPOIT_METHOD,
+            IpldBlock::serialize_cbor(&ext::miner::LockCreateMinerDepositParams {
+                amount: deposit,
+            })?,
+            TokenAmount::zero(),
+        ))?;
 
         let window_post_proof_type = params.window_post_proof_type;
         rt.transaction(|st: &mut State, rt| {
@@ -627,6 +699,24 @@ impl Actor {
         }
         Ok(())
     }
+}
+
+/// Copy from miner
+///
+/// Requests the current epoch target block reward from the reward actor.
+/// return value includes reward, smoothed estimate of reward, and baseline power
+fn request_current_epoch_block_reward(
+    rt: &impl Runtime,
+) -> Result<ThisEpochRewardReturn, ActorError> {
+    deserialize_block(
+        extract_send_result(rt.send_simple(
+            &REWARD_ACTOR_ADDR,
+            ext::reward::THIS_EPOCH_REWARD_METHOD,
+            Default::default(),
+            TokenAmount::zero(),
+        ))
+        .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
+    )
 }
 
 impl ActorCode for Actor {

@@ -106,6 +106,11 @@ pub struct DeferredCronEventParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct LockCreateMinerDepositParams {
+    pub amount: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct PoStPartition {
     /// Partitions are numbered per-deadline, from zero.
     pub index: u64,

@@ -72,6 +72,9 @@ pub struct State {
     /// Sum of initial pledge requirements of all active sectors.
     pub initial_pledge: TokenAmount,
 
+    /// amount of create miner depoist and when it should be unlocked.
+    pub create_miner_deposit: Option<CreateMinerDeposit>,
+
     /// Sectors that have been pre-committed but not yet proven.
     /// Map, HAMT<SectorNumber, SectorPreCommitOnChainInfo>
     pub pre_committed_sectors: Cid,
@@ -189,6 +192,7 @@ impl State {
             early_terminations: BitField::new(),
             deadline_cron_active: false,
             pre_committed_sectors_cleanup: empty_precommits_cleanup_array,
+            create_miner_deposit: None,
         })
     }
 
@@ -214,6 +218,7 @@ impl State {
     pub fn deadline_info(&self, policy: &Policy, current_epoch: ChainEpoch) -> DeadlineInfo {
         new_deadline_info_from_offset_and_epoch(policy, self.proving_period_start, current_epoch)
     }
+
     // Returns deadline calculations for the state recorded proving period and deadline.
     // This is out of date if the a miner does not have an active miner cron
     pub fn recorded_deadline_info(
@@ -804,6 +809,15 @@ impl State {
         }
     }
 
+    // Unlocked after 180 days.
+    pub fn add_create_miner_deposit(&mut self, amount: TokenAmount, curr_epoch: ChainEpoch) {
+        let deposit = CreateMinerDeposit {
+            amount,
+            epoch: (180 * fil_actors_runtime::EPOCHS_IN_DAY) + curr_epoch,
+        };
+        self.create_miner_deposit = Some(deposit);
+    }
+
     /// First vests and unlocks the vested funds AND then locks the given funds in the vesting table.
     pub fn add_locked_funds<BS: Blockstore>(
         &mut self,
@@ -828,6 +842,14 @@ impl State {
                 amount_unlocked
             ));
         }
+
+        // unlock create miner deposit
+        if let Some(depoist) = &self.create_miner_deposit {
+            if depoist.epoch <= current_epoch {
+                self.create_miner_deposit.take();
+            }
+        }
+
         // add locked funds now
         vesting_funds.add_locked_funds(current_epoch, vesting_sum, self.proving_period_start, spec);
         self.locked_funds += vesting_sum;
@@ -888,6 +910,7 @@ impl State {
 
         Ok(std::mem::take(&mut self.fee_debt))
     }
+
     /// Unlocks an amount of funds that have *not yet vested*, if possible.
     /// The soonest-vesting entries are unlocked first.
     /// Returns the amount actually unlocked.
@@ -923,12 +946,20 @@ impl State {
         store: &BS,
         current_epoch: ChainEpoch,
     ) -> anyhow::Result<TokenAmount> {
+        let mut amount_unlocked = TokenAmount::zero();
+        if let Some(depoist) = &self.create_miner_deposit {
+            if depoist.epoch <= current_epoch {
+                amount_unlocked += &depoist.amount;
+                self.create_miner_deposit.take();
+            }
+        }
+
         if self.locked_funds.is_zero() {
             return Ok(TokenAmount::zero());
         }
 
         let mut vesting_funds = self.load_vesting_funds(store)?;
-        let amount_unlocked = vesting_funds.unlock_vested_funds(current_epoch);
+        amount_unlocked += vesting_funds.unlock_vested_funds(current_epoch);
         self.locked_funds -= &amount_unlocked;
         if self.locked_funds.is_negative() {
             return Err(anyhow!(
@@ -957,8 +988,13 @@ impl State {
 
     /// Unclaimed funds that are not locked -- includes funds used to cover initial pledge requirement.
     pub fn get_unlocked_balance(&self, actor_balance: &TokenAmount) -> anyhow::Result<TokenAmount> {
-        let unlocked_balance =
+        let mut unlocked_balance =
             actor_balance - &self.locked_funds - &self.pre_commit_deposits - &self.initial_pledge;
+
+        if let Some(depoist) = &self.create_miner_deposit {
+            unlocked_balance -= &depoist.amount;
+        }
+
         if unlocked_balance.is_negative() {
             return Err(anyhow!("negative unlocked balance {}", unlocked_balance));
         }
@@ -989,7 +1025,15 @@ impl State {
             return Err(anyhow!("fee debt is negative: {}", self.fee_debt));
         }
 
-        let min_balance = &self.pre_commit_deposits + &self.locked_funds + &self.initial_pledge;
+        let mut min_balance = &self.pre_commit_deposits + &self.locked_funds + &self.initial_pledge;
+
+        if let Some(CreateMinerDeposit { amount, .. }) = &self.create_miner_deposit {
+            if amount.is_negative() {
+                return Err(anyhow!("create miner deposit is negative: {}", amount));
+            }
+
+            min_balance += amount;
+        }
         if balance < &min_balance {
             return Err(anyhow!("fee debt is negative: {}", self.fee_debt));
         }
@@ -1182,6 +1226,13 @@ impl State {
         }
         Ok(precommits)
     }
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
+pub struct CreateMinerDeposit {
+    pub amount: TokenAmount,
+    /// when to unlock
+    pub epoch: ChainEpoch,
 }
 
 pub struct AdvanceDeadlineResult {
