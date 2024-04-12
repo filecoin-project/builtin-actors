@@ -25,9 +25,9 @@ use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::*;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, InteractiveSealRandomness,
-    PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
-    RegisteredUpdateProof, ReplicaUpdateInfo, SealRandomness, SealVerifyInfo, SectorID, SectorInfo,
-    SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
+    NISealVerifyInfo, PoStProof, RegisteredAggregateProof, RegisteredPoStProof,
+    RegisteredSealProof, RegisteredUpdateProof, ReplicaUpdateInfo, SealRandomness, SealVerifyInfo,
+    SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use itertools::Itertools;
@@ -138,6 +138,7 @@ pub enum Method {
     // MovePartitions = 33,
     ProveCommitSectors3 = 34,
     ProveReplicaUpdates3 = 35,
+    ProveCommitSectorsNI = 36,
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
@@ -1948,6 +1949,29 @@ impl Actor {
 
         let result = util::stack(&[validation_batch, proven_batch, data_batch]);
         Ok(ProveCommitSectors3Return { activation_results: result })
+    }
+
+    fn prove_commit_sectors_ni(
+        rt: &impl Runtime,
+        params: ProveCommitSectorsNIParams,
+    ) -> Result<(), ActorError> {
+        info!("Test: prove_commit_sectors_ni");
+
+        let miner_id = rt.message().receiver().id().unwrap();
+        let seal_verify_info = NISealVerifyInfo {
+            registered_proof: params.seal_proof_type,
+            sector_id: fvm_shared::sector::SectorID {
+                miner: miner_id,
+                number: params.sectors[0].sector_number,
+            },
+            randomness: Randomness(Vec::new()),
+            proof: params.sector_proofs[0].clone().into(),
+            sealed_cid: params.sectors[0].sealed_cid,
+            unsealed_cid: CompactCommD::empty().get_cid(params.seal_proof_type).unwrap(),
+        };
+        rt.batch_verify_ni_seals(&vec![seal_verify_info])
+            .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
+        Ok(())
     }
 
     /// Checks state of the corresponding sector pre-commitment, then schedules the proof to be verified in bulk
@@ -5744,6 +5768,7 @@ impl ActorCode for Actor {
         GetMultiaddrsExported => get_multiaddresses,
         ProveCommitSectors3 => prove_commit_sectors3,
         ProveReplicaUpdates3 => prove_replica_updates3,
+        ProveCommitSectorsNI => prove_commit_sectors_ni,
     }
 }
 

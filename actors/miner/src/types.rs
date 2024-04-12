@@ -135,6 +135,33 @@ pub struct ProveCommitSectorParams {
     pub proof: RawBytes,
 }
 
+// Note no UnsealedCID because it must be "zero" data.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorNIActivationInfo {
+    pub sector_number: SectorNumber,
+    pub sealed_cid: Cid, // CommR
+    pub seal_rand_epoch: ChainEpoch,
+    pub expiration: ChainEpoch,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct ProveCommitSectorsNIParams {
+    // Information about sealing of each sector.
+    pub sectors: Vec<SectorNIActivationInfo>,
+    // Proof type for each seal (must be an NI-PoRep variant)
+    pub seal_proof_type: RegisteredSealProof,
+    // Proofs for each sector, parallel to activation manifests.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub sector_proofs: Vec<RawBytes>,
+    // Aggregate proof for all sectors.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub aggregate_proof: RawBytes,
+    // Proof type for aggregation, if aggregated
+    pub aggregate_proof_type: Option<RegisteredAggregateProof>,
+    // Whether to abort if any sector activation fails.
+    pub require_activation_success: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectors3Params {
     // Activation manifest for each sector being proven.

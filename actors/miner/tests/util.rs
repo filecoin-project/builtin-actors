@@ -82,7 +82,10 @@ use fil_actor_miner::{
     WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
     NO_QUANTIZATION, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
 };
-use fil_actor_miner::{ProveReplicaUpdates3Params, ProveReplicaUpdates3Return};
+use fil_actor_miner::{
+    ProveCommitSectorsNIParams, ProveReplicaUpdates3Params, ProveReplicaUpdates3Return,
+    SectorNIActivationInfo,
+};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
@@ -559,6 +562,24 @@ impl ActorHarness {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192].into() }
     }
 
+    pub fn make_prove_commit_ni_params(&self, sector_no: u64) -> ProveCommitSectorsNIParams {
+        let sector_ni_activation_info = SectorNIActivationInfo {
+            sector_number: sector_no,
+            sealed_cid: make_sector_commr(sector_no),
+            seal_rand_epoch: 200,
+            expiration: 500,
+        };
+
+        ProveCommitSectorsNIParams {
+            sectors: vec![sector_ni_activation_info],
+            seal_proof_type: RegisteredSealProof::StackedDRG8MiBV1P1_Feat_NiPoRep,
+            sector_proofs: vec![RawBytes::new(vec![1, 2, 3, 4])],
+            aggregate_proof: RawBytes::new(Vec::new()),
+            aggregate_proof_type: None,
+            require_activation_success: true,
+        }
+    }
+
     pub fn pre_commit_sector_batch(
         &self,
         rt: &MockRuntime,
@@ -829,6 +850,23 @@ impl ActorHarness {
         )?;
         expect_empty(result);
         rt.verify();
+        Ok(())
+    }
+
+    pub fn prove_commit_sectors_ni(
+        &self,
+        rt: &MockRuntime,
+        params: ProveCommitSectorsNIParams,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        let result = rt.call::<Actor>(
+            Method::ProveCommitSectorsNI as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        expect_empty(result);
+        rt.verify();
+
         Ok(())
     }
 
