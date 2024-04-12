@@ -22,8 +22,8 @@ use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
-    AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
-    WindowPoStVerifyInfo,
+    AggregateSealVerifyProofAndInfos, NISealVerifyInfo, RegisteredSealProof, ReplicaUpdateInfo,
+    SealVerifyInfo, WindowPoStVerifyInfo,
 };
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
@@ -473,6 +473,12 @@ where
     }
 
     #[cfg(not(feature = "fake-proofs"))]
+    fn batch_verify_ni_seals(&self, batch: &[NISealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
+        fvm::crypto::batch_verify_ni_seals(batch)
+            .map_err(|e| anyhow!("failed to verify batch seals: {}", e))
+    }
+
+    #[cfg(not(feature = "fake-proofs"))]
     fn verify_aggregate_seals(
         &self,
         aggregate: &AggregateSealVerifyProofAndInfos,
@@ -531,6 +537,11 @@ where
 
     #[cfg(feature = "fake-proofs")]
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
+        Ok(batch.iter().map(|_| true).collect())
+    }
+
+    #[cfg(feature = "fake-proofs")]
+    fn batch_verify_ni_seals(&self, batch: &[NISealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
         Ok(batch.iter().map(|_| true).collect())
     }
 
