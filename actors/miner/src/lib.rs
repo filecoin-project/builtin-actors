@@ -1957,20 +1957,63 @@ impl Actor {
     ) -> Result<(), ActorError> {
         info!("Test: prove_commit_sectors_ni");
 
+        let state: State = rt.state()?;
+        let store = rt.store();
+        let policy = rt.policy();
         let miner_id = rt.message().receiver().id().unwrap();
-        let seal_verify_info = NISealVerifyInfo {
-            registered_proof: params.seal_proof_type,
-            sector_id: fvm_shared::sector::SectorID {
-                miner: miner_id,
-                number: params.sectors[0].sector_number,
-            },
-            randomness: Randomness(Vec::new()),
-            proof: params.sector_proofs[0].clone().into(),
-            sealed_cid: params.sectors[0].sealed_cid,
-            unsealed_cid: CompactCommD::empty().get_cid(params.seal_proof_type).unwrap(),
-        };
-        rt.batch_verify_ni_seals(&vec![seal_verify_info])
-            .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
+        let info = get_miner_info(rt.store(), &state)?;
+        let activation_epoch = rt.curr_epoch();
+
+        rt.validate_immediate_caller_is(
+            info.control_addresses.iter().chain(&[info.worker, info.owner]),
+        )?;
+
+        let miner_id = rt.message().receiver().id().unwrap();
+
+        let mut sectors_to_add = Vec::new();
+        for (i, sector) in params.sectors.iter().enumerate() {
+            let seal_verify_info = NISealVerifyInfo {
+                registered_proof: params.seal_proof_type,
+                sector_id: fvm_shared::sector::SectorID {
+                    miner: miner_id,
+                    number: sector.sector_number,
+                },
+                randomness: Randomness(Vec::new()),
+                proof: params.sector_proofs[i].clone().into(),
+                sealed_cid: sector.sealed_cid,
+                unsealed_cid: CompactCommD::empty().get_cid(params.seal_proof_type).unwrap(),
+            };
+            rt.batch_verify_ni_seals(&vec![seal_verify_info])
+                .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
+
+            let new_sector_info = SectorOnChainInfo {
+                sector_number: sector.sector_number,
+                seal_proof: params.seal_proof_type,
+                sealed_cid: sector.sealed_cid,
+                deprecated_deal_ids: vec![], // deal ids field deprecated
+                expiration: activation_epoch + 1000,
+                activation: activation_epoch,
+                deal_weight: DealWeight::zero(),
+                verified_deal_weight: DealWeight::zero(),
+                initial_pledge: TokenAmount::zero(),
+                expected_day_reward: TokenAmount::zero(),
+                expected_storage_pledge: TokenAmount::zero(),
+                power_base_epoch: activation_epoch,
+                replaced_day_reward: TokenAmount::zero(),
+                sector_key_cid: None,
+                flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
+            };
+
+            sectors_to_add.push(new_sector_info);
+        }
+
+        rt.transaction(|state: &mut State, rt| {
+            state.put_sectors(store, sectors_to_add).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to put new sectors")
+            })?;
+            Ok(())
+        })?;
+
         Ok(())
     }
 
