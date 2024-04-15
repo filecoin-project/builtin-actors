@@ -12,7 +12,7 @@ publish = false
 
 [dependencies]
 fil_builtin_actors_state = { workspace = true }
-fil_actors_runtime = { workspace = true, features = [ "test_utils" ] }
+fil_actors_runtime = { workspace = true, features = ["test_utils"] }
 fil_actor_init = { workspace = true }
 fil_actor_cron = { workspace = true }
 fil_actor_system = { workspace = true }
@@ -45,7 +45,7 @@ fvm_ipld_encoding = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
 fvm_shared = { workspace = true }
 hex = { workspace = true }
-hex-literal = { workspace = true } 
+hex-literal = { workspace = true }
 indexmap = { workspace = true }
 integer-encoding = { workspace = true }
 lazy_static = { workspace = true }
@@ -60,6 +60,7 @@ thiserror = { workspace = true }
 libsecp256k1 = { workspace = true }
 export_macro = { path = "./macro" }
 ctor = "0.2.5"
+serde_json.workspace = true
 
 [dev-dependencies]
 multihash = { workspace = true }

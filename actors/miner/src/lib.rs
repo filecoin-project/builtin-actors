@@ -1971,6 +1971,8 @@ impl Actor {
         let miner_id = rt.message().receiver().id().unwrap();
 
         let mut sectors_to_add = Vec::new();
+        let mut total_pledge = TokenAmount::zero();
+
         for (i, sector) in params.sectors.iter().enumerate() {
             let seal_verify_info = NISealVerifyInfo {
                 registered_proof: params.seal_proof_type,
@@ -1986,18 +1988,55 @@ impl Actor {
             rt.batch_verify_ni_seals(&vec![seal_verify_info])
                 .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
 
+            let duration = sector.expiration - activation_epoch;
+            let power =
+                qa_power_for_weight(info.sector_size, duration, &BigInt::zero(), &BigInt::zero());
+
+            let rew = request_current_epoch_block_reward(rt)?;
+            let pwr = request_current_total_power(rt)?;
+            let circulating_supply = rt.total_fil_circ_supply();
+            let pledge_inputs = NetworkPledgeInputs {
+                network_qap: pwr.quality_adj_power_smoothed,
+                network_baseline: rew.this_epoch_baseline_power,
+                circulating_supply,
+                epoch_reward: rew.this_epoch_reward_smoothed,
+            };
+
+            let storage_pledge = expected_reward_for_power(
+                &pledge_inputs.epoch_reward,
+                &pledge_inputs.network_qap,
+                &power,
+                INITIAL_PLEDGE_PROJECTION_PERIOD,
+            );
+
+            let initial_pledge = initial_pledge_for_power(
+                &power,
+                &pledge_inputs.network_baseline,
+                &pledge_inputs.epoch_reward,
+                &pledge_inputs.network_qap,
+                &pledge_inputs.circulating_supply,
+            );
+
+            let day_reward = expected_reward_for_power(
+                &pledge_inputs.epoch_reward,
+                &pledge_inputs.network_qap,
+                &power,
+                fil_actors_runtime::EPOCHS_IN_DAY,
+            );
+            total_pledge += &initial_pledge;
+
             let new_sector_info = SectorOnChainInfo {
                 sector_number: sector.sector_number,
                 seal_proof: params.seal_proof_type,
                 sealed_cid: sector.sealed_cid,
-                deprecated_deal_ids: vec![], // deal ids field deprecated
-                expiration: activation_epoch + 1000,
+                deprecated_deal_ids: vec![],
+                expiration: sector.expiration,
                 activation: activation_epoch,
                 deal_weight: DealWeight::zero(),
                 verified_deal_weight: DealWeight::zero(),
-                initial_pledge: TokenAmount::zero(),
-                expected_day_reward: TokenAmount::zero(),
-                expected_storage_pledge: TokenAmount::zero(),
+                initial_pledge: initial_pledge,
+                expected_day_reward: day_reward,
+                expected_storage_pledge: storage_pledge,
                 power_base_epoch: activation_epoch,
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
@@ -2011,6 +2050,11 @@ impl Actor {
             state.put_sectors(store, sectors_to_add).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to put new sectors")
             })?;
+
+            state
+                .add_initial_pledge(&total_pledge)
+                .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
+
             Ok(())
         })?;
 

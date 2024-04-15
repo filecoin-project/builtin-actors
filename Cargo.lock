@@ -1841,6 +1841,7 @@ dependencies = [
  "rand_chacha",
  "regex",
  "serde",
+ "serde_json",
  "test-case",
  "thiserror",
  "vm_api",
@@ -4287,7 +4288,9 @@ dependencies = [
  "multihash 0.18.1",
  "num-traits",
  "serde",
+ "serde_json",
  "test-case",
+ "test-log",
  "vm_api",
 ]
 

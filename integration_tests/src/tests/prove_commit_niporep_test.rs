@@ -1,5 +1,6 @@
 use cid::Cid;
 
+use fil_actors_runtime::EPOCHS_IN_YEAR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
@@ -7,6 +8,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
+use log::info;
 use num_traits::Zero;
 
 use export_macro::vm_test;
@@ -45,6 +47,8 @@ pub fn prove_commit_sectors_niporep_test(v: &dyn VM) {
     // let miner_id = maddr.id().unwrap();
 
     // Onboard a batch of sectors
+    let expiration = v.epoch() + 2 * EPOCHS_IN_YEAR;
+    let seal_rand_epoch = v.epoch() - 1;
     let first_sector_number: SectorNumber = 100;
     let manifests = vec![
         first_sector_number,
@@ -53,18 +57,14 @@ pub fn prove_commit_sectors_niporep_test(v: &dyn VM) {
         first_sector_number + 3,
         first_sector_number + 4,
     ];
-    let cids: Vec<Cid> = manifests
-        .iter()
-        .map(|sector_num| make_sealed_cid(format!("sn: {}", sector_num).as_bytes()))
-        .collect();
+
     let sectors_info: Vec<SectorNIActivationInfo> = manifests
         .iter()
-        .zip(cids)
-        .map(|(sector_no, cid)| SectorNIActivationInfo {
-            sector_number: *sector_no,
-            sealed_cid: cid,
-            seal_rand_epoch: 200,
-            expiration: 500,
+        .map(|sector_number| SectorNIActivationInfo {
+            sector_number: *sector_number,
+            sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
+            seal_rand_epoch,
+            expiration,
         })
         .collect();
 
@@ -120,7 +120,7 @@ pub fn prove_commit_sectors_niporep_test(v: &dyn VM) {
         .iter()
         .map(|sector_number| sector_info(v, &maddr, *sector_number))
         .collect::<Vec<_>>();
-    println!("sectors: {:?}", sectors);
+    info!("sectors: {:#?}", sectors);
     // for sector in &sectors {
     //     assert_eq!(activation_epoch, sector.activation);
     //     assert_eq!(activation_epoch, sector.power_base_epoch);

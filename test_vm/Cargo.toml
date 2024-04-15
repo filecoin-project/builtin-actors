@@ -46,3 +46,6 @@ vm_api = { workspace = true }
 multihash = { workspace = true }
 test-case = { workspace = true }
 fil_actors_integration_tests = { workspace = true }
+test-log = "0.2.15"
+serde.workspace = true
+serde_json.workspace = true
