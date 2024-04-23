@@ -51,6 +51,10 @@ pub fn can_pre_commit_seal_proof(policy: &Policy, proof: RegisteredSealProof) ->
     policy.valid_pre_commit_proof_type.contains(proof)
 }
 
+pub fn can_prove_commit_ni_seal_proof(policy: &Policy, proof: RegisteredSealProof) -> bool {
+    policy.valid_prove_commit_ni_proof_type.contains(proof)
+}
+
 /// Checks whether a seal proof type is supported for new miners and sectors.
 pub fn can_extend_seal_proof_type(_proof: RegisteredSealProof) -> bool {
     true

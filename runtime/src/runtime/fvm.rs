@@ -473,12 +473,6 @@ where
     }
 
     #[cfg(not(feature = "fake-proofs"))]
-    fn batch_verify_ni_seals(&self, batch: &[NISealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
-        fvm::crypto::batch_verify_ni_seals(batch)
-            .map_err(|e| anyhow!("failed to verify batch seals: {}", e))
-    }
-
-    #[cfg(not(feature = "fake-proofs"))]
     fn verify_aggregate_seals(
         &self,
         aggregate: &AggregateSealVerifyProofAndInfos,

@@ -25,9 +25,9 @@ use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::*;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, InteractiveSealRandomness,
-    NISealVerifyInfo, PoStProof, RegisteredAggregateProof, RegisteredPoStProof,
-    RegisteredSealProof, RegisteredUpdateProof, ReplicaUpdateInfo, SealRandomness, SealVerifyInfo,
-    SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
+    PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
+    RegisteredUpdateProof, ReplicaUpdateInfo, SealRandomness, SealVerifyInfo, SectorID, SectorInfo,
+    SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use itertools::Itertools;
@@ -1955,8 +1955,24 @@ impl Actor {
         rt: &impl Runtime,
         params: ProveCommitSectorsNIParams,
     ) -> Result<(), ActorError> {
+        let policy = rt.policy();
         if params.sectors.is_empty() {
             return Err(actor_error!(illegal_argument, "batch empty"));
+        } else if params.sectors.len() > policy.prove_commit_ni_sector_batch_max_size {
+            return Err(actor_error!(
+                illegal_argument,
+                "batch of {} too large, max {}",
+                params.sectors.len(),
+                policy.pre_commit_sector_batch_max_size
+            ));
+        }
+
+        if !can_prove_commit_ni_seal_proof(rt.policy(), params.seal_proof_type) {
+            return Err(actor_error!(
+                illegal_argument,
+                "unsupported seal proof type {}",
+                i64::from(params.seal_proof_type)
+            ));
         }
 
         let curr_epoch = rt.curr_epoch();
@@ -2036,7 +2052,7 @@ impl Actor {
             .sectors
             .iter()
             .zip(params.sector_proofs.into_iter())
-            .map(|(sector, proof)| NISealVerifyInfo {
+            .map(|(sector, proof)| SealVerifyInfo {
                 registered_proof: params.seal_proof_type,
                 sector_id: fvm_shared::sector::SectorID {
                     miner: miner_id,
@@ -2046,10 +2062,13 @@ impl Actor {
                 proof: proof.into(),
                 sealed_cid: sector.sealed_cid,
                 unsealed_cid: CompactCommD::empty().get_cid(params.seal_proof_type).unwrap(),
+                deal_ids: vec![],
+                interactive_randomness: Randomness(Vec::new()),
             })
             .collect::<Vec<_>>();
+
         let sector_verifications = rt
-            .batch_verify_ni_seals(&sector_verify_info)
+            .batch_verify_seals(&sector_verify_info)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
 
         let sectors_to_add = params

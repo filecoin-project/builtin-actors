@@ -19,8 +19,8 @@ use fvm_shared::{
     error::ExitCode,
     piece::PieceInfo,
     sector::{
-        AggregateSealVerifyProofAndInfos, NISealVerifyInfo, RegisteredSealProof, ReplicaUpdateInfo,
-        SealVerifyInfo, WindowPoStVerifyInfo,
+        AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
+        WindowPoStVerifyInfo,
     },
     MethodNum,
 };
@@ -202,8 +202,6 @@ pub trait Primitives {
     ) -> Result<Option<ConsensusFault>, anyhow::Error>;
 
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>>;
-
-    fn batch_verify_ni_seals(&self, batch: &[NISealVerifyInfo]) -> anyhow::Result<Vec<bool>>;
 
     fn verify_aggregate_seals(
         &self,

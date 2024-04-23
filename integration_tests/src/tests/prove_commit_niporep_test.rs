@@ -8,6 +8,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
+use fvm_shared::ActorID;
 use log::info;
 use num_traits::Zero;
 
@@ -61,6 +62,7 @@ pub fn prove_commit_sectors_niporep_test(v: &dyn VM) {
     let sectors_info: Vec<SectorNIActivationInfo> = manifests
         .iter()
         .map(|sector_number| SectorNIActivationInfo {
+            sealer_id: Some(2000),
             sector_number: *sector_number,
             sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
             seal_rand_epoch,

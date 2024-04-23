@@ -45,8 +45,8 @@ use fvm_shared::piece::PieceInfo;
 
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
-    AggregateSealVerifyProofAndInfos, NISealVerifyInfo, RegisteredSealProof, ReplicaUpdateInfo,
-    SealVerifyInfo, WindowPoStVerifyInfo,
+    AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
+    WindowPoStVerifyInfo,
 };
 
 use fvm_shared::sys::SendFlags;
@@ -711,10 +711,6 @@ impl Primitives for InvocationCtx<'_> {
     }
 
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
-        Ok(vec![true; batch.len()]) // everyone wins
-    }
-
-    fn batch_verify_ni_seals(&self, batch: &[NISealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
         Ok(vec![true; batch.len()]) // everyone wins
     }
 

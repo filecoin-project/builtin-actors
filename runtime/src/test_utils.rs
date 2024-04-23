@@ -26,8 +26,8 @@ use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
-    AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, NISealVerifyInfo,
-    RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
+    AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, RegisteredSealProof,
+    ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
 };
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
@@ -201,7 +201,6 @@ pub struct Expectations {
     pub expect_get_randomness_tickets: VecDeque<ExpectRandomness>,
     pub expect_get_randomness_beacon: VecDeque<ExpectRandomness>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
-    pub expect_batch_verify_ni_seals: Option<ExpectBatchVerifyNISeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: VecDeque<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
@@ -426,12 +425,6 @@ pub struct ExpectRandomness {
 #[derive(Debug)]
 pub struct ExpectBatchVerifySeals {
     input: Vec<SealVerifyInfo>,
-    result: anyhow::Result<Vec<bool>>,
-}
-
-#[derive(Debug)]
-pub struct ExpectBatchVerifyNISeals {
-    input: Vec<NISealVerifyInfo>,
     result: anyhow::Result<Vec<bool>>,
 }
 
@@ -763,16 +756,6 @@ impl MockRuntime {
     ) {
         let a = ExpectBatchVerifySeals { input, result };
         self.expectations.borrow_mut().expect_batch_verify_seals = Some(a);
-    }
-
-    #[allow(dead_code)]
-    pub fn expect_batch_verify_ni_seals(
-        &self,
-        input: Vec<NISealVerifyInfo>,
-        result: anyhow::Result<Vec<bool>>,
-    ) {
-        let a = ExpectBatchVerifyNISeals { input, result };
-        self.expectations.borrow_mut().expect_batch_verify_ni_seals = Some(a);
     }
 
     #[allow(dead_code)]
@@ -1500,30 +1483,6 @@ impl Primitives for MockRuntime {
         exp.result
     }
 
-    fn batch_verify_ni_seals(&self, batch: &[NISealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
-        let exp = self
-            .expectations
-            .borrow_mut()
-            .expect_batch_verify_ni_seals
-            .take()
-            .expect("unexpected call to batch verify ni_seals");
-        assert_eq!(exp.input.len(), batch.len(), "length mismatch");
-
-        for (i, exp_svi) in exp.input.iter().enumerate() {
-            assert_eq!(
-                exp_svi.sealed_cid, batch[i].sealed_cid,
-                "sealed CID mismatch at index {}",
-                i
-            );
-            assert_eq!(
-                exp_svi.unsealed_cid, batch[i].unsealed_cid,
-                "unsealed CID mismatch at index {}",
-                i
-            );
-        }
-        exp.result
-    }
-
     fn verify_aggregate_seals(
         &self,
         aggregate: &AggregateSealVerifyProofAndInfos,
@@ -1669,7 +1628,6 @@ pub struct FakePrimitives {
     pub verify_consensus_fault:
         RefCell<Option<fn(&[u8], &[u8], &[u8]) -> Result<Option<ConsensusFault>, Error>>>,
     pub batch_verify_seals: RefCell<Option<fn(&[SealVerifyInfo]) -> Result<Vec<bool>>>>,
-    pub batch_verify_ni_seals: RefCell<Option<fn(&[NISealVerifyInfo]) -> Result<Vec<bool>>>>,
     pub verify_aggregate_seals:
         RefCell<Option<fn(&AggregateSealVerifyProofAndInfos) -> Result<(), Error>>>,
     pub verify_signature: RefCell<Option<fn(&Signature, &Address, &[u8]) -> Result<(), Error>>>,
@@ -1795,14 +1753,6 @@ impl Primitives for FakePrimitives {
 
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> Result<Vec<bool>> {
         if let Some(override_fn) = *self.batch_verify_seals.borrow() {
-            override_fn(batch)
-        } else {
-            Ok(vec![true; batch.len()])
-        }
-    }
-
-    fn batch_verify_ni_seals(&self, batch: &[NISealVerifyInfo]) -> Result<Vec<bool>> {
-        if let Some(override_fn) = *self.batch_verify_ni_seals.borrow() {
             override_fn(batch)
         } else {
             Ok(vec![true; batch.len()])
