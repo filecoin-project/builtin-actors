@@ -1955,7 +1955,35 @@ impl Actor {
         rt: &impl Runtime,
         params: ProveCommitSectorsNIParams,
     ) -> Result<(), ActorError> {
-        info!("Test: prove_commit_sectors_ni");
+        if params.sectors.is_empty() {
+            return Err(actor_error!(illegal_argument, "batch empty"));
+        }
+
+        let curr_epoch = rt.curr_epoch();
+        let challenge_earliest = curr_epoch - rt.policy().max_prove_commit_ni_randomness_lookback;
+        for sector in params.sectors.iter() {
+            if !is_sealed_sector(&sector.sealed_cid) {
+                return Err(actor_error!(illegal_argument, "sealed CID had wrong prefix"));
+            }
+
+            if sector.seal_rand_epoch >= curr_epoch {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "seal challenge epoch {} must be before now {}",
+                    sector.seal_rand_epoch,
+                    curr_epoch
+                ));
+            }
+
+            if sector.seal_rand_epoch < challenge_earliest {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "seal challenge epoch {} too old, must be after {}",
+                    sector.seal_rand_epoch,
+                    challenge_earliest
+                ));
+            }
+        }
 
         let state: State = rt.state()?;
         let store = rt.store();
@@ -1970,62 +1998,66 @@ impl Actor {
 
         let miner_id = rt.message().receiver().id().unwrap();
 
-        let mut sectors_to_add = Vec::new();
-        let mut total_pledge = TokenAmount::zero();
+        let base_sector_power = base_power_for_sector(info.sector_size);
 
-        for (i, sector) in params.sectors.iter().enumerate() {
-            let seal_verify_info = NISealVerifyInfo {
+        let rew = request_current_epoch_block_reward(rt)?;
+        let pwr = request_current_total_power(rt)?;
+        let circulating_supply = rt.total_fil_circ_supply();
+        let pledge_inputs = NetworkPledgeInputs {
+            network_qap: pwr.quality_adj_power_smoothed,
+            network_baseline: rew.this_epoch_baseline_power,
+            circulating_supply,
+            epoch_reward: rew.this_epoch_reward_smoothed,
+        };
+
+        let initial_pledge = initial_pledge_for_power(
+            &base_sector_power,
+            &pledge_inputs.network_baseline,
+            &pledge_inputs.epoch_reward,
+            &pledge_inputs.network_qap,
+            &pledge_inputs.circulating_supply,
+        );
+
+        let day_reward = expected_reward_for_power(
+            &pledge_inputs.epoch_reward,
+            &pledge_inputs.network_qap,
+            &base_sector_power,
+            fil_actors_runtime::EPOCHS_IN_DAY,
+        );
+
+        let storage_pledge = expected_reward_for_power(
+            &pledge_inputs.epoch_reward,
+            &pledge_inputs.network_qap,
+            &base_sector_power,
+            INITIAL_PLEDGE_PROJECTION_PERIOD,
+        );
+
+        let sector_verify_info = params
+            .sectors
+            .iter()
+            .zip(params.sector_proofs.into_iter())
+            .map(|(sector, proof)| NISealVerifyInfo {
                 registered_proof: params.seal_proof_type,
                 sector_id: fvm_shared::sector::SectorID {
                     miner: miner_id,
                     number: sector.sector_number,
                 },
                 randomness: Randomness(Vec::new()),
-                proof: params.sector_proofs[i].clone().into(),
+                proof: proof.into(),
                 sealed_cid: sector.sealed_cid,
                 unsealed_cid: CompactCommD::empty().get_cid(params.seal_proof_type).unwrap(),
-            };
-            rt.batch_verify_ni_seals(&vec![seal_verify_info])
-                .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
+            })
+            .collect::<Vec<_>>();
+        let sector_verifications = rt
+            .batch_verify_ni_seals(&sector_verify_info)
+            .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
 
-            let duration = sector.expiration - activation_epoch;
-            let power =
-                qa_power_for_weight(info.sector_size, duration, &BigInt::zero(), &BigInt::zero());
-
-            let rew = request_current_epoch_block_reward(rt)?;
-            let pwr = request_current_total_power(rt)?;
-            let circulating_supply = rt.total_fil_circ_supply();
-            let pledge_inputs = NetworkPledgeInputs {
-                network_qap: pwr.quality_adj_power_smoothed,
-                network_baseline: rew.this_epoch_baseline_power,
-                circulating_supply,
-                epoch_reward: rew.this_epoch_reward_smoothed,
-            };
-
-            let storage_pledge = expected_reward_for_power(
-                &pledge_inputs.epoch_reward,
-                &pledge_inputs.network_qap,
-                &power,
-                INITIAL_PLEDGE_PROJECTION_PERIOD,
-            );
-
-            let initial_pledge = initial_pledge_for_power(
-                &power,
-                &pledge_inputs.network_baseline,
-                &pledge_inputs.epoch_reward,
-                &pledge_inputs.network_qap,
-                &pledge_inputs.circulating_supply,
-            );
-
-            let day_reward = expected_reward_for_power(
-                &pledge_inputs.epoch_reward,
-                &pledge_inputs.network_qap,
-                &power,
-                fil_actors_runtime::EPOCHS_IN_DAY,
-            );
-            total_pledge += &initial_pledge;
-
-            let new_sector_info = SectorOnChainInfo {
+        let sectors_to_add = params
+            .sectors
+            .into_iter()
+            .zip(sector_verifications)
+            .filter(|(_, verified)| *verified)
+            .map(|(sector, _)| SectorOnChainInfo {
                 sector_number: sector.sector_number,
                 seal_proof: params.seal_proof_type,
                 sealed_cid: sector.sealed_cid,
@@ -2034,26 +2066,38 @@ impl Actor {
                 activation: activation_epoch,
                 deal_weight: DealWeight::zero(),
                 verified_deal_weight: DealWeight::zero(),
-                initial_pledge: initial_pledge,
-                expected_day_reward: day_reward,
-                expected_storage_pledge: storage_pledge,
+                initial_pledge: initial_pledge.clone(),
+                expected_day_reward: day_reward.clone(),
+                expected_storage_pledge: storage_pledge.clone(),
                 power_base_epoch: activation_epoch,
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
-            };
+            })
+            .collect::<Vec<SectorOnChainInfo>>();
 
-            sectors_to_add.push(new_sector_info);
-        }
+        let total_pledge = BigInt::from(sectors_to_add.len()) * initial_pledge;
 
         rt.transaction(|state: &mut State, rt| {
-            state.put_sectors(store, sectors_to_add).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to put new sectors")
-            })?;
+            let current_balance = rt.current_balance();
+            if current_balance < total_pledge {
+                return Err(actor_error!(
+                    insufficient_funds,
+                    "insufficient funds for aggregate initial pledge requirement {}, available: {}",
+                    total_pledge,
+                    current_balance
+                ));
+            }
+
+            state
+                .put_sectors(store, sectors_to_add)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || "failed to put new sectors")?;
 
             state
                 .add_initial_pledge(&total_pledge)
-                .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    "failed to add initial pledgs"
+                })?;
 
             Ok(())
         })?;

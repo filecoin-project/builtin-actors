@@ -158,6 +158,10 @@ pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> Stor
     qa_power_for_weight(size, duration, &sector.deal_weight, &sector.verified_deal_weight)
 }
 
+pub fn base_power_for_sector(size: SectorSize) -> StoragePower {
+    BigInt::from(size as u64) * &*QUALITY_BASE_MULTIPLIER
+}
+
 /// Determine maximum number of deal miner's sector can hold
 pub fn sector_deals_max(policy: &Policy, size: SectorSize) -> u64 {
     cmp::max(256, size as u64 / policy.deal_limit_denominator)

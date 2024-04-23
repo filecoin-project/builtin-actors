@@ -77,6 +77,8 @@ pub struct Policy {
 
     pub max_pre_commit_randomness_lookback: ChainEpoch,
 
+    pub max_prove_commit_ni_randomness_lookback: ChainEpoch,
+
     /// Number of epochs between publishing the precommit and when the challenge for interactive PoRep is drawn
     /// used to ensure it is not predictable by miner.
     pub pre_commit_challenge_delay: ChainEpoch,
@@ -182,6 +184,7 @@ impl Default for Policy {
             posted_partitions_max: policy_constants::POSTED_PARTITIONS_MAX,
             max_pre_commit_randomness_lookback:
                 policy_constants::MAX_PRE_COMMIT_RANDOMNESS_LOOKBACK,
+            max_prove_commit_ni_randomness_lookback: policy_constants::MAX_PROVE_COMMIT_NI_LOOKBACK,
             pre_commit_challenge_delay: policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
             wpost_challenge_lookback: policy_constants::WPOST_CHALLENGE_LOOKBACK,
             fault_declaration_cutoff: policy_constants::FAULT_DECLARATION_CUTOFF,
@@ -290,6 +293,8 @@ pub mod policy_constants {
     pub const PRE_COMMIT_CHALLENGE_DELAY: ChainEpoch = 150;
     #[cfg(feature = "short-precommit")]
     pub const PRE_COMMIT_CHALLENGE_DELAY: ChainEpoch = 10;
+
+    pub const MAX_PROVE_COMMIT_NI_LOOKBACK: ChainEpoch = 365 * EPOCHS_IN_DAY + CHAIN_FINALITY;
 
     // This lookback exists so that deadline windows can be non-overlapping (which make the programming simpler)
     // but without making the miner wait for chain stability before being able to start on PoSt computation.
