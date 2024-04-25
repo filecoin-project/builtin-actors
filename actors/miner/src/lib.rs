@@ -1975,6 +1975,44 @@ impl Actor {
             ));
         }
 
+        if params.sector_proofs.is_empty() == params.aggregate_proof.is_empty() {
+            return Err(actor_error!(
+                illegal_argument,
+                "exactly one of sector proofs or aggregate proof must be non-empty"
+            ));
+        }
+
+        if !params.sector_proofs.is_empty() {
+            // Batched proofs, one per sector
+            if params.aggregate_proof_type.is_some() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "aggregate proof type must be null with batched proofs"
+                ));
+            }
+            if params.sectors.len() != params.sector_proofs.len() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "mismatched lengths: {} sectors, {} proofs",
+                    params.sectors.len(),
+                    params.sector_proofs.len()
+                ));
+            }
+            validate_seal_proofs(params.seal_proof_type, &params.sector_proofs)?;
+        } else {
+            if params.aggregate_proof_type != Some(RegisteredAggregateProof::SnarkPackV2) {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "aggregate proof type must be SnarkPackV2"
+                ));
+            }
+            validate_seal_aggregate_proof(
+                &params.aggregate_proof,
+                params.sectors.len() as u64,
+                policy,
+            )?;
+        }
+
         let curr_epoch = rt.curr_epoch();
         let challenge_earliest = curr_epoch - rt.policy().max_prove_commit_ni_randomness_lookback;
         for sector in params.sectors.iter() {
@@ -2003,16 +2041,20 @@ impl Actor {
 
         let state: State = rt.state()?;
         let store = rt.store();
-        let policy = rt.policy();
         let miner_id = rt.message().receiver().id().unwrap();
         let info = get_miner_info(rt.store(), &state)?;
         let activation_epoch = rt.curr_epoch();
 
+        if consensus_fault_active(&info, rt.curr_epoch()) {
+            return Err(actor_error!(
+                forbidden,
+                "prove-commit-ni not allowed during active consensus fault"
+            ));
+        }
+
         rt.validate_immediate_caller_is(
             info.control_addresses.iter().chain(&[info.worker, info.owner]),
         )?;
-
-        let miner_id = rt.message().receiver().id().unwrap();
 
         let base_sector_power = base_power_for_sector(info.sector_size);
 
@@ -2109,14 +2151,31 @@ impl Actor {
             }
 
             state
-                .put_sectors(store, sectors_to_add)
+                .put_sectors(store, sectors_to_add.clone())
                 .with_context_code(ExitCode::USR_ILLEGAL_STATE, || "failed to put new sectors")?;
+
+            state
+                .assign_sectors_to_deadlines(
+                    policy,
+                    store,
+                    rt.curr_epoch(),
+                    sectors_to_add,
+                    info.window_post_partition_sectors,
+                    info.sector_size,
+                )
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    "failed to assign new sectors to deadlines"
+                })?;
 
             state
                 .add_initial_pledge(&total_pledge)
                 .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                     "failed to add initial pledgs"
                 })?;
+
+            state
+                .check_balance_invariants(&rt.current_balance())
+                .map_err(balance_invariants_broken)?;
 
             Ok(())
         })?;

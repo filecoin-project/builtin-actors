@@ -562,18 +562,23 @@ impl ActorHarness {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192].into() }
     }
 
-    pub fn make_prove_commit_ni_params(&self, sector_no: u64) -> ProveCommitSectorsNIParams {
+    pub fn make_prove_commit_ni_params(
+        &self,
+        sector_no: u64,
+        seal_rand_epoch: ChainEpoch,
+        expiration: ChainEpoch,
+    ) -> ProveCommitSectorsNIParams {
         let sector_ni_activation_info = SectorNIActivationInfo {
             sealer_id: Some(2000),
             sector_number: sector_no,
             sealed_cid: make_sector_commr(sector_no),
-            seal_rand_epoch: 200,
-            expiration: 500,
+            seal_rand_epoch,
+            expiration: expiration,
         };
 
         ProveCommitSectorsNIParams {
             sectors: vec![sector_ni_activation_info],
-            seal_proof_type: RegisteredSealProof::StackedDRG8MiBV1P1_Feat_NiPoRep,
+            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1_Feat_NiPoRep,
             sector_proofs: vec![RawBytes::new(vec![1, 2, 3, 4])],
             aggregate_proof: RawBytes::new(Vec::new()),
             aggregate_proof_type: None,
@@ -860,6 +865,7 @@ impl ActorHarness {
         params: ProveCommitSectorsNIParams,
     ) -> Result<(), ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        self.expect_query_network_info(rt);
 
         let result = rt.call::<Actor>(
             Method::ProveCommitSectorsNI as u64,

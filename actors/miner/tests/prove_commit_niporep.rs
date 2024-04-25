@@ -2,7 +2,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{
     clock::ChainEpoch,
     randomness::Randomness,
-    sector::{InteractiveSealRandomness, NISealVerifyInfo, SealRandomness, SealVerifyInfo},
+    sector::{InteractiveSealRandomness, SealVerifyInfo},
 };
 
 use fil_actor_miner::{Actor, CompactCommD, Method};
@@ -21,29 +21,35 @@ fn prove_single_sector_ni() {
     let miner = rt.receiver.id().unwrap();
     info!("miner: {:?}", miner);
 
-    let precommit_epoch = PERIOD_OFFSET + 1;
-    rt.set_epoch(precommit_epoch);
+    let seal_randomness_epoch = PERIOD_OFFSET + 1;
+    let expiration = seal_randomness_epoch + 1000;
 
+    rt.set_epoch(seal_randomness_epoch);
     h.construct_and_verify(&rt);
+
+    rt.set_epoch(seal_randomness_epoch + 400);
     // let dl_info = h.deadline(&rt);
 
-    let params = h.make_prove_commit_ni_params(100);
+    let params = h.make_prove_commit_ni_params(100, seal_randomness_epoch, expiration);
 
-    let ni_seal_verify_info = NISealVerifyInfo {
+    let seal_verify_info = SealVerifyInfo {
         registered_proof: params.seal_proof_type,
         sector_id: fvm_shared::sector::SectorID { miner, number: params.sectors[0].sector_number },
         randomness: Randomness(Vec::new()),
         proof: params.sector_proofs[0].clone().into(),
         sealed_cid: params.sectors[0].sealed_cid,
         unsealed_cid: CompactCommD::empty().get_cid(params.seal_proof_type).unwrap(),
+        deal_ids: Vec::new(),
+        interactive_randomness: Randomness(Vec::new()),
     };
 
-    rt.expect_batch_verify_ni_seals(vec![ni_seal_verify_info], Ok(vec![]));
+    rt.expect_batch_verify_seals(vec![seal_verify_info], Ok(vec![]));
+    log::info!("called addr {:?}", h.caller_addrs());
+    rt.expect_validate_caller_addr(h.caller_addrs());
 
     // Call prove commit niporep
-    let res = rt.call::<Actor>(
-        Method::ProveCommitSectorsNI as u64,
-        IpldBlock::serialize_cbor(&params).unwrap(),
-    );
+    let res = h.prove_commit_sectors_ni(&rt, params);
     info!("prove_commit_ni res: {:?}", res);
+
+    assert!(res.is_ok());
 }
