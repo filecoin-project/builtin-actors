@@ -95,6 +95,7 @@ pretty_env_logger = "0.4.0"
 serde_repr = "0.1.8"
 unsigned-varint = "0.7.1"
 rand_chacha = "0.3.1"
+const-hex = "1.11.3"
 
 # Crypto
 libsecp256k1 = { version = "0.7.1", default-features = false }
