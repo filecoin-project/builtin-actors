@@ -1567,3 +1567,109 @@ mod datacap {
         }
     }
 }
+
+// Tests to match with Go github.com/filecoin-project/go-state-types/builtin/*/verifreg
+mod serialization {
+    use std::str::FromStr;
+
+    use cid::Cid;
+    use fil_actor_verifreg::{AllocationClaim, ClaimAllocationsParams, SectorAllocationClaims};
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::piece::PaddedPieceSize;
+
+    #[test]
+    fn claim_allocations_params() {
+        let test_cases = vec![
+            (
+                /*
+                 82                                                # array(2)
+                   80                                              #   array(0)
+                   f4                                              #   false
+                */
+                ClaimAllocationsParams { sectors: vec![], all_or_nothing: false },
+                "8280f4",
+            ),
+            (
+                /*
+                 82                                                # array(2)
+                   81                                              #   array(1)
+                     83                                            #     array(3)
+                       18 65                                       #       uint(101)
+                       18 ca                                       #       uint(202)
+                       80                                          #       array(0)
+                   f5                                              #   true
+                */
+                ClaimAllocationsParams {
+                    sectors: vec![SectorAllocationClaims {
+                        sector: 101,
+                        expiry: 202,
+                        claims: vec![],
+                    }],
+                    all_or_nothing: true,
+                },
+                "828183186518ca80f5",
+            ),
+            (
+                /*
+                 82                                                # array(2)
+                   82                                              #   array(2)
+                     83                                            #     array(3)
+                       18 65                                       #       uint(101)
+                       18 ca                                       #       uint(202)
+                       82                                          #       array(2)
+                         84                                        #         array(4)
+                           19 012f                                 #           uint(303)
+                           19 0194                                 #           uint(404)
+                           d8 2a                                   #           tag(42)
+                             49                                    #             bytes(9)
+                               000181e20392200100                  #               "\x00\x01\x81â\x03\x92 \x01\x00"
+                           19 01f9                                 #           uint(505)
+                         84                                        #         array(4)
+                           19 025e                                 #           uint(606)
+                           19 02c3                                 #           uint(707)
+                           d8 2a                                   #           tag(42)
+                             49                                    #             bytes(9)
+                               000181e20392200101                  #               "\x00\x01\x81â\x03\x92 \x01\x01"
+                           19 0328                                 #           uint(808)
+                     83                                            #     array(3)
+                       19 012f                                     #       uint(303)
+                       19 0194                                     #       uint(404)
+                       80                                          #       array(0)
+                   f5                                              #   true
+                */
+                ClaimAllocationsParams {
+                    sectors: vec![
+                        SectorAllocationClaims {
+                            sector: 101,
+                            expiry: 202,
+                            claims: vec![
+                                AllocationClaim {
+                                    client: 303,
+                                    allocation_id: 404,
+                                    data: Cid::from_str("baga6ea4seaaqa").unwrap(),
+                                    size: PaddedPieceSize(505),
+                                },
+                                AllocationClaim {
+                                    client: 606,
+                                    allocation_id: 707,
+                                    data: Cid::from_str("baga6ea4seaaqc").unwrap(),
+                                    size: PaddedPieceSize(808),
+                                },
+                            ],
+                        },
+                        SectorAllocationClaims { sector: 303, expiry: 404, claims: vec![] },
+                    ],
+                    all_or_nothing: true,
+                },
+                "828283186518ca828419012f190194d82a49000181e203922001001901f98419025e1902c3d82a49000181e203922001011903288319012f19019480f5",
+            ),
+        ];
+
+        for (params, expected_hex) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
+            assert_eq!(const_hex::encode(&encoded.data), expected_hex);
+            let decoded: ClaimAllocationsParams = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(params, decoded);
+        }
+    }
+}
