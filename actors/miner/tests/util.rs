@@ -565,26 +565,48 @@ impl ActorHarness {
     pub fn make_prove_commit_ni_params(
         &self,
         sealer_id: ActorID,
-        sector_no: u64,
+        sector_nums: &[SectorNumber],
         seal_rand_epoch: ChainEpoch,
         expiration: ChainEpoch,
+        aggregate: bool,
     ) -> ProveCommitSectorsNIParams {
-        let sector_ni_activation_info = SectorNIActivationInfo {
-            sealing_number: sector_no,
-            sealer_id,
-            sector_number: sector_no,
-            sealed_cid: make_sector_commr(sector_no),
-            seal_rand_epoch,
-            expiration: expiration,
-        };
+        fn make_proof(i: u8) -> RawBytes {
+            RawBytes::new(vec![i, i, i, i])
+        }
 
-        ProveCommitSectorsNIParams {
-            sectors: vec![sector_ni_activation_info],
-            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1_Feat_NiPoRep,
-            sector_proofs: vec![RawBytes::new(vec![1, 2, 3, 4])],
-            aggregate_proof: RawBytes::new(Vec::new()),
-            aggregate_proof_type: None,
-            require_activation_success: true,
+        let sectors = sector_nums
+            .iter()
+            .map(|sector_num| SectorNIActivationInfo {
+                sealing_number: *sector_num,
+                sealer_id,
+                sector_number: *sector_num,
+                sealed_cid: make_sector_commr(*sector_num),
+                seal_rand_epoch,
+                expiration: expiration,
+            })
+            .collect::<Vec<_>>();
+
+        if aggregate {
+            ProveCommitSectorsNIParams {
+                sectors,
+                seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1_Feat_NiPoRep,
+                sector_proofs: Vec::new(),
+                aggregate_proof: make_proof(0),
+                aggregate_proof_type: Some(RegisteredAggregateProof::SnarkPackV2),
+                require_activation_success: true,
+            }
+        } else {
+            ProveCommitSectorsNIParams {
+                sectors,
+                seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1_Feat_NiPoRep,
+                sector_proofs: sector_nums
+                    .iter()
+                    .map(|sector_num| make_proof(*sector_num as u8))
+                    .collect(),
+                aggregate_proof: RawBytes::new(Vec::new()),
+                aggregate_proof_type: None,
+                require_activation_success: true,
+            }
         }
     }
 

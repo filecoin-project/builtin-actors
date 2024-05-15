@@ -1460,6 +1460,7 @@ impl Primitives for MockRuntime {
     }
 
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
+        log::info!("batch_verify_seals: {:?}", batch);
         let exp = self
             .expectations
             .borrow_mut()

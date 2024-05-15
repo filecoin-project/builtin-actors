@@ -1957,6 +1957,8 @@ impl Actor {
         params: ProveCommitSectorsNIParams,
     ) -> Result<(), ActorError> {
         let policy = rt.policy();
+        let miner_id = rt.message().receiver().id().unwrap();
+
         if params.sectors.is_empty() {
             return Err(actor_error!(illegal_argument, "batch empty"));
         } else if params.sectors.len() > policy.prove_commit_ni_sector_batch_max_size {
@@ -2014,6 +2016,13 @@ impl Actor {
             )?;
         }
 
+        if params.sectors.iter().any(|sector| sector.sealer_id != miner_id) {
+            return Err(actor_error!(
+                illegal_argument,
+                "all sectors must be sealed for the same receiver actor"
+            ));
+        }
+
         let curr_epoch = rt.curr_epoch();
         let challenge_earliest = curr_epoch - rt.policy().max_prove_commit_ni_randomness_lookback;
         let unsealed_cid = CompactCommD::empty().get_cid(params.seal_proof_type).unwrap();
@@ -2045,7 +2054,6 @@ impl Actor {
 
         let state: State = rt.state()?;
         let store = rt.store();
-        let miner_id = rt.message().receiver().id().unwrap();
         let info = get_miner_info(rt.store(), &state)?;
         let activation_epoch = rt.curr_epoch();
 
@@ -2094,59 +2102,91 @@ impl Actor {
             INITIAL_PLEDGE_PROJECTION_PERIOD,
         );
 
-        let sector_verify_info = params
+        let proof_inputs = params
             .sectors
             .iter()
-            .filter(|sector| sector.sealer_id == miner_id)
-            .zip(params.sector_proofs.into_iter())
-            .map(|(sector, proof)| -> Result<SealVerifyInfo, ActorError> {
-                let randomness = Randomness(
-                    rt.get_randomness_from_tickets(
-                        DomainSeparationTag::SealRandomness,
-                        sector.seal_rand_epoch,
-                        &entropy,
-                    )?
-                    .into(),
-                );
-                let interactive_randomness = Randomness(
-                    cid_to_replica_commitment_v1(&sector.sealed_cid)
-                        .map_err(|e| {
-                            actor_error!(
-                                illegal_argument,
-                                "invalid sealed CID {}: {}",
-                                sector.sealed_cid,
-                                e
-                            )
-                        })?
-                        .to_vec(),
-                );
-
-                Ok(SealVerifyInfo {
+            .map(|sector| -> Result<SectorSealProofInput, ActorError> {
+                Ok(SectorSealProofInput {
                     registered_proof: params.seal_proof_type,
-                    sector_id: fvm_shared::sector::SectorID {
-                        miner: miner_id,
-                        number: sector.sector_number,
-                    },
-                    randomness,
-                    proof: proof.into(),
+                    sector_number: sector.sector_number,
+                    randomness: Randomness(
+                        rt.get_randomness_from_tickets(
+                            DomainSeparationTag::SealRandomness,
+                            sector.seal_rand_epoch,
+                            &entropy,
+                        )?
+                        .into(),
+                    ),
+                    interactive_randomness: Randomness(
+                        cid_to_replica_commitment_v1(&sector.sealed_cid)
+                            .map_err(|e| {
+                                actor_error!(
+                                    illegal_argument,
+                                    "invalid sealed CID {}: {}",
+                                    sector.sealed_cid,
+                                    e
+                                )
+                            })?
+                            .to_vec(),
+                    ),
                     sealed_cid: sector.sealed_cid,
                     unsealed_cid,
-                    deal_ids: vec![],
-                    interactive_randomness,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let sector_verifications = rt
-            .batch_verify_seals(&sector_verify_info)
-            .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
+        let verified_sectors = if !params.sector_proofs.is_empty() {
+            let sector_verify_info = proof_inputs
+                .iter()
+                .zip(params.sector_proofs.into_iter())
+                .map(|(proof_inputs, proof)| SealVerifyInfo {
+                    registered_proof: params.seal_proof_type,
+                    sector_id: fvm_shared::sector::SectorID {
+                        miner: miner_id,
+                        number: proof_inputs.sector_number,
+                    },
+                    randomness: proof_inputs.randomness.clone(),
+                    proof: proof.into(),
+                    sealed_cid: proof_inputs.sealed_cid,
+                    unsealed_cid,
+                    deal_ids: vec![],
+                    interactive_randomness: proof_inputs.interactive_randomness.clone(),
+                })
+                .collect::<Vec<_>>();
 
-        let sectors_to_add = params
-            .sectors
-            .into_iter()
-            .zip(sector_verifications)
-            .filter(|(_, verified)| *verified)
-            .map(|(sector, _)| SectorOnChainInfo {
+            let sector_verifications = rt
+                .batch_verify_seals(&sector_verify_info)
+                .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
+            log::info!("sector_verifications: {:?}", sector_verifications);
+            params
+                .sectors
+                .into_iter()
+                .zip(sector_verifications)
+                .filter(|(_, verified)| *verified)
+                .map(|(sector, _)| sector)
+                .collect::<Vec<_>>()
+        } else {
+            verify_aggregate_seal(
+                rt,
+                // All the proof inputs, even for invalid pre-commits,
+                // must be provided as witnesses to the aggregate proof.
+                &proof_inputs,
+                miner_id,
+                params.seal_proof_type,
+                params.aggregate_proof_type.unwrap(),
+                &params.aggregate_proof,
+            )?;
+
+            params.sectors
+        };
+
+        if verified_sectors.is_empty() {
+            return Err(actor_error!(illegal_argument, "no valid proofs specified"));
+        }
+
+        let sectors_to_add = verified_sectors
+            .iter()
+            .map(|sector| SectorOnChainInfo {
                 sector_number: sector.sector_number,
                 seal_proof: params.seal_proof_type,
                 sealed_cid: sector.sealed_cid,
