@@ -1470,14 +1470,20 @@ impl Primitives for MockRuntime {
 
         for (i, exp_svi) in exp.input.iter().enumerate() {
             assert_eq!(
-                exp_svi.sealed_cid, batch[i].sealed_cid,
-                "sealed CID mismatch at index {}",
-                i
+                exp_svi.registered_proof, batch[i].registered_proof,
+                "registered proof mismatch at index {i}"
             );
+            assert_eq!(exp_svi.sector_id, batch[i].sector_id, "sector id mismatch at index {i}");
+            assert_eq!(exp_svi.proof, batch[i].proof, "proof mismatch at index {i}");
+            assert_eq!(exp_svi.randomness, batch[i].randomness, "randomness mismatch at index {i}");
+            assert_eq!(
+                exp_svi.interactive_randomness, batch[i].interactive_randomness,
+                "interactive randomness mismatch at index {i}"
+            );
+            assert_eq!(exp_svi.sealed_cid, batch[i].sealed_cid, "sealed CID mismatch at index {i}");
             assert_eq!(
                 exp_svi.unsealed_cid, batch[i].unsealed_cid,
-                "unsealed CID mismatch at index {}",
-                i
+                "unsealed CID mismatch at index {i}"
             );
         }
         exp.result

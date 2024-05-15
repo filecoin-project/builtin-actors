@@ -163,7 +163,7 @@ pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> Stor
 }
 
 pub fn base_power_for_sector(size: SectorSize) -> StoragePower {
-    BigInt::from(size as u64) * &*QUALITY_BASE_MULTIPLIER
+    BigInt::from(size as u64)
 }
 
 /// Determine maximum number of deal miner's sector can hold

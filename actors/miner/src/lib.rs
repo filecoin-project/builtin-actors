@@ -18,6 +18,7 @@ use fvm_ipld_encoding::{from_slice, BytesDe, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::commcid::cid_to_replica_commitment_v1;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::*;
@@ -2015,6 +2016,9 @@ impl Actor {
 
         let curr_epoch = rt.curr_epoch();
         let challenge_earliest = curr_epoch - rt.policy().max_prove_commit_ni_randomness_lookback;
+        let unsealed_cid = CompactCommD::empty().get_cid(params.seal_proof_type).unwrap();
+        let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
+
         for sector in params.sectors.iter() {
             if !is_sealed_sector(&sector.sealed_cid) {
                 return Err(actor_error!(illegal_argument, "sealed CID had wrong prefix"));
@@ -2093,21 +2097,45 @@ impl Actor {
         let sector_verify_info = params
             .sectors
             .iter()
+            .filter(|sector| sector.sealer_id == miner_id)
             .zip(params.sector_proofs.into_iter())
-            .map(|(sector, proof)| SealVerifyInfo {
-                registered_proof: params.seal_proof_type,
-                sector_id: fvm_shared::sector::SectorID {
-                    miner: miner_id,
-                    number: sector.sector_number,
-                },
-                randomness: Randomness(Vec::new()),
-                proof: proof.into(),
-                sealed_cid: sector.sealed_cid,
-                unsealed_cid: CompactCommD::empty().get_cid(params.seal_proof_type).unwrap(),
-                deal_ids: vec![],
-                interactive_randomness: Randomness(Vec::new()),
+            .map(|(sector, proof)| -> Result<SealVerifyInfo, ActorError> {
+                let randomness = Randomness(
+                    rt.get_randomness_from_tickets(
+                        DomainSeparationTag::SealRandomness,
+                        sector.seal_rand_epoch,
+                        &entropy,
+                    )?
+                    .into(),
+                );
+                let interactive_randomness = Randomness(
+                    cid_to_replica_commitment_v1(&sector.sealed_cid)
+                        .map_err(|e| {
+                            actor_error!(
+                                illegal_argument,
+                                "invalid sealed CID {}: {}",
+                                sector.sealed_cid,
+                                e
+                            )
+                        })?
+                        .to_vec(),
+                );
+
+                Ok(SealVerifyInfo {
+                    registered_proof: params.seal_proof_type,
+                    sector_id: fvm_shared::sector::SectorID {
+                        miner: miner_id,
+                        number: sector.sector_number,
+                    },
+                    randomness,
+                    proof: proof.into(),
+                    sealed_cid: sector.sealed_cid,
+                    unsealed_cid,
+                    deal_ids: vec![],
+                    interactive_randomness,
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
 
         let sector_verifications = rt
             .batch_verify_seals(&sector_verify_info)
@@ -2141,12 +2169,17 @@ impl Actor {
 
         rt.transaction(|state: &mut State, rt| {
             let current_balance = rt.current_balance();
-            if current_balance < total_pledge {
+            let available_balance = state
+                .get_unlocked_balance(&current_balance)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    "failed to calculate unlocked balance"
+                })?;
+            if available_balance < total_pledge {
                 return Err(actor_error!(
                     insufficient_funds,
                     "insufficient funds for aggregate initial pledge requirement {}, available: {}",
                     total_pledge,
-                    current_balance
+                    available_balance
                 ));
             }
 

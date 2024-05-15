@@ -138,9 +138,10 @@ pub struct ProveCommitSectorParams {
 // Note no UnsealedCID because it must be "zero" data.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorNIActivationInfo {
-    pub sealer_id: Option<ActorID>,
-    pub sector_number: SectorNumber,
+    pub sealing_number: SectorNumber,
+    pub sealer_id: ActorID,
     pub sealed_cid: Cid, // CommR
+    pub sector_number: SectorNumber,
     pub seal_rand_epoch: ChainEpoch,
     pub expiration: ChainEpoch,
 }

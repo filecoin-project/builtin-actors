@@ -564,12 +564,14 @@ impl ActorHarness {
 
     pub fn make_prove_commit_ni_params(
         &self,
+        sealer_id: ActorID,
         sector_no: u64,
         seal_rand_epoch: ChainEpoch,
         expiration: ChainEpoch,
     ) -> ProveCommitSectorsNIParams {
         let sector_ni_activation_info = SectorNIActivationInfo {
-            sealer_id: Some(2000),
+            sealing_number: sector_no,
+            sealer_id,
             sector_number: sector_no,
             sealed_cid: make_sector_commr(sector_no),
             seal_rand_epoch,

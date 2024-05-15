@@ -45,7 +45,7 @@ pub fn prove_commit_sectors_niporep_test(v: &dyn VM) {
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(8_000),
     );
-    // let miner_id = maddr.id().unwrap();
+    let miner_id = maddr.id().unwrap();
 
     // Onboard a batch of sectors
     let expiration = v.epoch() + 2 * EPOCHS_IN_YEAR;
@@ -62,7 +62,8 @@ pub fn prove_commit_sectors_niporep_test(v: &dyn VM) {
     let sectors_info: Vec<SectorNIActivationInfo> = manifests
         .iter()
         .map(|sector_number| SectorNIActivationInfo {
-            sealer_id: Some(2000),
+            sealing_number: *sector_number,
+            sealer_id: miner_id,
             sector_number: *sector_number,
             sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
             seal_rand_epoch,
