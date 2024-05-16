@@ -651,6 +651,7 @@ impl State {
     ) -> Result<(), ActorError> {
         let mut provider_sectors = self.load_provider_sectors(store)?;
         for (provider, sector_deal_ids) in provider_sector_deal_ids {
+            let mut flush = false;
             let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, *provider)?;
             for (sector_number, deals_to_remove) in sector_deal_ids {
                 let existing_deal_ids = sector_deals
@@ -662,20 +663,51 @@ impl State {
                     // pretty fast.
                     // Loading into a HashSet could be an improvement for large collections of deals
                     // in a single sector being removed at one time.
-                    let new_deals = existing_deal_ids
+                    let new_deals: Vec<_> = existing_deal_ids
                         .iter()
                         .filter(|deal_id| !deals_to_remove.contains(*deal_id))
                         .cloned()
                         .collect();
+                    flush = true;
 
-                    sector_deals
-                        .set(sector_number, new_deals)
-                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                            format!("failed to set sector deals for {} {}", provider, sector_number)
-                        })?;
+                    if new_deals.is_empty() {
+                        sector_deals.delete(sector_number).with_context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            || {
+                                format!(
+                                    "failed to delete sector deals for {} {}",
+                                    provider, sector_number
+                                )
+                            },
+                        )?;
+                    } else {
+                        sector_deals.set(sector_number, new_deals).with_context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            || {
+                                format!(
+                                    "failed to set sector deals for {} {}",
+                                    provider, sector_number
+                                )
+                            },
+                        )?;
+                    }
                 }
             }
-            save_provider_sector_deals(&mut provider_sectors, *provider, &mut sector_deals)?;
+            if flush {
+                if sector_deals.is_empty() {
+                    provider_sectors
+                        .delete(provider)
+                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                            format!("failed to delete sector deals for {}", provider)
+                        })?;
+                } else {
+                    save_provider_sector_deals(
+                        &mut provider_sectors,
+                        *provider,
+                        &mut sector_deals,
+                    )?;
+                }
+            }
         }
         self.save_provider_sectors(&mut provider_sectors)?;
         Ok(())
