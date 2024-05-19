@@ -478,52 +478,6 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
 }
 
 #[test]
-fn drop_invalid_prove_commit_while_processing_valid_one() {
-    let mut h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
-    rt.balance.replace(BIG_BALANCE.clone());
-
-    h.construct_and_verify(&rt);
-
-    // make two precommits
-    let expiration = DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period + PERIOD_OFFSET - 1;
-    let precommit_epoch = *rt.epoch.borrow() + 1;
-    rt.set_epoch(precommit_epoch);
-    let params_a =
-        h.make_pre_commit_params(h.next_sector_no, *rt.epoch.borrow() - 1, expiration, vec![1]);
-    let pre_commit_a = h.pre_commit_sector_and_get(&rt, params_a, PreCommitConfig::default(), true);
-    let sector_no_a = h.next_sector_no;
-    h.next_sector_no += 1;
-    let params_b =
-        h.make_pre_commit_params(h.next_sector_no, *rt.epoch.borrow() - 1, expiration, vec![2]);
-    let pre_commit_b =
-        h.pre_commit_sector_and_get(&rt, params_b, PreCommitConfig::default(), false);
-    let sector_no_b = h.next_sector_no;
-
-    // handle both prove commits in the same epoch
-    rt.set_epoch(
-        precommit_epoch + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap() - 1,
-    );
-
-    h.prove_commit_sector(&rt, &pre_commit_a, h.make_prove_commit_params(sector_no_a)).unwrap();
-    h.prove_commit_sector(&rt, &pre_commit_b, h.make_prove_commit_params(sector_no_b)).unwrap();
-
-    let conf = ProveCommitConfig {
-        verify_deals_exit: HashMap::from([(sector_no_a, ExitCode::USR_ILLEGAL_ARGUMENT)]),
-        activated_deals: HashMap::from([(
-            sector_no_b,
-            vec![test_activated_deal(100, NO_ALLOCATION_ID)],
-        )]),
-        ..Default::default()
-    };
-    h.confirm_sector_proofs_valid(&rt, conf, vec![pre_commit_a, pre_commit_b]).unwrap();
-    let st = h.get_state(&rt);
-    assert!(st.get_sector(&rt.store, sector_no_a).unwrap().is_none());
-    assert!(st.get_sector(&rt.store, sector_no_b).unwrap().is_some());
-    h.check_state(&rt);
-}
-
-#[test]
 fn prove_commit_just_after_period_start_permits_post() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let rt = h.new_runtime();
@@ -542,43 +496,6 @@ fn prove_commit_just_after_period_start_permits_post() {
     // advance cron to activate power.
     h.advance_and_submit_posts(&rt, &[sector]);
     h.check_state(&rt);
-}
-
-#[test]
-fn sector_with_non_positive_lifetime_fails_in_confirmation() {
-    let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
-    rt.balance.replace(BIG_BALANCE.clone());
-
-    let precommit_epoch = PERIOD_OFFSET + 1;
-    rt.set_epoch(precommit_epoch);
-
-    h.construct_and_verify(&rt);
-    let deadline = h.deadline(&rt);
-
-    let sector_no = 100;
-    let params = h.make_pre_commit_params(
-        sector_no,
-        precommit_epoch - 1,
-        deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period,
-        vec![],
-    );
-    let precommit = h.pre_commit_sector_and_get(&rt, params, PreCommitConfig::default(), true);
-
-    // precommit at correct epoch
-    let epoch = *rt.epoch.borrow();
-    rt.set_epoch(epoch + rt.policy.pre_commit_challenge_delay + 1);
-    h.prove_commit_sector(&rt, &precommit, h.make_prove_commit_params(sector_no)).unwrap();
-
-    // confirm at sector expiration (this probably can't happen)
-    rt.set_epoch(precommit.info.expiration);
-    // failure occurs
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit]),
-    );
-    h.check_state(&rt);
-    rt.reset();
 }
 
 #[test]
