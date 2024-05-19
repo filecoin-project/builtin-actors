@@ -89,15 +89,6 @@ pub struct ChangeMultiaddrsParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ConfirmSectorProofsParams {
-    pub sectors: Vec<SectorNumber>,
-    pub reward_smoothed: FilterEstimate,
-    #[serde(with = "bigint_ser")]
-    pub reward_baseline_power: StoragePower,
-    pub quality_adj_power_smoothed: FilterEstimate,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct DeferredCronEventParams {
     #[serde(with = "strict_bytes")]
     pub event_payload: Vec<u8>,
@@ -127,6 +118,13 @@ pub struct SubmitWindowedPoStParams {
     pub chain_commit_epoch: ChainEpoch,
     /// The ticket randomness on the chain at the `chain_commit_epoch` on the chain this post is committed to.
     pub chain_commit_rand: Randomness,
+}
+
+// Deprecated as of FIP 0084 -- kept for legacy testing
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ProveCommitSectorParams {
+    pub sector_number: SectorNumber,
+    pub proof: RawBytes,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]

@@ -64,7 +64,7 @@ use fil_actor_miner::{
     ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
     ChangeBeneficiaryParams, ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams,
     CheckSectorProvenParams, CompactCommD, CompactPartitionsParams, CompactSectorNumbersParams,
-    ConfirmSectorProofsParams, CronEventPayload, DataActivationNotification, Deadline,
+    CronEventPayload, DataActivationNotification, Deadline,
     DeadlineInfo, Deadlines, DeclareFaultsParams, DeclareFaultsRecoveredParams,
     DeferredCronEventParams, DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet,
     ExtendSectorExpiration2Params, ExtendSectorExpirationParams, FaultDeclaration,

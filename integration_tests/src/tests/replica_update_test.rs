@@ -16,7 +16,7 @@ use fil_actor_market::Method as MarketMethod;
 use fil_actor_market::State as MarketState;
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
+    Method as MinerMethod, PowerPair, ProveReplicaUpdatesParams,
     ReplicaUpdate, SectorOnChainInfo, SectorOnChainInfoFlags, Sectors, State as MinerState,
     TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
@@ -38,7 +38,7 @@ use crate::util::{
     get_network_stats, invariant_failure_patterns, make_bitfield, market_publish_deal,
     miner_balance, miner_power, override_compute_unsealed_sector_cid, precommit_sectors_v2,
     prove_commit_sectors, sector_info, submit_invalid_post, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier,
+    verifreg_add_client, verifreg_add_verifier, miner_prove_sector
 };
 
 #[vm_test]
@@ -1187,15 +1187,7 @@ pub fn create_sector(
     // prove commit
     let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &maddr, prove_time);
-    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
-    apply_ok(
-        v,
-        &worker,
-        &maddr,
-        &TokenAmount::zero(),
-        MinerMethod::ProveCommitSector as u64,
-        Some(prove_commit_params),
-    );
+    miner_prove_sector(v, &worker, &maddr, sector_number);
 
     cron_tick(v);
 

@@ -3,8 +3,7 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{strict_bytes, BytesDe};
 
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
-use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, StoragePower};
+use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
 

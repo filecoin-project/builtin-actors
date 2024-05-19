@@ -11,7 +11,7 @@ use fil_actor_market::{
     DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
 };
 use fil_actor_miner::{
-    power_for_sector, Method as MinerMethod, ProveCommitSectorParams, State as MinerState,
+    power_for_sector, Method as MinerMethod, State as MinerState,
     TerminateSectorsParams, TerminationDeclaration,
 };
 use fil_actor_power::State as PowerState;
@@ -34,7 +34,7 @@ use crate::util::{
     advance_to_proving_deadline, assert_invariants, create_accounts, create_miner, cron_tick,
     deal_cid_for_testing, make_bitfield, market_publish_deal, miner_balance,
     miner_precommit_one_sector_v2, precommit_meta_data_from_deals, submit_windowed_post,
-    verifreg_add_verifier,
+    verifreg_add_verifier, miner_prove_sector
 };
 
 #[vm_test]
@@ -175,17 +175,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     advance_by_deadline_to_epoch(v, &miner_id_addr, prove_time);
 
     // prove commit, cron, advance to post time
-    let prove_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
-    apply_ok(
-        v,
-        &worker,
-        &miner_robust_addr,
-        &TokenAmount::zero(),
-        MinerMethod::ProveCommitSector as u64,
-        Some(prove_params),
-    );
-
-    cron_tick(v);
+    miner_prove_sector(v, &worker, &miner_id_addr, sector_number);
 
     let (dline_info, p_idx) = advance_to_proving_deadline(v, &miner_id_addr, sector_number);
     let d_idx = dline_info.index;

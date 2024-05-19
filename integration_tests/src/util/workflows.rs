@@ -42,9 +42,9 @@ use fil_actor_miner::{
     max_prove_commit_duration, ChangeBeneficiaryParams, CompactCommD, DeadlineInfo,
     DeclareFaultsRecoveredParams, ExpirationExtension2, ExtendSectorExpiration2Params,
     Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams2,
-    ProveCommitAggregateParams, ProveCommitSectorParams, RecoveryDeclaration, SectorClaim,
+    ProveCommitAggregateParams, ProveCommitSectors3Params, RecoveryDeclaration, SectorClaim,
     SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
-    WithdrawBalanceParams, WithdrawBalanceReturn,
+    WithdrawBalanceParams, WithdrawBalanceReturn, SectorActivationManifest
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
@@ -166,13 +166,20 @@ pub fn miner_prove_sector(
     miner_id: &Address,
     sector_number: SectorNumber,
 ) {
-    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
+    let prove_commit_params = ProveCommitSectors3Params {
+        sector_activations: vec![SectorActivationManifest{sector_number, pieces: vec![]}],
+        sector_proofs: vec![vec![].into()],
+        aggregate_proof: RawBytes::default(),
+        aggregate_proof_type: None,
+        require_activation_success: true,
+        require_notification_success: true,
+    };
     apply_ok(
         v,
         worker,
         miner_id,
         &TokenAmount::zero(),
-        MinerMethod::ProveCommitSector as u64,
+        MinerMethod::ProveCommitSectors3 as u64,
         Some(prove_commit_params),
     );
 
@@ -181,13 +188,7 @@ pub fn miner_prove_sector(
     ExpectInvocation {
         from: worker_id,
         to: *miner_id,
-        method: MinerMethod::ProveCommitSector as u64,
-        subinvocs: Some(vec![ExpectInvocation {
-            from: miner_id.id().unwrap(),
-            to: STORAGE_POWER_ACTOR_ADDR,
-            method: PowerMethod::SubmitPoRepForBulkVerify as u64,
-            ..Default::default()
-        }]),
+        method: MinerMethod::ProveCommitSectors3 as u64,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
