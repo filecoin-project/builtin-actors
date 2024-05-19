@@ -763,6 +763,10 @@ impl ActorHarness {
         );
     }
 
+    // deprecated flow calling prove commit sector and then confirm sector proofs valid
+    // With FIP 0084 this is no longer realizable.  It is kept in tests 
+    // 1) to ensure backwards compatibility between prove_commit_sector and prove_commit_sectors3
+    // 2) to make use of existing test coverage without significant change
     pub fn prove_commit_sector_and_confirm(
         &self,
         rt: &MockRuntime,
@@ -771,65 +775,63 @@ impl ActorHarness {
         cfg: ProveCommitConfig,
     ) -> Result<SectorOnChainInfo, ActorError> {
         let sector_number = params.sector_number;
-        self.prove_commit_sector(rt, pc, params)?;
-        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()])?;
+
+        let mut pieces: Vec<PieceActivationManifest> = vec![];
+        for deal in cfg.activated_deals.get(&sector_number).unwrap() {
+            let verified_allocation_key = if deal.allocation_id == NO_ALLOCATION_ID {
+                None
+            } else {
+                Some(VerifiedAllocationKey{
+                    client: deal.client,
+                    id: deal.allocation_id,
+                })
+            };
+            // To match old behavior send message to f05, but since calls are mocked the data we send doesn't matter
+            let notify = vec![DataActivationNotification{
+                address: STORAGE_MARKET_ACTOR_ADDR,
+                payload: RawBytes::new(deal.data.into()),
+            }];
+            pieces.push(PieceActivationManifest {
+                cid: deal.data,
+                size: deal.size,
+                verified_allocation_key,
+                notify,
+            });
+        }
+
+
+        let activation_manifest = SectorActivationManifest {
+            sector_number,
+            pieces
+        };
+        let req_activation_succ = true; // Doesn't really matter since there's only 1
+        let req_notif_succ = false; // CPSV could not require this as it happened in cron
+
+        let claim_failure = if cfg.claim_allocs_exit.contains_key(&sector_number){
+            vec![0] // only sector activating has claim failure
+        }else{
+            vec![]
+        };
+        let notification_result = if cfg.verify_deals_exit.get(&sector_number).is_some(){
+            cfg.verify_deals_exit.get(&sector_number).cloned()
+        }else{
+            None
+        };
+        let cfg3 = ProveCommitSectors3Config{
+            proof_failure: vec![], // ProveCommitConfig doesn't support this
+            param_twiddle: None,
+            caller: None, 
+            validation_failure: vec![],
+            claim_failure,
+            notification_result,
+            notification_rejected: notification_result.is_some(),
+
+
+        };
+        let _ = self.prove_commit_sectors3(rt, &[activation_manifest], req_activation_succ, req_notif_succ, false, cfg3)?;
 
         Ok(self.get_sector(rt, sector_number))
-    }
 
-    pub fn prove_commit_sector(
-        &self,
-        rt: &MockRuntime,
-        pc: &SectorPreCommitOnChainInfo,
-        params: ProveCommitSectorParams,
-    ) -> Result<(), ActorError> {
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        let seal_rand = TEST_RANDOMNESS_ARRAY_FROM_ONE;
-        let seal_int_rand = TEST_RANDOMNESS_ARRAY_FROM_TWO;
-        let interactive_epoch = pc.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
-
-        // Prepare for and receive call to ProveCommitSector
-        let entropy = RawBytes::serialize(self.receiver).unwrap();
-        rt.expect_get_randomness_from_tickets(
-            DomainSeparationTag::SealRandomness,
-            pc.info.seal_rand_epoch,
-            entropy.to_vec(),
-            seal_rand.clone(),
-        );
-        rt.expect_get_randomness_from_beacon(
-            DomainSeparationTag::InteractiveSealChallengeSeed,
-            interactive_epoch,
-            entropy.to_vec(),
-            seal_int_rand.clone(),
-        );
-
-        let actor_id = RECEIVER_ID;
-        let seal = SealVerifyInfo {
-            sector_id: SectorID { miner: actor_id, number: pc.info.sector_number },
-            sealed_cid: pc.info.sealed_cid,
-            registered_proof: pc.info.seal_proof,
-            proof: params.proof.clone().into(),
-            deal_ids: vec![],
-            randomness: Randomness(seal_rand.into()),
-            interactive_randomness: Randomness(seal_int_rand.into()),
-            unsealed_cid: pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap(),
-        };
-        rt.expect_send_simple(
-            STORAGE_POWER_ACTOR_ADDR,
-            PowerMethod::SubmitPoRepForBulkVerify as u64,
-            IpldBlock::serialize_cbor(&seal).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
-        rt.expect_validate_caller_any();
-        let result = rt.call::<Actor>(
-            Method::ProveCommitSector as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-        expect_empty(result);
-        rt.verify();
-        Ok(())
     }
 
     pub fn prove_commit_aggregate_sector(
@@ -900,53 +902,6 @@ impl ActorHarness {
         Ok(())
     }
 
-    pub fn confirm_sector_proofs_valid(
-        &self,
-        rt: &MockRuntime,
-        cfg: ProveCommitConfig,
-        pcs: Vec<SectorPreCommitOnChainInfo>,
-    ) -> Result<(), ActorError> {
-        let pieces = self.confirm_sector_proofs_valid_internal(rt, cfg.clone(), &pcs);
-
-        let mut all_sector_numbers = Vec::new();
-        for pc in pcs.clone() {
-            all_sector_numbers.push(pc.info.sector_number);
-        }
-
-        rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
-        rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
-
-        let params = ConfirmSectorProofsParams {
-            sectors: all_sector_numbers,
-            reward_smoothed: self.epoch_reward_smooth.clone(),
-            reward_baseline_power: self.baseline_power.clone(),
-            quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),
-        };
-
-        for sc in pcs.iter() {
-            if cfg.verify_deals_exit.contains_key(&sc.info.sector_number)
-                || cfg.claim_allocs_exit.contains_key(&sc.info.sector_number)
-            {
-                continue;
-            }
-            let unsealed_cid = sc.info.unsealed_cid.0;
-            let num = &sc.info.sector_number;
-            expect_sector_event(
-                rt,
-                "sector-activated",
-                &num,
-                unsealed_cid,
-                pieces.get(&num).unwrap(),
-            );
-        }
-
-        rt.call::<Actor>(
-            Method::ConfirmSectorProofsValid as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-        rt.verify();
-        Ok(())
-    }
 
     fn confirm_sector_proofs_valid_internal(
         &self,
@@ -1120,14 +1075,14 @@ impl ActorHarness {
         pieces
     }
 
-    pub fn prove_commit_sectors2(
+    pub fn prove_commit_sectors3(
         &self,
         rt: &MockRuntime,
         sector_activations: &[SectorActivationManifest],
         require_activation_success: bool,
         require_notification_success: bool,
         aggregate: bool,
-        cfg: ProveCommitSectors2Config,
+        cfg: ProveCommitSectors3Config,
     ) -> Result<
         (ProveCommitSectors3Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
         ActorError,
@@ -3057,7 +3012,7 @@ pub struct ProveReplicaUpdatesConfig {
 }
 
 #[derive(Default)]
-pub struct ProveCommitSectors2Config {
+pub struct ProveCommitSectors3Config {
     pub caller: Option<Address>,
     pub param_twiddle: Option<Box<dyn FnOnce(&mut ProveCommitSectors3Params)>>,
     pub validation_failure: Vec<usize>, // Expect validation failure for these sector indices.
@@ -3275,7 +3230,7 @@ pub fn onboard_sectors(
     // Prove the sectors in batch with ProveCommitSectors2.
     let prove_epoch = *rt.epoch.borrow() + rt.policy.pre_commit_challenge_delay + 1;
     rt.set_epoch(prove_epoch);
-    let cfg = ProveCommitSectors2Config::default();
+    let cfg = ProveCommitSectors3Config::default();
     let sector_activations: Vec<SectorActivationManifest> = precommits
         .iter()
         .map(|pc| {
@@ -3286,7 +3241,7 @@ pub fn onboard_sectors(
             make_activation_manifest(pc.info.sector_number, &piece_specs)
         })
         .collect();
-    h.prove_commit_sectors2(rt, &sector_activations, true, false, false, cfg).unwrap();
+    h.prove_commit_sectors3(rt, &sector_activations, true, false, false, cfg).unwrap();
     let sectors: Vec<SectorOnChainInfo> =
         precommits.iter().map(|pc| h.get_sector(rt, pc.info.sector_number)).collect();
 
