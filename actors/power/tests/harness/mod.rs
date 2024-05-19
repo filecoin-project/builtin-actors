@@ -19,11 +19,8 @@ use num_traits::Zero;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
 use fil_actor_power::ext::init::ExecParams;
-use fil_actor_power::ext::miner::ConfirmSectorProofsParams;
 use fil_actor_power::ext::miner::MinerConstructorParams;
-use fil_actor_power::ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD;
 use fil_actor_power::ext::reward::Method::ThisEpochReward;
 use fil_actor_power::ext::reward::UPDATE_NETWORK_KPI;
 use fil_actor_power::testing::check_state_invariants;
@@ -399,34 +396,9 @@ impl Harness {
         rt: &MockRuntime,
         current_epoch: ChainEpoch,
         expected_raw_power: &StoragePower,
-        confirmed_sectors: Vec<ConfirmedSectorSend>,
         infos: Vec<SealVerifyInfo>,
     ) {
         self.expect_query_network_info(rt);
-
-        let state: State = rt.get_state();
-
-        //expect sends for confirmed sectors
-        for sector in confirmed_sectors {
-            let param = ConfirmSectorProofsParams {
-                sectors: sector.sector_nums,
-                reward_smoothed: self.this_epoch_reward_smoothed.clone(),
-                reward_baseline_power: self.this_epoch_baseline_power.clone(),
-                quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed.clone(),
-            };
-            rt.expect_send_simple(
-                sector.miner,
-                CONFIRM_SECTOR_PROOFS_VALID_METHOD,
-                IpldBlock::serialize_cbor(&param).unwrap(),
-                TokenAmount::zero(),
-                None,
-                ExitCode::new(0),
-            );
-        }
-
-        let verified_seals = batch_verify_default_output(&infos);
-        rt.expect_batch_verify_seals(infos, anyhow::Ok(verified_seals));
-
         // expect power sends to reward actor
         rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
@@ -447,37 +419,7 @@ impl Harness {
         let state: State = rt.get_state();
         assert!(state.proof_validation_batch.is_none());
     }
-
-    pub fn submit_porep_for_bulk_verify(
-        &self,
-        rt: &MockRuntime,
-        miner_address: Address,
-        seal_info: SealVerifyInfo,
-        expect_success: bool,
-    ) -> Result<(), ActorError> {
-        if expect_success {
-            rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL);
-        }
-        rt.expect_validate_caller_type(vec![Type::Miner]);
-        rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address);
-        rt.call::<PowerActor>(
-            Method::SubmitPoRepForBulkVerify as u64,
-            IpldBlock::serialize_cbor(&seal_info).unwrap(),
-        )?;
-        rt.verify();
-        Ok(())
-    }
 }
-
-pub struct ConfirmedSectorSend {
-    pub miner: Address,
-    pub sector_nums: Vec<SectorNumber>,
-}
-
-pub fn batch_verify_default_output(infos: &[SealVerifyInfo]) -> Vec<bool> {
-    vec![true; infos.len()]
-}
-
 /// Collects all keys from a map into a vector.
 fn collect_keys<BS, K, V>(m: Map2<BS, K, V>) -> Result<Vec<K>, ActorError>
 where

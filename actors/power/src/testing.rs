@@ -5,8 +5,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{
     address::Address,
     clock::ChainEpoch,
-    sector::{SealVerifyInfo, StoragePower},
-    HAMT_BIT_WIDTH,
+    sector::StoragePower,
 };
 use num_traits::{Signed, Zero};
 
@@ -14,8 +13,7 @@ use fil_actors_runtime::{parse_uint_key, runtime::Policy, MessageAccumulator, Mu
 
 use crate::{
     consensus_miner_min_power, Claim, ClaimsMap, CronEvent, State, CLAIMS_CONFIG,
-    CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT_BITWIDTH, MAX_MINER_PROVE_COMMITS_PER_EPOCH,
-    PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
+    CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT_BITWIDTH,
 };
 
 pub struct MinerCronEvent {
@@ -25,12 +23,10 @@ pub struct MinerCronEvent {
 
 type CronEventsByAddress = HashMap<Address, Vec<MinerCronEvent>>;
 type ClaimsByAddress = HashMap<Address, Claim>;
-type ProofsByAddress = HashMap<Address, SealVerifyInfo>;
 
 pub struct StateSummary {
     pub crons: CronEventsByAddress,
     pub claims: ClaimsByAddress,
-    pub proofs: ProofsByAddress,
 }
 
 /// Checks internal invariants of power state
@@ -90,9 +86,9 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     let crons = check_cron_invariants(state, store, &acc);
     let claims = check_claims_invariants(policy, state, store, &acc);
-    let proofs = check_proofs_invariants(state, store, &claims, &acc);
+    check_proofs_invariants(state, &acc);
 
-    (StateSummary { crons, claims, proofs }, acc)
+    (StateSummary { crons, claims }, acc)
 }
 
 fn check_cron_invariants<BS: Blockstore>(
@@ -209,55 +205,11 @@ fn check_claims_invariants<BS: Blockstore>(
 
     claims_by_address
 }
-fn check_proofs_invariants<BS: Blockstore>(
+fn check_proofs_invariants(
     state: &State,
-    store: &BS,
-    claims: &ClaimsByAddress,
     acc: &MessageAccumulator,
-) -> ProofsByAddress {
-    if state.proof_validation_batch.is_none() {
-        return ProofsByAddress::default();
+) -> () {
+    if !state.proof_validation_batch.is_none() {
+        acc.add(format!("proof validation batch should be empty after FIP 0084"));
     }
-
-    let mut proofs_by_address = ProofsByAddress::new();
-    match Multimap::from_root(
-        store,
-        &state.proof_validation_batch.unwrap(),
-        HAMT_BIT_WIDTH,
-        PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
-    ) {
-        Ok(queue) => {
-            let ret = queue.for_all::<_, SealVerifyInfo>(|key, infos| {
-                let address = Address::from_bytes(key)?;
-                let claim = if let Some(claim) = claims.get(&address) {
-                    claim
-                } else {
-                    acc.add(format!("miner {address} has proofs awaiting validation but no claim"));
-                    return Ok(())
-                };
-
-                let ret = infos.for_each(|_, info| {
-                    match info.registered_proof.registered_window_post_proof() {
-                        Ok(sector_window_post_proof_type) => {
-                            acc.require(claim.window_post_proof_type == sector_window_post_proof_type, format!("miner submitted proof with proof type {:?} different from claim {:?}", sector_window_post_proof_type, claim.window_post_proof_type));
-                        },
-                        Err(e) => acc.add(format!("Invalid PoSt proof: {e}"))
-                    }
-                    proofs_by_address.insert(address, info.clone());
-                    Ok(())
-                });
-
-                if ret.is_err() {
-                    return ret.map_err(|e| anyhow::anyhow!("error iterating proof validation batch for address {}: {}", address, e));
-                }
-
-                acc.require(proofs_by_address.len() as u64 <= MAX_MINER_PROVE_COMMITS_PER_EPOCH, format!("miner {address} has submitted too many proofs ({}) for batch verification", proofs_by_address.len()));
-                Ok(())
-            });
-            acc.require_no_error(ret, "error iterating proof validation queue");
-        }
-        Err(e) => acc.add(format!("error loading proof validation queue: {e}")),
-    }
-
-    proofs_by_address
 }
