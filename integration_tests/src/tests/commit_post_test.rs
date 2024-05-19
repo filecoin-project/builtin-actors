@@ -52,7 +52,6 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
-    let worker_id = worker.id().unwrap();
     let (id_addr, robust_addr) = create_miner(
         v,
         &owner,
@@ -84,13 +83,10 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
     let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &id_addr, prove_time);
 
-    let unsealed_cid = pc.info.unsealed_cid.0;
     // prove commit, cron, advance to post time
     miner_prove_sector(v, &worker, &id_addr, sector_number);
-
     cron_tick(v);
 
-    let pieces: Vec<(Cid, u64)> = vec![];
     ExpectInvocation {
         to: CRON_ACTOR_ADDR,
         method: CronMethod::EpochTick as u64,

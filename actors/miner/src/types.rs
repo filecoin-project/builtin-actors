@@ -14,7 +14,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
-    RegisteredUpdateProof, SectorNumber, SectorSize, StoragePower,
+    RegisteredUpdateProof, SectorNumber, SectorSize,
 };
 use fvm_shared::ActorID;
 use serde::{Deserialize, Serialize};

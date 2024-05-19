@@ -770,14 +770,15 @@ impl ActorHarness {
     pub fn prove_commit_sector_and_confirm(
         &self,
         rt: &MockRuntime,
-        pc: &SectorPreCommitOnChainInfo,
+        _pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
         cfg: ProveCommitConfig,
     ) -> Result<SectorOnChainInfo, ActorError> {
         let sector_number = params.sector_number;
 
         let mut pieces: Vec<PieceActivationManifest> = vec![];
-        for deal in cfg.activated_deals.get(&sector_number).unwrap() {
+        
+        for deal in cfg.activated_deals.get(&sector_number).unwrap_or(&Vec::new()) {
             let verified_allocation_key = if deal.allocation_id == NO_ALLOCATION_ID {
                 None
             } else {

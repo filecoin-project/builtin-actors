@@ -7,7 +7,6 @@ use fvm_shared::{
 };
 use std::collections::HashMap;
 
-use fil_actor_miner::ext::market::NO_ALLOCATION_ID;
 use fil_actor_miner::{
     initial_pledge_for_power, max_prove_commit_duration, pre_commit_deposit_for_power,
     qa_power_for_weight, qa_power_max, PowerPair, PreCommitSectorBatchParams, VestSpec,
