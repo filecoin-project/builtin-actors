@@ -129,12 +129,6 @@ pub struct SubmitWindowedPoStParams {
     pub chain_commit_rand: Randomness,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ProveCommitSectorParams {
-    pub sector_number: SectorNumber,
-    pub proof: RawBytes,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectors3Params {
     // Activation manifest for each sector being proven.

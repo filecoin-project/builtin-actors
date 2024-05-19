@@ -54,7 +54,7 @@ pub enum Method {
     OnEpochTickEnd = 5,
     UpdatePledgeTotal = 6,
     // OnConsensusFault = 7, // Deprecated v2
-    // SubmitPoRepForBulkVerify = 8, // Deprecated 
+    // SubmitPoRepForBulkVerify = 8, // Deprecated
     CurrentTotalPower = 9,
     // Method numbers derived from FRC-0042 standards
     CreateMinerExported = frc42_dispatch::method_hash!("CreateMiner"),

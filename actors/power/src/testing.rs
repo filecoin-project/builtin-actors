@@ -2,11 +2,7 @@ use std::collections::HashMap;
 
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::{
-    address::Address,
-    clock::ChainEpoch,
-    sector::StoragePower,
-};
+use fvm_shared::{address::Address, clock::ChainEpoch, sector::StoragePower};
 use num_traits::{Signed, Zero};
 
 use fil_actors_runtime::{parse_uint_key, runtime::Policy, MessageAccumulator, Multimap};
@@ -205,10 +201,7 @@ fn check_claims_invariants<BS: Blockstore>(
 
     claims_by_address
 }
-fn check_proofs_invariants(
-    state: &State,
-    acc: &MessageAccumulator,
-) -> () {
+fn check_proofs_invariants(state: &State, acc: &MessageAccumulator) -> () {
     if !state.proof_validation_batch.is_none() {
         acc.add(format!("proof validation batch should be empty after FIP 0084"));
     }

@@ -167,17 +167,6 @@ impl Expect {
             ..Default::default()
         }
     }
-    pub fn power_submit_porep(from: ActorID) -> ExpectInvocation {
-        // Note: params are unchecked.
-        ExpectInvocation {
-            from,
-            to: STORAGE_POWER_ACTOR_ADDR,
-            method: fil_actor_power::Method::SubmitPoRepForBulkVerify as u64,
-            value: Some(TokenAmount::zero()),
-            subinvocs: Some(vec![]),
-            ..Default::default()
-        }
-    }
     pub fn power_update_claim(from: ActorID, delta: PowerPair) -> ExpectInvocation {
         let params = IpldBlock::serialize_cbor(&UpdateClaimedPowerParams {
             raw_byte_delta: delta.raw,

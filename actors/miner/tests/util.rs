@@ -764,7 +764,7 @@ impl ActorHarness {
     }
 
     // deprecated flow calling prove commit sector and then confirm sector proofs valid
-    // With FIP 0084 this is no longer realizable.  It is kept in tests 
+    // With FIP 0084 this is no longer realizable.  It is kept in tests
     // 1) to ensure backwards compatibility between prove_commit_sector and prove_commit_sectors3
     // 2) to make use of existing test coverage without significant change
     pub fn prove_commit_sector_and_confirm(
@@ -781,13 +781,10 @@ impl ActorHarness {
             let verified_allocation_key = if deal.allocation_id == NO_ALLOCATION_ID {
                 None
             } else {
-                Some(VerifiedAllocationKey{
-                    client: deal.client,
-                    id: deal.allocation_id,
-                })
+                Some(VerifiedAllocationKey { client: deal.client, id: deal.allocation_id })
             };
             // To match old behavior send message to f05, but since calls are mocked the data we send doesn't matter
-            let notify = vec![DataActivationNotification{
+            let notify = vec![DataActivationNotification {
                 address: STORAGE_MARKET_ACTOR_ADDR,
                 payload: RawBytes::new(deal.data.into()),
             }];
@@ -799,39 +796,39 @@ impl ActorHarness {
             });
         }
 
-
-        let activation_manifest = SectorActivationManifest {
-            sector_number,
-            pieces
-        };
+        let activation_manifest = SectorActivationManifest { sector_number, pieces };
         let req_activation_succ = true; // Doesn't really matter since there's only 1
         let req_notif_succ = false; // CPSV could not require this as it happened in cron
 
-        let claim_failure = if cfg.claim_allocs_exit.contains_key(&sector_number){
+        let claim_failure = if cfg.claim_allocs_exit.contains_key(&sector_number) {
             vec![0] // only sector activating has claim failure
-        }else{
+        } else {
             vec![]
         };
-        let notification_result = if cfg.verify_deals_exit.get(&sector_number).is_some(){
+        let notification_result = if cfg.verify_deals_exit.get(&sector_number).is_some() {
             cfg.verify_deals_exit.get(&sector_number).cloned()
-        }else{
+        } else {
             None
         };
-        let cfg3 = ProveCommitSectors3Config{
+        let cfg3 = ProveCommitSectors3Config {
             proof_failure: vec![], // ProveCommitConfig doesn't support this
             param_twiddle: None,
-            caller: None, 
+            caller: None,
             validation_failure: vec![],
             claim_failure,
             notification_result,
             notification_rejected: notification_result.is_some(),
-
-
         };
-        let _ = self.prove_commit_sectors3(rt, &[activation_manifest], req_activation_succ, req_notif_succ, false, cfg3)?;
+        let _ = self.prove_commit_sectors3(
+            rt,
+            &[activation_manifest],
+            req_activation_succ,
+            req_notif_succ,
+            false,
+            cfg3,
+        )?;
 
         Ok(self.get_sector(rt, sector_number))
-
     }
 
     pub fn prove_commit_aggregate_sector(
@@ -901,7 +898,6 @@ impl ActorHarness {
 
         Ok(())
     }
-
 
     fn confirm_sector_proofs_valid_internal(
         &self,
