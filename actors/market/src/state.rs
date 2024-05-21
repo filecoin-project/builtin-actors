@@ -626,16 +626,7 @@ impl State {
 
         // Flush if any of the requested sectors were found.
         if flush {
-            if sector_deals.is_empty() {
-                // Remove from top-level map
-                provider_sectors
-                    .delete(&provider)
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!("failed to delete sector deals for {}", provider)
-                    })?;
-            } else {
-                save_provider_sector_deals(&mut provider_sectors, provider, &mut sector_deals)?;
-            }
+            save_provider_sector_deals(&mut provider_sectors, provider, &mut sector_deals)?;
             self.save_provider_sectors(&mut provider_sectors)?;
         }
 
@@ -694,19 +685,7 @@ impl State {
                 }
             }
             if flush {
-                if sector_deals.is_empty() {
-                    provider_sectors
-                        .delete(provider)
-                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                            format!("failed to delete sector deals for {}", provider)
-                        })?;
-                } else {
-                    save_provider_sector_deals(
-                        &mut provider_sectors,
-                        *provider,
-                        &mut sector_deals,
-                    )?;
-                }
+                save_provider_sector_deals(&mut provider_sectors, *provider, &mut sector_deals)?;
             }
         }
         self.save_provider_sectors(&mut provider_sectors)?;
@@ -1305,7 +1284,15 @@ fn save_provider_sector_deals<BS>(
 where
     BS: Blockstore,
 {
-    let sectors_root = sector_deals.flush()?;
-    provider_sectors.set(&provider, sectors_root)?;
+    if sector_deals.is_empty() {
+        provider_sectors
+            .delete(&provider)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to delete sector deals for {}", provider)
+            })?;
+    } else {
+        let sectors_root = sector_deals.flush()?;
+        provider_sectors.set(&provider, sectors_root)?;
+    }
     Ok(())
 }

@@ -59,7 +59,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_1], &[deal_id1]);
     cron_tick(&rt);
 
-    assert_deal_deleted(&rt, deal_id1, &d1, sector_1);
+    assert_deal_deleted(&rt, deal_id1, &d1, sector_1, true);
     let s2 = get_deal_state(&rt, deal_id2);
     assert_eq!(slash_epoch, s2.last_updated_epoch);
     check_state(&rt);

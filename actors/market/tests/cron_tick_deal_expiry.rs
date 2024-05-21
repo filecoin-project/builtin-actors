@@ -49,7 +49,7 @@ fn deal_is_correctly_processed_if_first_cron_after_expiry() {
     assert!(slashed.is_zero());
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number, true);
     check_state(&rt);
 }
 
@@ -124,7 +124,7 @@ fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     assert!(slashed.is_zero());
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number, true);
     check_state(&rt);
 }
 
@@ -154,7 +154,7 @@ fn payment_for_a_deal_if_deal_is_already_expired_before_a_cron_tick() {
     assert_eq!((end - start) * &deal_proposal.storage_price_per_epoch, pay);
     assert!(slashed.is_zero());
 
-    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number, true);
 
     // running cron tick again doesn't do anything
     cron_tick_no_change(&rt, CLIENT_ADDR, PROVIDER_ADDR);
@@ -203,7 +203,7 @@ fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_a
     assert!(provider_acct.locked.is_zero());
 
     // deal should be deleted
-    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number, true);
     check_state(&rt);
 }
 
