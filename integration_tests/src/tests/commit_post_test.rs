@@ -14,15 +14,14 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
     create_miner, cron_tick, expect_invariants, get_network_stats, invariant_failure_patterns,
-    miner_balance, precommit_sectors_v2, submit_windowed_post, miner_prove_sector
+    miner_balance, miner_prove_sector, precommit_sectors_v2, submit_windowed_post,
 };
 use crate::TEST_VM_RAND_ARRAY;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, DeadlineInfo, Method as MinerMethod,
-    PoStPartition, ProveCommitAggregateParams, State as MinerState,
-    SubmitWindowedPoStParams,
+    PoStPartition, ProveCommitAggregateParams, State as MinerState, SubmitWindowedPoStParams,
 };
 use fil_actor_power::{Method as PowerMethod, State as PowerState};
 use fil_actors_runtime::runtime::Policy;
@@ -63,7 +62,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
 
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
-    let infos = precommit_sectors_v2(
+    let _ = precommit_sectors_v2(
         v,
         1,
         1,
@@ -75,7 +74,6 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
         true,
         None,
     );
-    let pc = &infos[0];
 
     let balances = miner_balance(v, &id_addr);
     assert!(balances.pre_commit_deposit.is_positive());

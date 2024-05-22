@@ -42,9 +42,9 @@ use fil_actor_miner::{
     max_prove_commit_duration, ChangeBeneficiaryParams, CompactCommD, DeadlineInfo,
     DeclareFaultsRecoveredParams, ExpirationExtension2, ExtendSectorExpiration2Params,
     Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams2,
-    ProveCommitAggregateParams, ProveCommitSectors3Params, RecoveryDeclaration, SectorClaim,
-    SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
-    WithdrawBalanceParams, WithdrawBalanceReturn, SectorActivationManifest
+    ProveCommitAggregateParams, ProveCommitSectors3Params, RecoveryDeclaration,
+    SectorActivationManifest, SectorClaim, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
+    State as MinerState, SubmitWindowedPoStParams, WithdrawBalanceParams, WithdrawBalanceReturn,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
@@ -167,7 +167,7 @@ pub fn miner_prove_sector(
     sector_number: SectorNumber,
 ) {
     let prove_commit_params = ProveCommitSectors3Params {
-        sector_activations: vec![SectorActivationManifest{sector_number, pieces: vec![]}],
+        sector_activations: vec![SectorActivationManifest { sector_number, pieces: vec![] }],
         sector_proofs: vec![vec![].into()],
         aggregate_proof: RawBytes::default(),
         aggregate_proof_type: None,

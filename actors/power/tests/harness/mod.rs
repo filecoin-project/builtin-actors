@@ -11,7 +11,6 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SealVerifyInfo;
-use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
 use fvm_shared::MethodNum;
 use lazy_static::lazy_static;
@@ -212,10 +211,6 @@ impl Harness {
             .unwrap();
 
         ret.miner_count
-    }
-
-    pub fn this_epoch_baseline_power(&self) -> &StoragePower {
-        &self.this_epoch_baseline_power
     }
 
     pub fn get_claim(&self, rt: &MockRuntime, miner: &Address) -> Option<Claim> {

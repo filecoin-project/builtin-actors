@@ -418,10 +418,9 @@ impl ActorHarness {
                 CompactCommD::empty()
             } else {
                 let piece_cids: Vec<Cid> = deal_ids[i]
-                    .iter().enumerate()
-                    .map(|(j, _deal_id)| {
-                        make_piece_cid(sector_no, j, DEFAULT_PIECE_SIZE)
-                    })
+                    .iter()
+                    .enumerate()
+                    .map(|(j, _deal_id)| make_piece_cid(sector_no, j, DEFAULT_PIECE_SIZE))
                     .collect();
 
                 sector_commd_from_pieces(&piece_cids)
@@ -432,7 +431,7 @@ impl ActorHarness {
                 precommit_epoch - 1,
                 expiration,
                 // We are committing with deals but pass their info in CommD as PCD with deal_ids will fail after nv21
-                vec![], 
+                vec![],
                 compact_commd,
             );
 

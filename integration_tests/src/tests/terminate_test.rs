@@ -11,8 +11,8 @@ use fil_actor_market::{
     DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
 };
 use fil_actor_miner::{
-    power_for_sector, Method as MinerMethod, State as MinerState,
-    TerminateSectorsParams, TerminationDeclaration,
+    power_for_sector, Method as MinerMethod, State as MinerState, TerminateSectorsParams,
+    TerminationDeclaration,
 };
 use fil_actor_power::State as PowerState;
 use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
@@ -33,8 +33,8 @@ use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_to_proving_deadline, assert_invariants, create_accounts, create_miner, cron_tick,
     deal_cid_for_testing, make_bitfield, market_publish_deal, miner_balance,
-    miner_precommit_one_sector_v2, precommit_meta_data_from_deals, submit_windowed_post,
-    verifreg_add_verifier, miner_prove_sector
+    miner_precommit_one_sector_v2, miner_prove_sector, precommit_meta_data_from_deals,
+    submit_windowed_post, verifreg_add_verifier,
 };
 
 #[vm_test]

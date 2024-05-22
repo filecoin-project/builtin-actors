@@ -77,12 +77,7 @@ fn prove_single_sector() {
     pcc.add_activated_deals(sector_no, vec![verified_deal]);
 
     let sector = h
-        .prove_commit_sector_and_confirm(
-            &rt,
-            &deal_ids,
-            h.make_prove_commit_params(sector_no),
-            pcc,
-        )
+        .prove_commit_sector_and_confirm(&rt, &deal_ids, h.make_prove_commit_params(sector_no), pcc)
         .unwrap();
 
     assert_eq!(precommit.info.seal_proof, sector.seal_proof);
