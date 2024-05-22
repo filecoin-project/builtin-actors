@@ -9,7 +9,6 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
-use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use num_traits::Zero;
@@ -41,13 +40,13 @@ fn terminate_multiple_deals_from_single_provider() {
     activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, id2, &[id2]);
 
     terminate_deals(&rt, PROVIDER_ADDR, &[id0], &[id0]);
-    assert_deal_deleted(&rt, id0, &deal0, id0);
+    assert_deal_deleted(&rt, id0, &deal0, id0, true);
     assert_deals_not_marked_terminated(&rt, &[id1, id2]);
 
     terminate_deals(&rt, PROVIDER_ADDR, &[id1, id2], &[id1, id2]);
-    assert_deal_deleted(&rt, id0, &deal0, id0);
-    assert_deal_deleted(&rt, id1, &deal1, id1);
-    assert_deal_deleted(&rt, id1, &deal2, id2);
+    assert_deal_deleted(&rt, id0, &deal0, id0, true);
+    assert_deal_deleted(&rt, id1, &deal1, id1, true);
+    assert_deal_deleted(&rt, id1, &deal2, id2, true);
 }
 
 #[test]
@@ -92,14 +91,14 @@ fn terminate_multiple_deals_from_multiple_providers() {
         &[sector_number],
         &[id0, id1, id2],
     );
-    assert_deal_deleted(&rt, id0, &deal0, sector_number);
-    assert_deal_deleted(&rt, id1, &deal1, sector_number);
-    assert_deal_deleted(&rt, id2, &deal2, sector_number);
+    assert_deal_deleted(&rt, id0, &deal0, sector_number, true);
+    assert_deal_deleted(&rt, id1, &deal1, sector_number, true);
+    assert_deal_deleted(&rt, id2, &deal2, sector_number, true);
     assert_deals_not_marked_terminated(&rt, &[id3, id4]);
 
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, provider2, &[sector_number], &[id3, id4]);
-    assert_deal_deleted(&rt, id3, &deal3, sector_number);
-    assert_deal_deleted(&rt, id4, &deal4, sector_number);
+    assert_deal_deleted(&rt, id3, &deal3, sector_number, true);
+    assert_deal_deleted(&rt, id4, &deal4, sector_number, true);
 }
 
 #[test]
@@ -133,7 +132,7 @@ fn ignore_sector_that_does_not_exist() {
 
     let s = get_deal_state(&rt, deal1);
     assert_eq!(s.slash_epoch, -1);
-    assert_eq!(vec![deal1], get_sector_deal_ids(&rt, PROVIDER_ID, &[sector_number]));
+    assert_eq!(vec![deal1], get_sector_deal_ids(&rt, PROVIDER_ID, &[sector_number]).unwrap());
     check_state(&rt);
 }
 
@@ -190,12 +189,12 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
         // Deal2 isn't terminated (or cleaned up) because it expired and is waiting for settlement.
         &[id0, id1],
     );
-    assert_deal_deleted(&rt, id0, &deal0, sector_number);
-    assert_deal_deleted(&rt, id1, &deal1, sector_number);
+    assert_deal_deleted(&rt, id0, &deal0, sector_number, true);
+    assert_deal_deleted(&rt, id1, &deal1, sector_number, true);
     // Deal2 state still exists, and isn't terminated.
     assert_deals_not_marked_terminated(&rt, &[id2]);
     // All deals are removed from sector deals mapping at once.
-    assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, PROVIDER_ID, &[sector_number]));
+    assert!(get_sector_deal_ids(&rt, PROVIDER_ID, &[sector_number]).is_none());
     check_state(&rt);
 }
 
@@ -255,7 +254,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
 
     cron_tick(&rt);
     // expired deal deleted normally
-    assert_deal_deleted(&rt, deal_ids[1], &deal2, sector_number);
+    assert_deal_deleted(&rt, deal_ids[1], &deal2, sector_number, false);
     assert_deals_not_marked_terminated(&rt, &deal_ids[0..0]);
 
     terminate_deals_and_assert_balances(
@@ -266,7 +265,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
         &[deal_ids[0]],
     );
     // terminated deal deleted
-    assert_deal_deleted(&rt, deal_ids[0], &deal1, sector_number);
+    assert_deal_deleted(&rt, deal_ids[0], &deal1, sector_number, true);
 
     // terminated deal has a dangling deal op, normally expired deal doesn't
     check_state(&rt);

@@ -543,7 +543,7 @@ pub fn get_sector_deal_ids(
     rt: &MockRuntime,
     provider: ActorID,
     sector_numbers: &[SectorNumber],
-) -> Vec<DealID> {
+) -> Option<Vec<DealID>> {
     let st: State = rt.get_state();
     let provider_sectors = ProviderSectorsMap::load(
         &rt.store,
@@ -553,22 +553,31 @@ pub fn get_sector_deal_ids(
     )
     .unwrap();
     let sectors_root: Option<&Cid> = provider_sectors.get(&provider).unwrap();
-    if let Some(sectors_root) = sectors_root {
-        let sector_deals =
-            SectorDealsMap::load(&rt.store, sectors_root, SECTOR_DEALS_CONFIG, "sector deals")
-                .unwrap();
-        sector_numbers
-            .iter()
-            .flat_map(|sector_number| {
-                let deals: Option<&Vec<DealID>> = sector_deals.get(sector_number).unwrap();
-                match deals {
-                    Some(deals) => deals.clone(),
-                    None => vec![],
-                }
-            })
-            .collect()
-    } else {
-        vec![]
+    match sectors_root {
+        Some(sectors_root) => {
+            let sector_deals =
+                SectorDealsMap::load(&rt.store, sectors_root, SECTOR_DEALS_CONFIG, "sector deals")
+                    .unwrap();
+            let deal_ids: Vec<_> = sector_numbers
+                .iter()
+                .flat_map(|sector_number| {
+                    let deals: Option<&Vec<DealID>> = sector_deals.get(sector_number).unwrap();
+                    match deals {
+                        Some(deals) => {
+                            assert!(!deals.is_empty());
+                            deals.clone()
+                        }
+                        None => vec![],
+                    }
+                })
+                .collect();
+            if deal_ids.is_empty() {
+                None
+            } else {
+                Some(deal_ids)
+            }
+        }
+        None => None,
     }
 }
 
@@ -1194,6 +1203,7 @@ pub fn assert_deal_deleted(
     deal_id: DealID,
     p: &DealProposal,
     sector_number: SectorNumber,
+    empty_sector_deals: bool,
 ) {
     use cid::multihash::Code;
     use cid::multihash::MultihashDigest;
@@ -1224,7 +1234,12 @@ pub fn assert_deal_deleted(
 
     // Check deal is no longer associated with sector
     let sector_deals = get_sector_deal_ids(rt, p.provider.id().unwrap(), &[sector_number]);
-    assert!(!sector_deals.contains(&deal_id));
+    if empty_sector_deals {
+        assert!(sector_deals.is_none());
+    } else {
+        // expect some other deals, but not the one we deleted
+        assert!(!sector_deals.unwrap().contains(&deal_id));
+    }
 }
 
 pub fn assert_deal_failure<F>(add_funds: bool, post_setup: F, exit_code: ExitCode, sig_valid: bool)
@@ -1506,8 +1521,10 @@ pub fn terminate_deals_and_assert_balances(
 ) -> (/*total_paid*/ TokenAmount, /*total_slashed*/ TokenAmount) {
     // Accumulate deal IDs for all sectors
     let deal_ids = get_sector_deal_ids(rt, provider_addr.id().unwrap(), sectors);
+    assert!(deal_ids.is_some());
     // get deal state  before the are cleaned up in terminate deals
     let deal_infos: Vec<(DealState, DealProposal)> = deal_ids
+        .unwrap()
         .iter()
         .filter_map(|id| {
             let proposal = find_deal_proposal(rt, *id);
@@ -1599,11 +1616,13 @@ pub fn terminate_deals(
     // calculate the expected amount to be slashed for the provider that it is burnt
     let curr_epoch = *rt.epoch.borrow();
     let mut total_slashed = TokenAmount::zero();
-    for deal_id in deal_ids {
-        let d = find_deal_proposal(rt, deal_id);
-        if let Some(d) = d {
-            if curr_epoch < d.end_epoch {
-                total_slashed += d.provider_collateral.clone();
+    if let Some(deal_ids) = deal_ids {
+        for deal_id in deal_ids {
+            let d = find_deal_proposal(rt, deal_id);
+            if let Some(d) = d {
+                if curr_epoch < d.end_epoch {
+                    total_slashed += d.provider_collateral.clone();
+                }
             }
         }
     }

@@ -106,7 +106,7 @@ fn deal_is_terminated() {
         assert_eq!(tc.termination_payment, pay);
         assert_eq!(deal_proposal.provider_collateral, slashed);
 
-        assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
+        assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number, true);
 
         // assert that trying to settle is always a no-op after termination
 
@@ -197,7 +197,7 @@ fn settle_payments_then_terminate_deal_in_the_same_epoch() {
         &[sector_number],
         &[deal_id],
     );
-    assert_deal_deleted(&rt, deal_id, &proposal, sector_number);
+    assert_deal_deleted(&rt, deal_id, &proposal, sector_number, true);
 
     // end state should be equivalent to only calling termination
     let client_after = get_balance(&rt, &CLIENT_ADDR);
@@ -245,7 +245,7 @@ fn terminate_a_deal_then_settle_it_in_the_same_epoch() {
     );
     let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id], &[], &[]);
     assert_eq!(ret.results.codes(), vec![EX_DEAL_EXPIRED]);
-    assert_deal_deleted(&rt, deal_id, &proposal, sector_number);
+    assert_deal_deleted(&rt, deal_id, &proposal, sector_number, true);
 
     check_state(&rt);
 }

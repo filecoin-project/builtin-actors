@@ -344,7 +344,7 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     // terminate the deal
     rt.set_epoch(publish_epoch + 1);
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], &[deal_id]);
-    assert_deal_deleted(&rt, deal_id, &proposal, sector_number);
+    assert_deal_deleted(&rt, deal_id, &proposal, sector_number, true);
 
     // provider cannot withdraw any funds since it's been terminated
     let withdraw_amount = TokenAmount::from_atto(1);
@@ -1369,7 +1369,7 @@ fn terminating_a_deal_removes_proposal_synchronously() {
 
     // terminating the deal deletes proposal, state and pending_proposal but leaves deal op in queue
     terminate_deals(&rt, addrs.provider, &[sector_number], &[deal_id]);
-    assert_deal_deleted(&rt, deal_id, &proposal, sector_number);
+    assert_deal_deleted(&rt, deal_id, &proposal, sector_number, true);
     check_state(&rt);
 
     // the next cron_tick will remove the dangling deal op entry
