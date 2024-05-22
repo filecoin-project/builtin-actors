@@ -88,7 +88,7 @@ fn simple_one_sector() {
     assert!(ret.sectors[0].added.iter().all(|r| r.accepted));
 
     // Deal IDs are stored under the sector, in correct order.
-    assert_eq!(deal_ids, get_sector_deal_ids(&rt, PROVIDER_ID, &[sno]));
+    assert_eq!(deal_ids, get_sector_deal_ids(&rt, PROVIDER_ID, &[sno]).unwrap());
 
     // Deal states include allocation IDs from when they were published.
     for id in deal_ids.iter() {
@@ -142,8 +142,8 @@ fn simple_multiple_sectors() {
     assert_eq!(vec![PieceReturn { accepted: true }], ret.sectors[2].added);
 
     // Deal IDs are stored under the right sector, in correct order.
-    assert_eq!(deal_ids[0..2], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]));
-    assert_eq!(deal_ids[2..3], get_sector_deal_ids(&rt, PROVIDER_ID, &[2]));
+    assert_eq!(deal_ids[0..2], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]).unwrap());
+    assert_eq!(deal_ids[2..3], get_sector_deal_ids(&rt, PROVIDER_ID, &[2]).unwrap());
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn new_deal_existing_sector() {
     sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
 
     // All deal IDs are stored under the right sector, in correct order.
-    assert_eq!(deal_ids[0..3], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]));
+    assert_eq!(deal_ids[0..3], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]).unwrap());
 }
 
 #[test]
@@ -303,8 +303,8 @@ fn failures_isolated() {
     assert_eq!(vec![PieceReturn { accepted: true }], ret.sectors[2].added);
 
     // Successful deal IDs are stored under the right sector, in correct order.
-    assert_eq!(deal_ids[0..1], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]));
-    assert_eq!(deal_ids[3..4], get_sector_deal_ids(&rt, PROVIDER_ID, &[3]));
+    assert_eq!(deal_ids[0..1], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]).unwrap());
+    assert_eq!(deal_ids[3..4], get_sector_deal_ids(&rt, PROVIDER_ID, &[3]).unwrap());
 }
 
 #[test]
@@ -346,8 +346,8 @@ fn rejects_duplicates_in_same_sector() {
     );
 
     // Deal IDs are stored under the right sector, in correct order.
-    assert_eq!(deal_ids[0..2], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]));
-    assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, PROVIDER_ID, &[2]));
+    assert_eq!(deal_ids[0..2], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]).unwrap());
+    assert!(get_sector_deal_ids(&rt, PROVIDER_ID, &[2]).is_none());
 }
 
 #[test]
@@ -407,8 +407,8 @@ fn rejects_duplicates_across_sectors() {
     );
 
     // Deal IDs are stored under the right sector, in correct order.
-    assert_eq!(deal_ids[0..2], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]));
-    assert_eq!(deal_ids[2..3], get_sector_deal_ids(&rt, PROVIDER_ID, &[2]));
+    assert_eq!(deal_ids[0..2], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]).unwrap());
+    assert_eq!(deal_ids[2..3], get_sector_deal_ids(&rt, PROVIDER_ID, &[2]).unwrap());
 }
 
 #[test]

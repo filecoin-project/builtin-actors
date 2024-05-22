@@ -107,7 +107,7 @@ fn reject_proposal_expired() {
         ExitCode::OK,
     );
     cron_tick(&rt);
-    assert_deal_deleted(&rt, deal_id, &deal, 0);
+    assert_deal_deleted(&rt, deal_id, &deal, 0, true);
 
     assert_activation_failure(&rt, deal_id, &deal, 1, sector_expiry, EX_DEAL_EXPIRED);
 }

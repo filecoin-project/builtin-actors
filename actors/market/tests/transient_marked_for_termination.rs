@@ -102,7 +102,7 @@ fn deal_scheduled_for_termination_cannot_be_settled_manually() {
     cron_tick(&rt);
 
     // assert that the slashed deal was terminated
-    assert_deal_deleted(&rt, slashed_deal, &slashed_prop, sector_number);
+    assert_deal_deleted(&rt, slashed_deal, &slashed_prop, sector_number, false);
 
     // attempt to settle payment for both deals again - partially succeeds because not found deals are ignored
     rt.set_epoch(scheduled_epoch + 1);

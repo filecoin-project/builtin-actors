@@ -43,7 +43,7 @@ fn timedout_deal_is_slashed_and_deleted() {
     assert_eq!(c_escrow, client_acct.balance);
     assert!(client_acct.locked.is_zero());
     assert_account_zero(&rt, PROVIDER_ADDR);
-    assert_deal_deleted(&rt, deal_id, &deal_proposal, 0);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, 0, true);
 
     check_state(&rt);
 
@@ -112,7 +112,7 @@ fn can_manually_settle_deals_in_the_cron_queue() {
     assert_eq!(&provider_after.balance, &final_provider_escrow);
 
     // cleaned up by cron
-    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number)
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number, true)
 }
 
 #[test]
@@ -267,9 +267,9 @@ fn batch_settlement_of_deals_allows_partial_success() {
         finished_summary,
         DealSettlementSummary { completed: true, payment: finished_payment.clone() }
     );
-    assert_deal_deleted(&rt, finished_id, &finished_proposal, sector_number);
-    assert_deal_deleted(&rt, terminated_id, &terminated_proposal, sector_number);
-    assert_deal_deleted(&rt, unactivated_id, &unactivated_proposal, sector_number);
+    assert_deal_deleted(&rt, finished_id, &finished_proposal, sector_number, false);
+    assert_deal_deleted(&rt, terminated_id, &terminated_proposal, sector_number, false);
+    assert_deal_deleted(&rt, unactivated_id, &unactivated_proposal, sector_number, false);
 
     // check that the sum total of all payments/slashing has been reflected in the balance table
     let client_end = get_balance(&rt, &CLIENT_ADDR);
