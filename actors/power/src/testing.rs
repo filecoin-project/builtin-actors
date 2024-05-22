@@ -201,8 +201,8 @@ fn check_claims_invariants<BS: Blockstore>(
 
     claims_by_address
 }
-fn check_proofs_invariants(state: &State, acc: &MessageAccumulator) -> () {
-    if !state.proof_validation_batch.is_none() {
-        acc.add(format!("proof validation batch should be empty after FIP 0084"));
+fn check_proofs_invariants(state: &State, acc: &MessageAccumulator) {
+    if state.proof_validation_batch.is_some() {
+        acc.add("proof validation batch should be empty after FIP 0084");
     }
 }

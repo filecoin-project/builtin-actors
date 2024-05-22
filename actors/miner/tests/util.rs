@@ -448,10 +448,12 @@ impl ActorHarness {
 
         let mut info = Vec::with_capacity(num_sectors);
         for (i, pc) in precommits.iter().enumerate() {
+            let sector_deal_ids =
+                deal_ids.get(i).and_then(|ids| Some(ids.clone())).unwrap_or_default();
             let sector = self
                 .prove_commit_sector_and_confirm(
                     rt,
-                    &deal_ids[i],
+                    &sector_deal_ids,
                     self.make_prove_commit_params(pc.info.sector_number),
                     prove_cfg.clone(),
                 )
