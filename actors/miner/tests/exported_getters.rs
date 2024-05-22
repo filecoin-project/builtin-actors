@@ -115,8 +115,7 @@ fn collateral_getters() {
 
     let precommit_params =
         h.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, vec![]);
-    let precommit =
-        h.pre_commit_sector_and_get(&rt, precommit_params, PreCommitConfig::empty(), true);
+    h.pre_commit_sector_and_get(&rt, precommit_params, PreCommitConfig::empty(), true);
 
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
@@ -127,7 +126,7 @@ fn collateral_getters() {
     let sector = h
         .prove_commit_sector_and_confirm(
             &rt,
-            &precommit,
+            &vec![],
             h.make_prove_commit_params(sector_no),
             pcc,
         )

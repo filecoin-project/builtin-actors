@@ -52,8 +52,9 @@ fn prove_single_sector() {
     let verified_deal_space = BigInt::from(verified_deal.size.0);
 
     // Pre-commit with a deal in order to exercise non-zero deal weights.
+    let deal_ids = vec![1];
     let precommit_params =
-        h.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, vec![1]);
+        h.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, deal_ids.clone());
     let precommit =
         h.pre_commit_sector_and_get(&rt, precommit_params, PreCommitConfig::empty(), true);
 
@@ -78,7 +79,7 @@ fn prove_single_sector() {
     let sector = h
         .prove_commit_sector_and_confirm(
             &rt,
-            &precommit,
+            &deal_ids,
             h.make_prove_commit_params(sector_no),
             pcc,
         )
@@ -169,10 +170,12 @@ fn prove_sectors_from_batch_pre_commit() {
     let sector_expiration =
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
 
+    let deal_ids1 = vec![1];
+    let deal_ids2 = vec![2, 3];
     let sectors = vec![
         h.make_pre_commit_params(100, precommit_epoch - 1, sector_expiration, vec![]),
-        h.make_pre_commit_params(101, precommit_epoch - 1, sector_expiration, vec![1]), // 1 * 32GiB verified deal
-        h.make_pre_commit_params(102, precommit_epoch - 1, sector_expiration, vec![2, 3]), // 2 * 16GiB verified deals
+        h.make_pre_commit_params(101, precommit_epoch - 1, sector_expiration, deal_ids1.clone()), // 1 * 32GiB verified deal
+        h.make_pre_commit_params(102, precommit_epoch - 1, sector_expiration, deal_ids2.clone()), // 2 * 16GiB verified deals
     ];
 
     let deal_space: i64 = 32 << 30;
@@ -234,7 +237,7 @@ fn prove_sectors_from_batch_pre_commit() {
         let sector = h
             .prove_commit_sector_and_confirm(
                 &rt,
-                precommit,
+                &vec![],
                 h.make_prove_commit_params(precommit.info.sector_number),
                 ProveCommitConfig::default(),
             )
@@ -261,7 +264,7 @@ fn prove_sectors_from_batch_pre_commit() {
         let sector = h
             .prove_commit_sector_and_confirm(
                 &rt,
-                precommit,
+                &deal_ids1,
                 h.make_prove_commit_params(precommit.info.sector_number),
                 pcc,
             )
@@ -288,7 +291,7 @@ fn prove_sectors_from_batch_pre_commit() {
         let sector = h
             .prove_commit_sector_and_confirm(
                 &rt,
-                precommit,
+                &deal_ids2,
                 h.make_prove_commit_params(precommit.info.sector_number),
                 pcc,
             )
@@ -314,6 +317,7 @@ fn invalid_proof_rejected() {
 
     h.construct_and_verify(&rt);
     let deadline = h.deadline(&rt);
+    let deal_ids = vec![1];
 
     // Make a good commitment for the proof to target.
     let sector_no = 100;
@@ -321,7 +325,7 @@ fn invalid_proof_rejected() {
         sector_no,
         precommit_epoch - 1,
         deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period,
-        vec![1],
+        deal_ids.clone(),
     );
     let precommit = h.pre_commit_sector_and_get(&rt, params, PreCommitConfig::default(), true);
 
@@ -331,7 +335,7 @@ fn invalid_proof_rejected() {
         ExitCode::USR_NOT_FOUND,
         h.prove_commit_sector_and_confirm(
             &rt,
-            &precommit,
+            &deal_ids,
             h.make_prove_commit_params(sector_no + 1),
             ProveCommitConfig::empty(),
         ),
@@ -348,7 +352,7 @@ fn invalid_proof_rejected() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         h.prove_commit_sector_and_confirm(
             &rt,
-            &precommit,
+            &deal_ids,
             h.make_prove_commit_params(sector_no),
             ProveCommitConfig::empty(),
         ),
@@ -361,7 +365,7 @@ fn invalid_proof_rejected() {
         ExitCode::USR_FORBIDDEN,
         h.prove_commit_sector_and_confirm(
             &rt,
-            &precommit,
+            &deal_ids,
             h.make_prove_commit_params(sector_no),
             ProveCommitConfig::empty(),
         ),
@@ -378,7 +382,7 @@ fn invalid_proof_rejected() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         h.prove_commit_sector_and_confirm(
             &rt,
-            &precommit,
+            &deal_ids,
             h.make_prove_commit_params(sector_no),
             ProveCommitConfig { verify_deals_exit, ..Default::default() },
         ),
@@ -388,7 +392,7 @@ fn invalid_proof_rejected() {
     rt.balance.replace(TokenAmount::from_whole(1_000));
 
     let prove_commit = h.make_prove_commit_params(sector_no);
-    h.prove_commit_sector_and_confirm(&rt, &precommit, prove_commit, ProveCommitConfig::empty())
+    h.prove_commit_sector_and_confirm(&rt, &deal_ids, prove_commit, ProveCommitConfig::empty())
         .unwrap();
     let st = h.get_state(&rt);
 
@@ -406,7 +410,7 @@ fn invalid_proof_rejected() {
         ExitCode::USR_NOT_FOUND,
         h.prove_commit_sector_and_confirm(
             &rt,
-            &precommit,
+            &deal_ids,
             h.make_prove_commit_params(sector_no),
             ProveCommitConfig::empty(),
         ),
@@ -455,7 +459,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
         ExitCode::USR_INSUFFICIENT_FUNDS,
         h.prove_commit_sector_and_confirm(
             &rt,
-            &precommit,
+            &vec![],
             h.make_prove_commit_params(h.next_sector_no),
             ProveCommitConfig::empty(),
         ),
@@ -468,7 +472,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
     );
     h.prove_commit_sector_and_confirm(
         &rt,
-        &precommit,
+        &vec![],
         h.make_prove_commit_params(h.next_sector_no),
         ProveCommitConfig::empty(),
     )
@@ -478,7 +482,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
 
 #[test]
 fn prove_commit_just_after_period_start_permits_post() {
-    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
     let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
 
@@ -489,11 +493,11 @@ fn prove_commit_just_after_period_start_permits_post() {
 
     // Commit a sector the very next epoch
     rt.set_epoch(PERIOD_OFFSET + 2);
-    let sector =
-        h.commit_and_prove_sector(&rt, MAX_SECTOR_NUMBER, DEFAULT_SECTOR_EXPIRATION, vec![]);
+    let sectors =
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
 
     // advance cron to activate power.
-    h.advance_and_submit_posts(&rt, &[sector]);
+    h.advance_and_submit_posts(&rt, &[sectors.first().unwrap().clone()]);
     h.check_state(&rt);
 }
 
@@ -508,6 +512,7 @@ fn verify_proof_does_not_vest_funds() {
 
     h.construct_and_verify(&rt);
     let deadline = h.deadline(&rt);
+    let deal_ids = vec![1];
 
     // Make a good commitment for the proof to target.
     let sector_no = 100;
@@ -515,9 +520,9 @@ fn verify_proof_does_not_vest_funds() {
         sector_no,
         precommit_epoch - 1,
         deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period,
-        vec![1],
+        deal_ids.clone(),
     );
-    let precommit = h.pre_commit_sector_and_get(&rt, params, PreCommitConfig::default(), true);
+    h.pre_commit_sector_and_get(&rt, params, PreCommitConfig::default(), true);
 
     // add 1000 tokens that vest immediately
     let mut st = h.get_state(&rt);
@@ -536,6 +541,6 @@ fn verify_proof_does_not_vest_funds() {
 
     let prove_commit = h.make_prove_commit_params(sector_no);
     // The below call expects exactly the pledge delta for the proven sector, zero for any other vesting.
-    h.prove_commit_sector_and_confirm(&rt, &precommit, prove_commit, ProveCommitConfig::empty())
+    h.prove_commit_sector_and_confirm(&rt, &deal_ids, prove_commit, ProveCommitConfig::empty())
         .unwrap();
 }

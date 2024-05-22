@@ -17,6 +17,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
 
 #[test]
 fn successfully_check_sector_is_proven() {
+    let _ = pretty_env_logger::init();
     let (mut h, rt) = setup();
 
     let sectors =
