@@ -391,7 +391,6 @@ impl Harness {
         rt: &MockRuntime,
         current_epoch: ChainEpoch,
         expected_raw_power: &StoragePower,
-        infos: Vec<SealVerifyInfo>,
     ) {
         self.expect_query_network_info(rt);
         // expect power sends to reward actor

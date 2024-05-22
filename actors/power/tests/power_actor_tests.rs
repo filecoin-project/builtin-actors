@@ -704,7 +704,7 @@ mod cron_tests {
 
         let delta = TokenAmount::from_atto(1u8);
         h.update_pledge_total(&rt, miner1, &delta);
-        h.on_epoch_tick_end(&rt, 0, &expected_power, Vec::new());
+        h.on_epoch_tick_end(&rt, 0, &expected_power);
 
         let state: State = rt.get_state();
 
