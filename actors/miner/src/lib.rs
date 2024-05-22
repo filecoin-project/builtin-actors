@@ -1276,7 +1276,7 @@ impl Actor {
                 ) {
                     return Err(actor_error!(
                         forbidden,
-                        "can only dispute window posts during the dispute window\
+                        "can only dispute window posts during the dispute window \
                     ({} epochs after the challenge window closes)",
                         policy.wpost_dispute_window
                     ));
