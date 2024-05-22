@@ -668,7 +668,6 @@ mod cron_tests {
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
-        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
 
@@ -779,7 +778,6 @@ mod cron_tests {
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
-        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
 
         rt.verify();
@@ -807,8 +805,6 @@ mod cron_tests {
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
-
-        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
         rt.verify();
@@ -846,7 +842,6 @@ mod cron_tests {
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
-        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
         rt.verify();
@@ -893,7 +888,6 @@ mod cron_tests {
         rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
 
         // process batch verifies first
-        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
         h.expect_query_network_info(&rt);
 
         let state: State = rt.get_state();
@@ -956,9 +950,6 @@ mod cron_tests {
 
         rt.set_epoch(2);
         rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
-
-        // process batch verifies first
-        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
         h.expect_query_network_info(&rt);
 
@@ -1027,7 +1018,6 @@ mod cron_tests {
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
-        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
         rt.verify();
