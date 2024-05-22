@@ -418,8 +418,10 @@ impl ActorHarness {
                 CompactCommD::empty()
             } else {
                 let piece_cids: Vec<Cid> = deal_ids[i]
-                    .iter()
-                    .map(|_deal_id| make_piece_cid(sector_no, i, DEFAULT_PIECE_SIZE))
+                    .iter().enumerate()
+                    .map(|(j, _deal_id)| {
+                        make_piece_cid(sector_no, j, DEFAULT_PIECE_SIZE)
+                    })
                     .collect();
 
                 sector_commd_from_pieces(&piece_cids)
@@ -3176,6 +3178,7 @@ fn make_unsealed_cid(input: &[u8]) -> Cid {
 
 // Makes a fake piece CID that is unique for sector number, piece index, and piece size.
 fn make_piece_cid(sector_number: SectorNumber, index: usize, size: u64) -> Cid {
+    println!("piece-{}-{}-{}", sector_number, index, size);
     make_unsealed_cid(format!("piece-{}-{}-{}", sector_number, index, size).as_bytes())
 }
 
