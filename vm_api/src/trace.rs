@@ -52,7 +52,7 @@ pub struct ExpectInvocation {
     pub exit_code: ExitCode,
     pub return_value: Option<ReturnValue>,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
-    pub events: Vec<EmittedEvent>,
+    pub events: Option<Vec<EmittedEvent>>,
 }
 
 impl ExpectInvocation {
@@ -116,25 +116,27 @@ impl ExpectInvocation {
         }
 
         // match emitted events
-        let emitted_events = &invoc.events;
-        let expected_events = &self.events;
-        assert_eq!(
-            emitted_events.len(),
-            expected_events.len(),
-            "{} {} emitted={}, expected={}, {:?}, {:?}",
-            id,
-            "length of expected and emitted events do not match",
-            emitted_events.len(),
-            expected_events.len(),
-            emitted_events,
-            expected_events
-        );
+        if let Some(expected_events) = &self.events {
+            let emitted_events = &invoc.events;
+            assert_eq!(
+                emitted_events.len(),
+                expected_events.len(),
+                "{} {} emitted={}, expected={}, {:?}, {:?}",
+                id,
+                "length of expected and emitted events do not match",
+                emitted_events.len(),
+                expected_events.len(),
+                emitted_events,
+                expected_events
+            );
 
-        // use the zip method to iterate over the emitted events and expected_events
-        // vectors at the same time
-        for (emitted, expected) in emitted_events.iter().zip(expected_events.iter()) {
-            // only try to match if required fields match
-            assert_eq!(*emitted, *expected);
+
+            // use the zip method to iterate over the emitted events and expected_events
+            // vectors at the same time
+            for (emitted, expected) in emitted_events.iter().zip(expected_events.iter()) {
+                // only try to match if required fields match
+                assert_eq!(*emitted, *expected);
+            }
         }
 
         if let Some(expect_subinvocs) = &self.subinvocs {
@@ -207,7 +209,7 @@ impl Default for ExpectInvocation {
             exit_code: ExitCode::OK,
             return_value: None,
             subinvocs: None,
-            events: vec![],
+            events: None,
         }
     }
 }

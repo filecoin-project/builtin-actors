@@ -1060,7 +1060,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::ClaimAllocations as u64,
-                events: vec![claim_event],
+                events: Some(vec![claim_event]),
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -1072,13 +1072,13 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
         ]),
-        events: vec![Expect::build_sector_activation_event(
+        events: Some(vec![Expect::build_sector_activation_event(
             "sector-updated",
             miner_id,
             sector_number,
             Some(unsealed_cid),
             &pieces,
-        )],
+        )]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

@@ -682,12 +682,12 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::ClaimAllocations as u64,
-                events: vec![Expect::build_verifreg_event(
+                events: Some(vec![Expect::build_verifreg_event(
                     "claim",
                     claim_id,
                     verified_client.id().unwrap(),
                     miner_id,
-                )],
+                )]),
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -698,13 +698,13 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
         ]),
-        events: vec![Expect::build_sector_activation_event(
+        events: Some(vec![Expect::build_sector_activation_event(
             "sector-updated",
             miner_id,
             sector_number,
             Some(unsealed_cid),
             &pieces,
-        )],
+        )]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

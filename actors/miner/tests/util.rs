@@ -417,12 +417,10 @@ impl ActorHarness {
             let compact_commd = if !has_deals {
                 CompactCommD::empty()
             } else {
-                let piece_cids: Vec<Cid> = deal_ids[i]
-                    .iter()
-                    .enumerate()
-                    .map(|(j, _deal_id)| make_piece_cid(sector_no, j, DEFAULT_PIECE_SIZE))
-                    .collect();
-
+                // Determine CommD from configuration in the same way as prove_commit_and_confirm
+                let piece_specs = make_piece_specs_from_configs(sector_no, &sector_deal_ids, &prove_cfg);
+                let manifest = make_activation_manifest(sector_no, &piece_specs);
+                let piece_cids: Vec::<Cid> = manifest.pieces.iter().map(|p| p.cid).collect();
                 sector_commd_from_pieces(&piece_cids)
             };
 
@@ -766,22 +764,8 @@ impl ActorHarness {
         cfg: ProveCommitConfig,
     ) -> Result<SectorOnChainInfo, ActorError> {
         let sector_number = params.sector_number;
-        const CLIENT_ID: ActorID = 1000;
-
-        let mut piece_specs = vec![];
-
-        for deal_id in deal_ids.iter() {
-            piece_specs.push((DEFAULT_PIECE_SIZE, CLIENT_ID, NO_ALLOCATION_ID, *deal_id));
-
-            // TODO modify this ^ for ProveCommitCfgs that specify particular deals and piece cids
-            /*             let verified_allocation_key = if deal.allocation_id == NO_ALLOCATION_ID {
-                None
-            } else {
-                Some(VerifiedAllocationKey { client: deal.client, id: deal.allocation_id })
-            };
-            */
-        }
-
+        let piece_specs = make_piece_specs_from_configs(sector_number, deal_ids, &cfg);
+        
         let manifest = make_activation_manifest(sector_number, &piece_specs);
         let req_activation_succ = true; // Doesn't really matter since there's only 1
         let req_notif_succ = false; // CPSV could not require this as it happened in cron
@@ -3353,6 +3337,30 @@ pub fn make_piece_manifest(
             vec![]
         },
     }
+}
+
+pub fn make_piece_specs_from_configs(sector_number: u64, deal_ids: &Vec<DealID>, prove_cfg: &ProveCommitConfig) ->Vec<(u64, ActorID, AllocationID, DealID)> {
+    static EMPTY_VEC: Vec<ActivatedDeal> = Vec::new();
+    let configured_deals = prove_cfg.activated_deals.get(&sector_number).unwrap_or(&EMPTY_VEC);
+    // The old configuration system had duplicated information between cfg and precommit inputs
+    // To ensure passed in configuration is internally consistent check that cfg deals are a subset
+    // of precommitted deal ids
+    assert!(deal_ids.len() >= configured_deals.len());
+    let mut piece_specs = vec![];
+    const DEFAULT_CLIENT_ID: ActorID = 1000;
+
+    for (i, deal_id) in deal_ids.iter().enumerate() {
+        if i < configured_deals.len() {
+            let deal = configured_deals.get(i).unwrap();
+            // Configured deals don't specify deal_id use deal_ids configuration info
+            // Piece specs don't specify piece cid but deterministically derive it so ignore deal.Cid
+            piece_specs.push((deal.size.0, deal.client, deal.allocation_id, deal_id.clone()));
+        } else {
+            piece_specs.push((DEFAULT_PIECE_SIZE, DEFAULT_CLIENT_ID, NO_ALLOCATION_ID, deal_id.clone()));
+        }
+    }
+
+    piece_specs
 }
 
 pub fn claims_from_pieces(pieces: &[PieceActivationManifest]) -> Vec<AllocationClaim> {

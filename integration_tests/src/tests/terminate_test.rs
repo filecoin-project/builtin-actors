@@ -249,7 +249,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
             ),
             Expect::power_update_claim(miner_id, sector_power.neg()),
         ]),
-        events: vec![expect_event],
+        events: Some(vec![expect_event]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

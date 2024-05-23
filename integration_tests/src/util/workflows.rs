@@ -298,7 +298,7 @@ pub fn precommit_sectors_v2_expect_code(
                     .unwrap(),
                 ),
                 subinvocs: Some(invocs),
-                events,
+                events: Some(events),
                 ..Default::default()
             };
             expect.matches(v.take_invocations().last().unwrap());
@@ -438,7 +438,7 @@ pub fn prove_commit_sectors(
                 Expect::power_update_pledge(miner_id, None),
                 Expect::burn(miner_id, Some(expected_fee)),
             ]),
-            events,
+            events: Some(events),
             ..Default::default()
         }
         .matches(v.take_invocations().last().unwrap());
@@ -804,7 +804,7 @@ pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePo
                 DATACAP_TOKEN_ACTOR_ADDR,
                 *verifier,
             )]),
-            events: vec![verifier_balance_event(verifier.id().unwrap(), data_cap)],
+            events: Some(vec![verifier_balance_event(verifier.id().unwrap(), data_cap)]),
             ..Default::default()
         }]),
         ..Default::default()
@@ -864,7 +864,7 @@ pub fn verifreg_add_client(
             )]),
             ..Default::default()
         }]),
-        events: vec![verifier_balance_event(verifier.id().unwrap(), updated_verifier_balance)],
+        events: Some(vec![verifier_balance_event(verifier.id().unwrap(), updated_verifier_balance)]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -956,7 +956,7 @@ pub fn verifreg_remove_expired_allocations(
             )]),
             ..Default::default()
         }]),
-        events: expected_events,
+        events: Some(expected_events),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -1218,12 +1218,12 @@ pub fn market_publish_deal(
                     })
                     .unwrap(),
                 ),
-                events: vec![Expect::build_verifreg_event(
+                events: Some(vec![Expect::build_verifreg_event(
                     "allocation",
                     alloc_id,
                     deal_client.id().unwrap(),
                     miner_id.id().unwrap(),
-                )],
+                )]),
                 ..Default::default()
             }]),
             ..Default::default()
@@ -1240,12 +1240,12 @@ pub fn market_publish_deal(
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,
         subinvocs: Some(expect_publish_invocs),
-        events: vec![Expect::build_market_event(
+        events: Some(vec![Expect::build_market_event(
             "deal-published",
             ret.ids[0],
             deal_client.id().unwrap(),
             miner_id.id().unwrap(),
-        )],
+        )]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

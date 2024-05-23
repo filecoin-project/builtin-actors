@@ -74,7 +74,7 @@ impl Expect {
             params: Some(params),
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),
-            events,
+            events: Some(events),
             ..Default::default()
         }
     }
@@ -103,7 +103,7 @@ impl Expect {
             params: Some(params),
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![Expect::burn(STORAGE_MARKET_ACTOR_ID, None)]),
-            events,
+            events: Some(events),
             ..Default::default()
         }
     }
@@ -256,7 +256,7 @@ impl Expect {
                     .unwrap(),
                 ),
                 subinvocs: Some(burn_invocs),
-                events: claim_events,
+                events: Some(claim_events),
                 ..Default::default()
             }]),
             ..Default::default()

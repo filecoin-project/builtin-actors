@@ -734,7 +734,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
             Expect::power_update_pledge(miner_id, None),
             Expect::burn(miner_id, None),
         ]),
-        events,
+        events: Some(events),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
