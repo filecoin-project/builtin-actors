@@ -418,9 +418,10 @@ impl ActorHarness {
                 CompactCommD::empty()
             } else {
                 // Determine CommD from configuration in the same way as prove_commit_and_confirm
-                let piece_specs = make_piece_specs_from_configs(sector_no, &sector_deal_ids, &prove_cfg);
+                let piece_specs =
+                    make_piece_specs_from_configs(sector_no, &sector_deal_ids, &prove_cfg);
                 let manifest = make_activation_manifest(sector_no, &piece_specs);
-                let piece_cids: Vec::<Cid> = manifest.pieces.iter().map(|p| p.cid).collect();
+                let piece_cids: Vec<Cid> = manifest.pieces.iter().map(|p| p.cid).collect();
                 sector_commd_from_pieces(&piece_cids)
             };
 
@@ -765,7 +766,7 @@ impl ActorHarness {
     ) -> Result<SectorOnChainInfo, ActorError> {
         let sector_number = params.sector_number;
         let piece_specs = make_piece_specs_from_configs(sector_number, deal_ids, &cfg);
-        
+
         let manifest = make_activation_manifest(sector_number, &piece_specs);
         let req_activation_succ = true; // Doesn't really matter since there's only 1
         let req_notif_succ = false; // CPSV could not require this as it happened in cron
@@ -3339,7 +3340,11 @@ pub fn make_piece_manifest(
     }
 }
 
-pub fn make_piece_specs_from_configs(sector_number: u64, deal_ids: &Vec<DealID>, prove_cfg: &ProveCommitConfig) ->Vec<(u64, ActorID, AllocationID, DealID)> {
+pub fn make_piece_specs_from_configs(
+    sector_number: u64,
+    deal_ids: &Vec<DealID>,
+    prove_cfg: &ProveCommitConfig,
+) -> Vec<(u64, ActorID, AllocationID, DealID)> {
     static EMPTY_VEC: Vec<ActivatedDeal> = Vec::new();
     let configured_deals = prove_cfg.activated_deals.get(&sector_number).unwrap_or(&EMPTY_VEC);
     // The old configuration system had duplicated information between cfg and precommit inputs
@@ -3356,7 +3361,12 @@ pub fn make_piece_specs_from_configs(sector_number: u64, deal_ids: &Vec<DealID>,
             // Piece specs don't specify piece cid but deterministically derive it so ignore deal.Cid
             piece_specs.push((deal.size.0, deal.client, deal.allocation_id, deal_id.clone()));
         } else {
-            piece_specs.push((DEFAULT_PIECE_SIZE, DEFAULT_CLIENT_ID, NO_ALLOCATION_ID, deal_id.clone()));
+            piece_specs.push((
+                DEFAULT_PIECE_SIZE,
+                DEFAULT_CLIENT_ID,
+                NO_ALLOCATION_ID,
+                deal_id.clone(),
+            ));
         }
     }
 

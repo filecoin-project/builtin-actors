@@ -864,7 +864,10 @@ pub fn verifreg_add_client(
             )]),
             ..Default::default()
         }]),
-        events: Some(vec![verifier_balance_event(verifier.id().unwrap(), updated_verifier_balance)]),
+        events: Some(vec![verifier_balance_event(
+            verifier.id().unwrap(),
+            updated_verifier_balance,
+        )]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

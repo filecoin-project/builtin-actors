@@ -325,12 +325,18 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
                 subinvocs: Some(vec![]),
                 events: Some(
                     deal_ids_s3
-                    .iter()
-                    .chain(deal_ids_s4.iter())
-                    .map(|deal_id| {
-                        Expect::build_market_event("deal-activated", *deal_id, client_id, miner_id)
-                    })
-                    .collect::<Vec<_>>()),
+                        .iter()
+                        .chain(deal_ids_s4.iter())
+                        .map(|deal_id| {
+                            Expect::build_market_event(
+                                "deal-activated",
+                                *deal_id,
+                                client_id,
+                                miner_id,
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                ),
                 ..Default::default()
             },
         ]),
