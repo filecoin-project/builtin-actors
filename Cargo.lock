@@ -1556,6 +1556,7 @@ dependencies = [
  "bitflags 2.4.1",
  "byteorder",
  "cid 0.10.1",
+ "const-hex",
  "fil_actor_account",
  "fil_actor_market",
  "fil_actor_power",
