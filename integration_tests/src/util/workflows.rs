@@ -39,12 +39,13 @@ use fil_actor_market::{
 };
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
-    max_prove_commit_duration, ChangeBeneficiaryParams, CompactCommD, DeadlineInfo,
-    DeclareFaultsRecoveredParams, ExpirationExtension2, ExtendSectorExpiration2Params,
-    Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams2,
-    ProveCommitAggregateParams, ProveCommitSectors3Params, RecoveryDeclaration,
-    SectorActivationManifest, SectorClaim, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    State as MinerState, SubmitWindowedPoStParams, WithdrawBalanceParams, WithdrawBalanceReturn,
+    max_prove_commit_duration, ChangeBeneficiaryParams, CompactCommD, DataActivationNotification,
+    DeadlineInfo, DeclareFaultsRecoveredParams, ExpirationExtension2,
+    ExtendSectorExpiration2Params, Method as MinerMethod, PieceActivationManifest, PoStPartition,
+    PowerPair, PreCommitSectorBatchParams2, ProveCommitAggregateParams, ProveCommitSectors3Params,
+    RecoveryDeclaration, SectorActivationManifest, SectorClaim, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
+    VerifiedAllocationKey, WithdrawBalanceParams, WithdrawBalanceReturn,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
@@ -86,6 +87,7 @@ use crate::expects::Expect;
 use crate::*;
 
 use super::make_bitfield;
+use super::market_pending_deal_allocations_raw;
 use super::miner_dline_info;
 use super::sector_deadline;
 
@@ -165,9 +167,10 @@ pub fn miner_prove_sector(
     worker: &Address,
     miner_id: &Address,
     sector_number: SectorNumber,
+    manifests: Vec<PieceActivationManifest>,
 ) {
     let prove_commit_params = ProveCommitSectors3Params {
-        sector_activations: vec![SectorActivationManifest { sector_number, pieces: vec![] }],
+        sector_activations: vec![SectorActivationManifest { sector_number, pieces: manifests }],
         sector_proofs: vec![vec![].into()],
         aggregate_proof: RawBytes::default(),
         aggregate_proof_type: None,
@@ -192,6 +195,15 @@ pub fn miner_prove_sector(
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn miner_prove_cc_sector(
+    v: &dyn VM,
+    worker: &Address,
+    miner_id: &Address,
+    sector_number: SectorNumber,
+) {
+    miner_prove_sector(v, worker, miner_id, sector_number, vec![]);
 }
 
 #[derive(Default, Clone)]
@@ -353,6 +365,7 @@ pub fn precommit_meta_data_from_deals(
     v: &dyn VM,
     deal_ids: &[u64],
     seal_proof: RegisteredSealProof,
+    include_ids: bool,
 ) -> PrecommitMetadata {
     let state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let pieces: Vec<PieceInfo> = deal_ids
@@ -363,8 +376,9 @@ pub fn precommit_meta_data_from_deals(
         })
         .collect();
 
+    let ids = if include_ids { deal_ids.to_vec() } else { vec![] };
     PrecommitMetadata {
-        deals: deal_ids.to_vec(),
+        deals: ids,
         commd: CompactCommD::of(
             v.primitives().compute_unsealed_sector_cid(seal_proof, &pieces).unwrap(),
         ),
@@ -1301,4 +1315,32 @@ pub fn get_deal_weights(
         return (DealWeight::zero(), DealWeight::from(deal.piece_size.0 * duration as u64));
     }
     (DealWeight::from(deal.piece_size.0 * duration as u64), DealWeight::zero())
+}
+
+pub fn make_piece_manifests_from_deal_ids(
+    v: &dyn VM,
+    deal_ids: Vec<DealID>,
+) -> Vec<PieceActivationManifest> {
+    let mut piece_manifests = vec![];
+    for deal_id in deal_ids {
+        let deal = get_deal(v, deal_id);
+        let alloc_key = match market_pending_deal_allocations_raw(v, &[deal_id]) {
+            Ok(alloc_ids) => Some(VerifiedAllocationKey {
+                id: *alloc_ids.get(0).unwrap(),
+                client: deal.client.id().unwrap(),
+            }),
+            Err(_) => None,
+        };
+
+        piece_manifests.push(PieceActivationManifest {
+            cid: deal.piece_cid,
+            size: deal.piece_size,
+            verified_allocation_key: alloc_key,
+            notify: vec![DataActivationNotification {
+                address: STORAGE_MARKET_ACTOR_ADDR,
+                payload: serialize(&deal_id, "dealid").unwrap(),
+            }],
+        });
+    }
+    piece_manifests
 }

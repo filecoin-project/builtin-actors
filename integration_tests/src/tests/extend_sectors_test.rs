@@ -26,11 +26,11 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
-    create_miner, cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance,
-    market_pending_deal_allocations, market_publish_deal, miner_precommit_one_sector_v2,
-    miner_prove_sector, override_compute_unsealed_sector_cid, precommit_meta_data_from_deals,
-    sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
-    PrecommitMetadata,
+    create_miner, cron_tick, expect_invariants, invariant_failure_patterns,
+    make_piece_manifests_from_deal_ids, market_add_balance, market_pending_deal_allocations,
+    market_publish_deal, miner_precommit_one_sector_v2, miner_prove_cc_sector, miner_prove_sector,
+    override_compute_unsealed_sector_cid, precommit_meta_data_from_deals, sector_deadline,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, PrecommitMetadata,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -165,14 +165,20 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         &miner_id,
         seal_proof,
         sector_number,
-        precommit_meta_data_from_deals(v, &deals, seal_proof),
+        precommit_meta_data_from_deals(v, &deals, seal_proof, false),
         true,
         deal_start + 180 * EPOCHS_IN_DAY,
     );
 
     // advance time to max seal duration and prove the sector
     advance_by_deadline_to_epoch(v, &miner_id, deal_start);
-    miner_prove_sector(v, &worker, &miner_id, sector_number);
+    miner_prove_sector(
+        v,
+        &worker,
+        &miner_id,
+        sector_number,
+        make_piece_manifests_from_deal_ids(v, deals),
+    );
     // trigger cron to validate the prove commit
     cron_tick(v);
 
@@ -393,14 +399,20 @@ pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
         &miner_id,
         seal_proof,
         sector_number,
-        precommit_meta_data_from_deals(v, &deals, seal_proof),
+        precommit_meta_data_from_deals(v, &deals, seal_proof, false),
         true,
         deal_start + deal_lifetime,
     );
 
     // advance time to max seal duration and prove the sector
     advance_by_deadline_to_epoch(v, &miner_id, deal_start);
-    miner_prove_sector(v, &worker, &miner_id, sector_number);
+    miner_prove_sector(
+        v,
+        &worker,
+        &miner_id,
+        sector_number,
+        make_piece_manifests_from_deal_ids(v, deals),
+    );
     // trigger cron to validate the prove commit
     cron_tick(v);
 
@@ -465,7 +477,7 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
 
     // advance time to max seal duration and prove the sector
     advance_by_deadline_to_epoch(v, &miner_id, sector_start);
-    miner_prove_sector(v, &worker, &miner_id, sector_number);
+    miner_prove_cc_sector(v, &worker, &miner_id, sector_number);
     // trigger cron to validate the prove commit
     cron_tick(v);
 
@@ -566,7 +578,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     // advance time by a day and prove the sector
     let prove_epoch = v.epoch() + EPOCHS_IN_DAY;
     advance_by_deadline_to_epoch(v, &miner_addr, prove_epoch);
-    miner_prove_sector(v, &worker, &miner_addr, sector_number);
+    miner_prove_cc_sector(v, &worker, &miner_addr, sector_number);
     // trigger cron to validate the prove commit
     cron_tick(v);
 

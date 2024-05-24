@@ -32,9 +32,9 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_to_proving_deadline, assert_invariants, create_accounts, create_miner, cron_tick,
-    deal_cid_for_testing, make_bitfield, market_publish_deal, miner_balance,
-    miner_precommit_one_sector_v2, miner_prove_sector, precommit_meta_data_from_deals,
-    submit_windowed_post, verifreg_add_verifier,
+    deal_cid_for_testing, make_bitfield, make_piece_manifests_from_deal_ids, market_publish_deal,
+    miner_balance, miner_precommit_one_sector_v2, miner_prove_sector,
+    precommit_meta_data_from_deals, submit_windowed_post, verifreg_add_verifier,
 };
 
 #[vm_test]
@@ -167,15 +167,19 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         &miner_robust_addr,
         seal_proof,
         sector_number,
-        precommit_meta_data_from_deals(v, &deal_ids, seal_proof),
+        precommit_meta_data_from_deals(v, &deal_ids, seal_proof, false),
         true,
         v.epoch() + 220 * EPOCHS_IN_DAY,
     );
     let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &miner_id_addr, prove_time);
-
-    // prove commit, cron, advance to post time
-    miner_prove_sector(v, &worker, &miner_id_addr, sector_number);
+    miner_prove_sector(
+        v,
+        &worker,
+        &miner_id_addr,
+        sector_number,
+        make_piece_manifests_from_deal_ids(v, deal_ids.clone()),
+    );
 
     let (dline_info, p_idx) = advance_to_proving_deadline(v, &miner_id_addr, sector_number);
     let d_idx = dline_info.index;
