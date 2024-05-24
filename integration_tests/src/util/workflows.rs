@@ -1326,7 +1326,7 @@ pub fn make_piece_manifests_from_deal_ids(
         let deal = get_deal(v, deal_id);
         let alloc_key = match market_pending_deal_allocations_raw(v, &[deal_id]) {
             Ok(alloc_ids) => Some(VerifiedAllocationKey {
-                id: *alloc_ids.get(0).unwrap(),
+                id: *alloc_ids.first().unwrap(),
                 client: deal.client.id().unwrap(),
             }),
             Err(_) => None,
