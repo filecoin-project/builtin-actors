@@ -124,7 +124,7 @@ fn collateral_getters() {
     let pcc = ProveCommitConfig::empty();
 
     let sector = h
-        .prove_commit_sector_and_confirm(&rt, &vec![], h.make_prove_commit_params(sector_no), pcc)
+        .deprecated_sector_commit(&rt, &vec![], h.make_prove_commit_params(sector_no), pcc)
         .unwrap();
 
     // query available balance

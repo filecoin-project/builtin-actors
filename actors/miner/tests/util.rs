@@ -429,7 +429,8 @@ impl ActorHarness {
                 sector_no,
                 precommit_epoch - 1,
                 expiration,
-                // We are committing with deals but pass their info in CommD as PCD with deal_ids will fail after nv21
+                // We may be committing with deals but if so pass their info in CommD as
+                // PreCommitSector with deal_ids will fail after nv21
                 vec![],
                 compact_commd,
             );
@@ -450,7 +451,7 @@ impl ActorHarness {
             let sector_deal_ids =
                 deal_ids.get(i).and_then(|ids| Some(ids.clone())).unwrap_or_default();
             let sector = self
-                .prove_commit_sector_and_confirm(
+                .deprecated_sector_commit(
                     rt,
                     &sector_deal_ids,
                     self.make_prove_commit_params(pc.info.sector_number),
@@ -754,10 +755,13 @@ impl ActorHarness {
     }
 
     // deprecated flow calling prove commit sector and then confirm sector proofs valid
-    // With FIP 0084 this is no longer realizable.  It is kept in tests
+    // With FIP 0084 this is no longer realizable. Internally it now calls ProveCommitSectors3
+    // The entrypoint is kept in tests
     // 1) to ensure backwards compatibility between prove_commit_sector and prove_commit_sectors3
     // 2) to make use of existing test coverage without significant change
-    pub fn prove_commit_sector_and_confirm(
+    //
+    // This should be removed in favor of something else.  Discussion: https://github.com/filecoin-project/builtin-actors/issues/1545
+    pub fn deprecated_sector_commit(
         &self,
         rt: &MockRuntime,
         deal_ids: &Vec<DealID>,
@@ -837,7 +841,7 @@ impl ActorHarness {
         rt.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone().into(), Ok(()));
 
         // confirm sector proofs valid
-        let pieces = self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
+        let pieces = self.expect_sectors_activated(rt, config, &precommits);
 
         // sector activated event
         for (i, sc) in precommits.iter().enumerate() {
@@ -870,7 +874,9 @@ impl ActorHarness {
         Ok(())
     }
 
-    fn confirm_sector_proofs_valid_internal(
+    // Check that sectors are activating
+    // This is a separate method because historically this functionality was shared between various commitment entrypoints
+    fn expect_sectors_activated(
         &self,
         rt: &MockRuntime,
         cfg: ProveCommitConfig,
@@ -3164,7 +3170,6 @@ fn make_unsealed_cid(input: &[u8]) -> Cid {
 
 // Makes a fake piece CID that is unique for sector number, piece index, and piece size.
 fn make_piece_cid(sector_number: SectorNumber, index: usize, size: u64) -> Cid {
-    println!("piece-{}-{}-{}", sector_number, index, size);
     make_unsealed_cid(format!("piece-{}-{}-{}", sector_number, index, size).as_bytes())
 }
 

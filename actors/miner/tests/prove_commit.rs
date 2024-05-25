@@ -56,7 +56,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
     );
     expect_abort(
         ExitCode::USR_INSUFFICIENT_FUNDS,
-        h.prove_commit_sector_and_confirm(
+        h.deprecated_sector_commit(
             &rt,
             &vec![],
             h.make_prove_commit_params(h.next_sector_no),
@@ -69,7 +69,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
     rt.balance.replace(
         &st.pre_commit_deposits + &st.initial_pledge + &st.initial_pledge + &st.locked_funds,
     );
-    h.prove_commit_sector_and_confirm(
+    h.deprecated_sector_commit(
         &rt,
         &vec![],
         h.make_prove_commit_params(h.next_sector_no),
@@ -139,6 +139,5 @@ fn verify_proof_does_not_vest_funds() {
 
     let prove_commit = h.make_prove_commit_params(sector_no);
     // The below call expects exactly the pledge delta for the proven sector, zero for any other vesting.
-    h.prove_commit_sector_and_confirm(&rt, &vec![], prove_commit, ProveCommitConfig::empty())
-        .unwrap();
+    h.deprecated_sector_commit(&rt, &vec![], prove_commit, ProveCommitConfig::empty()).unwrap();
 }
