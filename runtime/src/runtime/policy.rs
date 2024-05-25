@@ -24,6 +24,8 @@ pub struct Policy {
     pub pre_commit_sector_batch_max_size: usize,
     /// The maximum number of sector replica updates in a single batch.
     pub prove_replica_updates_max_size: usize,
+    /// The maximum number of sector prove commits in a single batch.
+    pub prove_commit_sector_batch_max_size: usize,
 
     /// The delay between pre commit expiration and clean up from state. This enforces that expired pre-commits
     /// stay in state for a period of time creating a grace period during which a late-running aggregated prove-commit
@@ -165,6 +167,8 @@ impl Default for Policy {
             max_replica_update_proof_size: policy_constants::MAX_REPLICA_UPDATE_PROOF_SIZE,
             pre_commit_sector_batch_max_size: policy_constants::PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
             prove_replica_updates_max_size: policy_constants::PROVE_REPLICA_UPDATES_MAX_SIZE,
+            prove_commit_sector_batch_max_size:
+                policy_constants::PROVE_COMMIT_SECTOR_BATCH_MAX_SIZE,
             expired_pre_commit_clean_up_delay: policy_constants::EXPIRED_PRE_COMMIT_CLEAN_UP_DELAY,
             wpost_proving_period: policy_constants::WPOST_PROVING_PERIOD,
             wpost_challenge_window: policy_constants::WPOST_CHALLENGE_WINDOW,
@@ -243,6 +247,9 @@ pub mod policy_constants {
 
     // Same as PRE_COMMIT_SECTOR_BATCH_MAX_SIZE for consistency.
     pub const PROVE_REPLICA_UPDATES_MAX_SIZE: usize = PRE_COMMIT_SECTOR_BATCH_MAX_SIZE;
+
+    // Same as PRE_COMMIT_SECTOR_BATCH_MAX_SIZE for consistency.
+    pub const PROVE_COMMIT_SECTOR_BATCH_MAX_SIZE: usize = PRE_COMMIT_SECTOR_BATCH_MAX_SIZE;
 
     pub const EXPIRED_PRE_COMMIT_CLEAN_UP_DELAY: i64 = 8 * EPOCHS_IN_HOUR;
 

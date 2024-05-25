@@ -1787,7 +1787,7 @@ impl Actor {
                     params.sector_proofs.len()
                 ));
             }
-            validate_seal_proofs(precommits[0].info.seal_proof, &params.sector_proofs)?;
+            validate_seal_proofs(precommits[0].info.seal_proof, &params.sector_proofs, policy)?;
         } else {
             if params.aggregate_proof_type != Some(RegisteredAggregateProof::SnarkPackV2) {
                 return Err(actor_error!(
@@ -1960,6 +1960,7 @@ impl Actor {
         // Validate caller and parameters.
         let st: State = rt.state()?;
         let store = rt.store();
+        let policy = rt.policy();
         // Note: this accepts any caller for legacy, but probably shouldn't.
         // Since the miner can provide arbitrary control addresses, there's not much advantage
         // in allowing any caller, but some risk if there's an exploitable bug.
@@ -1977,7 +1978,7 @@ impl Actor {
                 actor_error!(not_found, "no pre-commited sector {}", params.sector_number)
             })?;
 
-        validate_seal_proofs(precommit.info.seal_proof, &[params.proof.clone()])?;
+        validate_seal_proofs(precommit.info.seal_proof, &[params.proof.clone()], policy)?;
 
         let allow_deals = true; // Legacy onboarding entry points allow pre-committed deals.
         let all_or_nothing = true; // The singleton must succeed.
@@ -4766,7 +4767,16 @@ fn validate_precommits(
 fn validate_seal_proofs(
     seal_proof_type: RegisteredSealProof,
     proofs: &[RawBytes],
+    policy: &Policy,
 ) -> Result<(), ActorError> {
+    if proofs.len() > policy.prove_commit_sector_batch_max_size {
+        return Err(actor_error!(
+            illegal_argument,
+            "batch of {} too large, max {}",
+            proofs.len(),
+            policy.prove_commit_sector_batch_max_size
+        ));
+    }
     let max_proof_size =
         seal_proof_type.proof_size().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
             format!("failed to determine max proof size for type {:?}", seal_proof_type,)
