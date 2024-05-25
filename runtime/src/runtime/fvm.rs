@@ -22,7 +22,7 @@ use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
-    AggregateSealVerifyProofAndInfos, NISealVerifyInfo, RegisteredSealProof, ReplicaUpdateInfo,
+    AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo,
     SealVerifyInfo, WindowPoStVerifyInfo,
 };
 use fvm_shared::sys::SendFlags;
@@ -531,11 +531,6 @@ where
 
     #[cfg(feature = "fake-proofs")]
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
-        Ok(batch.iter().map(|_| true).collect())
-    }
-
-    #[cfg(feature = "fake-proofs")]
-    fn batch_verify_ni_seals(&self, batch: &[NISealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
         Ok(batch.iter().map(|_| true).collect())
     }
 

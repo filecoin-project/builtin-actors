@@ -2229,7 +2229,7 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_blockstore"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
@@ -2325,7 +2325,10 @@ dependencies = [
 [[package]]
 name = "fvm_sdk"
 version = "4.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e58331aefe4b5592c59abfd4d94c62b23ea61d1e121202fbc2fb6abd2fcb165"
 dependencies = [
+ "byteorder",
  "cid 0.10.1",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -2338,6 +2341,8 @@ dependencies = [
 [[package]]
 name = "fvm_shared"
 version = "4.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95f9a003148f592d1b24124b27c9a52f00902b23233515b45b65730dbbfc0c03"
 dependencies = [
  "anyhow",
  "bitflags 2.5.0",
@@ -4970,3 +4975,11 @@ name = "zeroize"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "525b4ec142c6b68a2d10f01f7bbf6755599ca3f81ea53b8431b7dd348f5fdb2d"
+
+[[patch.unused]]
+name = "fvm_sdk"
+version = "4.2.0"
+
+[[patch.unused]]
+name = "fvm_shared"
+version = "4.2.0"
