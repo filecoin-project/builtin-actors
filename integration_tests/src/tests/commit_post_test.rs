@@ -97,12 +97,14 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
                     Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ID),
                     Expect::reward_update_kpi(),
                 ]),
+                events: Some(vec![]),
                 ..Default::default()
             },
             ExpectInvocation {
                 from: CRON_ACTOR_ID,
                 to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
+                events: Some(vec![]),
                 ..Default::default()
             },
         ]),
