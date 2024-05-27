@@ -2206,6 +2206,7 @@ impl Actor {
             .collect::<Vec<SectorOnChainInfo>>();
 
         let total_pledge = BigInt::from(sectors_to_add.len()) * initial_pledge;
+        let mut needs_cron = false;
 
         rt.transaction(|state: &mut State, rt| {
             let current_balance = rt.current_balance();
@@ -2250,8 +2251,20 @@ impl Actor {
                 .check_balance_invariants(&rt.current_balance())
                 .map_err(balance_invariants_broken)?;
 
+            needs_cron = !state.deadline_cron_active;
+            state.deadline_cron_active = true;
+
             Ok(())
         })?;
+
+        if needs_cron {
+            let new_dl_info = state.deadline_info(rt.policy(), curr_epoch);
+            enroll_cron_event(
+                rt,
+                new_dl_info.last(),
+                CronEventPayload { event_type: CRON_EVENT_PROVING_DEADLINE },
+            )?;
+        }
 
         Ok(())
     }
