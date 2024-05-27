@@ -131,11 +131,11 @@ frc42_dispatch = "6.0.0"
 frc46_token = "10.0.0"
 
 # FVM
-fvm_sdk = "~4.1"
-fvm_shared = "~4.1"
+fvm_sdk = "~4.2"
+fvm_shared = "~4.2"
 fvm_ipld_encoding = "0.4.0"
 fvm_ipld_blockstore = "0.2.0"
-fvm_ipld_hamt = "0.8.0"
+fvm_ipld_hamt = "0.9.0"
 fvm_ipld_kamt = "0.3.0"
 fvm_ipld_amt = { version = "0.6.2" }
 fvm_ipld_bitfield = "0.6.0"
@@ -199,9 +199,9 @@ fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore" }
 # fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
 # fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
 # fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
-#fvm_actor_utils = { path = "../../filecoin/fvm_actor_utils"}
-#frc42_dispatch = { path = "../../filecoin/frc42_dispatch"}
-#frc46_token = { path = "../../filecoin/frc46_token"}
+fvm_actor_utils = { path = "../filecoin/fvm_actor_utils"}
+frc42_dispatch = { path = "../filecoin/frc42_dispatch"}
+frc46_token = { path = "../filecoin/frc46_token"}
 
 [profile.wasm]
 inherits = "release"
