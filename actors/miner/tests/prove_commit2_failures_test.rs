@@ -91,6 +91,20 @@ fn reject_mismatched_proof_len() {
 }
 
 #[test]
+fn reject_too_soon() {
+    let (h, rt, activations) = setup_precommits(&[(0, 0, 0)]);
+    let epoch = *rt.epoch.borrow();
+    rt.set_epoch(epoch - 2);
+    let cfg = ProveCommitSectors2Config::default();
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "too early to prove sector",
+        h.prove_commit_sectors2(&rt, &activations, false, false, false, cfg),
+    );
+    h.check_state(&rt);
+}
+
+#[test]
 fn reject_expired_precommit() {
     let (h, rt, activations) = setup_precommits(&[(0, 0, 0)]);
     let epoch = *rt.epoch.borrow();
