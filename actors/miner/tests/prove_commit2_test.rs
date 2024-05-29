@@ -40,9 +40,9 @@ fn commit_batch() {
         make_activation_manifest(snos[3], &[(piece_size, CLIENT_ID, 1001, 2001)]), // Alloc and deal
     ];
 
-    let cfg = ProveCommitSectors2Config::default();
+    let cfg = ProveCommitSectors3Config::default();
     let (result, claims, notifications) =
-        h.prove_commit_sectors2(&rt, &manifests, true, true, false, cfg).unwrap();
+        h.prove_commit_sectors3(&rt, &manifests, true, true, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::OK; 4], &result);
     let sectors: Vec<SectorOnChainInfo> = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect();
 
@@ -140,9 +140,9 @@ fn multiple_pieces_in_sector() {
         ),
     ];
 
-    let cfg = ProveCommitSectors2Config::default();
+    let cfg = ProveCommitSectors3Config::default();
     let (result, claims, notifications) =
-        h.prove_commit_sectors2(&rt, &manifests, true, true, false, cfg).unwrap();
+        h.prove_commit_sectors3(&rt, &manifests, true, true, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::OK, ExitCode::OK], &result);
     let sectors: Vec<SectorOnChainInfo> = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect();
 
@@ -253,9 +253,9 @@ fn multiple_notifs_for_piece() {
         payload: RawBytes::from(vec![9, 9, 9, 9]),
     });
 
-    let cfg = ProveCommitSectors2Config::default();
+    let cfg = ProveCommitSectors3Config::default();
     let (result, _, notifications) =
-        h.prove_commit_sectors2(&rt, &manifests, true, true, false, cfg).unwrap();
+        h.prove_commit_sectors3(&rt, &manifests, true, true, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::OK, ExitCode::OK], &result);
     let sectors: Vec<SectorOnChainInfo> = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect();
 
@@ -325,9 +325,9 @@ fn expired_precommit_dropped_batch() {
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
     ];
 
-    let cfg = ProveCommitSectors2Config { validation_failure: vec![0], ..Default::default() };
+    let cfg = ProveCommitSectors3Config { validation_failure: vec![0], ..Default::default() };
     let (result, claims, notifications) =
-        h.prove_commit_sectors2(&rt, &manifests, false, false, false, cfg).unwrap();
+        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     // Sector 0: not committed
@@ -369,8 +369,8 @@ fn expired_precommit_dropped_aggregate() {
         make_activation_manifest(snos[3], &[(piece_size, CLIENT_ID, 1003, 2003)]),
     ];
 
-    let cfg = ProveCommitSectors2Config { validation_failure: vec![0], ..Default::default() };
-    let (result, _, _) = h.prove_commit_sectors2(&rt, &manifests, false, false, true, cfg).unwrap();
+    let cfg = ProveCommitSectors3Config { validation_failure: vec![0], ..Default::default() };
+    let (result, _, _) = h.prove_commit_sectors3(&rt, &manifests, false, false, true, cfg).unwrap();
     assert_commit_result(
         &[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK, ExitCode::OK, ExitCode::OK],
         &result,
@@ -400,9 +400,9 @@ fn invalid_proof_dropped() {
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
     ];
 
-    let cfg = ProveCommitSectors2Config { proof_failure: vec![0], ..Default::default() };
+    let cfg = ProveCommitSectors3Config { proof_failure: vec![0], ..Default::default() };
     let (result, _, _) =
-        h.prove_commit_sectors2(&rt, &manifests, false, false, false, cfg).unwrap();
+        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     // Sector 0: not committed
@@ -426,9 +426,9 @@ fn invalid_claim_dropped() {
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
     ];
 
-    let cfg = ProveCommitSectors2Config { claim_failure: vec![0], ..Default::default() };
+    let cfg = ProveCommitSectors3Config { claim_failure: vec![0], ..Default::default() };
     let (result, _, _) =
-        h.prove_commit_sectors2(&rt, &manifests, false, false, false, cfg).unwrap();
+        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     // Sector 0: not committed
@@ -451,12 +451,12 @@ fn aborted_notification_dropped() {
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
     ];
 
-    let cfg = ProveCommitSectors2Config {
+    let cfg = ProveCommitSectors3Config {
         notification_result: Some(ExitCode::USR_UNSPECIFIED),
         ..Default::default()
     };
     let (result, _, _) =
-        h.prove_commit_sectors2(&rt, &manifests, false, false, false, cfg).unwrap();
+        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
 
     // All sectors succeed anyway.
     assert_commit_result(&[ExitCode::OK; 2], &result);
@@ -478,9 +478,9 @@ fn rejected_notification_dropped() {
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
     ];
 
-    let cfg = ProveCommitSectors2Config { notification_rejected: true, ..Default::default() };
+    let cfg = ProveCommitSectors3Config { notification_rejected: true, ..Default::default() };
     let (result, _, _) =
-        h.prove_commit_sectors2(&rt, &manifests, false, false, false, cfg).unwrap();
+        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
 
     // All sectors succeed anyway.
     assert_commit_result(&[ExitCode::OK; 2], &result);

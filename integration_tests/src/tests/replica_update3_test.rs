@@ -352,11 +352,11 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
                     })
                     .unwrap(),
                 ),
-                events: vec![
+                events: Some(vec![
                     Expect::build_verifreg_event("claim", alloc_ids_s2[0], client_id, miner_id),
                     Expect::build_verifreg_event("claim", alloc_ids_s2[1], client_id, miner_id),
                     Expect::build_verifreg_event("claim", alloc_ids_s4[0], client_id, miner_id),
-                ],
+                ]),
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -387,18 +387,25 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
                 ),
                 value: Some(TokenAmount::zero()),
                 subinvocs: Some(vec![]),
-                events: deal_ids_s3
-                    .iter()
-                    .chain(deal_ids_s4.iter())
-                    .map(|deal_id| {
-                        Expect::build_market_event("deal-activated", *deal_id, client_id, miner_id)
-                    })
-                    .collect::<Vec<_>>(),
+                events: Some(
+                    deal_ids_s3
+                        .iter()
+                        .chain(deal_ids_s4.iter())
+                        .map(|deal_id| {
+                            Expect::build_market_event(
+                                "deal-activated",
+                                *deal_id,
+                                client_id,
+                                miner_id,
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                ),
 
                 ..Default::default()
             },
         ]),
-        events,
+        events: Some(events),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

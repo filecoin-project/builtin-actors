@@ -1,8 +1,10 @@
 use std::ops::Neg;
 
 use export_macro::vm_test;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
@@ -11,7 +13,10 @@ use fil_actor_market::{DealArray, DealMetaArray, DealSettlementSummary};
 use fil_actor_market::{
     PendingDealAllocationsMap, State as MarketState, PENDING_ALLOCATIONS_CONFIG,
 };
-use fil_actor_miner::{max_prove_commit_duration, PowerPair, SectorClaim, State as MinerState};
+use fil_actor_miner::{
+    max_prove_commit_duration, PowerPair, ProveCommitSectors3Params, SectorActivationManifest,
+    SectorClaim, State as MinerState,
+};
 use fil_actor_power::State as PowerState;
 use fil_actor_verifreg::{
     Claim, Method as VerifregMethod, RemoveExpiredClaimsParams, RemoveExpiredClaimsReturn,
@@ -27,18 +32,19 @@ use fil_actors_runtime::{
     DealWeight, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use vm_api::util::{apply_ok, get_state, DynBlockstore};
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
 
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, assert_invariants, create_accounts,
     create_miner, cron_tick, datacap_extend_claim, datacap_get_balance, expect_invariants,
-    invariant_failure_patterns, market_add_balance, market_pending_deal_allocations,
-    market_publish_deal, miner_extend_sector_expiration2, miner_precommit_one_sector_v2,
-    miner_prove_sector, precommit_meta_data_from_deals, provider_settle_deal_payments,
-    sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
-    verifreg_extend_claim_terms, verifreg_remove_expired_allocations,
+    invariant_failure_patterns, make_piece_manifests_from_deal_ids, market_add_balance,
+    market_pending_deal_allocations, market_publish_deal, miner_extend_sector_expiration2,
+    miner_precommit_one_sector_v2, miner_prove_sector, precommit_meta_data_from_deals,
+    provider_settle_deal_payments, sector_deadline, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier, verifreg_extend_claim_terms, verifreg_remove_expired_allocations,
 };
 
 /// Tests a scenario involving a verified deal from the built-in market, with associated
@@ -102,14 +108,20 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         &miner_id,
         seal_proof,
         sector_number,
-        precommit_meta_data_from_deals(v, &deals, seal_proof),
+        precommit_meta_data_from_deals(v, &deals, seal_proof, false),
         true,
         deal_start + sector_term,
     );
 
     // Advance time to max seal duration and prove the sector
     advance_by_deadline_to_epoch(v, &miner_id, deal_start);
-    miner_prove_sector(v, &worker, &miner_id, sector_number);
+    miner_prove_sector(
+        v,
+        &worker,
+        &miner_id,
+        sector_number,
+        make_piece_manifests_from_deal_ids(v, deals.clone()),
+    );
     // Trigger cron to validate the prove commit
     cron_tick(v);
 
@@ -562,7 +574,7 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
         &miner_id,
         seal_proof,
         sector_number_a,
-        precommit_meta_data_from_deals(v, &[deal], seal_proof),
+        precommit_meta_data_from_deals(v, &[deal], seal_proof, false),
         true,
         sector_start + sector_term,
     );
@@ -573,15 +585,50 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
         &miner_id,
         seal_proof,
         sector_number_b,
-        precommit_meta_data_from_deals(v, &[bad_deal], seal_proof),
+        precommit_meta_data_from_deals(v, &[bad_deal], seal_proof, false),
         false,
         sector_start + sector_term,
     );
 
     // Advance time and prove the sector
     advance_by_deadline_to_epoch(v, &miner_id, sector_start);
-    miner_prove_sector(v, &worker, &miner_id, sector_number_a);
-    miner_prove_sector(v, &worker, &miner_id, sector_number_b);
+    // ProveCommit3 fails on sector b because allocation is expired
+    let failing_prove_commit_params = ProveCommitSectors3Params {
+        sector_activations: vec![
+            SectorActivationManifest {
+                sector_number: sector_number_b,
+                pieces: make_piece_manifests_from_deal_ids(v, vec![bad_deal]),
+            },
+            SectorActivationManifest {
+                sector_number: sector_number_a,
+                pieces: make_piece_manifests_from_deal_ids(v, vec![deal]),
+            },
+        ],
+        sector_proofs: vec![vec![].into(), vec![].into()],
+        aggregate_proof: RawBytes::default(),
+        aggregate_proof_type: None,
+        require_activation_success: true, //
+        require_notification_success: true,
+    };
+    apply_code(
+        v,
+        &worker,
+        &miner_id,
+        &TokenAmount::zero(),
+        fil_actor_miner::Method::ProveCommitSectors3 as u64,
+        Some(failing_prove_commit_params),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
+    let worker_id = v.resolve_id_address(&worker).unwrap().id().unwrap();
+    ExpectInvocation {
+        from: worker_id,
+        to: miner_id,
+        method: fil_actor_miner::Method::ProveCommitSectors3 as u64,
+        exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+
     cron_tick(v);
     v.set_epoch(v.epoch() + 1);
 
