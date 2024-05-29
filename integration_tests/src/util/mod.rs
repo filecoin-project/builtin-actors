@@ -12,6 +12,7 @@ use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::make_piece_cid;
+use fil_actors_runtime::ActorError;
 use fil_actors_runtime::{
     parse_uint_key, runtime::Policy, MessageAccumulator, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -168,7 +169,20 @@ pub fn get_beneficiary(v: &dyn VM, from: &Address, m_addr: &Address) -> GetBenef
     .unwrap()
 }
 
+pub fn market_pending_deal_allocations_raw(
+    v: &dyn VM,
+    deals: &[DealID],
+) -> Result<Vec<AllocationID>, ActorError> {
+    let mut st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let bs = &DynBlockstore::wrap(v.blockstore());
+    st.get_pending_deal_allocation_ids(bs, deals)
+}
+
 pub fn market_pending_deal_allocations(v: &dyn VM, deals: &[DealID]) -> Vec<AllocationID> {
+    market_pending_deal_allocations_raw(v, deals).unwrap()
+}
+
+pub fn market_maybe_pending_deal_allocations(v: &dyn VM, deals: &[DealID]) -> Vec<AllocationID> {
     let mut st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let bs = &DynBlockstore::wrap(v.blockstore());
     st.get_pending_deal_allocation_ids(bs, deals).unwrap()

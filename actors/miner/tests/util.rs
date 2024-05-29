@@ -64,15 +64,14 @@ use fil_actor_miner::{
     ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
     ChangeBeneficiaryParams, ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams,
     CheckSectorProvenParams, CompactCommD, CompactPartitionsParams, CompactSectorNumbersParams,
-    ConfirmSectorProofsParams, CronEventPayload, DataActivationNotification, Deadline,
-    DeadlineInfo, Deadlines, DeclareFaultsParams, DeclareFaultsRecoveredParams,
-    DeferredCronEventParams, DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet,
-    ExtendSectorExpiration2Params, ExtendSectorExpirationParams, FaultDeclaration,
-    GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
-    GetMultiaddrsReturn, GetPeerIDReturn, Method, Method as MinerMethod,
-    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
-    PieceActivationManifest, PieceChange, PieceReturn, PoStPartition, PowerPair,
-    PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
+    CronEventPayload, DataActivationNotification, Deadline, DeadlineInfo, Deadlines,
+    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
+    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params,
+    ExtendSectorExpirationParams, FaultDeclaration, GetAvailableBalanceReturn,
+    GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn, GetPeerIDReturn, Method,
+    Method as MinerMethod, MinerConstructorParams as ConstructorParams, MinerInfo, Partition,
+    PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
+    PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
     ProveCommitAggregateParams, ProveCommitSectorParams, ProveCommitSectors3Params,
     ProveCommitSectors3Return, QuantSpec, RecoveryDeclaration, ReportConsensusFaultParams,
     SectorActivationManifest, SectorChanges, SectorContentChangedParams,
@@ -96,6 +95,8 @@ use fil_actors_runtime::{
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+
+const DEFAULT_PIECE_SIZE: u64 = 128;
 
 const RECEIVER_ID: u64 = 1000;
 
@@ -412,19 +413,31 @@ impl ActorHarness {
             let sector_deal_ids =
                 deal_ids.get(i).and_then(|ids| Some(ids.clone())).unwrap_or_default();
             let has_deals = !sector_deal_ids.is_empty();
-            let params = self.make_pre_commit_params(
+
+            let compact_commd = if !has_deals {
+                CompactCommD::empty()
+            } else {
+                // Determine CommD from configuration in the same way as prove_commit_and_confirm
+                let piece_specs =
+                    make_piece_specs_from_configs(sector_no, &sector_deal_ids, &prove_cfg);
+                let manifest = make_activation_manifest(sector_no, &piece_specs);
+                let piece_cids: Vec<Cid> = manifest.pieces.iter().map(|p| p.cid).collect();
+                sector_commd_from_pieces(&piece_cids)
+            };
+
+            let info = self.make_pre_commit_params_v2(
                 sector_no,
                 precommit_epoch - 1,
                 expiration,
-                sector_deal_ids,
+                // We may be committing with deals but if so pass their info in CommD as
+                // PreCommitSector with deal_ids will fail after nv21
+                vec![],
+                compact_commd,
             );
-            let pcc = if !has_deals {
-                PreCommitConfig::new(None)
-            } else {
-                PreCommitConfig::new(Some(make_unsealed_cid("1".as_bytes())))
-            };
-            let precommit = self.pre_commit_sector_and_get(rt, params, pcc, first && i == 0);
-            precommits.push(precommit);
+
+            let precommit =
+                self.pre_commit_sector_batch_v2_and_get(rt, vec![info], first && i == 0);
+            precommits.extend(precommit);
             self.next_sector_no += 1;
         }
 
@@ -434,11 +447,13 @@ impl ActorHarness {
         );
 
         let mut info = Vec::with_capacity(num_sectors);
-        for pc in precommits {
+        for (i, pc) in precommits.iter().enumerate() {
+            let sector_deal_ids =
+                deal_ids.get(i).and_then(|ids| Some(ids.clone())).unwrap_or_default();
             let sector = self
-                .prove_commit_sector_and_confirm(
+                .deprecated_sector_commit(
                     rt,
-                    &pc,
+                    &sector_deal_ids,
                     self.make_prove_commit_params(pc.info.sector_number),
                     prove_cfg.clone(),
                 )
@@ -447,44 +462,6 @@ impl ActorHarness {
         }
         rt.reset();
         info
-    }
-
-    pub fn commit_and_prove_sector(
-        &self,
-        rt: &MockRuntime,
-        sector_no: SectorNumber,
-        lifetime_periods: i64,
-        deal_ids: Vec<DealID>,
-    ) -> SectorOnChainInfo {
-        let precommit_epoch = *rt.epoch.borrow();
-        let deadline = self.deadline(rt);
-        let expiration = deadline.period_end() + lifetime_periods * rt.policy.wpost_proving_period;
-
-        // Precommit
-        let pre_commit_params =
-            self.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, deal_ids);
-        let precommit = self.pre_commit_sector_and_get(
-            rt,
-            pre_commit_params.clone(),
-            PreCommitConfig::default(),
-            true,
-        );
-
-        self.advance_to_epoch_with_cron(
-            rt,
-            precommit_epoch + rt.policy.pre_commit_challenge_delay + 1,
-        );
-
-        let sector_info = self
-            .prove_commit_sector_and_confirm(
-                rt,
-                &precommit,
-                self.make_prove_commit_params(pre_commit_params.sector_number),
-                ProveCommitConfig::empty(),
-            )
-            .unwrap();
-        rt.reset();
-        sector_info
     }
 
     pub fn compact_sector_numbers_raw(
@@ -703,6 +680,20 @@ impl ActorHarness {
         result
     }
 
+    pub fn pre_commit_sector_batch_v2_and_get(
+        &self,
+        rt: &MockRuntime,
+        sectors: Vec<SectorPreCommitInfo>,
+        first: bool,
+    ) -> Vec<SectorPreCommitOnChainInfo> {
+        let result = self.pre_commit_sector_batch_v2(rt, &sectors, first, &self.base_fee).unwrap();
+
+        expect_empty(result);
+        rt.verify();
+
+        sectors.iter().map(|sector| self.get_precommit(rt, sector.sector_number)).collect()
+    }
+
     pub fn pre_commit_sector_and_get(
         &self,
         rt: &MockRuntime,
@@ -763,73 +754,56 @@ impl ActorHarness {
         );
     }
 
-    pub fn prove_commit_sector_and_confirm(
+    // deprecated flow calling prove commit sector and then confirm sector proofs valid
+    // With FIP 0084 this is no longer realizable. Internally it now calls ProveCommitSectors3
+    // The entrypoint is kept in tests
+    // 1) to ensure backwards compatibility between prove_commit_sector and prove_commit_sectors3
+    // 2) to make use of existing test coverage without significant change
+    //
+    // This should be removed in favor of something else.  Discussion: https://github.com/filecoin-project/builtin-actors/issues/1545
+    pub fn deprecated_sector_commit(
         &self,
         rt: &MockRuntime,
-        pc: &SectorPreCommitOnChainInfo,
+        deal_ids: &Vec<DealID>,
         params: ProveCommitSectorParams,
         cfg: ProveCommitConfig,
     ) -> Result<SectorOnChainInfo, ActorError> {
         let sector_number = params.sector_number;
-        self.prove_commit_sector(rt, pc, params)?;
-        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()])?;
+        let piece_specs = make_piece_specs_from_configs(sector_number, deal_ids, &cfg);
+
+        let manifest = make_activation_manifest(sector_number, &piece_specs);
+        let req_activation_succ = true; // Doesn't really matter since there's only 1
+        let req_notif_succ = false; // CPSV could not require this as it happened in cron
+
+        let claim_failure = if cfg.claim_allocs_exit.contains_key(&sector_number) {
+            vec![0] // only sector activating has claim failure
+        } else {
+            vec![]
+        };
+        let notification_result = if cfg.verify_deals_exit.get(&sector_number).is_some() {
+            cfg.verify_deals_exit.get(&sector_number).cloned()
+        } else {
+            None
+        };
+        let cfg3 = ProveCommitSectors3Config {
+            proof_failure: vec![], // ProveCommitConfig doesn't support this
+            param_twiddle: None,
+            caller: None,
+            validation_failure: vec![],
+            claim_failure,
+            notification_result,
+            notification_rejected: notification_result.is_some(),
+        };
+        let _ = self.prove_commit_sectors3(
+            rt,
+            &[manifest],
+            req_activation_succ,
+            req_notif_succ,
+            false,
+            cfg3,
+        )?;
 
         Ok(self.get_sector(rt, sector_number))
-    }
-
-    pub fn prove_commit_sector(
-        &self,
-        rt: &MockRuntime,
-        pc: &SectorPreCommitOnChainInfo,
-        params: ProveCommitSectorParams,
-    ) -> Result<(), ActorError> {
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        let seal_rand = TEST_RANDOMNESS_ARRAY_FROM_ONE;
-        let seal_int_rand = TEST_RANDOMNESS_ARRAY_FROM_TWO;
-        let interactive_epoch = pc.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
-
-        // Prepare for and receive call to ProveCommitSector
-        let entropy = RawBytes::serialize(self.receiver).unwrap();
-        rt.expect_get_randomness_from_tickets(
-            DomainSeparationTag::SealRandomness,
-            pc.info.seal_rand_epoch,
-            entropy.to_vec(),
-            seal_rand.clone(),
-        );
-        rt.expect_get_randomness_from_beacon(
-            DomainSeparationTag::InteractiveSealChallengeSeed,
-            interactive_epoch,
-            entropy.to_vec(),
-            seal_int_rand.clone(),
-        );
-
-        let actor_id = RECEIVER_ID;
-        let seal = SealVerifyInfo {
-            sector_id: SectorID { miner: actor_id, number: pc.info.sector_number },
-            sealed_cid: pc.info.sealed_cid,
-            registered_proof: pc.info.seal_proof,
-            proof: params.proof.clone().into(),
-            deal_ids: vec![],
-            randomness: Randomness(seal_rand.into()),
-            interactive_randomness: Randomness(seal_int_rand.into()),
-            unsealed_cid: pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap(),
-        };
-        rt.expect_send_simple(
-            STORAGE_POWER_ACTOR_ADDR,
-            PowerMethod::SubmitPoRepForBulkVerify as u64,
-            IpldBlock::serialize_cbor(&seal).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
-        rt.expect_validate_caller_any();
-        let result = rt.call::<Actor>(
-            Method::ProveCommitSector as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-        expect_empty(result);
-        rt.verify();
-        Ok(())
     }
 
     pub fn prove_commit_aggregate_sector(
@@ -867,7 +841,7 @@ impl ActorHarness {
         rt.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone().into(), Ok(()));
 
         // confirm sector proofs valid
-        let pieces = self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
+        let pieces = self.expect_sectors_activated(rt, config, &precommits);
 
         // sector activated event
         for (i, sc) in precommits.iter().enumerate() {
@@ -900,55 +874,9 @@ impl ActorHarness {
         Ok(())
     }
 
-    pub fn confirm_sector_proofs_valid(
-        &self,
-        rt: &MockRuntime,
-        cfg: ProveCommitConfig,
-        pcs: Vec<SectorPreCommitOnChainInfo>,
-    ) -> Result<(), ActorError> {
-        let pieces = self.confirm_sector_proofs_valid_internal(rt, cfg.clone(), &pcs);
-
-        let mut all_sector_numbers = Vec::new();
-        for pc in pcs.clone() {
-            all_sector_numbers.push(pc.info.sector_number);
-        }
-
-        rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
-        rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
-
-        let params = ConfirmSectorProofsParams {
-            sectors: all_sector_numbers,
-            reward_smoothed: self.epoch_reward_smooth.clone(),
-            reward_baseline_power: self.baseline_power.clone(),
-            quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),
-        };
-
-        for sc in pcs.iter() {
-            if cfg.verify_deals_exit.contains_key(&sc.info.sector_number)
-                || cfg.claim_allocs_exit.contains_key(&sc.info.sector_number)
-            {
-                continue;
-            }
-            let unsealed_cid = sc.info.unsealed_cid.0;
-            let num = &sc.info.sector_number;
-            expect_sector_event(
-                rt,
-                "sector-activated",
-                &num,
-                unsealed_cid,
-                pieces.get(&num).unwrap(),
-            );
-        }
-
-        rt.call::<Actor>(
-            Method::ConfirmSectorProofsValid as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-        rt.verify();
-        Ok(())
-    }
-
-    fn confirm_sector_proofs_valid_internal(
+    // Check that sectors are activating
+    // This is a separate method because historically this functionality was shared between various commitment entrypoints
+    fn expect_sectors_activated(
         &self,
         rt: &MockRuntime,
         cfg: ProveCommitConfig,
@@ -1120,14 +1048,14 @@ impl ActorHarness {
         pieces
     }
 
-    pub fn prove_commit_sectors2(
+    pub fn prove_commit_sectors3(
         &self,
         rt: &MockRuntime,
         sector_activations: &[SectorActivationManifest],
         require_activation_success: bool,
         require_notification_success: bool,
         aggregate: bool,
-        cfg: ProveCommitSectors2Config,
+        cfg: ProveCommitSectors3Config,
     ) -> Result<
         (ProveCommitSectors3Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
         ActorError,
@@ -3057,7 +2985,7 @@ pub struct ProveReplicaUpdatesConfig {
 }
 
 #[derive(Default)]
-pub struct ProveCommitSectors2Config {
+pub struct ProveCommitSectors3Config {
     pub caller: Option<Address>,
     pub param_twiddle: Option<Box<dyn FnOnce(&mut ProveCommitSectors3Params)>>,
     pub validation_failure: Vec<usize>, // Expect validation failure for these sector indices.
@@ -3275,7 +3203,7 @@ pub fn onboard_sectors(
     // Prove the sectors in batch with ProveCommitSectors2.
     let prove_epoch = *rt.epoch.borrow() + rt.policy.pre_commit_challenge_delay + 1;
     rt.set_epoch(prove_epoch);
-    let cfg = ProveCommitSectors2Config::default();
+    let cfg = ProveCommitSectors3Config::default();
     let sector_activations: Vec<SectorActivationManifest> = precommits
         .iter()
         .map(|pc| {
@@ -3286,7 +3214,7 @@ pub fn onboard_sectors(
             make_activation_manifest(pc.info.sector_number, &piece_specs)
         })
         .collect();
-    h.prove_commit_sectors2(rt, &sector_activations, true, false, false, cfg).unwrap();
+    h.prove_commit_sectors3(rt, &sector_activations, true, false, false, cfg).unwrap();
     let sectors: Vec<SectorOnChainInfo> =
         precommits.iter().map(|pc| h.get_sector(rt, pc.info.sector_number)).collect();
 
@@ -3415,6 +3343,39 @@ pub fn make_piece_manifest(
             vec![]
         },
     }
+}
+
+pub fn make_piece_specs_from_configs(
+    sector_number: u64,
+    deal_ids: &Vec<DealID>,
+    prove_cfg: &ProveCommitConfig,
+) -> Vec<(u64, ActorID, AllocationID, DealID)> {
+    static EMPTY_VEC: Vec<ActivatedDeal> = Vec::new();
+    let configured_deals = prove_cfg.activated_deals.get(&sector_number).unwrap_or(&EMPTY_VEC);
+    // The old configuration system had duplicated information between cfg and precommit inputs
+    // To ensure passed in configuration is internally consistent check that cfg deals are a subset
+    // of precommitted deal ids
+    assert!(deal_ids.len() >= configured_deals.len());
+    let mut piece_specs = vec![];
+    const DEFAULT_CLIENT_ID: ActorID = 1000;
+
+    for (i, deal_id) in deal_ids.iter().enumerate() {
+        if i < configured_deals.len() {
+            let deal = configured_deals.get(i).unwrap();
+            // Configured deals don't specify deal_id use deal_ids configuration info
+            // Piece specs don't specify piece cid but deterministically derive it so ignore deal.Cid
+            piece_specs.push((deal.size.0, deal.client, deal.allocation_id, deal_id.clone()));
+        } else {
+            piece_specs.push((
+                DEFAULT_PIECE_SIZE,
+                DEFAULT_CLIENT_ID,
+                NO_ALLOCATION_ID,
+                deal_id.clone(),
+            ));
+        }
+    }
+
+    piece_specs
 }
 
 pub fn claims_from_pieces(pieces: &[PieceActivationManifest]) -> Vec<AllocationClaim> {

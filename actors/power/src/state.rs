@@ -40,7 +40,6 @@ lazy_static! {
 
 pub const CRON_QUEUE_HAMT_BITWIDTH: u32 = 6;
 pub const CRON_QUEUE_AMT_BITWIDTH: u32 = 6;
-pub const PROOF_VALIDATION_BATCH_AMT_BITWIDTH: u32 = 4;
 
 pub type ClaimsMap<BS> = Map2<BS, Address, Claim>;
 pub const CLAIMS_CONFIG: Config = DEFAULT_HAMT_CONFIG;
@@ -79,6 +78,7 @@ pub struct State {
     /// Claimed power for each miner.
     pub claims: Cid, // Map, HAMT[address]Claim
 
+    // Deprecated as of FIP 0084
     pub proof_validation_batch: Option<Cid>,
 }
 

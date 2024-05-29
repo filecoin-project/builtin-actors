@@ -109,7 +109,7 @@ pub enum Method {
     ChangePeerID = 4,
     SubmitWindowedPoSt = 5,
     //PreCommitSector = 6, // Deprecated
-    ProveCommitSector = 7,
+    //ProveCommitSector = 7, // Deprecated
     ExtendSectorExpiration = 8,
     TerminateSectors = 9,
     DeclareFaults = 10,
@@ -119,7 +119,7 @@ pub enum Method {
     ApplyRewards = 14,
     ReportConsensusFault = 15,
     WithdrawBalance = 16,
-    ConfirmSectorProofsValid = 17,
+    //ConfirmSectorProofsValid = 17, // Deprecated
     ChangeMultiaddrs = 18,
     CompactPartitions = 19,
     CompactSectorNumbers = 20,
@@ -1948,116 +1948,6 @@ impl Actor {
 
         let result = util::stack(&[validation_batch, proven_batch, data_batch]);
         Ok(ProveCommitSectors3Return { activation_results: result })
-    }
-
-    /// Checks state of the corresponding sector pre-commitment, then schedules the proof to be verified in bulk
-    /// by the power actor.
-    /// If valid, the power actor will call ConfirmSectorProofsValid at the end of the same epoch as this message.
-    fn prove_commit_sector(
-        rt: &impl Runtime,
-        params: ProveCommitSectorParams,
-    ) -> Result<(), ActorError> {
-        // Validate caller and parameters.
-        let st: State = rt.state()?;
-        let store = rt.store();
-        // Note: this accepts any caller for legacy, but probably shouldn't.
-        // Since the miner can provide arbitrary control addresses, there's not much advantage
-        // in allowing any caller, but some risk if there's an exploitable bug.
-        rt.validate_immediate_caller_accept_any()?;
-
-        if params.sector_number > MAX_SECTOR_NUMBER {
-            return Err(actor_error!(illegal_argument, "sector number greater than maximum"));
-        }
-
-        // Validate pre-commit.
-        let precommit = st
-            .get_precommitted_sector(store, params.sector_number)
-            .with_context(|| format!("loading pre-commit {}", params.sector_number))?
-            .ok_or_else(|| {
-                actor_error!(not_found, "no pre-commited sector {}", params.sector_number)
-            })?;
-
-        validate_seal_proofs(precommit.info.seal_proof, &[params.proof.clone()])?;
-
-        let allow_deals = true; // Legacy onboarding entry points allow pre-committed deals.
-        let all_or_nothing = true; // The singleton must succeed.
-        let (_, proof_inputs) =
-            validate_precommits(rt, &vec![precommit], allow_deals, all_or_nothing)?;
-        let miner_actor_id = rt.message().receiver().id().unwrap();
-
-        let svi = proof_inputs[0].to_seal_verify_info(miner_actor_id, &params.proof);
-        extract_send_result(rt.send_simple(
-            &STORAGE_POWER_ACTOR_ADDR,
-            ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
-            IpldBlock::serialize_cbor(&svi)?,
-            TokenAmount::zero(),
-        ))?;
-
-        Ok(())
-    }
-
-    fn confirm_sector_proofs_valid(
-        rt: &impl Runtime,
-        params: ConfirmSectorProofsParams,
-    ) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
-
-        /* validate params */
-        // This should be enforced by the power actor. We log here just in case
-        // something goes wrong.
-        if params.sectors.len() > ext::power::MAX_MINER_PROVE_COMMITS_PER_EPOCH {
-            warn!(
-                "confirmed more prove commits in an epoch than permitted: {} > {}",
-                params.sectors.len(),
-                ext::power::MAX_MINER_PROVE_COMMITS_PER_EPOCH
-            );
-        }
-        let st: State = rt.state()?;
-        let store = rt.store();
-        // This skips missing pre-commits.
-        let precommited_sectors =
-            st.find_precommitted_sectors(store, &params.sectors).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to load pre-committed sectors",
-                )
-            })?;
-
-        let data_activations: Vec<DealsActivationInput> =
-            precommited_sectors.iter().map(|x| x.clone().into()).collect();
-        let info = get_miner_info(rt.store(), &st)?;
-
-        /*
-            For all sectors
-            - CommD was specified at precommit
-            - If deal IDs were specified at precommit the CommD was checked against them
-            Therefore CommD on precommit has already been provided and checked so no further processing needed
-        */
-        let compute_commd = false;
-        let (batch_return, data_activations) =
-            activate_sectors_deals(rt, &data_activations, compute_commd)?;
-        let successful_activations = batch_return.successes(&precommited_sectors);
-
-        let pledge_inputs = NetworkPledgeInputs {
-            network_qap: params.quality_adj_power_smoothed,
-            network_baseline: params.reward_baseline_power,
-            circulating_supply: rt.total_fil_circ_supply(),
-            epoch_reward: params.reward_smoothed,
-        };
-        activate_new_sector_infos(
-            rt,
-            successful_activations.clone(),
-            data_activations.clone(),
-            &pledge_inputs,
-            &info,
-        )?;
-
-        for (pc, data) in successful_activations.iter().zip(data_activations.iter()) {
-            let unsealed_cid = pc.info.unsealed_cid.0;
-            emit::sector_activated(rt, pc.info.sector_number, unsealed_cid, &data.pieces)?;
-        }
-
-        Ok(())
     }
 
     fn check_sector_proven(
@@ -5711,7 +5601,6 @@ impl ActorCode for Actor {
         ChangeWorkerAddress|ChangeWorkerAddressExported => change_worker_address,
         ChangePeerID|ChangePeerIDExported => change_peer_id,
         SubmitWindowedPoSt => submit_windowed_post,
-        ProveCommitSector => prove_commit_sector,
         ExtendSectorExpiration => extend_sector_expiration,
         TerminateSectors => terminate_sectors,
         DeclareFaults => declare_faults,
@@ -5721,7 +5610,6 @@ impl ActorCode for Actor {
         ApplyRewards => apply_rewards,
         ReportConsensusFault => report_consensus_fault,
         WithdrawBalance|WithdrawBalanceExported => withdraw_balance,
-        ConfirmSectorProofsValid => confirm_sector_proofs_valid,
         ChangeMultiaddrs|ChangeMultiaddrsExported => change_multiaddresses,
         CompactPartitions => compact_partitions,
         CompactSectorNumbers => compact_sector_numbers,

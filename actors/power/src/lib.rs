@@ -1,19 +1,13 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::collections::BTreeSet;
-use std::convert::TryInto;
-
-use anyhow::anyhow;
 use fil_actors_runtime::reward::ThisEpochRewardReturn;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::SealVerifyInfo;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use log::{debug, error};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
@@ -42,12 +36,6 @@ mod types;
 
 // * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)
 
-/// GasOnSubmitVerifySeal is amount of gas charged for SubmitPoRepForBulkVerify
-/// This number is empirically determined
-pub mod detail {
-    pub const GAS_ON_SUBMIT_VERIFY_SEAL: i64 = 34721049;
-}
-
 /// Storage power actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -59,9 +47,8 @@ pub enum Method {
     EnrollCronEvent = 4,
     OnEpochTickEnd = 5,
     UpdatePledgeTotal = 6,
-    // * Deprecated in v2
-    // OnConsensusFault = 7,
-    SubmitPoRepForBulkVerify = 8,
+    // OnConsensusFault = 7, // Deprecated v2
+    // SubmitPoRepForBulkVerify = 8, // Deprecated
     CurrentTotalPower = 9,
     // Method numbers derived from FRC-0042 standards
     CreateMinerExported = frc42_dispatch::method_hash!("CreateMiner"),
@@ -223,9 +210,6 @@ impl Actor {
             .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
         )?;
 
-        if let Err(e) = Self::process_batch_proof_verifies(rt, &rewret) {
-            error!("unexpected error processing batch proof verifies: {}. Skipping all verification for epoch {}", e, rt.curr_epoch());
-        }
         Self::process_deferred_cron_events(rt, rewret)?;
 
         let this_epoch_raw_byte_power = rt.transaction(|st: &mut State, _| {
@@ -268,67 +252,6 @@ impl Actor {
             }
             Ok(())
         })
-    }
-
-    fn submit_porep_for_bulk_verify(
-        rt: &impl Runtime,
-        params: SubmitPoRepForBulkVerifyParams,
-    ) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-
-        rt.transaction(|st: &mut State, rt| {
-            st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;
-
-            let mut mmap = if let Some(ref batch) = st.proof_validation_batch {
-                Multimap::from_root(
-                    rt.store(),
-                    batch,
-                    HAMT_BIT_WIDTH,
-                    PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
-                )
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to load proof batching set",
-                    )
-                })?
-            } else {
-                debug!("ProofValidationBatch created");
-                Multimap::new(rt.store(), HAMT_BIT_WIDTH, PROOF_VALIDATION_BATCH_AMT_BITWIDTH)
-            };
-            let miner_addr = rt.message().caller();
-            let arr = mmap.get::<SealVerifyInfo>(&miner_addr.to_bytes()).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to get seal verify infos at addr {}", miner_addr),
-                )
-            })?;
-            if let Some(arr) = arr {
-                if arr.count() >= MAX_MINER_PROVE_COMMITS_PER_EPOCH {
-                    return Err(ActorError::unchecked(
-                        ERR_TOO_MANY_PROVE_COMMITS,
-                        format!(
-                            "miner {} attempting to prove commit over {} sectors in epoch",
-                            miner_addr, MAX_MINER_PROVE_COMMITS_PER_EPOCH
-                        ),
-                    ));
-                }
-            }
-
-            mmap.add(miner_addr.to_bytes().into(), params.seal_info).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to insert proof into set")
-            })?;
-
-            let mmrc = mmap.root().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush proofs batch map")
-            })?;
-
-            rt.charge_gas("OnSubmitVerifySeal", detail::GAS_ON_SUBMIT_VERIFY_SEAL);
-            st.proof_validation_batch = Some(mmrc);
-            Ok(())
-        })?;
-
-        Ok(())
     }
 
     /// Returns the total power and pledge recorded by the power actor.
@@ -391,139 +314,6 @@ impl Actor {
         let st: State = rt.state()?;
 
         Ok(MinerConsensusCountReturn { miner_consensus_count: st.miner_above_min_power_count })
-    }
-
-    fn process_batch_proof_verifies(
-        rt: &impl Runtime,
-        rewret: &ThisEpochRewardReturn,
-    ) -> Result<(), String> {
-        let mut miners: Vec<(Address, usize)> = Vec::new();
-        let mut infos: Vec<SealVerifyInfo> = Vec::new();
-        let mut st_err: Option<String> = None;
-        let this_epoch_qa_power_smoothed = rt
-            .transaction(|st: &mut State, rt| {
-                let result = Ok(st.this_epoch_qa_power_smoothed.clone());
-                let batch = match &st.proof_validation_batch {
-                    None => {
-                        debug!("ProofValidationBatch was nil, quitting verification");
-                        return result;
-                    }
-                    Some(batch) => batch,
-                };
-                let mmap = match Multimap::from_root(
-                    rt.store(),
-                    batch,
-                    HAMT_BIT_WIDTH,
-                    PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
-                ) {
-                    Ok(mmap) => mmap,
-                    Err(e) => {
-                        st_err = Some(format!("failed to load proofs validation batch {}", e));
-                        return result;
-                    }
-                };
-
-                let claims = match st.load_claims(rt.store()) {
-                    Ok(claims) => claims,
-                    Err(e) => {
-                        st_err = Some(format!("failed to load claims: {}", e));
-                        return result;
-                    }
-                };
-
-                if let Err(e) = mmap.for_all::<_, SealVerifyInfo>(|k, arr| {
-                    let addr = match Address::from_bytes(&k.0) {
-                        Ok(addr) => addr,
-                        Err(e) => {
-                            return Err(anyhow!("failed to parse address key: {}", e));
-                        }
-                    };
-
-                    let contains_claim = match claims.contains_key(&addr) {
-                        Ok(contains_claim) => contains_claim,
-                        Err(e) => return Err(anyhow!("failed to look up clain: {}", e)),
-                    };
-
-                    if !contains_claim {
-                        debug!("skipping batch verifies for unknown miner: {}", addr);
-                        return Ok(());
-                    }
-
-                    let num_proofs: usize = arr.count().try_into()?;
-                    infos.reserve(num_proofs);
-                    arr.for_each(|_, svi| {
-                        infos.push(svi.clone());
-                        Ok(())
-                    })
-                    .map_err(|e| {
-                        anyhow!(
-                            "failed to iterate over proof verify array for miner {}: {}",
-                            addr,
-                            e
-                        )
-                    })?;
-
-                    miners.push((addr, num_proofs));
-                    Ok(())
-                }) {
-                    // Do not return immediately, all runs that get this far should wipe the ProofValidationBatchQueue.
-                    // If we leave the validation batch then in the case of a repeating state error the queue
-                    // will quickly fill up and repeated traversals will start ballooning cron execution time.
-                    st_err = Some(format!("failed to iterate proof batch: {}", e));
-                }
-
-                st.proof_validation_batch = None;
-                result
-            })
-            .map_err(|e| {
-                format!("failed to do transaction in process batch proof verifies: {}", e)
-            })?;
-        if let Some(st_err) = st_err {
-            return Err(st_err);
-        }
-
-        let res =
-            rt.batch_verify_seals(&infos).map_err(|e| format!("failed to batch verify: {}", e))?;
-
-        let mut res_iter = infos.iter().zip(res.iter().copied());
-        for (m, count) in miners {
-            let successful: Vec<_> = res_iter
-                .by_ref()
-                // Take the miner's sectors.
-                .take(count)
-                // Filter by successful
-                .filter(|(_, r)| *r)
-                // Pull out the sector numbers.
-                .map(|(info, _)| info.sector_id.number)
-                // Deduplicate
-                .filter({
-                    let mut seen = BTreeSet::<_>::new();
-                    move |snum| seen.insert(*snum)
-                })
-                .collect();
-
-            // Result intentionally ignored
-            if successful.is_empty() {
-                continue;
-            }
-            if let Err(e) = extract_send_result(
-                rt.send_simple(
-                    &m,
-                    ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD,
-                    IpldBlock::serialize_cbor(&ext::miner::ConfirmSectorProofsParams {
-                        sectors: successful,
-                        reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
-                        reward_baseline_power: rewret.this_epoch_baseline_power.clone(),
-                        quality_adj_power_smoothed: this_epoch_qa_power_smoothed.clone(),
-                    })
-                    .map_err(|e| format!("failed to serialize ConfirmSectorProofsParams: {}", e))?,
-                    Default::default(),
-                ),
-            ) {
-                error!("failed to confirm sector proof validity to {}, error code {}", m, e);
-            }
-        }
-        Ok(())
     }
 
     fn process_deferred_cron_events(
@@ -643,7 +433,6 @@ impl ActorCode for Actor {
         EnrollCronEvent => enroll_cron_event,
         OnEpochTickEnd => on_epoch_tick_end,
         UpdatePledgeTotal => update_pledge_total,
-        SubmitPoRepForBulkVerify => submit_porep_for_bulk_verify,
         CurrentTotalPower => current_total_power,
         NetworkRawPowerExported => network_raw_power,
         MinerRawPowerExported => miner_raw_power,

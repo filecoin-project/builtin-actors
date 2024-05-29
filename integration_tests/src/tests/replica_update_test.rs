@@ -16,9 +16,9 @@ use fil_actor_market::Method as MarketMethod;
 use fil_actor_market::State as MarketState;
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
-    ReplicaUpdate, SectorOnChainInfo, SectorOnChainInfoFlags, Sectors, State as MinerState,
-    TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
+    Method as MinerMethod, PowerPair, ProveReplicaUpdatesParams, ReplicaUpdate, SectorOnChainInfo,
+    SectorOnChainInfoFlags, Sectors, State as MinerState, TerminateSectorsParams,
+    TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
@@ -36,9 +36,9 @@ use crate::util::{
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
     create_miner, cron_tick, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
     get_network_stats, invariant_failure_patterns, make_bitfield, market_publish_deal,
-    miner_balance, miner_power, override_compute_unsealed_sector_cid, precommit_sectors_v2,
-    prove_commit_sectors, sector_info, submit_invalid_post, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier,
+    miner_balance, miner_power, miner_prove_sector, override_compute_unsealed_sector_cid,
+    precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
 #[vm_test]
@@ -1060,7 +1060,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::ClaimAllocations as u64,
-                events: vec![claim_event],
+                events: Some(vec![claim_event]),
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -1072,13 +1072,13 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
         ]),
-        events: vec![Expect::build_sector_activation_event(
+        events: Some(vec![Expect::build_sector_activation_event(
             "sector-updated",
             miner_id,
             sector_number,
             Some(unsealed_cid),
             &pieces,
-        )],
+        )]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -1187,15 +1187,7 @@ pub fn create_sector(
     // prove commit
     let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &maddr, prove_time);
-    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
-    apply_ok(
-        v,
-        &worker,
-        &maddr,
-        &TokenAmount::zero(),
-        MinerMethod::ProveCommitSector as u64,
-        Some(prove_commit_params),
-    );
+    miner_prove_sector(v, &worker, &maddr, sector_number, vec![]);
 
     cron_tick(v);
 
