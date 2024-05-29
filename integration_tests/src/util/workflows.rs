@@ -197,15 +197,6 @@ pub fn miner_prove_sector(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn miner_prove_cc_sector(
-    v: &dyn VM,
-    worker: &Address,
-    miner_id: &Address,
-    sector_number: SectorNumber,
-) {
-    miner_prove_sector(v, worker, miner_id, sector_number, vec![]);
-}
-
 #[derive(Default, Clone)]
 pub struct PrecommitMetadata {
     pub deals: Vec<DealID>,

@@ -36,7 +36,7 @@ use crate::util::{
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
     create_miner, cron_tick, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
     get_network_stats, invariant_failure_patterns, make_bitfield, market_publish_deal,
-    miner_balance, miner_power, miner_prove_cc_sector, override_compute_unsealed_sector_cid,
+    miner_balance, miner_power, miner_prove_sector, override_compute_unsealed_sector_cid,
     precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
     submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
@@ -1187,7 +1187,7 @@ pub fn create_sector(
     // prove commit
     let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &maddr, prove_time);
-    miner_prove_cc_sector(v, &worker, &maddr, sector_number);
+    miner_prove_sector(v, &worker, &maddr, sector_number, vec![]);
 
     cron_tick(v);
 

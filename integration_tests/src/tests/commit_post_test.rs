@@ -14,7 +14,7 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
     create_miner, cron_tick, expect_invariants, get_network_stats, invariant_failure_patterns,
-    miner_balance, miner_prove_cc_sector, precommit_sectors_v2, submit_windowed_post,
+    miner_balance, miner_prove_sector, precommit_sectors_v2, submit_windowed_post,
 };
 use crate::TEST_VM_RAND_ARRAY;
 use fil_actor_cron::Method as CronMethod;
@@ -82,7 +82,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
     advance_by_deadline_to_epoch(v, &id_addr, prove_time);
 
     // prove commit, cron, advance to post time
-    miner_prove_cc_sector(v, &worker, &id_addr, sector_number);
+    miner_prove_sector(v, &worker, &id_addr, sector_number, vec![]);
     cron_tick(v);
 
     ExpectInvocation {
