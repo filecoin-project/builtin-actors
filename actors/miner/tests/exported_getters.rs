@@ -2,11 +2,12 @@ use fil_actor_miner::{
     Actor, GetAvailableBalanceReturn, GetOwnerReturn, GetSectorSizeReturn,
     IsControllingAddressParam, IsControllingAddressReturn, Method,
 };
-use fil_actors_runtime::test_utils::make_identity_cid;
+use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
+use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
-use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, sector::MAX_SECTOR_NUMBER};
+use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
 use std::ops::Sub;
 
 mod util;
@@ -22,12 +23,12 @@ const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 #[test]
 fn info_getters() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
 
     // owner is good
     rt.expect_validate_caller_any();
@@ -96,13 +97,13 @@ fn info_getters() {
 #[test]
 fn collateral_getters() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
 
     let precommit_epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(precommit_epoch);
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
     let dl_info = h.deadline(&rt);
 
     // Precommit a sector
@@ -114,8 +115,7 @@ fn collateral_getters() {
 
     let precommit_params =
         h.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, vec![]);
-    let precommit =
-        h.pre_commit_sector_and_get(&mut rt, precommit_params, PreCommitConfig::empty(), true);
+    h.pre_commit_sector_and_get(&rt, precommit_params, PreCommitConfig::empty(), true);
 
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
@@ -124,12 +124,7 @@ fn collateral_getters() {
     let pcc = ProveCommitConfig::empty();
 
     let sector = h
-        .prove_commit_sector_and_confirm(
-            &mut rt,
-            &precommit,
-            h.make_prove_commit_params(sector_no),
-            pcc,
-        )
+        .deprecated_sector_commit(&rt, &vec![], h.make_prove_commit_params(sector_no), pcc)
         .unwrap();
 
     // query available balance

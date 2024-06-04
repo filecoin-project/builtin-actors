@@ -1,17 +1,16 @@
 use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,
-    ProposeParams, ProposeReturn, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID,
-    TxnIDParams,
+    PendingTxnMap, ProposeParams, ProposeReturn, RemoveSignerParams, State, SwapSignerParams,
+    Transaction, TxnID, TxnIDParams, PENDING_TXN_CONFIG,
 };
 use fil_actor_multisig::{ChangeNumApprovalsThresholdParams, LockBalanceParams};
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::ActorError;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
-use fil_actors_runtime::{make_map_with_root, ActorError};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use integer_encoding::VarInt;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::error::ExitCode;
@@ -27,7 +26,7 @@ impl ActorHarness {
 
     pub fn construct_and_verify(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         initial_approvals: u64,
         unlock_duration: ChainEpoch,
         start_epoch: ChainEpoch,
@@ -50,7 +49,7 @@ impl ActorHarness {
 
     pub fn add_signer(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         signer: Address,
         increase: bool,
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -64,7 +63,7 @@ impl ActorHarness {
 
     pub fn remove_signer(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         signer: Address,
         decrease: bool,
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -80,7 +79,7 @@ impl ActorHarness {
 
     pub fn swap_signers(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         old_signer: Address,
         new_signer: Address,
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -94,7 +93,7 @@ impl ActorHarness {
 
     pub fn propose_ok(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         to: Address,
         value: TokenAmount,
         method: MethodNum,
@@ -103,18 +102,13 @@ impl ActorHarness {
         let ret = self.propose(rt, to, value.clone(), method, params.clone());
         ret.unwrap().unwrap().deserialize::<ProposeReturn>().unwrap();
         // compute proposal hash
-        let txn = Transaction { to, value, method, params, approved: vec![rt.caller] };
+        let txn = Transaction { to, value, method, params, approved: vec![*rt.caller.borrow()] };
         compute_proposal_hash(&txn, rt).unwrap()
     }
 
     // requires that the approval finishes the transaction and that the resulting invocation succeeds.
     // returns the (raw) output of the successful invocation.
-    pub fn approve_ok(
-        &self,
-        rt: &mut MockRuntime,
-        txn_id: TxnID,
-        proposal_hash: [u8; 32],
-    ) -> RawBytes {
+    pub fn approve_ok(&self, rt: &MockRuntime, txn_id: TxnID, proposal_hash: [u8; 32]) -> RawBytes {
         let ret = self.approve(rt, txn_id, proposal_hash).unwrap();
         let approve_ret = ret.unwrap().deserialize::<ApproveReturn>().unwrap();
         assert_eq!(ExitCode::OK, approve_ret.code);
@@ -123,7 +117,7 @@ impl ActorHarness {
 
     pub fn propose(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         to: Address,
         value: TokenAmount,
         method: MethodNum,
@@ -141,7 +135,7 @@ impl ActorHarness {
 
     pub fn approve(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         txn_id: TxnID,
         proposal_hash: [u8; 32],
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -158,7 +152,7 @@ impl ActorHarness {
 
     pub fn cancel(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         txn_id: TxnID,
         proposal_hash: [u8; 32],
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -175,7 +169,7 @@ impl ActorHarness {
 
     pub fn lock_balance(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         start: ChainEpoch,
         duration: ChainEpoch,
         amount: TokenAmount,
@@ -193,7 +187,7 @@ impl ActorHarness {
 
     pub fn change_num_approvals_threshold(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         new_threshold: u64,
     ) -> Result<Option<IpldBlock>, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
@@ -212,11 +206,11 @@ impl ActorHarness {
         mut expect_txns: Vec<(TxnID, Transaction)>,
     ) {
         let st: State = rt.get_state();
-        let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &rt.store).unwrap();
+        let ptx =
+            PendingTxnMap::load(&rt.store, &st.pending_txs, PENDING_TXN_CONFIG, "pending").unwrap();
         let mut actual_txns = Vec::new();
         ptx.for_each(|k, txn: &Transaction| {
-            let id = i64::decode_var(k).unwrap().0;
-            actual_txns.push((TxnID(id), txn.clone()));
+            actual_txns.push((k, txn.clone()));
             Ok(())
         })
         .unwrap();

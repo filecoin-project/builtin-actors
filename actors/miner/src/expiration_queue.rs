@@ -13,12 +13,12 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
 use num_traits::{Signed, Zero};
 
-use super::{power_for_sector, PowerPair, SectorOnChainInfo};
+use super::{power_for_sector, PowerPair, QuantSpec, SectorOnChainInfo};
 
 /// An internal limit on the cardinality of a bitfield in a queue entry.
 /// This must be at least large enough to support the maximum number of sectors in a partition.
@@ -247,8 +247,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let groups = self.find_sectors_by_expiration(sector_size, sectors)?;
 
         // Group sectors by their target expiration, then remove from existing queue entries according to those groups.
+        let new_quantized_expiration = self.quant.quantize_up(new_expiration);
         for mut group in groups {
-            if group.sector_epoch_set.epoch <= self.quant.quantize_up(new_expiration) {
+            if group.sector_epoch_set.epoch <= new_quantized_expiration {
                 // Don't reschedule sectors that are already due to expire on-time before the fault-driven expiration,
                 // but do represent their power as now faulty.
                 // Their pledge remains as "on-time".
@@ -297,10 +298,11 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         let mut mutated_expiration_sets = Vec::<(ChainEpoch, ExpirationSet)>::new();
 
+        let quantized_fault_expiration = self.quant.quantize_up(fault_expiration);
         self.amt.for_each(|e, expiration_set| {
             let epoch: ChainEpoch = e.try_into()?;
 
-            if epoch <= self.quant.quantize_up(fault_expiration) {
+            if epoch <= quantized_fault_expiration {
                 let mut expiration_set = expiration_set.clone();
 
                 // Regardless of whether the sectors were expiring on-time or early, all the power is now faulty.
@@ -700,8 +702,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     }
 
     /// Traverses the entire queue with a callback function that may mutate entries.
-    /// Iff the function returns that it changed an entry, the new entry will be re-written in the queue. Any changed
-    /// entries that become empty are removed after iteration completes.
+    /// Iff the function returns that it changed an entry, the new entry will be re-written in the
+    /// queue. Any changed entries that become empty are removed after iteration completes.
     fn iter_while_mut(
         &mut self,
         mut f: impl FnMut(
@@ -715,8 +717,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             let keep_going = f(e.try_into()?, expiration_set)?;
 
             if expiration_set.is_empty() {
-                // Mark expiration set as unchanged, it will be removed after the iteration.
-                expiration_set.mark_unchanged();
                 epochs_emptied.push(e);
             }
 
@@ -779,8 +779,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut declared_expirations = BTreeMap::<ChainEpoch, bool>::new();
         let mut sectors_by_number = BTreeMap::<u64, &SectorOnChainInfo>::new();
         let mut all_remaining = BTreeSet::<u64>::new();
-        let mut expiration_groups =
-            Vec::<SectorExpirationSet>::with_capacity(declared_expirations.len());
 
         for sector in sectors {
             let q_expiration = self.quant.quantize_up(sector.expiration);
@@ -788,6 +786,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             all_remaining.insert(sector.sector_number);
             sectors_by_number.insert(sector.sector_number, sector);
         }
+
+        let mut expiration_groups =
+            Vec::<SectorExpirationSet>::with_capacity(declared_expirations.len());
 
         for (&expiration, _) in declared_expirations.iter() {
             let es = self.may_get(expiration)?;
@@ -918,7 +919,6 @@ fn group_expiration_set(
     let mut total_pledge = TokenAmount::default();
 
     for u in es.on_time_sectors.iter() {
-        let u = u as u64;
         if include_set.remove(&u) {
             let sector = sectors.get(&u).expect("index should exist in sector set");
             sector_numbers.push(u);
@@ -941,7 +941,7 @@ fn group_expiration_set(
 /// Checks for invalid overlap between bitfield and a set's early sectors.
 fn check_no_early_sectors(set: &BTreeSet<u64>, es: &ExpirationSet) -> anyhow::Result<()> {
     for u in es.early_sectors.iter() {
-        if set.contains(&(u as u64)) {
+        if set.contains(&u) {
             return Err(anyhow!("Invalid attempt to group sector {} with an early expiration", u));
         }
     }

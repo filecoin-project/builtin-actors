@@ -1,0 +1,15 @@
+[package]
+name = "export_macro"
+description = "Macro to decorate integration tests"
+version = "1.0.0"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "2.0.38"
+quote = "1.0.33"
+proc-macro2 = "1.0.69"

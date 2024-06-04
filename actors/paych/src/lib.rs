@@ -4,16 +4,17 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, resolve_to_actor_id, ActorDowncast, ActorError, Array,
-    AsActorError,
+    actor_dispatch, actor_error, deserialize_block, extract_send_result, resolve_to_actor_id,
+    ActorContext, ActorDowncast, ActorError, Array,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::DAG_CBOR;
+use fvm_ipld_encoding::CBOR;
 use fvm_shared::address::Address;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
@@ -48,21 +49,14 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Payment channel actor
-    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         // Only InitActor can create a payment channel actor. It creates the actor on
         // behalf of the payer/payee.
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
 
-        // Resolve both parties, confirming they exist in the state tree.
-        let to = Self::resolve_address(rt, &params.to)
-            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                format!("to address not found {}", params.to)
-            })?;
-
-        let from = Self::resolve_address(rt, &params.from)
-            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                format!("from address not found {}", params.to)
-            })?;
+        // Check both parties are capable of signing vouchers
+        let to = resolve_to_actor_id(rt, &params.to, true).map(Address::new_id)?;
+        let from = resolve_to_actor_id(rt, &params.from, true).map(Address::new_id)?;
 
         let empty_arr_cid =
             Array::<(), _>::new_with_bit_width(rt.store(), LANE_STATES_AMT_BITWIDTH)
@@ -75,18 +69,8 @@ impl Actor {
         Ok(())
     }
 
-    /// Resolves an address to a canonical ID address and confirms it exists in the state tree.
-    fn resolve_address(rt: &mut impl Runtime, raw: &Address) -> Result<Address, ActorError> {
-        let resolved = resolve_to_actor_id(rt, raw)?;
-
-        // so long as we can find code for this, return `resolved`
-        rt.get_actor_code_cid(&resolved)
-            .map(|_| Address::new_id(resolved))
-            .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", resolved))
-    }
-
     pub fn update_channel_state(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: UpdateChannelStateParams,
     ) -> Result<(), ActorError> {
         let st: State = rt.state()?;
@@ -120,7 +104,7 @@ impl Actor {
 
         // Validate signature
 
-        rt.send(
+        if !extract_send_result(rt.send(
             &signer,
             ext::account::AUTHENTICATE_MESSAGE_METHOD,
             IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
@@ -128,8 +112,14 @@ impl Actor {
                 message: sv_bz,
             })?,
             TokenAmount::zero(),
-        )
-        .map_err(|e| e.wrap("voucher sig authentication failed"))?;
+            None,
+            SendFlags::READ_ONLY,
+        ))
+        .and_then(deserialize_block)
+        .context("proposal authentication failed")?
+        {
+            return Err(actor_error!(illegal_argument, "voucher sig authentication failed"));
+        }
 
         let pch_addr = rt.message().receiver();
         let svpch_id = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {
@@ -166,12 +156,12 @@ impl Actor {
         }
 
         if let Some(extra) = &sv.extra {
-            rt.send(
+            extract_send_result(rt.send_simple(
                 &extra.actor,
                 extra.method,
-                Some(IpldBlock { codec: DAG_CBOR, data: extra.data.to_vec() }),
+                Some(IpldBlock { codec: CBOR, data: extra.data.to_vec() }),
                 TokenAmount::zero(),
-            )
+            ))
             .map_err(|e| e.wrap("spend voucher verification failed"))?;
         }
 
@@ -274,7 +264,7 @@ impl Actor {
         })
     }
 
-    pub fn settle(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn settle(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is([st.from, st.to].iter())?;
 
@@ -291,7 +281,7 @@ impl Actor {
         })
     }
 
-    pub fn collect(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn collect(rt: &impl Runtime) -> Result<(), ActorError> {
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(&[st.from, st.to])?;
 
@@ -300,11 +290,14 @@ impl Actor {
         }
 
         // send ToSend to `to`
-        rt.send(&st.to, METHOD_SEND, None, st.to_send)
+        extract_send_result(rt.send_simple(&st.to, METHOD_SEND, None, st.to_send))
             .map_err(|e| e.wrap("Failed to send funds to `to` address"))?;
 
-        // the remaining balance will be returned to "From" upon deletion.
-        rt.delete_actor(&st.from)?;
+        // return remaining balance back to the "from" address.
+        extract_send_result(rt.send_simple(&st.from, METHOD_SEND, None, rt.current_balance()))
+            .map_err(|e| e.wrap("Failed to send funds to `from` address"))?;
+
+        rt.delete_actor()?;
 
         Ok(())
     }
@@ -329,6 +322,11 @@ where
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "PaymentChannel"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         UpdateChannelState => update_channel_state,

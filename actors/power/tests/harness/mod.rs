@@ -1,36 +1,16 @@
+use std::cell::RefCell;
+
 use cid::Cid;
-use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
-use fil_actor_power::ext::miner::ConfirmSectorProofsParams;
-use fil_actor_power::ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD;
-use fil_actor_power::ext::reward::Method::ThisEpochReward;
-use fil_actor_power::ext::reward::UPDATE_NETWORK_KPI;
-use fil_actor_power::testing::check_state_invariants;
-use fil_actor_power::EnrollCronEventParams;
-use fil_actor_power::CRON_QUEUE_AMT_BITWIDTH;
-use fil_actor_power::CRON_QUEUE_HAMT_BITWIDTH;
-use fil_actor_power::{epoch_key, MinerCountReturn};
-use fil_actor_power::{CronEvent, MinerConsensusCountReturn};
-use fil_actors_runtime::runtime::RuntimePolicy;
-use fil_actors_runtime::test_utils::CRON_ACTOR_CODE_ID;
-use fil_actors_runtime::Multimap;
-use fil_actors_runtime::CRON_ACTOR_ADDR;
-use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
-use fvm_ipld_hamt::BytesKey;
-use fvm_ipld_hamt::Error;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::SealVerifyInfo;
-use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
-use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::MethodNum;
 use lazy_static::lazy_static;
 use num_traits::Zero;
@@ -39,21 +19,32 @@ use serde::Serialize;
 
 use fil_actor_power::ext::init::ExecParams;
 use fil_actor_power::ext::miner::MinerConstructorParams;
+use fil_actor_power::ext::reward::Method::ThisEpochReward;
+use fil_actor_power::ext::reward::UPDATE_NETWORK_KPI;
+use fil_actor_power::testing::check_state_invariants;
+use fil_actor_power::EnrollCronEventParams;
+use fil_actor_power::CRON_QUEUE_AMT_BITWIDTH;
+use fil_actor_power::CRON_QUEUE_HAMT_BITWIDTH;
+use fil_actor_power::{epoch_key, MinerCountReturn};
 use fil_actor_power::{
     ext, Claim, CreateMinerParams, CreateMinerReturn, CurrentTotalPowerReturn, Method, State,
     UpdateClaimedPowerParams,
 };
-use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
+use fil_actor_power::{CronEvent, MinerConsensusCountReturn};
+use fil_actors_runtime::builtin::reward::{FilterEstimate, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::runtime::RuntimePolicy;
+use fil_actors_runtime::test_utils::CRON_ACTOR_CODE_ID;
 use fil_actors_runtime::test_utils::{
     MockRuntime, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
+use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, ActorError, Map, INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    ActorError, INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fil_actors_runtime::{Map2, MapKey, Multimap};
+use fil_actors_runtime::{CRON_ACTOR_ADDR, DEFAULT_HAMT_CONFIG};
 
 use crate::PowerActor;
 
@@ -66,8 +57,8 @@ lazy_static! {
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
         receiver: STORAGE_POWER_ACTOR_ADDR,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     }
 }
@@ -77,16 +68,16 @@ pub fn new_harness() -> Harness {
     Harness {
         miner_seq: 0,
         seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
-        window_post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        window_post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         this_epoch_baseline_power: StoragePower::from(1i64 << 50),
         this_epoch_reward_smoothed: FilterEstimate::new(rwd.atto().clone(), BigInt::zero()),
     }
 }
 
 pub fn setup() -> (Harness, MockRuntime) {
-    let mut rt = new_runtime();
+    let rt = new_runtime();
     let h = new_harness();
-    h.construct(&mut rt);
+    h.construct(&rt);
     (h, rt)
 }
 
@@ -100,14 +91,14 @@ pub struct Harness {
 }
 
 impl Harness {
-    pub fn construct(&self, rt: &mut MockRuntime) {
+    pub fn construct(&self, rt: &MockRuntime) {
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         rt.call::<PowerActor>(Method::Constructor as MethodNum, None).unwrap();
         rt.verify()
     }
 
-    pub fn construct_and_verify(&self, rt: &mut MockRuntime) {
+    pub fn construct_and_verify(&self, rt: &MockRuntime) {
         self.construct(rt);
         let st: State = rt.get_state();
         assert_eq!(StoragePower::zero(), st.total_raw_byte_power);
@@ -129,7 +120,7 @@ impl Harness {
     #[allow(clippy::too_many_arguments)]
     pub fn create_miner(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         owner: &Address,
         worker: &Address,
         miner: &Address,
@@ -140,7 +131,7 @@ impl Harness {
         value: &TokenAmount,
     ) -> Result<(), ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *owner);
-        rt.set_value(value.clone());
+        rt.set_received(value.clone());
         rt.set_balance(value.clone());
         rt.expect_validate_caller_any();
 
@@ -157,7 +148,7 @@ impl Harness {
             constructor_params: RawBytes::serialize(miner_ctor_params).unwrap(),
         };
         let create_miner_ret = CreateMinerReturn { id_address: *miner, robust_address: *robust };
-        rt.expect_send(
+        rt.expect_send_simple(
             INIT_ACTOR_ADDR,
             ext::init::EXEC_METHOD,
             IpldBlock::serialize_cbor(&expected_init_params).unwrap(),
@@ -181,7 +172,7 @@ impl Harness {
 
     pub fn create_miner_basic(
         &mut self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         owner: Address,
         worker: Address,
         miner: Address,
@@ -205,13 +196,11 @@ impl Harness {
 
     pub fn list_miners(&self, rt: &MockRuntime) -> Vec<Address> {
         let st: State = rt.get_state();
-        let claims: Map<_, Claim> =
-            make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).unwrap();
-        let keys = collect_keys(claims).unwrap();
-        keys.iter().map(|k| Address::from_bytes(k).unwrap()).collect::<Vec<_>>()
+        let claims = st.load_claims(rt.store()).unwrap();
+        collect_keys(claims).unwrap()
     }
 
-    pub fn miner_count(&self, rt: &mut MockRuntime) -> i64 {
+    pub fn miner_count(&self, rt: &MockRuntime) -> i64 {
         rt.expect_validate_caller_any();
         let ret: MinerCountReturn = rt
             .call::<PowerActor>(Method::MinerCountExported as MethodNum, None)
@@ -223,22 +212,16 @@ impl Harness {
         ret.miner_count
     }
 
-    pub fn this_epoch_baseline_power(&self) -> &StoragePower {
-        &self.this_epoch_baseline_power
-    }
-
     pub fn get_claim(&self, rt: &MockRuntime, miner: &Address) -> Option<Claim> {
         let st: State = rt.get_state();
         st.get_claim(rt.store(), miner).unwrap()
     }
 
-    pub fn delete_claim(&mut self, rt: &mut MockRuntime, miner: &Address) {
+    pub fn delete_claim(&mut self, rt: &MockRuntime, miner: &Address) {
         let mut state: State = rt.get_state();
 
-        let mut claims =
-            make_map_with_root_and_bitwidth::<_, Claim>(&state.claims, rt.store(), HAMT_BIT_WIDTH)
-                .unwrap();
-        claims.delete(&miner.to_bytes()).expect("Failed to delete claim");
+        let mut claims = state.load_claims(rt.store()).unwrap();
+        claims.delete(miner).expect("Failed to delete claim");
         state.claims = claims.flush().unwrap();
 
         rt.replace_state(&state);
@@ -246,7 +229,7 @@ impl Harness {
 
     pub fn enroll_cron_event(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         epoch: ChainEpoch,
         miner_address: &Address,
         payload: &RawBytes,
@@ -289,7 +272,7 @@ impl Harness {
         acc.assert_empty();
     }
 
-    pub fn update_pledge_total(&self, rt: &mut MockRuntime, miner: Address, delta: &TokenAmount) {
+    pub fn update_pledge_total(&self, rt: &MockRuntime, miner: Address, delta: &TokenAmount) {
         let st: State = rt.get_state();
         let prev = st.total_pledge_collateral;
 
@@ -306,7 +289,7 @@ impl Harness {
         assert_eq!(prev + delta, st.total_pledge_collateral);
     }
 
-    pub fn current_power_total(&self, rt: &mut MockRuntime) -> CurrentTotalPowerReturn {
+    pub fn current_power_total(&self, rt: &MockRuntime) -> CurrentTotalPowerReturn {
         rt.expect_validate_caller_any();
         let ret: CurrentTotalPowerReturn = rt
             .call::<PowerActor>(Method::CurrentTotalPower as u64, None)
@@ -320,7 +303,7 @@ impl Harness {
 
     pub fn update_claimed_power(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         miner: Address,
         raw_delta: &StoragePower,
         qa_delta: &StoragePower,
@@ -358,7 +341,7 @@ impl Harness {
 
     pub fn expect_total_power_eager(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         expected_raw: &StoragePower,
         expected_qa: &StoragePower,
     ) {
@@ -369,12 +352,12 @@ impl Harness {
         assert_eq!(expected_qa, &quality_adj_power);
     }
 
-    pub fn expect_total_pledge_eager(&self, rt: &mut MockRuntime, expected_pledge: &TokenAmount) {
+    pub fn expect_total_pledge_eager(&self, rt: &MockRuntime, expected_pledge: &TokenAmount) {
         let st: State = rt.get_state();
         assert_eq!(expected_pledge, &st.total_pledge_collateral);
     }
 
-    pub fn expect_miners_above_min_power(&self, rt: &mut MockRuntime, count: i64) {
+    pub fn expect_miners_above_min_power(&self, rt: &MockRuntime, count: i64) {
         rt.expect_validate_caller_any();
         let ret: MinerConsensusCountReturn = rt
             .call::<PowerActor>(Method::MinerConsensusCountExported as MethodNum, None)
@@ -386,13 +369,13 @@ impl Harness {
         assert_eq!(count, ret.miner_consensus_count);
     }
 
-    pub fn expect_query_network_info(&self, rt: &mut MockRuntime) {
+    pub fn expect_query_network_info(&self, rt: &MockRuntime) {
         let current_reward = ThisEpochRewardReturn {
             this_epoch_baseline_power: self.this_epoch_baseline_power.clone(),
             this_epoch_reward_smoothed: self.this_epoch_reward_smoothed.clone(),
         };
 
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             ThisEpochReward as u64,
             None,
@@ -404,39 +387,13 @@ impl Harness {
 
     pub fn on_epoch_tick_end(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         current_epoch: ChainEpoch,
         expected_raw_power: &StoragePower,
-        confirmed_sectors: Vec<ConfirmedSectorSend>,
-        infos: Vec<SealVerifyInfo>,
     ) {
         self.expect_query_network_info(rt);
-
-        let state: State = rt.get_state();
-
-        //expect sends for confirmed sectors
-        for sector in confirmed_sectors {
-            let param = ConfirmSectorProofsParams {
-                sectors: sector.sector_nums,
-                reward_smoothed: self.this_epoch_reward_smoothed.clone(),
-                reward_baseline_power: self.this_epoch_baseline_power.clone(),
-                quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed.clone(),
-            };
-            rt.expect_send(
-                sector.miner,
-                CONFIRM_SECTOR_PROOFS_VALID_METHOD,
-                IpldBlock::serialize_cbor(&param).unwrap(),
-                TokenAmount::zero(),
-                None,
-                ExitCode::new(0),
-            );
-        }
-
-        let verified_seals = batch_verify_default_output(&infos);
-        rt.expect_batch_verify_seals(infos, anyhow::Ok(verified_seals));
-
         // expect power sends to reward actor
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(expected_raw_power)).unwrap(),
@@ -455,54 +412,24 @@ impl Harness {
         let state: State = rt.get_state();
         assert!(state.proof_validation_batch.is_none());
     }
-
-    pub fn submit_porep_for_bulk_verify(
-        &self,
-        rt: &mut MockRuntime,
-        miner_address: Address,
-        seal_info: SealVerifyInfo,
-        expect_success: bool,
-    ) -> Result<(), ActorError> {
-        if expect_success {
-            rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL);
-        }
-        rt.expect_validate_caller_type(vec![Type::Miner]);
-        rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address);
-        rt.call::<PowerActor>(
-            Method::SubmitPoRepForBulkVerify as u64,
-            IpldBlock::serialize_cbor(&seal_info).unwrap(),
-        )?;
-        rt.verify();
-        Ok(())
-    }
 }
-
-pub struct ConfirmedSectorSend {
-    pub miner: Address,
-    pub sector_nums: Vec<SectorNumber>,
-}
-
-pub fn batch_verify_default_output(infos: &[SealVerifyInfo]) -> Vec<bool> {
-    vec![true; infos.len()]
-}
-
 /// Collects all keys from a map into a vector.
-fn collect_keys<BS, V>(m: Map<BS, V>) -> Result<Vec<BytesKey>, Error>
+fn collect_keys<BS, K, V>(m: Map2<BS, K, V>) -> Result<Vec<K>, ActorError>
 where
     BS: Blockstore,
+    K: MapKey + Clone,
     V: DeserializeOwned + Serialize,
 {
     let mut ret_keys = Vec::new();
     m.for_each(|k, _| {
-        ret_keys.push(k.clone());
+        ret_keys.push(k);
         Ok(())
     })?;
-
     Ok(ret_keys)
 }
 
 pub fn verify_empty_map(rt: &MockRuntime, key: Cid) {
     let map =
-        make_map_with_root_and_bitwidth::<_, BigIntDe>(&key, &rt.store, HAMT_BIT_WIDTH).unwrap();
+        Map2::<_, Vec<u8>, Vec<u8>>::load(&rt.store, &key, DEFAULT_HAMT_CONFIG, "empty?").unwrap();
     map.for_each(|_key, _val| panic!("expected no keys")).unwrap();
 }

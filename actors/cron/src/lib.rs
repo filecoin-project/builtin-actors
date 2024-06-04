@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_dispatch, actor_error, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{
+    actor_dispatch, actor_error, extract_send_result, ActorError, SYSTEM_ACTOR_ADDR,
+};
 
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::econ::TokenAmount;
@@ -42,7 +44,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Cron actor
-    fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         rt.create(&State { entries: params.entries })?;
         Ok(())
@@ -50,13 +52,18 @@ impl Actor {
     /// Executes built-in periodic actions, run at every Epoch.
     /// epoch_tick(r) is called after all other messages in the epoch have been applied.
     /// This can be seen as an implicit last message.
-    fn epoch_tick(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn epoch_tick(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st: State = rt.state()?;
         for entry in st.entries {
             // Intentionally ignore any error when calling cron methods
-            let res = rt.send(&entry.receiver, entry.method_num, None, TokenAmount::zero());
+            let res = extract_send_result(rt.send_simple(
+                &entry.receiver,
+                entry.method_num,
+                None,
+                TokenAmount::zero(),
+            ));
             if let Err(e) = res {
                 log::error!(
                     "cron failed to send entry to {}, send error code {}",
@@ -71,6 +78,11 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "Cron"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         EpochTick => epoch_tick,

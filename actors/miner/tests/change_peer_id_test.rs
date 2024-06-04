@@ -1,6 +1,6 @@
 use fil_actor_miner::{Actor, ChangePeerIDParams, GetPeerIDReturn, Method};
 use fil_actors_runtime::test_utils::{
-    expect_abort_contains_message, make_identity_cid, MockRuntime,
+    expect_abort_contains_message, MockRuntime, EVM_ACTOR_CODE_ID,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::error::ExitCode;
@@ -14,8 +14,8 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let precommit_epoch = 1;
 
     let h = ActorHarness::new(period_offset);
-    let mut rt = h.new_runtime();
-    h.construct_and_verify(&mut rt);
+    let rt = h.new_runtime();
+    h.construct_and_verify(&rt);
     rt.balance.replace(BIG_BALANCE.clone());
     rt.set_epoch(precommit_epoch);
 
@@ -24,22 +24,22 @@ fn setup() -> (ActorHarness, MockRuntime) {
 
 #[test]
 fn successfully_change_peer_id() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
     let new_pid = b"cthulhu".to_vec();
-    h.change_peer_id(&mut rt, new_pid);
+    h.change_peer_id(&rt, new_pid);
 
     h.check_state(&rt);
 }
 
 #[test]
 fn change_peer_id_restricted_correctly() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let new_id = b"cthulhu".to_vec();
 
     let params = IpldBlock::serialize_cbor(&ChangePeerIDParams { new_id: new_id.clone() }).unwrap();
 
-    rt.set_caller(make_identity_cid(b"1234"), h.worker);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, h.worker);
 
     // fail to call the unexported setter
 

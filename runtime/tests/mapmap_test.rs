@@ -1,11 +1,11 @@
 use cid::Cid;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{make_map_with_root_and_bitwidth, Keyer, Map, MapMap};
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::HAMT_BIT_WIDTH;
 
 #[test]
 fn mapmap_test() {
-    let store = MemoryBlockstore::default();
+    let store = MemoryBlockstore::new();
     let mut mm = MapMap::new(&store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH);
 
     let prev = mm.put("tree", "evergreen", "pine".to_string()).unwrap();
@@ -32,7 +32,7 @@ fn mapmap_test() {
 
     // for each accounts for all inner keys and values
     let mut count = 0;
-    mm.for_each("tree", |bk, v| -> anyhow::Result<()> {
+    mm.for_each_in("tree", |bk, v| -> anyhow::Result<()> {
         count += 1;
         assert!(
             (bk == &"deciduous".key() && v == &"mango".to_string())
@@ -44,7 +44,7 @@ fn mapmap_test() {
     assert_eq!(2, count);
 
     let mut count = 0;
-    mm.for_each("rock", |bk, v| -> anyhow::Result<()> {
+    mm.for_each_in("rock", |bk, v| -> anyhow::Result<()> {
         count += 1;
         assert_eq!(&"igneous".key(), bk);
         assert_eq!(&"basalt".to_string(), v);
@@ -77,7 +77,7 @@ fn mapmap_test() {
         MapMap::from_root(&store, &root, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
     let mut count = 0;
     mm_reloaded
-        .for_each("tree", |bk, v| -> anyhow::Result<()> {
+        .for_each_in("tree", |bk, v| -> anyhow::Result<()> {
             count += 1;
             assert!(
                 (bk == &"deciduous".key() && v == &"mango".to_string())

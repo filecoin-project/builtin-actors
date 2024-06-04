@@ -1,32 +1,33 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::borrow::Borrow;
 use std::cmp;
 use std::ops::Neg;
 
 use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorDowncast,
-    ActorError, Array,
-};
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe, CborStore};
-use fvm_ipld_hamt::Error as HamtError;
+use fvm_ipld_encoding::{strict_bytes, BytesDe, CborStore};
 use fvm_shared::address::Address;
-
-use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
+use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
+use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize};
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use itertools::Itertools;
 use num_traits::Zero;
+
+use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::{
+    actor_error, ActorContext, ActorDowncast, ActorError, Array, AsActorError, Config, Map2,
+    DEFAULT_HAMT_CONFIG,
+};
 
 use super::beneficiary::*;
 use super::deadlines::new_deadline_info;
@@ -35,8 +36,11 @@ use super::types::*;
 use super::{
     assign_deadlines, deadline_is_mutable, new_deadline_info_from_offset_and_epoch,
     quant_spec_for_deadline, BitFieldQueue, Deadline, DeadlineInfo, DeadlineSectorMap, Deadlines,
-    PowerPair, Sectors, TerminationResult, VestingFunds,
+    PowerPair, QuantSpec, Sectors, TerminationResult, VestingFunds,
 };
+
+pub type PreCommitMap<BS> = Map2<BS, SectorNumber, SectorPreCommitOnChainInfo>;
+pub const PRECOMMIT_CONFIG: Config = Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
 const PRECOMMIT_EXPIRY_AMT_BITWIDTH: u32 = 6;
 pub const SECTORS_AMT_BITWIDTH: u32 = 5;
@@ -124,14 +128,10 @@ impl State {
         info_cid: Cid,
         period_start: ChainEpoch,
         deadline_idx: u64,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, ActorError> {
         let empty_precommit_map =
-            make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to construct empty precommit map",
-                )
-            })?;
+            PreCommitMap::empty(store, PRECOMMIT_CONFIG, "precommits").flush()?;
+
         let empty_precommits_cleanup_array =
             Array::<BitField, BS>::new_with_bit_width(store, PRECOMMIT_EXPIRY_AMT_BITWIDTH)
                 .flush()
@@ -290,14 +290,12 @@ impl State {
         precommits: Vec<SectorPreCommitOnChainInfo>,
     ) -> anyhow::Result<()> {
         let mut precommitted =
-            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
         for precommit in precommits.into_iter() {
             let sector_no = precommit.info.sector_number;
             let modified = precommitted
-                .set_if_absent(u64_key(precommit.info.sector_number), precommit)
-                .map_err(|e| {
-                    e.downcast_wrap(format!("failed to store precommitment for {:?}", sector_no,))
-                })?;
+                .set_if_absent(&sector_no, precommit)
+                .with_context(|| format!("storing precommit for {}", sector_no))?;
             if !modified {
                 return Err(anyhow!("sector {} already pre-commited", sector_no));
             }
@@ -311,10 +309,10 @@ impl State {
         &self,
         store: &BS,
         sector_num: SectorNumber,
-    ) -> Result<Option<SectorPreCommitOnChainInfo>, HamtError> {
+    ) -> Result<Option<SectorPreCommitOnChainInfo>, ActorError> {
         let precommitted =
-            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
-        Ok(precommitted.get(&u64_key(sector_num))?.cloned())
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
+        Ok(precommitted.get(&sector_num)?.cloned())
     }
 
     /// Gets and returns the requested pre-committed sectors, skipping missing sectors.
@@ -323,17 +321,15 @@ impl State {
         store: &BS,
         sector_numbers: &[SectorNumber],
     ) -> anyhow::Result<Vec<SectorPreCommitOnChainInfo>> {
-        let precommitted = make_map_with_root_and_bitwidth::<_, SectorPreCommitOnChainInfo>(
-            &self.pre_committed_sectors,
-            store,
-            HAMT_BIT_WIDTH,
-        )?;
+        let precommitted =
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
         let mut result = Vec::with_capacity(sector_numbers.len());
 
         for &sector_number in sector_numbers {
-            let info = match precommitted.get(&u64_key(sector_number)).map_err(|e| {
-                e.downcast_wrap(format!("failed to load precommitment for {}", sector_number))
-            })? {
+            let info = match precommitted
+                .get(&sector_number)
+                .with_context(|| format!("loading precommit {}", sector_number))?
+            {
                 Some(info) => info.clone(),
                 None => continue,
             };
@@ -348,17 +344,13 @@ impl State {
         &mut self,
         store: &BS,
         sector_nums: &[SectorNumber],
-    ) -> Result<(), HamtError> {
-        let mut precommitted = make_map_with_root_and_bitwidth::<_, SectorPreCommitOnChainInfo>(
-            &self.pre_committed_sectors,
-            store,
-            HAMT_BIT_WIDTH,
-        )?;
-
+    ) -> Result<(), ActorError> {
+        let mut precommitted =
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
         for &sector_num in sector_nums {
-            let prev_entry = precommitted.delete(&u64_key(sector_num))?;
+            let prev_entry = precommitted.delete(&sector_num)?;
             if prev_entry.is_none() {
-                return Err(format!("sector {} doesn't exist", sector_num).into());
+                return Err(actor_error!(illegal_state, "sector {} not pre-committed", sector_num));
             }
         }
 
@@ -395,8 +387,9 @@ impl State {
         &self,
         store: &BS,
         sector_num: SectorNumber,
-    ) -> anyhow::Result<Option<SectorOnChainInfo>> {
-        let sectors = Sectors::load(store, &self.sectors)?;
+    ) -> Result<Option<SectorOnChainInfo>, ActorError> {
+        let sectors = Sectors::load(store, &self.sectors)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "loading sectors")?;
         sectors.get(sector_num)
     }
 
@@ -436,12 +429,11 @@ impl State {
     /// Returns the deadline and partition index for a sector number.
     pub fn find_sector<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         sector_number: SectorNumber,
     ) -> anyhow::Result<(u64, u64)> {
         let deadlines = self.load_deadlines(store)?;
-        deadlines.find_sector(policy, store, sector_number)
+        deadlines.find_sector(store, sector_number)
     }
 
     /// Schedules each sector to expire at its next deadline end. If it can't find
@@ -474,7 +466,7 @@ impl State {
             )
             .next_not_elapsed();
             let new_expiration = deadline_info.last();
-            let mut deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
+            let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
 
             let replaced = deadline.reschedule_sector_expirations(
                 store,
@@ -512,7 +504,7 @@ impl State {
         let mut deadline_vec: Vec<Option<Deadline>> =
             (0..policy.wpost_period_deadlines).map(|_| None).collect();
 
-        deadlines.for_each(policy, store, |deadline_idx, deadline| {
+        deadlines.for_each(store, |deadline_idx, deadline| {
             // Skip deadlines that aren't currently mutable.
             if deadline_is_mutable(
                 policy,
@@ -587,7 +579,7 @@ impl State {
             let deadline_idx = i;
 
             // Load deadline + partitions.
-            let mut deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
+            let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
 
             let (deadline_result, more) = deadline
                 .pop_early_terminations(
@@ -634,15 +626,14 @@ impl State {
     /// Returns Ok(true) otherwise
     pub fn check_sector_active<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         deadline_idx: u64,
         partition_idx: u64,
         sector_number: SectorNumber,
         require_proven: bool,
-    ) -> anyhow::Result<bool> {
+    ) -> Result<bool, ActorError> {
         let dls = self.load_deadlines(store)?;
-        let dl = dls.load_deadline(policy, store, deadline_idx)?;
+        let dl = dls.load_deadline(store, deadline_idx)?;
         let partition = dl.load_partition(store, partition_idx)?;
 
         let exists = partition.sectors.get(sector_number);
@@ -651,8 +642,7 @@ impl State {
                 not_found;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
-            )
-            .into());
+            ));
         }
 
         let faulty = partition.faults.get(sector_number);
@@ -676,14 +666,13 @@ impl State {
     /// Returns an error if the target sector cannot be found and/or is faulty/terminated.
     pub fn check_sector_health<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         deadline_idx: u64,
         partition_idx: u64,
         sector_number: SectorNumber,
     ) -> anyhow::Result<()> {
         let deadlines = self.load_deadlines(store)?;
-        let deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
+        let deadline = deadlines.load_deadline(store, deadline_idx)?;
         let partition = deadline.load_partition(store, partition_idx)?;
 
         if !partition.sectors.get(sector_number) {
@@ -1052,15 +1041,17 @@ impl State {
         }
 
         let mut precommits_to_delete = Vec::new();
+        let precommitted =
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
 
         for i in sectors.iter() {
             let sector_number = i as SectorNumber;
-
-            let sector = match self.get_precommitted_sector(store, sector_number)? {
-                Some(sector) => sector,
-                // already committed/deleted
-                None => continue,
-            };
+            let sector: SectorPreCommitOnChainInfo =
+                match precommitted.get(&sector_number)?.cloned() {
+                    Some(sector) => sector,
+                    // already committed/deleted
+                    None => continue,
+                };
 
             // mark it for deletion
             precommits_to_delete.push(sector_number);
@@ -1112,7 +1103,7 @@ impl State {
 
         let mut deadlines = self.load_deadlines(store)?;
 
-        let mut deadline = deadlines.load_deadline(policy, store, dl_info.index)?;
+        let mut deadline = deadlines.load_deadline(store, dl_info.index)?;
 
         let previously_faulty_power = deadline.faulty_power.clone();
 
@@ -1169,24 +1160,24 @@ impl State {
         })
     }
 
-    pub fn get_all_precommitted_sectors<BS: Blockstore>(
+    // Loads sectors precommit information from store, requiring it to exist.
+    pub fn get_precommitted_sectors<BS: Blockstore>(
         &self,
         store: &BS,
-        sector_nos: &BitField,
-    ) -> anyhow::Result<Vec<SectorPreCommitOnChainInfo>> {
+        sector_nos: impl IntoIterator<Item = impl Borrow<SectorNumber>>,
+    ) -> Result<Vec<SectorPreCommitOnChainInfo>, ActorError> {
         let mut precommits = Vec::new();
         let precommitted =
-            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
-        for sector_no in sector_nos.iter() {
-            if sector_no as u64 > MAX_SECTOR_NUMBER {
-                return Err(
-                    actor_error!(illegal_argument; "sector number greater than maximum").into()
-                );
+            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
+        for sector_no in sector_nos.into_iter() {
+            let sector_no = *sector_no.borrow();
+            if sector_no > MAX_SECTOR_NUMBER {
+                return Err(actor_error!(illegal_argument; "sector number greater than maximum"));
             }
-            let info: &SectorPreCommitOnChainInfo =
-                precommitted
-                    .get(&u64_key(sector_no as u64))?
-                    .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
+            let info: &SectorPreCommitOnChainInfo = precommitted
+                .get(&sector_no)
+                .exit_code(ExitCode::USR_ILLEGAL_STATE)?
+                .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
             precommits.push(info.clone());
         }
         Ok(precommits)
@@ -1207,7 +1198,7 @@ pub struct AdvanceDeadlineResult {
 }
 
 /// Static information about miner
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct MinerInfo {
     /// Account that owns this miner
     /// - Income and returned collateral are paid to this address
@@ -1227,7 +1218,7 @@ pub struct MinerInfo {
     pub pending_worker_key: Option<WorkerKeyChange>,
 
     /// Libp2p identity that should be used when connecting to this miner
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
 
     /// Vector of byte arrays representing Libp2p multi-addresses used for establishing a connection with this miner.

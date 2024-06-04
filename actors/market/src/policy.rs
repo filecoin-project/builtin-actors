@@ -10,7 +10,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::TOTAL_FILECOIN;
+use lazy_static::lazy_static;
 use num_traits::Zero;
 
 pub mod detail {
@@ -18,9 +18,15 @@ pub mod detail {
     pub const DEAL_MAX_LABEL_SIZE: usize = 256;
 }
 
+lazy_static! {
+    /// Total (assumed) Filecoin available to the network. This is only used to bound the maximum
+    /// deal collateral and price.
+    pub static ref TOTAL_FILECOIN: TokenAmount = TokenAmount::from_whole(2_000_000_000);
+}
+
 /// Bounds (inclusive) on deal duration.
 pub(super) fn deal_duration_bounds(_size: PaddedPieceSize) -> (ChainEpoch, ChainEpoch) {
-    (180 * EPOCHS_IN_DAY, 540 * EPOCHS_IN_DAY)
+    (180 * EPOCHS_IN_DAY, 1278 * EPOCHS_IN_DAY)
 }
 
 pub(super) fn deal_price_per_epoch_bounds(

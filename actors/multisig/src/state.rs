@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actors_runtime::{actor_error, ActorError, AsActorError};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
@@ -10,13 +9,16 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Integer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
 use indexmap::IndexMap;
 use num_traits::Zero;
 
+use fil_actors_runtime::{actor_error, ActorError, Config, Map2, DEFAULT_HAMT_CONFIG};
+
 use super::types::Transaction;
 use super::TxnID;
-use crate::make_map_with_root;
+
+pub type PendingTxnMap<BS> = Map2<BS, TxnID, Transaction>;
+pub const PENDING_TXN_CONFIG: Config = DEFAULT_HAMT_CONFIG;
 
 /// Multisig actor state
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
@@ -76,37 +78,32 @@ impl State {
         store: &BS,
         addr: &Address,
     ) -> Result<(), ActorError> {
-        let mut txns = make_map_with_root(&self.pending_txs, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load txn map")?;
+        let mut txns =
+            PendingTxnMap::load(store, &self.pending_txs, PENDING_TXN_CONFIG, "pending txns")?;
 
         // Identify transactions that need updating
         let mut txn_ids_to_purge = IndexMap::new();
         txns.for_each(|tx_id, txn: &Transaction| {
             for approver in txn.approved.iter() {
                 if approver == addr {
-                    txn_ids_to_purge.insert(tx_id.0.clone(), txn.clone());
+                    txn_ids_to_purge.insert(tx_id, txn.clone());
                 }
             }
             Ok(())
-        })
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to scan txns")?;
+        })?;
 
         // Update or remove those transactions.
         for (tx_id, mut txn) in txn_ids_to_purge {
             txn.approved.retain(|approver| approver != addr);
 
             if !txn.approved.is_empty() {
-                txns.set(tx_id.into(), txn)
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to update entry")?;
+                txns.set(&tx_id, txn)?;
             } else {
-                txns.delete(&tx_id)
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to delete entry")?;
+                txns.delete(&tx_id)?;
             }
         }
 
-        self.pending_txs =
-            txns.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store entries")?;
-
+        self.pending_txs = txns.flush()?;
         Ok(())
     }
 

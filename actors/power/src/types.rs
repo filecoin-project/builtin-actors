@@ -1,14 +1,14 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actors_runtime::reward::FilterEstimate;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe, RawBytes};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
-use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::sector::{RegisteredPoStProof, SealVerifyInfo, StoragePower};
 use fvm_shared::ActorID;
 
 use serde::{Deserialize, Serialize};
@@ -22,16 +22,12 @@ pub const SECTOR_TERMINATION_MANUAL: SectorTermination = 1;
 /// Implicit termination due to unrecovered fault
 pub const SECTOR_TERMINATION_FAULTY: SectorTermination = 3;
 
-pub const CRON_QUEUE_HAMT_BITWIDTH: u32 = 6;
-pub const CRON_QUEUE_AMT_BITWIDTH: u32 = 6;
-pub const PROOF_VALIDATION_BATCH_AMT_BITWIDTH: u32 = 4;
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct CreateMinerParams {
     pub owner: Address,
     pub worker: Address,
     pub window_post_proof_type: RegisteredPoStProof,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer: Vec<u8>,
     pub multiaddrs: Vec<BytesDe>,
 }
@@ -64,7 +60,13 @@ pub struct UpdatePledgeTotalParams {
     pub pledge_delta: TokenAmount,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[serde(transparent)]
+pub struct SubmitPoRepForBulkVerifyParams {
+    pub seal_info: SealVerifyInfo,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct CurrentTotalPowerReturn {
     #[serde(with = "bigint_ser")]
     pub raw_byte_power: StoragePower,

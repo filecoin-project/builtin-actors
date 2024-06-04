@@ -10,10 +10,12 @@ use crate::{ActorError, Runtime};
 /// Interface for invoking methods on an Actor
 pub trait ActorCode {
     type Methods;
+    /// A name for the actor type, used in debugging.
+    fn name() -> &'static str;
     /// Invokes method with runtime on the actor's code. Method number will match one
     /// defined by the Actor, and parameters will be serialized and used in execution
     fn invoke_method<RT>(
-        rt: &mut RT,
+        rt: &RT,
         method: MethodNum,
         params: Option<IpldBlock>,
     ) -> Result<Option<IpldBlock>, ActorError>

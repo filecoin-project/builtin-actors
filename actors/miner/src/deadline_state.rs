@@ -7,23 +7,25 @@ use std::collections::BTreeSet;
 use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::Cid;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{PoStProof, SectorSize};
 use num_traits::{Signed, Zero};
 
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array, AsActorError};
+
+use crate::SECTORS_AMT_BITWIDTH;
+
 use super::{
     BitFieldQueue, ExpirationSet, Partition, PartitionSectorMap, PoStPartition, PowerPair,
-    SectorOnChainInfo, Sectors, TerminationResult,
+    QuantSpec, SectorOnChainInfo, Sectors, TerminationResult,
 };
-use crate::SECTORS_AMT_BITWIDTH;
 
 // Bitwidth of AMTs determined empirically from mutation patterns and projections of mainnet data.
 // Usually a small array
@@ -52,32 +54,35 @@ impl Deadlines {
 
     pub fn load_deadline<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
-        deadline_idx: u64,
-    ) -> anyhow::Result<Deadline> {
-        if deadline_idx >= policy.wpost_period_deadlines {
-            return Err(anyhow!(actor_error!(
+        idx: u64,
+    ) -> Result<Deadline, ActorError> {
+        let idx = idx as usize;
+        if idx >= self.due.len() {
+            return Err(actor_error!(
                 illegal_argument,
-                "invalid deadline {}",
-                deadline_idx
-            )));
+                "invalid deadline index {} of {}",
+                idx,
+                self.due.len()
+            ));
         }
 
-        store.get_cbor(&self.due[deadline_idx as usize])?.ok_or_else(|| {
-            anyhow!(actor_error!(illegal_state, "failed to lookup deadline {}", deadline_idx))
-        })
+        store
+            .get_cbor(&self.due[idx])
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to load deadline {}", idx)
+            })?
+            .ok_or_else(|| actor_error!(illegal_argument, "no deadline {}", idx))
     }
 
     pub fn for_each<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         mut f: impl FnMut(u64, Deadline) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
         for i in 0..(self.due.len() as u64) {
             let index = i;
-            let deadline = self.load_deadline(policy, store, index)?;
+            let deadline = self.load_deadline(store, index)?;
             f(index, deadline)?;
         }
         Ok(())
@@ -181,24 +186,41 @@ pub struct DisputeInfo {
 }
 
 impl Deadline {
-    pub fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<Self> {
+    pub fn new<BS: Blockstore>(store: &BS) -> Result<Self, ActorError> {
         let empty_partitions_array =
             Array::<(), BS>::new_with_bit_width(store, DEADLINE_PARTITIONS_AMT_BITWIDTH)
                 .flush()
-                .map_err(|e| e.downcast_wrap("Failed to create empty states array"))?;
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "Failed to create empty states array",
+                    )
+                })?;
         let empty_deadline_expiration_array =
             Array::<(), BS>::new_with_bit_width(store, DEADLINE_EXPIRATIONS_AMT_BITWIDTH)
                 .flush()
-                .map_err(|e| e.downcast_wrap("Failed to create empty states array"))?;
+                .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "Failed to create empty states array",
+                )
+            })?;
         let empty_post_submissions_array = Array::<(), BS>::new_with_bit_width(
             store,
             DEADLINE_OPTIMISTIC_POST_SUBMISSIONS_AMT_BITWIDTH,
         )
         .flush()
-        .map_err(|e| e.downcast_wrap("Failed to create empty states array"))?;
+        .map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty states array")
+        })?;
         let empty_sectors_array = Array::<(), BS>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH)
             .flush()
-            .map_err(|e| e.downcast_wrap("Failed to construct empty sectors snapshot array"))?;
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "Failed to construct empty sectors snapshot array",
+                )
+            })?;
         Ok(Self {
             partitions: empty_partitions_array,
             expirations_epochs: empty_deadline_expiration_array,
@@ -246,19 +268,16 @@ impl Deadline {
         &self,
         store: &BS,
         partition_idx: u64,
-    ) -> anyhow::Result<Partition> {
-        let partitions = Array::<Partition, _>::load(&self.partitions, store)?;
+    ) -> Result<Partition, ActorError> {
+        let partitions = Array::<Partition, _>::load(&self.partitions, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "loading partitions array")?;
 
         let partition = partitions
             .get(partition_idx)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to lookup partition {}", partition_idx),
-                )
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to lookup partition {}", partition_idx)
             })?
             .ok_or_else(|| actor_error!(not_found, "no partition {}", partition_idx))?;
-
         Ok(partition.clone())
     }
 
@@ -412,10 +431,6 @@ impl Deadline {
 
         // try filling up the last partition first.
         for partition_idx in partitions.count().saturating_sub(1).. {
-            if sectors.is_empty() {
-                break;
-            }
-
             // Get/create partition to update.
             let mut partition = match partitions.get(partition_idx)? {
                 Some(partition) => partition.clone(),
@@ -449,7 +464,11 @@ impl Deadline {
 
             // Record deadline -> partition mapping so we can later update the deadlines.
             partition_deadline_updates
-                .extend(partition_new_sectors.iter().map(|s| (s.expiration, partition_idx)))
+                .extend(partition_new_sectors.iter().map(|s| (s.expiration, partition_idx)));
+
+            if sectors.is_empty() {
+                break;
+            }
         }
 
         // Save partitions back.
@@ -596,7 +615,7 @@ impl Deadline {
                 self.early_terminations.set(partition_idx);
 
                 // Record change to sectors and power
-                self.live_sectors -= removed.len() as u64;
+                self.live_sectors -= removed.len();
             } // note: we should _always_ have early terminations, unless the early termination bitfield is empty.
 
             self.faulty_power -= &removed.faulty_power;
@@ -715,8 +734,8 @@ impl Deadline {
         let live = BitField::union(&all_live_sectors);
 
         // Update sector counts.
-        let removed_dead_sectors = dead.len() as u64;
-        let removed_live_sectors = live.len() as u64;
+        let removed_dead_sectors = dead.len();
+        let removed_live_sectors = live.len();
 
         self.live_sectors -= removed_live_sectors;
         self.total_sectors -= removed_live_sectors + removed_dead_sectors;

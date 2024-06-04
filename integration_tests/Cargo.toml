@@ -1,0 +1,67 @@
+[package]
+name = "fil_actors_integration_tests"
+description = "Portable integration tests for FVM targets"
+version = "1.0.0"
+license = "MIT OR Apache-2.0"
+authors = ["Protocol Labs", "Filecoin Core Devs"]
+edition = "2021"
+keywords = ["filecoin", "web3", "wasm"]
+publish = false
+
+[lib]
+
+[dependencies]
+fil_builtin_actors_state = { workspace = true }
+fil_actors_runtime = { workspace = true, features = [ "test_utils" ] }
+fil_actor_init = { workspace = true }
+fil_actor_cron = { workspace = true }
+fil_actor_system = { workspace = true }
+fil_actor_account = { workspace = true }
+fil_actor_multisig = { workspace = true }
+fil_actor_paych = { workspace = true }
+fil_actor_reward = { workspace = true }
+fil_actor_power = { workspace = true }
+fil_actor_market = { workspace = true }
+fil_actor_verifreg = { workspace = true }
+fil_actor_miner = { workspace = true }
+fil_actor_datacap = { workspace = true }
+fil_actor_evm = { workspace = true }
+fil_actor_eam = { workspace = true }
+fil_actor_ethaccount = { workspace = true }
+fil_actors_evm_shared = { workspace = true }
+vm_api = { workspace = true, features = ["testing"] }
+
+anyhow = { workspace = true }
+bimap = { workspace = true }
+blake2b_simd = { workspace = true }
+cid = { workspace = true }
+ethers = { workspace = true }
+frc42_dispatch = { workspace = true }
+frc46_token = { workspace = true }
+fvm_actor_utils = { workspace = true }
+fvm_ipld_bitfield = { workspace = true }
+fvm_ipld_blockstore = { workspace = true }
+fvm_ipld_encoding = { workspace = true }
+fvm_ipld_hamt = { workspace = true }
+fvm_shared = { workspace = true }
+hex = { workspace = true }
+hex-literal = { workspace = true } 
+indexmap = { workspace = true }
+integer-encoding = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+libsecp256k1 = { workspace = true }
+export_macro = { path = "./macro" }
+ctor = "0.2.5"
+
+[dev-dependencies]
+multihash = { workspace = true }
+test-case = { workspace = true }
+hex-literal = { workspace = true }

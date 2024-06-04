@@ -3,23 +3,27 @@
 
 use cid::Cid;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe};
+use fvm_ipld_encoding::{strict_bytes, BytesDe};
+use fvm_ipld_encoding::{tuple::*, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
-    PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
-    SectorSize, StoragePower,
+    PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
+    RegisteredUpdateProof, SectorNumber, SectorSize,
 };
-use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::ActorID;
+use serde::{Deserialize, Serialize};
 
-use fil_actors_runtime::DealWeight;
+use fil_actors_runtime::reward::FilterEstimate;
+use fil_actors_runtime::{BatchReturn, DealWeight};
 
 use crate::commd::CompactCommD;
+use crate::ext::verifreg::AllocationID;
 use crate::ext::verifreg::ClaimID;
 
 use super::beneficiary::*;
@@ -38,7 +42,7 @@ pub struct MinerConstructorParams {
     pub worker: Address,
     pub control_addresses: Vec<Address>,
     pub window_post_proof_type: RegisteredPoStProof,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
     pub multi_addresses: Vec<BytesDe>,
 }
@@ -68,8 +72,14 @@ pub struct ChangeWorkerAddressParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ChangeOwnerAddressParams {
+    pub new_owner: Address,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ChangePeerIDParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub new_id: Vec<u8>,
 }
 
@@ -79,17 +89,8 @@ pub struct ChangeMultiaddrsParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ConfirmSectorProofsParams {
-    pub sectors: Vec<SectorNumber>,
-    pub reward_smoothed: FilterEstimate,
-    #[serde(with = "bigint_ser")]
-    pub reward_baseline_power: StoragePower,
-    pub quality_adj_power_smoothed: FilterEstimate,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct DeferredCronEventParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub event_payload: Vec<u8>,
     pub reward_smoothed: FilterEstimate,
     pub quality_adj_power_smoothed: FilterEstimate,
@@ -119,11 +120,76 @@ pub struct SubmitWindowedPoStParams {
     pub chain_commit_rand: Randomness,
 }
 
+// Deprecated as of FIP 0084 -- kept for legacy testing
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectorParams {
     pub sector_number: SectorNumber,
-    #[serde(with = "serde_bytes")]
-    pub proof: Vec<u8>,
+    pub proof: RawBytes,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct ProveCommitSectors3Params {
+    // Activation manifest for each sector being proven.
+    pub sector_activations: Vec<SectorActivationManifest>,
+    // Proofs for each sector, parallel to activation manifests.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub sector_proofs: Vec<RawBytes>,
+    // Aggregate proof for all sectors.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub aggregate_proof: RawBytes,
+    // The proof type for the aggregate proof (must be None if no aggregate proof).
+    pub aggregate_proof_type: Option<RegisteredAggregateProof>,
+    // Whether to abort if any sector activation fails.
+    pub require_activation_success: bool,
+    // Whether to abort if any notification returns a non-zero exit code.
+    pub require_notification_success: bool,
+}
+
+// Data to activate a commitment to one sector and its data.
+// All pieces of data must be specified, whether or not not claiming a FIL+ activation or being
+// notified to a data consumer.
+// An implicit zero piece fills any remaining sector capacity.
+// Note: we should consider fast tracking the special case where there is only
+//  one piece not claiming or notifying other actors to allow an empty piece vector.
+//  We could interpret this as a single piece, size == sector size, cid == commD, empty allocation empty notify vector
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorActivationManifest {
+    // Sector to be activated.
+    pub sector_number: SectorNumber,
+    // Pieces comprising the sector content, in order.
+    pub pieces: Vec<PieceActivationManifest>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct PieceActivationManifest {
+    // Piece data commitment.
+    pub cid: Cid,
+    // Piece size.
+    pub size: PaddedPieceSize,
+    // Identifies a verified allocation to be claimed.
+    pub verified_allocation_key: Option<VerifiedAllocationKey>,
+    // Synchronous notifications to be sent to other actors after activation.
+    pub notify: Vec<DataActivationNotification>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct VerifiedAllocationKey {
+    pub client: ActorID,
+    pub id: AllocationID,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct DataActivationNotification {
+    // Actor to be notified.
+    pub address: Address,
+    // Data to send in the notification.
+    pub payload: RawBytes,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ProveCommitSectors3Return {
+    pub activation_results: BatchReturn,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -244,11 +310,11 @@ pub struct CompactSectorNumbersParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ReportConsensusFaultParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub header1: Vec<u8>,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub header2: Vec<u8>,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub header_extra: Vec<u8>,
 }
 
@@ -328,7 +394,7 @@ pub struct SectorOnChainInfo {
     pub seal_proof: RegisteredSealProof,
     /// CommR
     pub sealed_cid: Cid,
-    pub deal_ids: Vec<DealID>,
+    pub deprecated_deal_ids: Vec<DealID>,
     /// Epoch during which the sector proof was accepted
     pub activation: ChainEpoch,
     /// Epoch during which the sector expires
@@ -341,18 +407,27 @@ pub struct SectorOnChainInfo {
     pub verified_deal_weight: DealWeight,
     /// Pledge collected to commit this sector
     pub initial_pledge: TokenAmount,
-    /// Expected one day projection of reward for sector computed at activation time
+    /// Expected one day projection of reward for sector computed at activation / update / extension time
     pub expected_day_reward: TokenAmount,
-    /// Expected twenty day projection of reward for sector computed at activation time
+    /// Expected twenty day projection of reward for sector computed at activation / update / extension time
     pub expected_storage_pledge: TokenAmount,
-    /// Age of sector this sector replaced or zero
-    pub replaced_sector_age: ChainEpoch,
-    /// Day reward of sector this sector replace or zero
+    /// Epoch at which this sector's power was most recently updated
+    pub power_base_epoch: ChainEpoch,
+    /// Maximum day reward this sector has had in previous iterations (zero for brand new sectors)
     pub replaced_day_reward: TokenAmount,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,
-    // Flag for QA power mechanism introduced in fip 0045
-    pub simple_qa_power: bool,
+    /// Additional flags, see [`SectorOnChainInfoFlags`]
+    pub flags: SectorOnChainInfoFlags,
+}
+
+bitflags::bitflags! {
+    #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+    #[serde(transparent)]
+    pub struct SectorOnChainInfoFlags: u32 {
+        /// QA power mechanism introduced in FIP-0045
+        const SIMPLE_QA_POWER = 0x1;
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]
@@ -368,20 +443,19 @@ pub struct ApplyRewardParams {
     pub penalty: TokenAmount,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize_tuple, Deserialize_tuple)]
 pub struct DisputeWindowedPoStParams {
     pub deadline: u64,
     pub post_index: u64, // only one is allowed at a time to avoid loading too many sector infos.
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
     pub sector_numbers: BitField,
-    #[serde(with = "serde_bytes")]
-    pub aggregate_proof: Vec<u8>,
+    pub aggregate_proof: RawBytes,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ReplicaUpdate {
     pub sector_number: SectorNumber,
     pub deadline: u64,
@@ -389,34 +463,53 @@ pub struct ReplicaUpdate {
     pub new_sealed_cid: Cid,
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
-    #[serde(with = "serde_bytes")]
-    pub replica_proof: Vec<u8>,
+    pub replica_proof: RawBytes,
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveReplicaUpdatesParams {
     pub updates: Vec<ReplicaUpdate>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ReplicaUpdate2 {
-    pub sector_number: SectorNumber,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ProveReplicaUpdates3Params {
+    pub sector_updates: Vec<SectorUpdateManifest>,
+    // Proofs for each sector, parallel to activation manifests.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub sector_proofs: Vec<RawBytes>,
+    // Aggregate proof for all sectors.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub aggregate_proof: RawBytes,
+    // The proof type for all sector update proofs, individually or before aggregation.
+    pub update_proofs_type: RegisteredUpdateProof,
+    // The proof type for the aggregate proof (must be None if no aggregate proof).
+    pub aggregate_proof_type: Option<RegisteredAggregateProof>,
+    // Whether to abort if any sector update activation fails.
+    pub require_activation_success: bool,
+    // Whether to abort if any notification returns a non-zero exit code.
+    pub require_notification_success: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorUpdateManifest {
+    pub sector: SectorNumber,
     pub deadline: u64,
     pub partition: u64,
-    pub new_sealed_cid: Cid,
-    pub new_unsealed_cid: Cid,
-    pub deals: Vec<DealID>,
-    pub update_proof_type: RegisteredUpdateProof,
-    #[serde(with = "serde_bytes")]
-    pub replica_proof: Vec<u8>,
+    pub new_sealed_cid: Cid, // CommR
+    // Declaration of all pieces that make up the new sector data, in order.
+    // Until we support re-snap, pieces must all be new because the sector was previously empty.
+    // Implicit "zero" piece fills any remaining capacity.
+    // These pieces imply the new unsealed sector CID.
+    pub pieces: Vec<PieceActivationManifest>,
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
-pub struct ProveReplicaUpdatesParams2 {
-    pub updates: Vec<ReplicaUpdate2>,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ProveReplicaUpdates3Return {
+    pub activation_results: BatchReturn,
 }
 
-#[derive(Debug, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ChangeBeneficiaryParams {
     pub new_beneficiary: Address,
     pub new_quota: TokenAmount,
@@ -433,43 +526,43 @@ impl ChangeBeneficiaryParams {
     }
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ActiveBeneficiary {
     pub beneficiary: Address,
     pub term: BeneficiaryTerm,
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetBeneficiaryReturn {
     pub active: ActiveBeneficiary,
     pub proposed: Option<PendingBeneficiaryChange>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetOwnerReturn {
     pub owner: Address,
     pub proposed: Option<Address>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct IsControllingAddressParam {
     pub address: Address,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct IsControllingAddressReturn {
     pub is_controlling: bool,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct GetSectorSizeReturn {
     pub sector_size: SectorSize,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct GetAvailableBalanceReturn {
     pub available_balance: TokenAmount,
@@ -480,13 +573,73 @@ pub struct GetVestingFundsReturn {
     pub vesting_funds: Vec<(ChainEpoch, TokenAmount)>,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetPeerIDReturn {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
 }
 
-#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetMultiaddrsReturn {
     pub multi_addrs: Vec<BytesDe>,
+}
+
+// Notification of change committed to one or more sectors.
+// The relevant state must be already committed so the receiver can observe any impacts
+// at the sending miner actor.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorContentChangedParams {
+    // Distinct sectors with changed content.
+    pub sectors: Vec<SectorChanges>,
+}
+
+// Description of changes to one sector's content.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorChanges {
+    // Identifier of sector being updated.
+    pub sector: SectorNumber,
+    // Minimum epoch until which the data is committed to the sector.
+    // Note the sector may later be extended without necessarily another notification.
+    pub minimum_commitment_epoch: ChainEpoch,
+    // Information about some pieces added to (or retained in) the sector.
+    // This may be only a subset of sector content.
+    // Inclusion here does not mean the piece was definitely absent previously.
+    // Exclusion here does not mean a piece has been removed since a prior notification.
+    pub added: Vec<PieceChange>,
+}
+
+// Description of a piece of data committed to a sector.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct PieceChange {
+    pub data: Cid,
+    pub size: PaddedPieceSize,
+    // A receiver-specific identifier.
+    // E.g. an encoded deal ID which the provider claims this piece satisfies.
+    pub payload: RawBytes,
+}
+
+// For each piece in each sector, the notifee returns an exit code and
+// (possibly-empty) result data.
+// The miner actor will pass through results to its caller.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorContentChangedReturn {
+    // A result for each sector that was notified, in the same order.
+    pub sectors: Vec<SectorReturn>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorReturn {
+    // A result for each piece for the sector that was notified, in the same order.
+    pub added: Vec<PieceReturn>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct PieceReturn {
+    // Indicates whether the receiver accepted the notification.
+    // The caller is free to ignore this, but may chose to abort and roll back.
+    pub accepted: bool,
 }

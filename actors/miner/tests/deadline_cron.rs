@@ -1,12 +1,14 @@
 use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
-    pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair, SectorOnChainInfo,
+    pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair, QuantSpec,
+    SectorOnChainInfo, REWARD_VESTING_SPEC,
 };
+use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::MockRuntime;
-use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime::{MessageAccumulator, EPOCHS_IN_DAY};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::Zero;
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::SectorSize;
 use std::ops::Neg;
@@ -23,9 +25,9 @@ const PERIOD_OFFSET: ChainEpoch = 100;
 #[test]
 fn cron_on_inactive_state() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     let st = h.get_state(&rt);
     assert_eq!(PERIOD_OFFSET - rt.policy.wpost_proving_period, st.proving_period_start);
@@ -34,7 +36,72 @@ fn cron_on_inactive_state() {
     // cron does nothing and does not enroll another cron
     let deadline = h.deadline(&rt);
     rt.set_epoch(deadline.last());
-    h.on_deadline_cron(&mut rt, CronConfig { no_enrollment: true, ..CronConfig::default() });
+    h.on_deadline_cron(&rt, CronConfig { no_enrollment: true, ..CronConfig::default() });
+
+    h.check_state(&rt);
+}
+
+#[test]
+fn test_vesting_on_cron() {
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
+    let rt = h.new_runtime();
+    rt.set_balance(BIG_BALANCE.clone());
+    h.construct_and_verify(&rt);
+
+    // onboard some sectors and get power
+    let active_sectors =
+        h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+    // advance cron to activate power.
+    h.advance_and_submit_posts(&rt, &active_sectors);
+
+    // --- ADD REWARDS FOR VESTING
+    let apply_reward_fn = |target_epoch: ChainEpoch| {
+        rt.set_epoch(target_epoch);
+        h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    };
+
+    let current_epoch = *rt.epoch.borrow();
+    apply_reward_fn(current_epoch);
+
+    // MOVE EPOCH BY HALF A DAY AND ADD ONE MORE REWARD SCHEDULE
+    let current_epoch = current_epoch + (EPOCHS_IN_DAY / 2) + 100;
+    apply_reward_fn(current_epoch);
+
+    // --- ASSERT FUNDS TO BE VESTED
+    let st = h.get_state(&rt);
+    let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
+    assert_eq!(360, vesting_funds.funds.len());
+
+    let q = QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: st.proving_period_start };
+
+    let assert_locked_fn = |new_epoch: ChainEpoch, should_vest: bool| {
+        let st = h.get_state(&rt);
+        rt.set_epoch(new_epoch);
+        let new_deadline_info = st.deadline_info(rt.policy(), new_epoch + 1);
+        let old_locked = st.locked_funds;
+        h.on_deadline_cron(
+            &rt,
+            CronConfig { expected_enrollment: new_deadline_info.last(), ..CronConfig::default() },
+        );
+        let new_locked = h.get_state(&rt).locked_funds;
+        if should_vest {
+            assert_ne!(old_locked, new_locked);
+        } else {
+            assert_eq!(old_locked, new_locked);
+        }
+    };
+
+    // move current epoch by a day so funds get vested
+    let new_epoch = q.quantize_up(current_epoch + EPOCHS_IN_DAY + 10);
+    assert_locked_fn(new_epoch, true);
+
+    // no funds get vested if epoch moves by <12 hours
+    let new_epoch = new_epoch + (EPOCHS_IN_DAY / 2) - 100;
+    assert_locked_fn(new_epoch, false);
+
+    // funds get vested again if epoch is quantised
+    let new_epoch = q.quantize_up(new_epoch);
+    assert_locked_fn(new_epoch, true);
 
     h.check_state(&rt);
 }
@@ -42,14 +109,14 @@ fn cron_on_inactive_state() {
 #[test]
 fn sector_expires() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     let sectors =
-        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
     // advance cron to activate power.
-    h.advance_and_submit_posts(&mut rt, &sectors);
+    h.advance_and_submit_posts(&rt, &sectors);
     let active_power = power_for_sectors(h.sector_size, &sectors);
 
     let mut st = h.get_state(&rt);
@@ -58,7 +125,7 @@ fn sector_expires() {
     assert!(st.deadline_cron_active);
 
     // setup state to simulate moving forward all the way to expiry
-    let (dl_idx, _) = st.find_sector(&rt.policy, &rt.store, sectors[0].sector_number).unwrap();
+    let (dl_idx, _) = st.find_sector(&rt.store, sectors[0].sector_number).unwrap();
     let exp_quant_spec = st.quant_spec_for_deadline(&rt.policy, dl_idx);
     let expiration = exp_quant_spec.quantize_up(expiration_raw);
     let remaining_epoch = expiration - st.proving_period_start;
@@ -73,7 +140,7 @@ fn sector_expires() {
 
     // because we skip forward in state the sector is detected faulty, no penalty
     h.advance_deadline(
-        &mut rt,
+        &rt,
         CronConfig {
             no_enrollment: true,
             expired_sectors_power_delta: Some(power_delta),
@@ -89,14 +156,14 @@ fn sector_expires() {
 #[test]
 fn sector_expires_and_repays_fee_debt() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     let sectors =
-        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
     // advance cron to activate power.
-    h.advance_and_submit_posts(&mut rt, &sectors);
+    h.advance_and_submit_posts(&rt, &sectors);
     let active_power = power_for_sectors(h.sector_size, &sectors);
 
     let mut st = h.get_state(&rt);
@@ -105,7 +172,7 @@ fn sector_expires_and_repays_fee_debt() {
     assert!(st.deadline_cron_active);
 
     // setup state to simulate moving forward all the way to expiry
-    let (dl_idx, _) = st.find_sector(&rt.policy, &rt.store, sectors[0].sector_number).unwrap();
+    let (dl_idx, _) = st.find_sector(&rt.store, sectors[0].sector_number).unwrap();
     let exp_quant_spec = st.quant_spec_for_deadline(&rt.policy, dl_idx);
     let expiration = exp_quant_spec.quantize_up(expiration_raw);
     let remaining_epoch = expiration - st.proving_period_start;
@@ -129,7 +196,7 @@ fn sector_expires_and_repays_fee_debt() {
     // because we skip forward in state and don't check post, there's no penalty.
     // this is the first time the sector is detected faulty
     h.advance_deadline(
-        &mut rt,
+        &rt,
         CronConfig {
             no_enrollment: true,
             expired_sectors_power_delta: Some(power_delta),
@@ -146,40 +213,39 @@ fn sector_expires_and_repays_fee_debt() {
 #[test]
 fn detects_and_penalizes_faults() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     let active_sectors =
-        h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+        h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
     // advance cron to activate power.
-    h.advance_and_submit_posts(&mut rt, &active_sectors);
+    h.advance_and_submit_posts(&rt, &active_sectors);
     let active_power = power_for_sectors(h.sector_size, &active_sectors);
 
     let unproven_sectors =
-        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], false);
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], false);
     let unproven_power = power_for_sectors(h.sector_size, &unproven_sectors);
 
     let total_power = &unproven_power + &active_power;
     let all_sectors = [active_sectors.clone(), unproven_sectors].concat();
 
     // add lots of funds so penalties come from vesting funds
-    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     let st = h.get_state(&rt);
-    let (dl_idx, p_idx) =
-        st.find_sector(&rt.policy, &rt.store, active_sectors[0].sector_number).unwrap();
+    let (dl_idx, p_idx) = st.find_sector(&rt.store, active_sectors[0].sector_number).unwrap();
 
     // advance to next deadline where we expect the first sectors to appear
     let mut dl_info = h.deadline(&rt);
     while dl_info.index != dl_idx {
-        dl_info = h.advance_deadline(&mut rt, CronConfig::default());
+        dl_info = h.advance_deadline(&rt, CronConfig::default());
     }
 
     // Skip to end of the deadline, cron detects sectors as faulty
     let active_power_delta = active_power.neg();
     h.advance_deadline(
-        &mut rt,
+        &rt,
         CronConfig { detected_faults_power_delta: Some(active_power_delta), ..Default::default() },
     );
 
@@ -188,12 +254,12 @@ fn detects_and_penalizes_faults() {
     assert_eq!(total_power, deadline.faulty_power);
 
     // advance 3 deadlines
-    h.advance_deadline(&mut rt, CronConfig::default());
-    h.advance_deadline(&mut rt, CronConfig::default());
-    dl_info = h.advance_deadline(&mut rt, CronConfig::default());
+    h.advance_deadline(&rt, CronConfig::default());
+    h.advance_deadline(&rt, CronConfig::default());
+    dl_info = h.advance_deadline(&rt, CronConfig::default());
 
     h.declare_recoveries(
-        &mut rt,
+        &rt,
         dl_idx,
         p_idx,
         sector_info_as_bitfield(&all_sectors[1..]),
@@ -203,7 +269,7 @@ fn detects_and_penalizes_faults() {
 
     // Skip to end of proving period for sectors, cron detects all sectors as faulty
     while dl_info.index != dl_idx {
-        dl_info = h.advance_deadline(&mut rt, CronConfig::default());
+        dl_info = h.advance_deadline(&rt, CronConfig::default());
     }
 
     // Un-recovered faults (incl failed recovery) are charged as ongoing faults
@@ -215,7 +281,7 @@ fn detects_and_penalizes_faults() {
     );
 
     h.advance_deadline(
-        &mut rt,
+        &rt,
         CronConfig { continued_faults_penalty: ongoing_penalty, ..Default::default() },
     );
 
@@ -236,27 +302,27 @@ fn detects_and_penalizes_faults() {
 #[test]
 fn test_cron_run_trigger_faults() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     // add lots of funds so we can pay penalties without going into debt
-    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     // create enough sectors that one will be in a different partition
     let all_sectors =
-        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
 
     // advance cron to activate power.
-    h.advance_and_submit_posts(&mut rt, &all_sectors);
+    h.advance_and_submit_posts(&rt, &all_sectors);
 
     let st = h.get_state(&rt);
-    let (dl_idx, _) = st.find_sector(&rt.policy, &rt.store, all_sectors[0].sector_number).unwrap();
+    let (dl_idx, _) = st.find_sector(&rt.store, all_sectors[0].sector_number).unwrap();
 
     // advance to deadline prior to first
     let mut dl_info = h.deadline(&rt);
     while dl_info.index != dl_idx {
-        dl_info = h.advance_deadline(&mut rt, CronConfig::default());
+        dl_info = h.advance_deadline(&rt, CronConfig::default());
     }
 
     rt.set_epoch(dl_info.last());
@@ -271,7 +337,7 @@ fn test_cron_run_trigger_faults() {
     let next_cron = dl_info.last() + rt.policy.wpost_challenge_window;
 
     h.on_deadline_cron(
-        &mut rt,
+        &rt,
         CronConfig {
             expected_enrollment: next_cron,
             detected_faults_power_delta: Some(power_delta_claim),

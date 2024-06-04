@@ -14,11 +14,12 @@ use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, Method, State};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 
 #[test]
 fn construction() {
     fn construct(addr: Address, exit_code: ExitCode) {
-        let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+        let rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
@@ -61,7 +62,7 @@ fn construction() {
 
 #[test]
 fn token_receiver() {
-    let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+    let rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
@@ -72,11 +73,11 @@ fn token_receiver() {
     )
     .unwrap();
 
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1000));
     rt.expect_validate_caller_any();
     let ret = rt
         .call::<AccountActor>(
-            Method::UniversalReceiverHook as MethodNum,
+            frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&UniversalReceiverParams {
                 type_: 0,
                 payload: RawBytes::new(vec![1, 2, 3]),
@@ -89,7 +90,7 @@ fn token_receiver() {
 
 #[test]
 fn authenticate_message() {
-    let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+    let rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
 
     let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
@@ -121,7 +122,9 @@ fn authenticate_message() {
     assert!(rt
         .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone())
         .unwrap()
-        .is_none());
+        .unwrap()
+        .deserialize::<bool>()
+        .unwrap());
 
     rt.verify();
 
@@ -136,8 +139,59 @@ fn authenticate_message() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "bad signature",
-        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params),
+        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone()),
     );
+    rt.verify();
+
+    // Ok to call exported method number
+    rt.expect_validate_caller_any();
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig: Signature::new_secp256k1(vec![]),
+        signer: addr,
+        plaintext: vec![],
+        result: Ok(()),
+    });
+    assert!(rt
+        .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params)
+        .unwrap()
+        .unwrap()
+        .deserialize::<bool>()
+        .unwrap());
+}
+
+#[test]
+fn test_fallback() {
+    let rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
+
+    let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
+    rt.call::<AccountActor>(
+        Method::Constructor as MethodNum,
+        IpldBlock::serialize_cbor(&addr).unwrap(),
+    )
+    .unwrap();
+
+    let state: State = rt.get_state();
+    assert_eq!(state.address, addr);
+
+    // this is arbitrary
+    let params = IpldBlock::serialize_cbor(&vec![1u8, 2u8, 3u8]).unwrap();
+
+    // accept >= 2<<24
+    rt.expect_validate_caller_any();
+    let result = rt.call::<AccountActor>(FIRST_EXPORTED_METHOD_NUMBER, params.clone()).unwrap();
+    assert!(result.is_none());
+
+    rt.expect_validate_caller_any();
+    let result = rt.call::<AccountActor>(FIRST_EXPORTED_METHOD_NUMBER + 1, params.clone()).unwrap();
+    assert!(result.is_none());
+
+    // reject < 1<<24
+    rt.expect_validate_caller_any();
+    let result = rt.call::<AccountActor>(FIRST_EXPORTED_METHOD_NUMBER - 1, params);
+    assert!(result.is_err());
+
     rt.verify();
 }
 

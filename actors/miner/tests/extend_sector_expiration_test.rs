@@ -1,4 +1,4 @@
-use fil_actor_market::VerifiedDealInfo;
+use fil_actor_market::ActivatedDeal;
 use fil_actor_miner::ext::verifreg::Claim as FILPlusClaim;
 use fil_actor_miner::{
     power_for_sector, seal_proof_sector_maximum_lifetime, ExpirationExtension,
@@ -13,6 +13,7 @@ use fil_actors_runtime::{
     EPOCHS_IN_DAY,
 };
 use fvm_ipld_bitfield::BitField;
+use fvm_shared::deal::DealID;
 use fvm_shared::{
     address::Address,
     clock::ChainEpoch,
@@ -23,6 +24,7 @@ use fvm_shared::{
 use std::collections::HashMap;
 
 mod util;
+
 use fil_actors_runtime::runtime::Policy;
 use itertools::Itertools;
 use test_case::test_case;
@@ -39,14 +41,14 @@ fn setup() -> (ActorHarness, MockRuntime) {
     // reduce the partition size
     // if changed to V1P1 the rejects_extension_past_max_for_seal_proof test fails
     h.set_proof_type(RegisteredSealProof::StackedDRG512MiBV1);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
     rt.set_epoch(precommit_epoch);
 
     (h, rt)
 }
 
-fn commit_sector(h: &mut ActorHarness, rt: &mut MockRuntime) -> SectorOnChainInfo {
+fn commit_sector(h: &mut ActorHarness, rt: &MockRuntime) -> SectorOnChainInfo {
     h.construct_and_verify(rt);
 
     h.commit_and_prove_sectors(rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, Vec::new(), true)[0]
@@ -56,8 +58,8 @@ fn commit_sector(h: &mut ActorHarness, rt: &mut MockRuntime) -> SectorOnChainInf
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn rejects_negative_extensions(v2: bool) {
-    let (mut h, mut rt) = setup();
-    let sector = commit_sector(&mut h, &mut rt);
+    let (mut h, rt) = setup();
+    let sector = commit_sector(&mut h, &rt);
 
     // attempt to shorten epoch
     let new_expiration = sector.expiration - rt.policy().wpost_proving_period;
@@ -65,7 +67,7 @@ fn rejects_negative_extensions(v2: bool) {
     // find deadline and partition
     let state: State = rt.get_state();
     let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
+        state.find_sector(rt.store(), sector.sector_number).unwrap();
 
     let params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
@@ -76,7 +78,7 @@ fn rejects_negative_extensions(v2: bool) {
         }],
     };
 
-    let res = h.extend_sectors_versioned(&mut rt, params, v2);
+    let res = h.extend_sectors_versioned(&rt, params, v2);
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         &format!("cannot reduce sector {} expiration", sector.sector_number),
@@ -88,18 +90,18 @@ fn rejects_negative_extensions(v2: bool) {
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn rejects_extension_too_far_in_future(v2: bool) {
-    let (mut h, mut rt) = setup();
-    let sector = commit_sector(&mut h, &mut rt);
+    let (mut h, rt) = setup();
+    let sector = commit_sector(&mut h, &rt);
 
     // extend by even proving period after max
     rt.set_epoch(sector.expiration);
     let extension = rt.policy().wpost_proving_period + rt.policy().max_sector_expiration_extension;
-    let new_expiration = rt.epoch + extension;
+    let new_expiration = *rt.epoch.borrow() + extension;
 
     // find deadline and partition
     let state: State = rt.get_state();
     let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
+        state.find_sector(rt.store(), sector.sector_number).unwrap();
 
     let params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
@@ -110,7 +112,7 @@ fn rejects_extension_too_far_in_future(v2: bool) {
         }],
     };
 
-    let res = h.extend_sectors_versioned(&mut rt, params, v2);
+    let res = h.extend_sectors_versioned(&rt, params, v2);
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         &format!(
@@ -125,16 +127,16 @@ fn rejects_extension_too_far_in_future(v2: bool) {
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn rejects_extension_past_max_for_seal_proof(v2: bool) {
-    let (mut h, mut rt) = setup();
-    let mut sector = commit_sector(&mut h, &mut rt);
+    let (mut h, rt) = setup();
+    let mut sector = commit_sector(&mut h, &rt);
     // and prove it once to activate it.
-    h.advance_and_submit_posts(&mut rt, &vec![sector.clone()]);
+    h.advance_and_submit_posts(&rt, &vec![sector.clone()]);
 
     let max_lifetime = seal_proof_sector_maximum_lifetime(sector.seal_proof).unwrap();
 
     let state: State = rt.get_state();
     let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
+        state.find_sector(rt.store(), sector.sector_number).unwrap();
 
     // extend sector until just below threshold
     rt.set_epoch(sector.expiration);
@@ -150,7 +152,7 @@ fn rejects_extension_past_max_for_seal_proof(v2: bool) {
                 new_expiration: expiration,
             }],
         };
-        h.extend_sectors(&mut rt, params).unwrap();
+        h.extend_sectors(&rt, params).unwrap();
         sector.expiration = expiration;
 
         expiration += extension;
@@ -166,7 +168,7 @@ fn rejects_extension_past_max_for_seal_proof(v2: bool) {
         }],
     };
 
-    let res = h.extend_sectors_versioned(&mut rt, params, v2);
+    let res = h.extend_sectors_versioned(&rt, params, v2);
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "total sector lifetime", res);
     h.check_state(&rt);
 }
@@ -174,14 +176,14 @@ fn rejects_extension_past_max_for_seal_proof(v2: bool) {
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn updates_expiration_with_valid_params(v2: bool) {
-    let (mut h, mut rt) = setup();
-    let old_sector = commit_sector(&mut h, &mut rt);
-    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+    let (mut h, rt) = setup();
+    let old_sector = commit_sector(&mut h, &rt);
+    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
 
     let state: State = rt.get_state();
 
     let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+        state.find_sector(rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -195,7 +197,7 @@ fn updates_expiration_with_valid_params(v2: bool) {
         }],
     };
 
-    h.extend_sectors_versioned(&mut rt, params, v2).unwrap();
+    h.extend_sectors_versioned(&rt, params, v2).unwrap();
 
     // assert sector expiration is set to the new value
     let new_sector = h.get_sector(&rt, old_sector.sector_number);
@@ -221,20 +223,20 @@ fn updates_expiration_with_valid_params(v2: bool) {
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn updates_many_sectors(v2: bool) {
-    let (mut h, mut rt) = setup();
-    h.construct_and_verify(&mut rt);
+    let (mut h, rt) = setup();
+    h.construct_and_verify(&rt);
 
     let sector_count = 4;
 
     // commit a bunch of sectors to ensure that we get multiple partitions
     let sector_infos = h.commit_and_prove_sectors(
-        &mut rt,
+        &rt,
         sector_count as usize,
         DEFAULT_SECTOR_EXPIRATION as u64,
         Vec::new(),
         true,
     );
-    h.advance_and_submit_posts(&mut rt, &sector_infos);
+    h.advance_and_submit_posts(&rt, &sector_infos);
 
     let new_expiration = sector_infos[0].expiration + 42 * rt.policy().wpost_proving_period;
     let mut extensions: Vec<ExpirationExtension> = Vec::new();
@@ -242,7 +244,7 @@ fn updates_many_sectors(v2: bool) {
     let state: State = rt.get_state();
     let deadlines = state.load_deadlines(rt.store()).unwrap();
     deadlines
-        .for_each(rt.policy(), rt.store(), |deadline_index, deadline| {
+        .for_each(rt.store(), |deadline_index, deadline| {
             let partitions = deadline.partitions_amt(rt.store()).unwrap();
             partitions
                 .for_each(|partition_index, partition| {
@@ -272,14 +274,14 @@ fn updates_many_sectors(v2: bool) {
     assert!(extensions.len() >= 2, "test error: this test should touch more than one partition");
     let params = ExtendSectorExpirationParams { extensions };
 
-    h.extend_sectors_versioned(&mut rt, params, v2).unwrap();
+    h.extend_sectors_versioned(&rt, params, v2).unwrap();
     let state: State = rt.get_state();
     let deadlines = state.load_deadlines(rt.store()).unwrap();
 
     // half of the sectors should expire on-time
     let (mut on_time_total, mut extended_total) = (0, 0);
     deadlines
-        .for_each(rt.policy(), rt.store(), |deadline_index, mut deadline| {
+        .for_each(rt.store(), |deadline_index, mut deadline| {
             let expiration_set = deadline
                 .pop_expired_sectors(
                     rt.store(),
@@ -307,13 +309,13 @@ fn updates_many_sectors(v2: bool) {
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn supports_extensions_off_deadline_boundary(v2: bool) {
-    let (mut h, mut rt) = setup();
-    let old_sector = commit_sector(&mut h, &mut rt);
-    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+    let (mut h, rt) = setup();
+    let old_sector = commit_sector(&mut h, &rt);
+    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
 
     let state: State = rt.get_state();
     let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+        state.find_sector(rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period + rt.policy().wpost_proving_period / 3;
     let new_expiration = old_sector.expiration + extension;
@@ -327,7 +329,7 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
         }],
     };
 
-    h.extend_sectors_versioned(&mut rt, params, v2).unwrap();
+    h.extend_sectors_versioned(&rt, params, v2).unwrap();
 
     // assert sector expiration is set to the new value
     let mut state: State = rt.get_state();
@@ -337,7 +339,8 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
     // advance clock to expiration
     rt.set_epoch(new_sector.expiration);
     state.proving_period_start += rt.policy().wpost_proving_period
-        * ((rt.epoch - state.proving_period_start) / rt.policy().wpost_proving_period + 1);
+        * ((*rt.epoch.borrow() - state.proving_period_start) / rt.policy().wpost_proving_period
+            + 1);
     rt.replace_state(&state);
 
     // confirm it is not in sector's deadline to make sure we're testing extensions off the deadline boundary"
@@ -345,11 +348,11 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
     assert_ne!(deadline_index, deadline_info.index);
 
     // advance to deadline and submit one last PoSt
-    let deadline_info = h.advance_to_deadline(&mut rt, deadline_index);
+    let deadline_info = h.advance_to_deadline(&rt, deadline_index);
 
     let partitions = vec![PoStPartition { index: partition_index, skipped: BitField::default() }];
     h.submit_window_post(
-        &mut rt,
+        &rt,
         &deadline_info,
         partitions,
         vec![new_sector.clone()],
@@ -363,7 +366,7 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
     cron_config.expired_sectors_power_delta = Some(power);
     cron_config.expired_sectors_pledge_delta = -new_sector.initial_pledge;
 
-    h.advance_deadline(&mut rt, cron_config);
+    h.advance_deadline(&rt, cron_config);
 
     let state: State = rt.get_state();
     assert!(!state.deadline_cron_active);
@@ -373,19 +376,19 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
 
 #[test]
 fn update_expiration2_multiple_claims() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        test_verified_deal(h.sector_size as u64 / 2),
-        test_verified_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2, 1),
+        test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
-    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
-    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
+    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
 
     let state: State = rt.get_state();
 
     let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+        state.find_sector(rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -430,12 +433,12 @@ fn update_expiration2_multiple_claims() {
         }],
     };
 
-    h.extend_sectors2(&mut rt, params, claims).unwrap();
+    h.extend_sectors2(&rt, params, claims).unwrap();
 
     // assert sector expiration is set to the new value
     check_for_expiration(
         &mut h,
-        &mut rt,
+        &rt,
         new_expiration,
         old_sector.sector_number,
         deadline_index,
@@ -445,19 +448,19 @@ fn update_expiration2_multiple_claims() {
 
 #[test]
 fn update_expiration2_failure_cases() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        test_verified_deal(h.sector_size as u64 / 2),
-        test_verified_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2, 1),
+        test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
-    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
-    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
+    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
 
     let state: State = rt.get_state();
 
     let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+        state.find_sector(rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -503,7 +506,7 @@ fn update_expiration2_failure_cases() {
             }],
         };
 
-        let res = h.extend_sectors2(&mut rt, params, claims);
+        let res = h.extend_sectors2(&rt, params, claims);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "does not match verified deal space",
@@ -512,7 +515,7 @@ fn update_expiration2_failure_cases() {
         // assert sector expiration is same as the old value
         check_for_expiration(
             &mut h,
-            &mut rt,
+            &rt,
             old_sector.expiration,
             old_sector.sector_number,
             deadline_index,
@@ -542,7 +545,7 @@ fn update_expiration2_failure_cases() {
             }],
         };
 
-        let res = h.extend_sectors2(&mut rt, params, claims);
+        let res = h.extend_sectors2(&rt, params, claims);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "failed to get claims for sector",
@@ -551,7 +554,7 @@ fn update_expiration2_failure_cases() {
         // assert sector expiration is set to the new value
         check_for_expiration(
             &mut h,
-            &mut rt,
+            &rt,
             old_sector.expiration,
             old_sector.sector_number,
             deadline_index,
@@ -581,7 +584,7 @@ fn update_expiration2_failure_cases() {
             }],
         };
 
-        let res = h.extend_sectors2(&mut rt, params, claims);
+        let res = h.extend_sectors2(&rt, params, claims);
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             &format!(
@@ -594,7 +597,7 @@ fn update_expiration2_failure_cases() {
         // assert sector expiration is set to the new value
         check_for_expiration(
             &mut h,
-            &mut rt,
+            &rt,
             old_sector.expiration,
             old_sector.sector_number,
             deadline_index,
@@ -607,25 +610,25 @@ fn update_expiration2_failure_cases() {
 
 #[test]
 fn extend_expiration2_drop_claims() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        test_verified_deal(h.sector_size as u64 / 2),
-        test_verified_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2, 1),
+        test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
     let policy = Policy::default();
-    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
-    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
+    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
 
     let state: State = rt.get_state();
 
     let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+        state.find_sector(rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
 
-    let claim_ids = vec![400, 500];
+    let claim_ids = [400, 500];
     let client = Address::new_id(3000).id().unwrap();
     let second_expiration = new_expiration + 42 * EPOCHS_IN_DAY;
 
@@ -665,22 +668,17 @@ fn extend_expiration2_drop_claims() {
         }],
     };
     rt.set_epoch(old_sector.expiration - policy.end_of_life_claim_drop_period);
-    h.extend_sectors2(&mut rt, params, claims).unwrap();
+    h.extend_sectors2(&rt, params, claims).unwrap();
     check_for_expiration(
         &mut h,
-        &mut rt,
+        &rt,
         new_expiration,
         old_sector.sector_number,
         deadline_index,
         partition_index,
     );
 
-    assert_sector_verified_space(
-        &mut h,
-        &mut rt,
-        old_sector.sector_number,
-        verified_deals[0].size.0,
-    );
+    assert_sector_verified_space(&mut h, &rt, old_sector.sector_number, verified_deals[0].size.0);
 
     // only claim0 stored in verifreg now
     let mut claims = HashMap::new();
@@ -699,7 +697,7 @@ fn extend_expiration2_drop_claims() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "claim missing from declaration for sector",
-        h.extend_sectors2(&mut rt, bad_params2, claims.clone()),
+        h.extend_sectors2(&rt, bad_params2, claims.clone()),
     );
     rt.reset();
 
@@ -717,39 +715,34 @@ fn extend_expiration2_drop_claims() {
             }],
         }],
     };
-    h.extend_sectors2(&mut rt, params2, claims).unwrap();
+    h.extend_sectors2(&rt, params2, claims).unwrap();
     check_for_expiration(
         &mut h,
-        &mut rt,
+        &rt,
         second_expiration,
         old_sector.sector_number,
         deadline_index,
         partition_index,
     );
 
-    assert_sector_verified_space(
-        &mut h,
-        &mut rt,
-        old_sector.sector_number,
-        verified_deals[0].size.0,
-    );
+    assert_sector_verified_space(&mut h, &rt, old_sector.sector_number, verified_deals[0].size.0);
 }
 
 #[test]
 fn update_expiration_legacy_fails_on_new_sector_with_deals() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        test_verified_deal(h.sector_size as u64 / 2),
-        test_verified_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2, 1),
+        test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
-    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
-    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
+    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
 
     let state: State = rt.get_state();
 
     let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+        state.find_sector(rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -767,12 +760,12 @@ fn update_expiration_legacy_fails_on_new_sector_with_deals() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "cannot use legacy sector extension for simple qa power with deal weight",
-        h.extend_sectors(&mut rt, params),
+        h.extend_sectors(&rt, params),
     );
     rt.reset();
     check_for_expiration(
         &mut h,
-        &mut rt,
+        &rt,
         old_sector.expiration,
         old_sector.sector_number,
         deadline_index,
@@ -782,25 +775,25 @@ fn update_expiration_legacy_fails_on_new_sector_with_deals() {
 
 #[test]
 fn update_expiration2_drop_claims_failure_cases() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
     let policy = Policy::default();
     // add in verified deal
     let verified_deals = vec![
-        test_verified_deal(h.sector_size as u64 / 2),
-        test_verified_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2, 1),
+        test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
-    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
-    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
+    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
 
     let state: State = rt.get_state();
 
     let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+        state.find_sector(rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
 
-    let claim_ids = vec![400, 500];
+    let claim_ids = [400, 500];
     let client = Address::new_id(3000).id().unwrap();
 
     let claim0 = make_claim(
@@ -845,7 +838,7 @@ fn update_expiration2_drop_claims_failure_cases() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "attempt to drop claims with 86401 epochs > end of life claim drop period 86400 remaining",
-        h.extend_sectors2(&mut rt, params.clone(), claims.clone()),
+        h.extend_sectors2(&rt, params.clone(), claims.clone()),
     );
     rt.reset();
     rt.set_epoch(old_sector.expiration - policy.end_of_life_claim_drop_period);
@@ -857,7 +850,7 @@ fn update_expiration2_drop_claims_failure_cases() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "failed to get claims for sector",
-        h.extend_sectors2(&mut rt, params.clone(), claims.clone()),
+        h.extend_sectors2(&rt, params.clone(), claims.clone()),
     );
     rt.reset();
 
@@ -873,7 +866,7 @@ fn update_expiration2_drop_claims_failure_cases() {
             h.receiver.id().unwrap(),
             h.receiver.id().unwrap() + 7
         ),
-        h.extend_sectors2(&mut rt, params.clone(), claims.clone()),
+        h.extend_sectors2(&rt, params.clone(), claims.clone()),
     );
     rt.reset();
     claim1.provider = h.receiver.id().unwrap(); // reset
@@ -890,28 +883,33 @@ fn update_expiration2_drop_claims_failure_cases() {
             old_sector.sector_number,
             old_sector.sector_number + 7
         ),
-        h.extend_sectors2(&mut rt, params, claims.clone()),
+        h.extend_sectors2(&rt, params, claims.clone()),
     );
     rt.reset();
     claim1.sector = old_sector.sector_number;
 }
 
 fn commit_sector_verified_deals(
-    verified_deals: &Vec<VerifiedDealInfo>,
+    verified_deals: &[ActivatedDeal],
     h: &mut ActorHarness,
-    rt: &mut MockRuntime,
+    rt: &MockRuntime,
 ) -> SectorOnChainInfo {
     h.construct_and_verify(rt);
     assert!(!verified_deals.is_empty());
 
     let mut pcc = ProveCommitConfig::empty();
-    pcc.add_verified_deals(h.next_sector_no, verified_deals.clone());
+    pcc.add_activated_deals(h.next_sector_no, verified_deals.to_owned());
+
+    let mut deal_ids: Vec<DealID> = vec![];
+    for i in 0..verified_deals.len() {
+        deal_ids.push(i as u64);
+    }
 
     let sector_info = &h.commit_and_prove_sectors_with_cfgs(
         rt,
         1,
         DEFAULT_SECTOR_EXPIRATION as u64,
-        vec![vec![42]],
+        vec![deal_ids],
         true,
         pcc,
     )[0];
@@ -922,7 +920,7 @@ fn commit_sector_verified_deals(
 // assert that state tracks an expiration at the provided epoch in the provided deadline and partition for the provided sector
 fn check_for_expiration(
     h: &mut ActorHarness,
-    rt: &mut MockRuntime,
+    rt: &MockRuntime,
     expiration: ChainEpoch,
     sector_number: SectorNumber,
     deadline_index: u64,
@@ -948,14 +946,14 @@ fn check_for_expiration(
 
 fn assert_sector_verified_space(
     h: &mut ActorHarness,
-    rt: &mut MockRuntime,
+    rt: &MockRuntime,
     sector_number: SectorNumber,
     v_deal_space: u64,
 ) {
     let new_sector = h.get_sector(rt, sector_number);
     assert_eq!(
         DealWeight::from(v_deal_space),
-        new_sector.verified_deal_weight / (new_sector.expiration - new_sector.activation)
+        new_sector.verified_deal_weight / (new_sector.expiration - new_sector.power_base_epoch)
     );
 }
 
@@ -965,7 +963,7 @@ fn make_claim(
     client: ActorID,
     provider: ActorID,
     new_expiration: ChainEpoch,
-    deal: &VerifiedDealInfo,
+    deal: &ActivatedDeal,
     term_min: ChainEpoch,
 ) -> FILPlusClaim {
     FILPlusClaim {

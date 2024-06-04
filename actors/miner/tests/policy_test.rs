@@ -241,9 +241,9 @@ fn demonstrate_standard_sectors() {
 }
 
 fn weight(size: SectorSize, duration: ChainEpoch) -> BigInt {
-    BigInt::from(size as u64) * BigInt::from(duration as i64)
+    BigInt::from(size as u64) * BigInt::from(duration)
 }
 
 fn weight_with_size_as_bigint(size: BigInt, duration: ChainEpoch) -> BigInt {
-    size * BigInt::from(duration as i64)
+    size * BigInt::from(duration)
 }

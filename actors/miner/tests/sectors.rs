@@ -1,8 +1,8 @@
 use fil_actor_miner::SectorOnChainInfo;
 use fil_actor_miner::Sectors;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::sector::RegisteredSealProof;
 
 mod util;
@@ -17,7 +17,7 @@ fn make_sector(i: u64) -> SectorOnChainInfo {
     }
 }
 
-fn setup_sectors(store: &'_ MemoryBlockstore) -> Sectors<'_, MemoryBlockstore> {
+fn setup_sectors(store: &'_ MemoryBlockstore) -> Sectors<MemoryBlockstore> {
     sectors_arr_mbs(store, vec![make_sector(0), make_sector(1), make_sector(5)])
 }
 

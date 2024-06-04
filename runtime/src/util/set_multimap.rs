@@ -1,113 +1,141 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::borrow::Borrow;
+use std::marker::PhantomData;
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_hamt::Error;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::deal::DealID;
-use fvm_shared::HAMT_BIT_WIDTH;
+
+use crate::{ActorError, Config, Map2, MapKey};
 
 use super::Set;
-use crate::{make_empty_map, make_map_with_root, parse_uint_key, u64_key, Map};
 
-/// SetMultimap is a hamt with values that are also a hamt but are of the set variant.
-/// This allows hash sets to be indexable by an address.
-pub struct SetMultimap<'a, BS>(pub Map<'a, BS, Cid>);
+pub struct SetMultimapConfig {
+    pub outer: Config,
+    pub inner: Config,
+}
 
-impl<'a, BS> SetMultimap<'a, BS>
+/// SetMultimap is a HAMT with values that are also a HAMT treated as a set of keys.
+pub struct SetMultimap<BS, K, V>
 where
     BS: Blockstore,
+    K: MapKey,
+    V: MapKey,
+{
+    outer: Map2<BS, K, Cid>,
+    inner_config: Config,
+    value_type: PhantomData<V>,
+}
+
+impl<BS, K, V> SetMultimap<BS, K, V>
+where
+    BS: Blockstore,
+    K: MapKey,
+    V: MapKey,
 {
     /// Initializes a new empty SetMultimap.
-    pub fn new(bs: &'a BS) -> Self {
-        Self(make_empty_map(bs, HAMT_BIT_WIDTH))
+    pub fn empty(bs: BS, config: SetMultimapConfig, name: &'static str) -> Self {
+        Self {
+            outer: Map2::empty(bs, config.outer, name),
+            inner_config: config.inner,
+            value_type: Default::default(),
+        }
     }
 
     /// Initializes a SetMultimap from a root Cid.
-    pub fn from_root(bs: &'a BS, cid: &Cid) -> Result<Self, Error> {
-        Ok(Self(make_map_with_root(cid, bs)?))
+    pub fn load(
+        bs: BS,
+        root: &Cid,
+        config: SetMultimapConfig,
+        name: &'static str,
+    ) -> Result<Self, ActorError> {
+        Ok(Self {
+            outer: Map2::load(bs, root, config.outer, name)?,
+            inner_config: config.inner,
+            value_type: Default::default(),
+        })
     }
 
     /// Retrieve root from the SetMultimap.
     #[inline]
-    pub fn root(&mut self) -> Result<Cid, Error> {
-        self.0.flush()
+    pub fn flush(&mut self) -> Result<Cid, ActorError> {
+        self.outer.flush()
     }
 
-    /// Puts the DealID in the hash set of the key.
-    pub fn put(&mut self, key: ChainEpoch, value: DealID) -> Result<(), Error> {
-        // Get construct amt from retrieved cid or create new
-        let mut set = self.get(key)?.unwrap_or_else(|| Set::new(self.0.store()));
+    /// Puts a value in the set associated with a key.
+    pub fn put(&mut self, key: &K, value: V) -> Result<(), ActorError> {
+        // Load HAMT from retrieved cid or create a new empty one.
+        let mut inner = self.get(key)?.unwrap_or_else(|| {
+            Set::empty(self.outer.store(), self.inner_config.clone(), "multimap inner")
+        });
 
-        set.put(u64_key(value))?;
-
-        // Save and calculate new root
-        let new_root = set.root()?;
-
-        // Set hamt node to set new root
-        self.0.set(u64_key(key as u64), new_root)?;
+        inner.put(&value)?;
+        let new_root = inner.flush()?;
+        self.outer.set(key, new_root)?;
         Ok(())
     }
 
-    /// Puts slice of DealIDs in the hash set of the key.
-    pub fn put_many(&mut self, key: ChainEpoch, values: &[DealID]) -> Result<(), Error> {
-        // Get construct amt from retrieved cid or create new
-        let mut set = self.get(key)?.unwrap_or_else(|| Set::new(self.0.store()));
+    /// Puts slice of values in the hash set associated with a key.
+    pub fn put_many(&mut self, key: &K, values: &[V]) -> Result<(), ActorError> {
+        let mut inner = self.get(key)?.unwrap_or_else(|| {
+            Set::empty(self.outer.store(), self.inner_config.clone(), "multimap inner")
+        });
 
-        for &v in values {
-            set.put(u64_key(v))?;
+        for v in values {
+            inner.put(v)?;
         }
-
-        // Save and calculate new root
-        let new_root = set.root()?;
-
-        // Set hamt node to set new root
-        self.0.set(u64_key(key as u64), new_root)?;
+        let new_root = inner.flush()?;
+        self.outer.set(key, new_root)?;
         Ok(())
     }
 
-    /// Gets the set at the given index of the `SetMultimap`
+    /// Gets the set of values for a key.
     #[inline]
-    pub fn get(&self, key: ChainEpoch) -> Result<Option<Set<'a, BS>>, Error> {
-        match self.0.get(&u64_key(key as u64))? {
-            Some(cid) => Ok(Some(Set::from_root(*self.0.store(), cid)?)),
+    pub fn get(&self, key: &K) -> Result<Option<Set<&BS, V>>, ActorError> {
+        match self.outer.get(key)? {
+            Some(cid) => Ok(Some(Set::load(
+                self.outer.store(),
+                cid,
+                self.inner_config.clone(),
+                "multimap inner",
+            )?)),
             None => Ok(None),
         }
     }
 
-    /// Removes a DealID from a key hash set.
+    /// Removes a value from the set associated with a key, if it was present.
     #[inline]
-    pub fn remove(&mut self, key: ChainEpoch, v: DealID) -> Result<(), Error> {
-        // Get construct amt from retrieved cid and return if no set exists
+    pub fn remove(&mut self, key: &K, value: V) -> Result<(), ActorError> {
         let mut set = match self.get(key)? {
             Some(s) => s,
             None => return Ok(()),
         };
 
-        set.delete(u64_key(v).borrow())?;
-
-        // Save and calculate new root
-        let new_root = set.root()?;
-        self.0.set(u64_key(key as u64), new_root)?;
+        set.delete(&value)?;
+        let new_root = set.flush()?;
+        self.outer.set(key, new_root)?;
         Ok(())
     }
 
     /// Removes set at index.
     #[inline]
-    pub fn remove_all(&mut self, key: ChainEpoch) -> Result<(), Error> {
-        // Remove entry from table
-        self.0.delete(&u64_key(key as u64))?;
-
+    pub fn remove_all(&mut self, key: &K) -> Result<(), ActorError> {
+        self.outer.delete(key)?;
         Ok(())
     }
 
-    /// Iterates through keys and converts them to a DealID to call a function on each.
-    pub fn for_each<F>(&self, key: ChainEpoch, mut f: F) -> Result<(), Error>
+    /// Iterates over all keys.
+    pub fn for_each<F>(&self, mut f: F) -> Result<(), ActorError>
     where
-        F: FnMut(DealID) -> Result<(), Error>,
+        F: FnMut(K, &Cid) -> Result<(), ActorError>,
+    {
+        self.outer.for_each(|k, v| f(k, v))
+    }
+
+    /// Iterates values for a key.
+    pub fn for_each_in<F>(&self, key: &K, f: F) -> Result<(), ActorError>
+    where
+        F: FnMut(V) -> Result<(), ActorError>,
     {
         // Get construct amt from retrieved cid and return if no set exists
         let set = match self.get(key)? {
@@ -115,12 +143,6 @@ where
             None => return Ok(()),
         };
 
-        set.for_each(|k| {
-            let v = parse_uint_key(k)
-                .map_err(|e| anyhow::anyhow!("Could not parse key: {:?}, ({})", &k.0, e))?;
-
-            // Run function on all parsed keys
-            Ok(f(v)?)
-        })
+        set.for_each(f)
     }
 }

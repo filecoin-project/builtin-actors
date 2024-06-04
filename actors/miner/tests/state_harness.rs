@@ -1,19 +1,17 @@
 #![allow(dead_code)]
-use fil_actor_miner::MinerInfo;
-use fil_actor_miner::SectorPreCommitOnChainInfo;
-use fil_actor_miner::VestSpec;
-use fil_actor_miner::VestingFunds;
-use fil_actor_miner::{BitFieldQueue, CollisionPolicy, SectorOnChainInfo, State};
+use cid::multihash::Code::Blake2b256;
+use fil_actor_miner::{
+    BitFieldQueue, CollisionPolicy, MinerInfo, QuantSpec, SectorOnChainInfo,
+    SectorPreCommitOnChainInfo, State, VestSpec, VestingFunds,
+};
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{runtime::Policy, ActorError};
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::CborStore;
-use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
-use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
-use multihash::Code::Blake2b256;
+use fvm_shared::{clock::ChainEpoch, sector::RegisteredPoStProof};
 
 use fil_actors_runtime::test_utils::*;
 
@@ -36,7 +34,7 @@ impl StateHarness {
         let owner = 1;
         let worker = 2;
 
-        let test_window_post_proof_type = RegisteredPoStProof::StackedDRGWindow2KiBV1;
+        let test_window_post_proof_type = RegisteredPoStProof::StackedDRGWindow2KiBV1P1;
 
         let info = MinerInfo::new(
             owner,
@@ -69,7 +67,7 @@ impl StateHarness {
     pub fn delete_precommitted_sectors(
         &mut self,
         sector_nums: &[SectorNumber],
-    ) -> Result<(), HamtError> {
+    ) -> Result<(), ActorError> {
         self.st.delete_precommitted_sectors(&self.store, sector_nums)
     }
 

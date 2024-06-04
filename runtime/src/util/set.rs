@@ -3,87 +3,74 @@
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_hamt::Error;
-use fvm_shared::HAMT_BIT_WIDTH;
 
-use crate::{make_empty_map, make_map_with_root, BytesKey, Map};
+use crate::{ActorError, Config, Map2, MapKey};
 
-/// Set is a Hamt with empty values for the purpose of acting as a hash set.
-#[derive(Debug)]
-pub struct Set<'a, BS>(Map<'a, BS, ()>);
-
-impl<'a, BS: Blockstore> PartialEq for Set<'a, BS> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl<'a, BS> Set<'a, BS>
+/// Set is a HAMT with empty values.
+pub struct Set<BS, K>(Map2<BS, K, ()>)
 where
     BS: Blockstore,
+    K: MapKey;
+
+impl<BS, K> Set<BS, K>
+where
+    BS: Blockstore,
+    K: MapKey,
 {
     /// Initializes a new empty Set with the default bitwidth.
-    pub fn new(bs: &'a BS) -> Self {
-        Self(make_empty_map(bs, HAMT_BIT_WIDTH))
-    }
-
-    /// Initializes a new empty Set given a bitwidth.
-    pub fn new_set_with_bitwidth(bs: &'a BS, bitwidth: u32) -> Self {
-        Self(make_empty_map(bs, bitwidth))
+    pub fn empty(bs: BS, config: Config, name: &'static str) -> Self {
+        Self(Map2::empty(bs, config, name))
     }
 
     /// Initializes a Set from a root Cid.
-    pub fn from_root(bs: &'a BS, cid: &Cid) -> Result<Self, Error> {
-        Ok(Self(make_map_with_root(cid, bs)?))
+    pub fn load(
+        bs: BS,
+        root: &Cid,
+        config: Config,
+        name: &'static str,
+    ) -> Result<Self, ActorError> {
+        Ok(Self(Map2::load(bs, root, config, name)?))
     }
 
     /// Retrieve root from the Set.
     #[inline]
-    pub fn root(&mut self) -> Result<Cid, Error> {
+    pub fn flush(&mut self) -> Result<Cid, ActorError> {
         self.0.flush()
     }
 
     /// Adds key to the set.
     #[inline]
-    pub fn put(&mut self, key: BytesKey) -> Result<(), Error> {
-        // Set hamt node to array root
-        self.0.set(key, ())?;
-        Ok(())
+    pub fn put(&mut self, key: &K) -> Result<Option<()>, ActorError> {
+        self.0.set(key, ())
     }
 
     /// Checks if key exists in the set.
     #[inline]
-    pub fn has(&self, key: &[u8]) -> Result<bool, Error> {
+    pub fn has(&self, key: &K) -> Result<bool, ActorError> {
         self.0.contains_key(key)
     }
 
     /// Deletes key from set.
     #[inline]
-    pub fn delete(&mut self, key: &[u8]) -> Result<Option<()>, Error> {
-        match self.0.delete(key)? {
-            Some(_) => Ok(Some(())),
-            None => Ok(None),
-        }
+    pub fn delete(&mut self, key: &K) -> Result<Option<()>, ActorError> {
+        self.0.delete(key)
     }
 
     /// Iterates through all keys in the set.
-    pub fn for_each<F>(&self, mut f: F) -> Result<(), Error>
+    pub fn for_each<F>(&self, mut f: F) -> Result<(), ActorError>
     where
-        F: FnMut(&BytesKey) -> anyhow::Result<()>,
+        F: FnMut(K) -> Result<(), ActorError>,
     {
-        // Calls the for each function on the hamt with ignoring the value
-        self.0.for_each(|s, _: &()| f(s))
+        self.0.for_each(|s, _| f(s))
     }
 
     /// Collects all keys from the set into a vector.
-    pub fn collect_keys(&self) -> Result<Vec<BytesKey>, Error> {
+    pub fn collect_keys(&self) -> Result<Vec<K>, ActorError> {
         let mut ret_keys = Vec::new();
-
         self.for_each(|k| {
-            ret_keys.push(k.clone());
+            ret_keys.push(k);
             Ok(())
         })?;
-
         Ok(ret_keys)
     }
 }

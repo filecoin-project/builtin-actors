@@ -2,31 +2,32 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::cmp::min;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
+use cid::multihash::{Code, MultihashGeneric};
 use cid::Cid;
-use fil_actors_runtime::FIRST_ACTOR_SPECIFIC_EXIT_CODE;
+use fil_actors_runtime::reward::ThisEpochRewardReturn;
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
+use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::{RegisteredSealProof, SectorSize, StoragePower};
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber, SectorSize, StoragePower};
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
 use integer_encoding::VarInt;
-use log::info;
+use log::{info, warn};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
 
-use crate::balance_table::BalanceTable;
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
@@ -35,9 +36,9 @@ use fil_actors_runtime::{
     AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
+use fil_actors_runtime::{extract_send_result, BatchReturnGen, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
 
+use crate::balance_table::BalanceTable;
 use crate::ext::verifreg::{AllocationID, AllocationRequest};
 
 pub use self::deal::*;
@@ -53,6 +54,7 @@ pub mod policy;
 pub mod testing;
 
 mod deal;
+mod emit;
 mod state;
 mod types;
 
@@ -61,8 +63,10 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 
 pub const NO_ALLOCATION_ID: u64 = 0;
 
-// An exit code indicating that information about a past deal is no longer available.
+// Indicates that information about a past deal is no longer available.
 pub const EX_DEAL_EXPIRED: ExitCode = ExitCode::new(FIRST_ACTOR_SPECIFIC_EXIT_CODE);
+// Indicates that information about a deal's activation is not yet available.
+pub const EX_DEAL_NOT_ACTIVATED: ExitCode = ExitCode::new(FIRST_ACTOR_SPECIFIC_EXIT_CODE + 1);
 
 /// Market actor methods available
 #[derive(FromPrimitive)]
@@ -73,9 +77,9 @@ pub enum Method {
     WithdrawBalance = 3,
     PublishStorageDeals = 4,
     VerifyDealsForActivation = 5,
-    ActivateDeals = 6,
+    BatchActivateDeals = 6,
     OnMinerSectorsTerminate = 7,
-    ComputeDataCommitment = 8,
+    // ComputeDataCommitment = 8, // Deprecated
     CronTick = 9,
     // Method numbers derived from FRC-0042 standards
     AddBalanceExported = frc42_dispatch::method_hash!("AddBalance"),
@@ -92,13 +96,16 @@ pub enum Method {
     GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
     GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
     GetDealActivationExported = frc42_dispatch::method_hash!("GetDealActivation"),
+    GetDealSectorExported = frc42_dispatch::method_hash!("GetDealSector"),
+    SettleDealPaymentsExported = frc42_dispatch::method_hash!("SettleDealPayments"),
+    SectorContentChangedExported = ext::miner::SECTOR_CONTENT_CHANGED,
 }
 
 /// Market Actor
 pub struct Actor;
 
 impl Actor {
-    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st = State::new(rt.store())?;
@@ -107,7 +114,7 @@ impl Actor {
     }
 
     /// Deposits the received value into the balance held in escrow.
-    fn add_balance(rt: &mut impl Runtime, provider_or_client: Address) -> Result<(), ActorError> {
+    fn add_balance(rt: &impl Runtime, params: AddBalanceParams) -> Result<(), ActorError> {
         let msg_value = rt.message().value_received();
 
         if msg_value <= TokenAmount::zero() {
@@ -120,7 +127,7 @@ impl Actor {
 
         rt.validate_immediate_caller_accept_any()?;
 
-        let (nominal, _, _) = escrow_address(rt, &provider_or_client)?;
+        let (nominal, _, _) = escrow_address(rt, &params.provider_or_client)?;
 
         rt.transaction(|st: &mut State, rt| {
             st.add_balance_to_escrow_table(rt.store(), &nominal, &msg_value)?;
@@ -133,7 +140,7 @@ impl Actor {
     /// Attempt to withdraw the specified amount from the balance held in escrow.
     /// If less than the specified amount is available, yields the entire available balance.
     fn withdraw_balance(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: WithdrawBalanceParams,
     ) -> Result<WithdrawBalanceReturn, ActorError> {
         if params.amount < TokenAmount::zero() {
@@ -151,17 +158,23 @@ impl Actor {
             Ok(ex)
         })?;
 
-        rt.send(&recipient, METHOD_SEND, None, amount_extracted.clone())?;
+        extract_send_result(rt.send_simple(
+            &recipient,
+            METHOD_SEND,
+            None,
+            amount_extracted.clone(),
+        ))?;
 
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_extracted })
     }
 
     /// Returns the escrow balance and locked amount for an address.
     fn get_balance(
-        rt: &mut impl Runtime,
-        account: Address,
+        rt: &impl Runtime,
+        params: GetBalanceParams,
     ) -> Result<GetBalanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
+        let account = params.account;
         let nominal = rt.resolve_address(&account).ok_or_else(|| {
             actor_error!(illegal_argument, "failed to resolve address {}", account)
         })?;
@@ -169,23 +182,17 @@ impl Actor {
 
         let store = rt.store();
         let st: State = rt.state()?;
-        let balances = BalanceTable::from_root(store, &st.escrow_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
-        let locks = BalanceTable::from_root(store, &st.locked_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load locked table")?;
-        let balance = balances
-            .get(&account)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")?;
-        let locked = locks
-            .get(&account)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")?;
+        let balances = BalanceTable::from_root(store, &st.escrow_table, "escrow table")?;
+        let locks = BalanceTable::from_root(store, &st.locked_table, "locked table")?;
+        let balance = balances.get(&account)?;
+        let locked = locks.get(&account)?;
 
         Ok(GetBalanceReturn { balance, locked })
     }
 
     /// Publish a new set of storage deals (not yet included in a sector).
     fn publish_storage_deals(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: PublishStorageDealsParams,
     ) -> Result<PublishStorageDealsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -210,16 +217,17 @@ impl Actor {
             ));
         }
 
-        let (_, worker, controllers) = request_miner_control_addrs(rt, provider_id)?;
         let caller = rt.message().caller();
-        let mut caller_ok = caller == worker;
-        for controller in controllers.iter() {
-            if caller_ok {
-                break;
-            }
-            caller_ok = caller == *controller;
-        }
-        if !caller_ok {
+        let caller_status: ext::miner::IsControllingAddressReturn =
+            deserialize_block(extract_send_result(rt.send_simple(
+                &Address::new_id(provider_id),
+                ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
+                IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam {
+                    address: caller,
+                })?,
+                TokenAmount::zero(),
+            ))?)?;
+        if !caller_status.is_controlling {
             return Err(actor_error!(
                 forbidden,
                 "caller {} is not worker or control address of provider {}",
@@ -227,15 +235,31 @@ impl Actor {
                 provider_id
             ));
         }
+        // Deals that passed `AuthenticateMessage` and other state-less checks.
+        let mut validity_index: Vec<bool> = Vec::with_capacity(params.deals.len());
 
         let baseline_power = request_current_baseline_power(rt)?;
         let (network_raw_power, _) = request_current_network_power(rt)?;
+
+        // We perform these checks before loading state since the call to `AuthenticateMessage` could recurse
+        for (di, deal) in params.deals.iter().enumerate() {
+            let valid = if let Err(e) = validate_deal(rt, deal, &network_raw_power, &baseline_power)
+            {
+                info!("invalid deal {}: {}", di, e);
+                false
+            } else {
+                true
+            };
+
+            validity_index.push(valid);
+        }
 
         struct ValidDeal {
             proposal: DealProposal,
             serialized_proposal: RawBytes,
             cid: Cid,
         }
+
         // Deals that passed validation.
         let mut valid_deals: Vec<ValidDeal> = Vec::with_capacity(params.deals.len());
         // CIDs of valid proposals.
@@ -254,8 +278,10 @@ impl Actor {
         let state: State = rt.state()?;
 
         for (di, mut deal) in params.deals.into_iter().enumerate() {
-            if let Err(e) = validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
-                info!("invalid deal {}: {}", di, e);
+            if !*validity_index.get(di).context_code(
+                ExitCode::USR_ASSERTION_FAILED,
+                "validity index has incorrect length",
+            )? {
                 continue;
             }
 
@@ -313,13 +339,13 @@ impl Actor {
 
             let serialized_proposal = serialize(&deal.proposal, "normalized deal proposal")
                 .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize")?;
-            let pcid = rt_serialized_deal_cid(rt, &serialized_proposal).map_err(
+            let pcid = serialized_deal_cid(rt, &serialized_proposal).map_err(
                 |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
             )?;
 
             // check proposalCids for duplication within message batch
             // check state PendingProposals for duplication across messages
-            let duplicate_in_state = state.has_pending_deal(rt.store(), pcid)?;
+            let duplicate_in_state = state.has_pending_deal(rt.store(), &pcid)?;
 
             let duplicate_in_message = proposal_cid_lookup.contains(&pcid);
             if duplicate_in_state || duplicate_in_message {
@@ -349,7 +375,7 @@ impl Actor {
                 client_alloc_reqs
                     .entry(client_id)
                     .or_default()
-                    .push((pcid, alloc_request_for_deal(&deal, rt.policy(), curr_epoch)));
+                    .push((pcid, alloc_request_for_deal(&deal.proposal, rt.policy(), curr_epoch)));
             }
 
             total_provider_lockup = provider_lockup;
@@ -401,7 +427,7 @@ impl Actor {
             let mut pending_deals: Vec<Cid> = vec![];
             let mut deal_proposals: Vec<(DealID, DealProposal)> = vec![];
             let mut deals_by_epoch: Vec<(ChainEpoch, DealID)> = vec![];
-            let mut pending_deal_allocation_ids: Vec<(BytesKey, AllocationID)> = vec![];
+            let mut pending_deal_allocation_ids: Vec<(DealID, AllocationID)> = vec![];
 
             // All storage dealProposals will be added in an atomic transaction; this operation will be unrolled if any of them fails.
             // This should only fail on programmer error because all expected invalid conditions should be filtered in the first set of checks.
@@ -418,13 +444,17 @@ impl Actor {
                 // Store verified allocation (if any) in the pending allocation IDs map.
                 // It will be removed when the deal is activated or expires.
                 if let Some(alloc_id) = deal_allocation_ids.get(&valid_deal.cid) {
-                    pending_deal_allocation_ids.push((deal_id_key(deal_id), *alloc_id));
+                    pending_deal_allocation_ids.push((deal_id, *alloc_id));
                 }
 
                 // Randomize the first epoch for when the deal will be processed so an attacker isn't able to
                 // schedule too many deals for the same tick.
                 deals_by_epoch.push((
-                    gen_rand_next_epoch(rt.policy(), valid_deal.proposal.start_epoch, deal_id),
+                    next_update_epoch(
+                        deal_id,
+                        rt.policy().deal_updates_interval,
+                        valid_deal.proposal.start_epoch,
+                    ),
                     deal_id,
                 ));
 
@@ -438,17 +468,29 @@ impl Actor {
             Ok(())
         })?;
 
-        // notify clients ignoring any errors
-        for (i, valid_deal) in valid_deals.iter().enumerate() {
-            _ = rt.send(
+        // notify clients, any failures cause the entire publish_storage_deals method to fail
+        // it's unsafe to ignore errors here, since that could be used to attack storage contract clients
+        // that might be unaware they're making storage deals
+        for (valid_deal, &deal_id) in valid_deals.iter().zip(&new_deal_ids) {
+            _ = extract_send_result(rt.send_simple(
                 &valid_deal.proposal.client,
                 MARKET_NOTIFY_DEAL_METHOD,
                 IpldBlock::serialize_cbor(&MarketNotifyDealParams {
                     proposal: valid_deal.serialized_proposal.to_vec(),
-                    deal_id: new_deal_ids[i],
+                    deal_id,
                 })?,
                 TokenAmount::zero(),
-            );
+            ))
+            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                format!("failed to notify deal with proposal cid {}", valid_deal.cid)
+            })?;
+
+            emit::deal_published(
+                rt,
+                valid_deal.proposal.client.id().unwrap(),
+                valid_deal.proposal.provider.id().unwrap(),
+                deal_id,
+            )?;
         }
 
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })
@@ -457,7 +499,7 @@ impl Actor {
     /// Verify that a given set of storage deals is valid for a sector currently being PreCommitted
     /// and return UnsealedCID for the set of deals.
     fn verify_deals_for_activation(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: VerifyDealsForActivationParams,
     ) -> Result<VerifyDealsForActivationReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -465,17 +507,17 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
 
         let st: State = rt.state()?;
-        let proposals = st.get_proposal_array(rt.store())?;
+        let proposal_array = st.load_proposals(rt.store())?;
 
-        let mut sectors_data = Vec::with_capacity(params.sectors.len());
+        let mut unsealed_cids = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
+            let sector_proposals = get_proposals(&proposal_array, &sector.deal_ids, st.next_id)?;
             let sector_size = sector
                 .sector_type
                 .sector_size()
                 .map_err(|e| actor_error!(illegal_argument, "sector size unknown: {}", e))?;
-            validate_and_return_deal_space(
-                &proposals,
-                &sector.deal_ids,
+            validate_deals_for_sector(
+                &sector_proposals,
                 &miner_addr,
                 sector.sector_expiry,
                 curr_epoch,
@@ -486,124 +528,285 @@ impl Actor {
             let commd = if sector.deal_ids.is_empty() {
                 None
             } else {
-                Some(compute_data_commitment(rt, &proposals, sector.sector_type, &sector.deal_ids)?)
+                let proposals_iter = sector_proposals.iter().map(|(_, p)| p);
+                Some(compute_data_commitment(rt, proposals_iter, sector.sector_type)?)
             };
 
-            sectors_data.push(SectorDealData { commd });
+            unsealed_cids.push(commd);
         }
 
-        Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
+        Ok(VerifyDealsForActivationReturn { unsealed_cids })
     }
-    /// Activate a set of deals, returning the combined deal space and extra info for verified deals.
-    fn activate_deals(
-        rt: &mut impl Runtime,
-        params: ActivateDealsParams,
-    ) -> Result<ActivateDealsResult, ActorError> {
+
+    /// Activate a set of deals grouped by sector, returning the size and
+    /// extra info about verified deals.
+    /// Sectors' deals are activated in parameter-defined order.
+    /// Each sector's deals are activated or fail as a group, but independently of other sectors.
+    /// Note that confirming all deals fit within a sector is the caller's responsibility
+    /// (and is implied by confirming the sector's data commitment is derived from the deal peices).
+    // see https://github.com/filecoin-project/builtin-actors/issues/1308
+    fn batch_activate_deals(
+        rt: &impl Runtime,
+        params: BatchActivateDealsParams,
+    ) -> Result<BatchActivateDealsResult, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let st: State = rt.state()?;
-        let proposals = st.get_proposal_array(rt.store())?;
+        let (activations, batch_ret) = rt.transaction(|st: &mut State, rt| {
+            let proposals = st.load_proposals(rt.store())?;
+            let states = st.load_deal_states(rt.store())?;
+            let pending_deals = st.load_pending_deals(rt.store())?;
+            let mut pending_deal_allocation_ids =
+                st.load_pending_deal_allocation_ids(rt.store())?;
 
-        let deal_spaces = {
-            validate_and_return_deal_space(
-                &proposals,
-                &params.deal_ids,
-                &miner_addr,
-                params.sector_expiry,
-                curr_epoch,
-                None,
-            )
-            .context("failed to validate deal proposals for activation")?
-        };
-
-        // Update deal states
-        let mut verified_infos = Vec::new();
-        rt.transaction(|st: &mut State, rt| {
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
+            let mut batch_gen = BatchReturnGen::new(params.sectors.len());
+            let mut activations: Vec<SectorDealActivation> = vec![];
+            let mut activated_deals: HashSet<DealID> = HashSet::new();
+            let mut sectors_deals: Vec<(SectorNumber, Vec<DealID>)> = vec![];
 
-            for deal_id in params.deal_ids {
-                // This construction could be replaced with a single "update deal state"
-                // state method, possibly batched over all deal ids at once.
-                let s = st.find_deal_state(rt.store(), deal_id)?;
+            'sector: for sector in params.sectors {
+                let mut sector_deal_ids = sector.deal_ids.clone();
+                sector_deal_ids.sort();
+                if sector_deal_ids.windows(2).any(|w| w[0] == w[1]) {
+                    log::warn!("failed to activate sector, duplicate deal");
+                    batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                    continue;
+                }
+                let mut validated_proposals = vec![];
+                // Iterate once to validate all the requested deals.
+                // If a deal fails, skip the whole sector.
+                for &deal_id in &sector.deal_ids {
+                    // Check each deal is present only once, within and across sectors.
+                    if activated_deals.contains(&deal_id) {
+                        log::warn!("failed to activate sector, duplicated deal {}", deal_id);
+                        batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                        continue 'sector;
+                    }
 
-                if s.is_some() {
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "deal {} already activated",
-                        deal_id
-                    ));
+                    let proposal = match preactivate_deal(
+                        rt,
+                        deal_id,
+                        &proposals,
+                        &states,
+                        &pending_deals,
+                        &miner_addr,
+                        sector.sector_expiry,
+                        curr_epoch,
+                        st.next_id,
+                    )? {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::warn!("failed to activate deal: {}", e);
+                            batch_gen.add_fail(e.exit_code());
+                            continue 'sector;
+                        }
+                    };
+                    validated_proposals.push(proposal);
                 }
 
-                let proposal = st
-                    .find_proposal(rt.store(), deal_id)?
-                    .ok_or_else(|| actor_error!(not_found, "no such deal_id: {}", deal_id))?;
+                let mut activated = vec![];
+                // Given that all deals validated, prepare the state updates for them all.
+                // There's no continue below here to ensure updates are consistent.
+                // Any error must abort.
+                for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
+                    activated_deals.insert(*deal_id);
+                    // Extract and remove any verified allocation ID for the pending deal.
+                    let alloc_id =
+                        pending_deal_allocation_ids.delete(deal_id)?.unwrap_or(NO_ALLOCATION_ID);
 
-                let propc = rt_deal_cid(rt, &proposal)?;
-
-                // Confirm the deal is in the pending proposals queue.
-                // It will be removed from this queue later, during cron.
-                let has = st.has_pending_deal(rt.store(), propc)?;
-
-                if !has {
-                    return Err(actor_error!(
-                        illegal_state,
-                        "tried to activate deal that was not in the pending set ({})",
-                        propc
-                    ));
-                }
-
-                // Extract and remove any verified allocation ID for the pending deal.
-                let allocation = st
-                    .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?
-                    .unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID))
-                    .1;
-
-                if allocation != NO_ALLOCATION_ID {
-                    verified_infos.push(VerifiedDealInfo {
+                    activated.push(ActivatedDeal {
                         client: proposal.client.id().unwrap(),
-                        allocation_id: allocation,
+                        allocation_id: alloc_id,
                         data: proposal.piece_cid,
                         size: proposal.piece_size,
-                    })
+                    });
+
+                    // Prepare initial deal state.
+                    deal_states.push((
+                        *deal_id,
+                        DealState {
+                            sector_number: sector.sector_number,
+                            sector_start_epoch: curr_epoch,
+                            last_updated_epoch: EPOCH_UNDEFINED,
+                            slash_epoch: EPOCH_UNDEFINED,
+                        },
+                    ));
                 }
 
-                deal_states.push((
-                    deal_id,
-                    DealState {
-                        sector_start_epoch: curr_epoch,
-                        last_updated_epoch: EPOCH_UNDEFINED,
-                        slash_epoch: EPOCH_UNDEFINED,
-                        verified_claim: allocation,
-                    },
-                ));
+                let data_commitment = if params.compute_cid && !sector.deal_ids.is_empty() {
+                    Some(compute_data_commitment(rt, &validated_proposals, sector.sector_type)?)
+                } else {
+                    None
+                };
+
+                sectors_deals.push((sector.sector_number, sector.deal_ids.clone()));
+                activations.push(SectorDealActivation { activated, unsealed_cid: data_commitment });
+
+                for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
+                    emit::deal_activated(
+                        rt,
+                        *deal_id,
+                        proposal.client.id().unwrap(),
+                        proposal.provider.id().unwrap(),
+                    )?;
+                }
+
+                batch_gen.add_success();
             }
 
             st.put_deal_states(rt.store(), &deal_states)?;
-
-            Ok(())
+            st.put_sector_deal_ids(rt.store(), miner_addr.id().unwrap(), &sectors_deals)?;
+            st.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
+            Ok((activations, batch_gen.gen()))
         })?;
 
-        Ok(ActivateDealsResult { nonverified_deal_space: deal_spaces.deal_space, verified_infos })
+        Ok(BatchActivateDealsResult { activations, activation_results: batch_ret })
+    }
+
+    /// Receives notification of a change to sector content, which may satisfy to activate a deal.
+    /// Deals are activated or fail independently, including in the same sector.
+    /// This is an alternative to ActivateDeals.
+    fn sector_content_changed(
+        rt: &impl Runtime,
+        params: ext::miner::SectorContentChangedParams,
+    ) -> Result<ext::miner::SectorContentChangedReturn, ActorError> {
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
+        let miner_addr = rt.message().caller();
+        let curr_epoch = rt.curr_epoch();
+
+        let sectors_ret = rt.transaction(|st: &mut State, rt| {
+            let proposals = st.load_proposals(rt.store())?;
+            let states = st.load_deal_states(rt.store())?;
+            let pending_deals = st.load_pending_deals(rt.store())?;
+            let mut pending_deal_allocation_ids =
+                st.load_pending_deal_allocation_ids(rt.store())?;
+
+            let mut deal_states: Vec<(DealID, DealState)> = vec![];
+            let mut activated_deals: HashSet<DealID> = HashSet::new();
+            let mut sectors_deals: Vec<(SectorNumber, Vec<DealID>)> = vec![];
+            let mut sectors_ret: Vec<ext::miner::SectorReturn> = vec![];
+
+            for sector in &params.sectors {
+                let mut sector_deal_ids: Vec<DealID> = vec![];
+                let mut pieces_ret: Vec<_> =
+                    vec![ext::miner::PieceReturn { accepted: false }; sector.added.len()];
+                for (piece, ret) in sector.added.iter().zip(&mut pieces_ret) {
+                    let deal_id: DealID = match deserialize(&piece.payload, "deal id") {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::warn!("failed to deserialize deal id {:?}: {}", piece.payload, e);
+                            continue;
+                        }
+                    };
+                    if activated_deals.contains(&deal_id) {
+                        log::warn!("duplicated deal {}", deal_id);
+                        continue;
+                    }
+
+                    let proposal = match preactivate_deal(
+                        rt,
+                        deal_id,
+                        &proposals,
+                        &states,
+                        &pending_deals,
+                        &miner_addr,
+                        sector.minimum_commitment_epoch,
+                        curr_epoch,
+                        st.next_id,
+                    )? {
+                        Ok(id) => id,
+                        Err(e) => {
+                            log::warn!("failed to activate deal {}: {}", deal_id, e);
+                            continue;
+                        }
+                    };
+
+                    if piece.data != proposal.piece_cid {
+                        log::warn!(
+                            "deal {} piece CID {} doesn't match {}",
+                            deal_id,
+                            piece.data,
+                            proposal.piece_cid
+                        );
+                        continue;
+                    }
+                    if piece.size != proposal.piece_size {
+                        log::warn!(
+                            "deal {} piece size {} doesn't match {}",
+                            deal_id,
+                            piece.size.0,
+                            proposal.piece_size.0
+                        );
+                        continue;
+                    }
+
+                    // No continue below here, to ensure state changes are consistent.
+                    activated_deals.insert(deal_id);
+
+                    emit::deal_activated(
+                        rt,
+                        deal_id,
+                        proposal.client.id().unwrap(),
+                        proposal.provider.id().unwrap(),
+                    )?;
+
+                    // Remove any verified allocation ID for the pending deal.
+                    pending_deal_allocation_ids.delete(&deal_id)?;
+
+                    deal_states.push((
+                        deal_id,
+                        DealState {
+                            sector_number: sector.sector,
+                            sector_start_epoch: curr_epoch,
+                            last_updated_epoch: EPOCH_UNDEFINED,
+                            slash_epoch: EPOCH_UNDEFINED,
+                        },
+                    ));
+                    sector_deal_ids.push(deal_id);
+                    ret.accepted = true;
+                }
+
+                sectors_deals.push((sector.sector, sector_deal_ids));
+                assert_eq!(pieces_ret.len(), sector.added.len(), "mismatched piece returns");
+                sectors_ret.push(ext::miner::SectorReturn { added: pieces_ret });
+            }
+            st.put_deal_states(rt.store(), &deal_states)?;
+            st.put_sector_deal_ids(rt.store(), miner_addr.id().unwrap(), &sectors_deals)?;
+            st.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
+
+            assert_eq!(sectors_ret.len(), params.sectors.len(), "mismatched sector returns");
+            Ok(sectors_ret)
+        })?;
+
+        Ok(ext::miner::SectorContentChangedReturn { sectors: sectors_ret })
     }
 
     /// Terminate a set of deals in response to their containing sector being terminated.
     /// Slash provider collateral, refund client collateral, and refund partial unpaid escrow
     /// amount to client.
     fn on_miner_sectors_terminate(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: OnMinerSectorsTerminateParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
 
-        rt.transaction(|st: &mut State, rt| {
-            let mut deal_states: Vec<(DealID, DealState)> = vec![];
+        let burn_amount = rt.transaction(|st: &mut State, rt| {
+            // The sector deals mapping is removed all at once.
+            // Note there may be some deal states that are not removed here,
+            // despite deletion of this mapping, e.g. for expired but not-yet-settled deals.
+            // The sector->deal mapping is no longer needed (the deal state has sector number too).
+            let all_deal_ids = st.pop_sector_deal_ids(
+                rt.store(),
+                miner_addr.id().unwrap(),
+                params.sectors.iter(),
+            )?;
 
-            for id in params.deal_ids {
+            let mut total_slashed = TokenAmount::zero();
+            for id in all_deal_ids {
                 let deal = st.find_proposal(rt.store(), id)?;
-
                 // The deal may have expired and been deleted before the sector is terminated.
                 // Nothing to do, but continue execution for the other deals.
                 if deal.is_none() {
@@ -634,48 +837,45 @@ impl Actor {
                     // part of a sector that is terminating.
                     .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
 
-                // If a deal is already slashed, don't need to do anything
+                // If a deal is already slashed, there should be no existing state for it
+                // but we process it here for deletion anyway
                 if state.slash_epoch != EPOCH_UNDEFINED {
-                    info!("deal {}, already slashed", id);
-                    continue;
+                    warn!("deal {}, already slashed, terminating now anyway", id);
                 }
 
-                // mark the deal for slashing here. Actual releasing of locked funds for the client
-                // and slashing of provider collateral happens in cron_tick.
-                state.slash_epoch = params.epoch;
+                // Deals that were never processed may still have a pending proposal linked
+                if state.last_updated_epoch == EPOCH_UNDEFINED {
+                    let dcid = deal_cid(rt, &deal)?;
+                    st.remove_pending_deal(rt.store(), dcid)?;
+                }
 
-                deal_states.push((id, state));
+                state.slash_epoch = params.epoch;
+                total_slashed += st.process_slashed_deal(rt.store(), &deal, &state)?;
+                st.remove_completed_deal(rt.store(), id)?;
+
+                emit::deal_terminated(
+                    rt,
+                    id,
+                    deal.client.id().unwrap(),
+                    deal.provider.id().unwrap(),
+                )?;
             }
 
-            st.put_deal_states(rt.store(), &deal_states)?;
-            Ok(())
+            Ok(total_slashed)
         })?;
+
+        if burn_amount.is_positive() {
+            extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                burn_amount,
+            ))?;
+        }
         Ok(())
     }
 
-    fn compute_data_commitment(
-        rt: &mut impl Runtime,
-        params: ComputeDataCommitmentParams,
-    ) -> Result<ComputeDataCommitmentReturn, ActorError> {
-        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-
-        let st: State = rt.state()?;
-        let proposals = st.get_proposal_array(rt.store())?;
-
-        let mut commds = Vec::with_capacity(params.inputs.len());
-        for comm_input in params.inputs.iter() {
-            commds.push(compute_data_commitment(
-                rt,
-                &proposals,
-                comm_input.sector_type,
-                &comm_input.deal_ids,
-            )?);
-        }
-
-        Ok(ComputeDataCommitmentReturn { commds })
-    }
-
-    fn cron_tick(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn cron_tick(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
         let mut amount_slashed = TokenAmount::zero();
@@ -683,66 +883,45 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let last_cron = st.last_cron;
-            let mut updates_needed: BTreeMap<ChainEpoch, Vec<DealID>> = BTreeMap::new();
-            let mut rm_cron_id: Vec<ChainEpoch> = vec![];
+            let mut provider_deals_to_remove =
+                BTreeMap::<ActorID, BTreeMap<SectorNumber, Vec<DealID>>>::new();
+            let mut new_updates_scheduled: BTreeMap<ChainEpoch, Vec<DealID>> = BTreeMap::new();
+            let mut epochs_completed: Vec<ChainEpoch> = vec![];
 
             for i in (last_cron + 1)..=rt.curr_epoch() {
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
-                    let deal = st.find_proposal(rt.store(), deal_id)?.ok_or_else(|| {
-                        actor_error!(not_found, "proposal doesn't exist ({})", deal_id)
-                    })?;
+                    let deal_proposal = match st.find_proposal(rt.store(), deal_id)? {
+                        Some(dp) => dp,
+                        // proposal might have been cleaned up by manual settlement or termination prior to reaching
+                        // this scheduled cron tick. nothing more to do for this deal
+                        None => continue,
+                    };
 
-                    let dcid = rt_deal_cid(rt, &deal)?;
+                    let dcid = deal_cid(rt, &deal_proposal)?;
 
-                    let state = st.find_deal_state(rt.store(), deal_id)?;
-
-                    // deal has been published but not activated yet -> terminate it
-                    // as it has timed out
-                    if state.is_none() {
-                        // Not yet appeared in proven sector; check for timeout.
-                        if curr_epoch < deal.start_epoch {
+                    let mut state = match st.get_active_deal_or_process_timeout(
+                        rt.store(),
+                        curr_epoch,
+                        deal_id,
+                        &deal_proposal,
+                        &dcid,
+                    )? {
+                        LoadDealState::Loaded(state) => state,
+                        LoadDealState::ProposalExpired(expiration_penalty) => {
+                            amount_slashed += expiration_penalty;
+                            continue;
+                        }
+                        LoadDealState::TooEarly => {
                             return Err(actor_error!(
                                 illegal_state,
                                 "deal {} processed before start epoch {}",
                                 deal_id,
-                                deal.start_epoch
-                            ));
+                                deal_proposal.start_epoch
+                            ))
                         }
-
-                        let slashed = st.process_deal_init_timed_out(rt.store(), &deal)?;
-                        if !slashed.is_zero() {
-                            amount_slashed += slashed;
-                        }
-
-                        // Delete the proposal (but not state, which doesn't exist).
-                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
-
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                format!(
-                                    "failed to delete deal {} proposal {}: does not exist",
-                                    deal_id, dcid
-                                )
-                            ));
-                        }
-
-                        // Delete pending deal CID
-                        st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
-                            actor_error!(
-                                illegal_state,
-                                "failed to delete pending deals: does not exist"
-                            )
-                        })?;
-
-                        // Delete pending deal allocation id (if present).
-                        st.remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?;
-
-                        continue;
-                    }
-                    let mut state = state.unwrap();
+                    };
 
                     if state.last_updated_epoch == EPOCH_UNDEFINED {
                         st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
@@ -751,66 +930,50 @@ impl Actor {
                                 "failed to delete pending proposal: does not exist"
                             )
                         })?;
+
+                        // newly activated deals are not scheduled for cron processing. they are handled explicitly by
+                        // calling ProcessDealUpdates method with specific deal ids.
+                        // the code below this point handles legacy deals that are already scheduled for cron processing
+                        continue;
                     }
 
-                    let (slash_amount, next_epoch, remove_deal) = st.put_pending_deal_state(
-                        rt.store(),
-                        rt.policy(),
-                        &state,
-                        &deal,
-                        curr_epoch,
-                    )?;
-
-                    if slash_amount.is_negative() {
-                        return Err(actor_error!(
-                            illegal_state,
-                            format!(
-                                "computed negative slash amount {} for deal {}",
-                                slash_amount, deal_id
-                            )
-                        ));
-                    }
+                    // https://github.com/filecoin-project/builtin-actors/issues/1389
+                    // handling of legacy deals is still done in cron. we handle such deals here and continue to
+                    // reschedule them. eventually, all legacy deals will expire and the below code can be removed.
+                    let (slash_amount, _payment_amount, completed, remove_deal) = st
+                        .process_deal_update(
+                            rt.store(),
+                            &state,
+                            &deal_proposal,
+                            &dcid,
+                            curr_epoch,
+                        )?;
 
                     if remove_deal {
-                        if next_epoch != EPOCH_UNDEFINED {
-                            return Err(actor_error!(
-                                illegal_state,
-                                format!(
-                                    "removed deal {} should have no scheduled epoch (got {})",
-                                    deal_id, next_epoch
-                                )
-                            ));
-                        }
-
+                        // TODO: remove handling for terminated-deal slashing when marked-for-termination deals are all processed
+                        // https://github.com/filecoin-project/builtin-actors/issues/1388
                         amount_slashed += slash_amount;
 
                         // Delete proposal and state simultaneously.
-                        let deleted = st.remove_deal_state(rt.store(), deal_id)?;
+                        st.remove_completed_deal(rt.store(), deal_id)?;
+                        // All proposals are stored with normalised addresses.
+                        let provider = deal_proposal.provider.id().unwrap();
+                        provider_deals_to_remove
+                            .entry(provider)
+                            .or_default()
+                            .entry(state.sector_number)
+                            .or_default()
+                            .push(deal_id);
 
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                "failed to delete deal state: does not exist"
-                            ));
-                        }
-
-                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
-
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                "failed to delete deal proposal: does not exist"
-                            ));
+                        if !completed {
+                            emit::deal_terminated(
+                                rt,
+                                deal_id,
+                                deal_proposal.client.id().unwrap(),
+                                deal_proposal.provider.id().unwrap(),
+                            )?;
                         }
                     } else {
-                        if next_epoch <= rt.curr_epoch() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                "continuing deal {} next epoch {} should be in the future",
-                                deal_id,
-                                next_epoch
-                            ));
-                        }
                         if !slash_amount.is_zero() {
                             return Err(actor_error!(
                                 illegal_state,
@@ -822,28 +985,45 @@ impl Actor {
                         state.last_updated_epoch = curr_epoch;
                         st.put_deal_states(rt.store(), &[(deal_id, state)])?;
 
-                        if let Some(ev) = updates_needed.get_mut(&next_epoch) {
-                            ev.push(deal_id);
-                        } else {
-                            updates_needed.insert(next_epoch, vec![deal_id]);
-                        }
+                        // Compute and record the next epoch in which this deal will be updated.
+                        // This epoch is independent of the deal's stated start and end epochs
+                        // in order to prevent intentional scheduling of many deals for the same
+                        // update epoch.
+                        let next_epoch = next_update_epoch(
+                            deal_id,
+                            rt.policy().deal_updates_interval,
+                            curr_epoch + 1,
+                        );
+                        new_updates_scheduled.entry(next_epoch).or_default().push(deal_id);
+                    }
+
+                    if completed {
+                        emit::deal_completed(
+                            rt,
+                            deal_id,
+                            deal_proposal.client.id().unwrap(),
+                            deal_proposal.provider.id().unwrap(),
+                        )?;
                     }
                 }
-                rm_cron_id.push(i);
+                epochs_completed.push(i);
             }
-
-            st.remove_deals_by_epoch(rt.store(), &rm_cron_id)?;
-
-            // updates_needed is already sorted by epoch.
-            st.put_batch_deals_by_epoch(rt.store(), &updates_needed)?;
-
+            // Remove the provider->sector->deal mappings.
+            // The sectors may still have other deals, so we can't remove the sector altogether.
+            st.remove_sector_deal_ids(rt.store(), &provider_deals_to_remove)?;
+            st.remove_deals_by_epoch(rt.store(), &epochs_completed)?;
+            st.put_batch_deals_by_epoch(rt.store(), &new_updates_scheduled)?;
             st.last_cron = rt.curr_epoch();
-
             Ok(())
         })?;
 
         if !amount_slashed.is_zero() {
-            rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, amount_slashed)?;
+            extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                amount_slashed,
+            ))?;
         }
         Ok(())
     }
@@ -852,7 +1032,7 @@ impl Actor {
     /// This will be available after the deal is published (whether or not is is activated)
     /// and up until some undefined period after it is terminated.
     fn get_deal_data_commitment(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealDataCommitmentParams,
     ) -> Result<GetDealDataCommitmentReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -862,7 +1042,7 @@ impl Actor {
 
     /// Returns the client of a deal proposal.
     fn get_deal_client(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealClientParams,
     ) -> Result<GetDealClientReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -872,7 +1052,7 @@ impl Actor {
 
     /// Returns the provider of a deal proposal.
     fn get_deal_provider(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealProviderParams,
     ) -> Result<GetDealProviderReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -882,7 +1062,7 @@ impl Actor {
 
     /// Returns the label of a deal proposal.
     fn get_deal_label(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealLabelParams,
     ) -> Result<GetDealLabelReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -892,7 +1072,7 @@ impl Actor {
 
     /// Returns the start epoch and duration (in epochs) of a deal proposal.
     fn get_deal_term(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealTermParams,
     ) -> Result<GetDealTermReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -902,7 +1082,7 @@ impl Actor {
 
     /// Returns the total price that will be paid from the client to the provider for this deal.
     fn get_deal_total_price(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealTotalPriceParams,
     ) -> Result<GetDealTotalPriceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -912,7 +1092,7 @@ impl Actor {
 
     /// Returns the client collateral requirement for a deal proposal.
     fn get_deal_client_collateral(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealClientCollateralParams,
     ) -> Result<GetDealClientCollateralReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -922,7 +1102,7 @@ impl Actor {
 
     /// Returns the provider collateral requirement for a deal proposal.
     fn get_deal_provider_collateral(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealProviderCollateralParams,
     ) -> Result<GetDealProviderCollateralReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -934,7 +1114,7 @@ impl Actor {
     /// Note that the source of truth for verified allocations and claims is
     /// the verified registry actor.
     fn get_deal_verified(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealVerifiedParams,
     ) -> Result<GetDealVerifiedReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -948,100 +1128,274 @@ impl Actor {
     /// Returns USR_NOT_FOUND if the deal doesn't exist (yet), or EX_DEAL_EXPIRED if the deal
     /// has been removed from state.
     fn get_deal_activation(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealActivationParams,
     ) -> Result<GetDealActivationReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st = rt.state::<State>()?;
         let found = st.find_deal_state(rt.store(), params.id)?;
         match found {
-            Some(state) => Ok(GetDealActivationReturn {
-                // If we have state, the deal has been activated.
-                // It may also have completed normally, or been terminated,
-                // but not yet been cleaned up.
-                activated: state.sector_start_epoch,
-                terminated: state.slash_epoch,
-            }),
-            None => {
-                // State::get_proposal will fail with USR_NOT_FOUND in either case.
-                let maybe_proposal = st.find_proposal(rt.store(), params.id)?;
-                match maybe_proposal {
-                    Some(_) => Ok(GetDealActivationReturn {
-                        // The proposal has been published, but not activated.
-                        activated: EPOCH_UNDEFINED,
-                        terminated: EPOCH_UNDEFINED,
-                    }),
-                    None => {
-                        if params.id < st.next_id {
-                            // If the deal ID has been used, it must have been cleaned up.
-                            Err(ActorError::unchecked(
-                                EX_DEAL_EXPIRED,
-                                format!("deal {} expired", params.id),
-                            ))
-                        } else {
-                            // We can't distinguish between failing to activate, or having been
-                            // cleaned up after completion/termination.
-                            Err(ActorError::not_found(format!("no such deal {}", params.id)))
-                        }
-                    }
+            Some(state) => {
+                if state.slash_epoch != EPOCH_UNDEFINED {
+                    // Deal was terminated asynchronously
+                    // TODO: https://github.com/filecoin-project/builtin-actors/issues/1388
+                    Err(ActorError::unchecked(
+                        EX_DEAL_EXPIRED,
+                        format!("deal {} expired", params.id),
+                    ))
+                } else {
+                    // If we have state, the deal has been activated
+                    Ok(GetDealActivationReturn {
+                        activated: state.sector_start_epoch,
+                        terminated: state.slash_epoch,
+                    })
                 }
+            }
+            None => {
+                // Pass through exit codes if proposal doesn't exist.
+                let _ = st.get_proposal(rt.store(), params.id)?;
+                // Proposal was published but never activated.
+                Ok(GetDealActivationReturn {
+                    activated: EPOCH_UNDEFINED,
+                    terminated: EPOCH_UNDEFINED,
+                })
             }
         }
     }
+
+    /// Fetches the sector in which a deal is stored.
+    /// This is available from after a deal is activated until it is finally settled
+    /// (either normally or by termination).
+    /// Fails with USR_NOT_FOUND if the deal doesn't exist (yet),
+    /// EX_DEAL_NOT_ACTIVATED if the deal is published but has not been activated,
+    /// or EX_DEAL_EXPIRED if the deal has been removed from state.
+    fn get_deal_sector(
+        rt: &impl Runtime,
+        params: GetDealSectorParams,
+    ) -> Result<GetDealSectorReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st = rt.state::<State>()?;
+        let found = st.find_deal_state(rt.store(), params.id)?;
+        match found {
+            Some(state) => {
+                // The deal has been activated and not yet finally settled.
+                if state.slash_epoch != EPOCH_UNDEFINED {
+                    // The deal has been terminated but not cleaned up.
+                    // Hide this internal state from caller and fail as if it had been cleaned up.
+                    // This will become an impossible state when deal termination is
+                    // processed immediately.
+                    // Remove with https://github.com/filecoin-project/builtin-actors/issues/1388.
+                    Err(ActorError::unchecked(
+                        EX_DEAL_EXPIRED,
+                        format!("deal {} expired", params.id),
+                    ))
+                } else {
+                    Ok(GetDealSectorReturn { sector: state.sector_number })
+                }
+            }
+            None => {
+                // Pass through exit codes if proposal doesn't exist.
+                let _ = st.get_proposal(rt.store(), params.id)?;
+                // Proposal was published but never activated.
+                Err(ActorError::unchecked(
+                    EX_DEAL_NOT_ACTIVATED,
+                    format!("deal {} not yet activated", params.id),
+                ))
+            }
+        }
+    }
+
+    fn settle_deal_payments(
+        rt: &impl Runtime,
+        params: SettleDealPaymentsParams,
+    ) -> Result<SettleDealPaymentsReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let curr_epoch = rt.curr_epoch();
+
+        let mut batch_gen = BatchReturnGen::new(params.deal_ids.len() as usize);
+        let mut settlements: Vec<DealSettlementSummary> = Vec::new();
+        // accumulates slashed amounts from timed out deal proposals that weren't activated in time
+        let mut total_slashed = TokenAmount::zero();
+
+        rt.transaction(|st: &mut State, rt| {
+            let mut new_deal_states: Vec<(DealID, DealState)> = Vec::new();
+            let mut provider_deals_to_remove =
+                BTreeMap::<ActorID, BTreeMap<SectorNumber, Vec<DealID>>>::new();
+            for deal_id in params.deal_ids.iter() {
+                let deal_proposal = match st.get_proposal(rt.store(), deal_id) {
+                    Ok(prop) => prop,
+                    Err(_) => {
+                        batch_gen.add_fail(EX_DEAL_EXPIRED);
+                        continue;
+                    }
+                };
+                let dcid = match deal_cid(rt, &deal_proposal) {
+                    Ok(cid) => cid,
+                    Err(e) => {
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
+                    }
+                };
+
+                let loaded_deal = match st.get_active_deal_or_process_timeout(
+                    rt.store(),
+                    curr_epoch,
+                    deal_id,
+                    &deal_proposal,
+                    &dcid,
+                ) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
+                    }
+                };
+
+                let mut deal_state = match loaded_deal {
+                    LoadDealState::TooEarly => {
+                        // deal is not active, we process it as a zero-payment no-op
+                        settlements.push(DealSettlementSummary {
+                            completed: false,
+                            payment: TokenAmount::zero(),
+                        });
+                        batch_gen.add_success();
+                        continue;
+                    }
+                    LoadDealState::ProposalExpired(penalty) => {
+                        // deal proposal was not activated in time
+                        total_slashed += penalty;
+                        batch_gen.add_fail(EX_DEAL_EXPIRED);
+                        continue;
+                    }
+                    LoadDealState::Loaded(deal_state) => deal_state,
+                };
+
+                // TODO: remove this defensive check when it becomes impossible for process_deal_update to encounter slashed deals
+                // https://github.com/filecoin-project/builtin-actors/issues/1388
+                if deal_state.slash_epoch != EPOCH_UNDEFINED {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "deal {} is marked for termination and cannot be settled",
+                        deal_id
+                    ));
+                }
+
+                let (_, payment_amount, completed, remove_deal) = match st.process_deal_update(
+                    rt.store(),
+                    &deal_state,
+                    &deal_proposal,
+                    &dcid,
+                    curr_epoch,
+                ) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
+                    }
+                };
+
+                if remove_deal {
+                    st.remove_completed_deal(rt.store(), deal_id)?;
+                    provider_deals_to_remove
+                        .entry(deal_proposal.provider.id().unwrap())
+                        .or_default()
+                        .entry(deal_state.sector_number)
+                        .or_default()
+                        .push(deal_id);
+
+                    if !completed {
+                        emit::deal_terminated(
+                            rt,
+                            deal_id,
+                            deal_proposal.client.id().unwrap(),
+                            deal_proposal.provider.id().unwrap(),
+                        )?;
+                    }
+                } else {
+                    deal_state.last_updated_epoch = curr_epoch;
+                    new_deal_states.push((deal_id, deal_state));
+                }
+
+                settlements.push(DealSettlementSummary {
+                    completed: remove_deal,
+                    payment: payment_amount,
+                });
+                batch_gen.add_success();
+
+                if completed {
+                    emit::deal_completed(
+                        rt,
+                        deal_id,
+                        deal_proposal.client.id().unwrap(),
+                        deal_proposal.provider.id().unwrap(),
+                    )?;
+                }
+            }
+
+            st.put_deal_states(rt.store(), &new_deal_states)?;
+            st.remove_sector_deal_ids(rt.store(), &provider_deals_to_remove)?;
+            Ok(())
+        })?;
+
+        if !total_slashed.is_zero() {
+            extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                total_slashed,
+            ))?;
+        }
+
+        Ok(SettleDealPaymentsReturn { results: batch_gen.gen(), settlements })
+    }
 }
 
-fn compute_data_commitment<BS: Blockstore>(
-    rt: &impl Runtime,
-    proposals: &DealArray<BS>,
-    sector_type: RegisteredSealProof,
+fn get_proposals<BS: Blockstore>(
+    proposal_array: &DealArray<BS>,
     deal_ids: &[DealID],
-) -> Result<Cid, ActorError> {
-    let mut pieces = Vec::with_capacity(deal_ids.len());
-
+    next_id: DealID,
+) -> Result<Vec<(DealID, DealProposal)>, ActorError> {
+    let mut proposals = Vec::new();
+    let mut seen_deal_ids = BTreeSet::new();
     for deal_id in deal_ids {
-        let deal = proposals
-            .get(*deal_id)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to get deal_id ({})", deal_id),
-                )
-            })?
-            .ok_or_else(|| actor_error!(not_found, "proposal doesn't exist ({})", deal_id))?;
+        if !seen_deal_ids.insert(deal_id) {
+            return Err(actor_error!(illegal_argument, "duplicate deal ID {} in sector", deal_id));
+        }
+        let proposal = get_proposal(proposal_array, *deal_id, next_id)?;
+        proposals.push((*deal_id, proposal));
+    }
+    Ok(proposals)
+}
 
+fn compute_data_commitment<'a>(
+    rt: &impl Runtime,
+    proposals: impl IntoIterator<Item = &'a DealProposal>,
+    sector_type: RegisteredSealProof,
+) -> Result<Cid, ActorError> {
+    let mut pieces = vec![];
+
+    for deal in proposals {
         pieces.push(PieceInfo { cid: deal.piece_cid, size: deal.piece_size });
     }
+
     rt.compute_unsealed_sector_cid(sector_type, &pieces).map_err(|e| {
         e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to compute unsealed sector CID")
     })
 }
 
-pub fn validate_and_return_deal_space<BS: Blockstore>(
-    proposals: &DealArray<BS>,
-    deal_ids: &[DealID],
+// Validates that each of a collection of deal proposals is valid and that they
+// all fit within a sector.
+pub fn validate_deals_for_sector(
+    proposals: &[(DealID, DealProposal)],
     miner_addr: &Address,
     sector_expiry: ChainEpoch,
     sector_activation: ChainEpoch,
     sector_size: Option<SectorSize>,
-) -> Result<DealSpaces, ActorError> {
-    let mut seen_deal_ids = BTreeSet::new();
+) -> Result<(), ActorError> {
     let mut deal_space = BigInt::zero();
     let mut verified_deal_space = BigInt::zero();
 
-    for deal_id in deal_ids {
-        if !seen_deal_ids.insert(deal_id) {
-            return Err(actor_error!(
-                illegal_argument,
-                "deal id {} present multiple times",
-                deal_id
-            ));
-        }
-
-        let proposal = proposals
-            .get(*deal_id)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal")?
-            .ok_or_else(|| actor_error!(not_found, "no such deal {}", deal_id))?;
-
+    for (deal_id, proposal) in proposals {
         validate_deal_can_activate(proposal, miner_addr, sector_expiry, sector_activation)
             .with_context(|| format!("cannot activate deal {}", deal_id))?;
 
@@ -1063,26 +1417,76 @@ pub fn validate_and_return_deal_space<BS: Blockstore>(
         }
     }
 
-    Ok(DealSpaces { deal_space, verified_deal_space })
+    Ok(())
+}
+
+// Validates a deal is ready to activate now.
+// There are two types of error possible here:
+// - An Err in the outer result indicates something broken that should be propagated
+//   and abort the current message.
+// - An Err in the inner result indicates a problem with this deal, but not something that
+//   ought to prevent other deals from being activated.
+#[allow(clippy::too_many_arguments)]
+fn preactivate_deal<BS: Blockstore>(
+    rt: &impl Runtime,
+    deal_id: DealID,
+    proposals: &DealArray<BS>,
+    states: &DealMetaArray<BS>,
+    pending_proposals: &PendingProposalsSet<&BS>,
+    provider: &Address,
+    sector_commitment: ChainEpoch,
+    curr_epoch: ChainEpoch,
+    next_id: DealID,
+) -> Result<Result<DealProposal, ActorError>, ActorError> {
+    let proposal = match get_proposal(proposals, deal_id, next_id) {
+        Ok(p) => p,
+        Err(e) => {
+            return match e.exit_code() {
+                ExitCode::USR_NOT_FOUND | EX_DEAL_EXPIRED => Ok(Err(e)), // Fail this deal only.
+                _ => Err(e),                                             // Abort.
+            };
+        }
+    };
+
+    let ok = validate_deal_can_activate(&proposal, provider, sector_commitment, curr_epoch);
+    if let Err(e) = ok {
+        return Ok(Err(e).with_context(|| format!("cannot activate deal {}", deal_id)));
+    }
+
+    if find_deal_state(states, deal_id)?.is_some() {
+        return Ok(Err(actor_error!(illegal_argument, "deal {} already activated", deal_id)));
+    }
+
+    // Confirm the deal is in the pending proposals set.
+    // It will be removed from this queue later, during cron.
+    // Failing this check is an internal invariant violation.
+    // The pending deals set exists to prevent duplicate proposals.
+    // It should be impossible to have a proposal, no deal state, and not be in pending deals.
+    let deal_cid = deal_cid(rt, &proposal)?;
+    if !pending_proposals.has(&deal_cid)? {
+        return Ok(Err(actor_error!(illegal_state, "deal {} is not in pending set", deal_cid)));
+    }
+
+    Ok(Ok(proposal))
 }
 
 fn alloc_request_for_deal(
     // Deal proposal must have ID addresses
-    deal: &ClientDealProposal,
+    deal: &DealProposal,
     policy: &Policy,
     curr_epoch: ChainEpoch,
 ) -> ext::verifreg::AllocationRequest {
-    let alloc_term_min = deal.proposal.end_epoch - deal.proposal.start_epoch;
+    let alloc_term_min = deal.end_epoch - deal.start_epoch;
     let alloc_term_max = min(
         alloc_term_min + policy.market_default_allocation_term_buffer,
         policy.maximum_verified_allocation_term,
     );
     let alloc_expiration =
-        min(deal.proposal.start_epoch, curr_epoch + policy.maximum_verified_allocation_expiration);
+        min(deal.start_epoch, curr_epoch + policy.maximum_verified_allocation_expiration);
     ext::verifreg::AllocationRequest {
-        provider: deal.proposal.provider.id().unwrap(),
-        data: deal.proposal.piece_cid,
-        size: deal.proposal.piece_size,
+        provider: deal.provider.id().unwrap(),
+        data: deal.piece_cid,
+        size: deal.piece_size,
         term_min: alloc_term_min,
         term_max: alloc_term_max,
         expiration: alloc_expiration,
@@ -1108,17 +1512,16 @@ fn datacap_transfer_request(
 
 // Invokes transfer_from on the data cap token actor.
 fn transfer_from(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     params: TransferFromParams,
 ) -> Result<Vec<AllocationID>, ActorError> {
-    let ret = rt
-        .send(
-            &DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::TRANSFER_FROM_METHOD as u64,
-            IpldBlock::serialize_cbor(&params)?,
-            TokenAmount::zero(),
-        )
-        .context(format!("failed to send transfer to datacap {:?}", params))?;
+    let ret = extract_send_result(rt.send_simple(
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        ext::datacap::TRANSFER_FROM_METHOD,
+        IpldBlock::serialize_cbor(&params)?,
+        TokenAmount::zero(),
+    ))
+    .context(format!("failed to send transfer to datacap {:?}", params))?;
     let ret: TransferFromReturn = ret
         .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
         .deserialize()?;
@@ -1128,35 +1531,37 @@ fn transfer_from(
 }
 
 // Invokes BalanceOf on the data cap token actor.
-fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<TokenAmount, ActorError> {
+fn balance_of(rt: &impl Runtime, owner: &Address) -> Result<TokenAmount, ActorError> {
     let params = IpldBlock::serialize_cbor(owner)?;
-    let ret = rt
-        .send(
-            &DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::BALANCE_OF_METHOD as u64,
-            params,
-            TokenAmount::zero(),
-        )
-        .context(format!("failed to query datacap balance of {}", owner))?;
+    let ret = extract_send_result(rt.send_simple(
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        ext::datacap::BALANCE_OF_METHOD,
+        params,
+        TokenAmount::zero(),
+    ))
+    .context(format!("failed to query datacap balance of {}", owner))?;
     let ret: BalanceReturn = ret
         .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
         .deserialize()?;
     Ok(ret)
 }
 
-pub fn gen_rand_next_epoch(
-    policy: &Policy,
-    start_epoch: ChainEpoch,
-    deal_id: DealID,
-) -> ChainEpoch {
-    let offset = deal_id as i64 % policy.deal_updates_interval;
-    let q = QuantSpec { unit: policy.deal_updates_interval, offset: 0 };
-    let prev_day = q.quantize_down(start_epoch);
-    if prev_day + offset >= start_epoch {
-        return prev_day + offset;
+// Calculates the first update epoch for a deal ID that is no sooner than `earliest`.
+// An ID is processed as a fixed offset within each `interval` of epochs.
+pub fn next_update_epoch(id: DealID, interval: i64, earliest: ChainEpoch) -> ChainEpoch {
+    // Same logic as QuantSpec from the miner actor, but duplicated here to avoid unnecessary
+    // dependencies.
+    let offset = id as i64 % interval;
+    let remainder = (earliest - offset) % interval;
+    let quotient = (earliest - offset) / interval;
+
+    // Don't round if epoch falls on a quantization epoch or when negative (negative truncating
+    // division rounds up).
+    if remainder == 0 || earliest - offset < 0 {
+        interval * quotient + offset
+    } else {
+        interval * (quotient + 1) + offset
     }
-    let next_day = q.quantize_up(start_epoch);
-    next_day + offset
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1169,30 +1574,28 @@ fn validate_deal_can_activate(
     curr_epoch: ChainEpoch,
 ) -> Result<(), ActorError> {
     if &proposal.provider != miner_addr {
-        return Err(actor_error!(
-            forbidden,
+        return Err(ActorError::forbidden(format!(
             "proposal has provider {}, must be {}",
-            proposal.provider,
-            miner_addr
-        ));
+            proposal.provider, miner_addr
+        )));
     };
 
     if curr_epoch > proposal.start_epoch {
-        return Err(actor_error!(
-            illegal_argument,
-            "proposal start epoch {} has already elapsed at {}",
-            proposal.start_epoch,
-            curr_epoch
+        return Err(ActorError::unchecked(
+            // Use the same code as if the proposal had already been cleaned up from state.
+            EX_DEAL_EXPIRED,
+            format!(
+                "proposal start epoch {} has already elapsed at {}",
+                proposal.start_epoch, curr_epoch
+            ),
         ));
     };
 
     if proposal.end_epoch > sector_expiration {
-        return Err(actor_error!(
-            illegal_argument,
+        return Err(ActorError::illegal_argument(format!(
             "proposal expiration {} exceeds sector expiration {}",
-            proposal.end_epoch,
-            sector_expiration
-        ));
+            proposal.end_epoch, sector_expiration
+        )));
     };
 
     Ok(())
@@ -1280,7 +1683,7 @@ fn deal_proposal_is_internally_valid(
     // Generate unsigned bytes
     let proposal_bytes = serialize(&proposal.proposal, "deal proposal")?;
 
-    rt.send(
+    if !extract_send_result(rt.send(
         &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
         IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
@@ -1288,21 +1691,26 @@ fn deal_proposal_is_internally_valid(
             message: proposal_bytes.to_vec(),
         })?,
         TokenAmount::zero(),
-    )
-    .map_err(|e| e.wrap("proposal authentication failed"))?;
-    Ok(())
+        None,
+        SendFlags::READ_ONLY,
+    ))
+    .and_then(deserialize_block)
+    .context("proposal authentication failed")?
+    {
+        Err(actor_error!(illegal_argument, "proposal authentication failed"))
+    } else {
+        Ok(())
+    }
 }
 
-pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
-
 /// Compute a deal CID using the runtime.
-pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
+pub fn deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
     let data = serialize(proposal, "deal proposal")?;
-    rt_serialized_deal_cid(rt, data.bytes())
+    serialized_deal_cid(rt, data.bytes())
 }
 
 /// Compute a deal CID from serialized proposal using the runtime
-pub(crate) fn rt_serialized_deal_cid(rt: &impl Runtime, data: &[u8]) -> Result<Cid, ActorError> {
+pub(crate) fn serialized_deal_cid(rt: &impl Runtime, data: &[u8]) -> Result<Cid, ActorError> {
     const DIGEST_SIZE: u32 = 32;
     let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
         .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
@@ -1310,25 +1718,17 @@ pub(crate) fn rt_serialized_deal_cid(rt: &impl Runtime, data: &[u8]) -> Result<C
     Ok(Cid::new_v1(DAG_CBOR, hash))
 }
 
-/// Compute a deal CID directly.
-pub(crate) fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
-    const DIGEST_SIZE: u32 = 32;
-    let data = serialize(proposal, "deal proposal")?;
-    let hash = Code::Blake2b256.digest(data.bytes());
-    debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
-    Ok(Cid::new_v1(DAG_CBOR, hash))
-}
-
 fn request_miner_control_addrs(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     miner_id: ActorID,
 ) -> Result<(Address, Address, Vec<Address>), ActorError> {
-    let addrs: ext::miner::GetControlAddressesReturnParams = deserialize_block(rt.send(
-        &Address::new_id(miner_id),
-        ext::miner::CONTROL_ADDRESSES_METHOD,
-        None,
-        TokenAmount::zero(),
-    )?)?;
+    let addrs: ext::miner::GetControlAddressesReturnParams =
+        deserialize_block(extract_send_result(rt.send_simple(
+            &Address::new_id(miner_id),
+            ext::miner::CONTROL_ADDRESSES_METHOD,
+            None,
+            TokenAmount::zero(),
+        ))?)?;
 
     Ok((addrs.owner, addrs.worker, addrs.control_addresses))
 }
@@ -1336,7 +1736,7 @@ fn request_miner_control_addrs(
 /// Resolves a provider or client address to the canonical form against which a balance should be held, and
 /// the designated recipient address of withdrawals (which is the same, for simple account parties).
 fn escrow_address(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     addr: &Address,
 ) -> Result<(Address, Address, Vec<Address>), ActorError> {
     // Resolve the provided address to the canonical form against which the balance is held.
@@ -1360,27 +1760,28 @@ fn escrow_address(
 }
 
 /// Requests the current epoch target block reward from the reward actor.
-fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower, ActorError> {
-    let ret: ThisEpochRewardReturn = deserialize_block(rt.send(
+fn request_current_baseline_power(rt: &impl Runtime) -> Result<StoragePower, ActorError> {
+    let ret: ThisEpochRewardReturn = deserialize_block(extract_send_result(rt.send_simple(
         &REWARD_ACTOR_ADDR,
         ext::reward::THIS_EPOCH_REWARD_METHOD,
         None,
         TokenAmount::zero(),
-    )?)?;
+    ))?)?;
     Ok(ret.this_epoch_baseline_power)
 }
 
 /// Requests the current network total power and pledge from the power actor.
 /// Returns a tuple of (raw_power, qa_power).
 fn request_current_network_power(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
 ) -> Result<(StoragePower, StoragePower), ActorError> {
-    let ret: ext::power::CurrentTotalPowerReturnParams = deserialize_block(rt.send(
-        &STORAGE_POWER_ACTOR_ADDR,
-        ext::power::CURRENT_TOTAL_POWER_METHOD,
-        None,
-        TokenAmount::zero(),
-    )?)?;
+    let ret: ext::power::CurrentTotalPowerReturnParams =
+        deserialize_block(extract_send_result(rt.send_simple(
+            &STORAGE_POWER_ACTOR_ADDR,
+            ext::power::CURRENT_TOTAL_POWER_METHOD,
+            None,
+            TokenAmount::zero(),
+        ))?)?;
     Ok((ret.raw_byte_power, ret.quality_adj_power))
 }
 
@@ -1389,20 +1790,26 @@ pub fn deal_id_key(k: DealID) -> BytesKey {
     bz.into()
 }
 
+pub fn sector_number_key(k: SectorNumber) -> BytesKey {
+    let bz = k.encode_var_vec();
+    bz.into()
+}
+
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "StorageMarket"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
-        AddBalance => add_balance,
-        AddBalanceExported => add_balance,
-        WithdrawBalance => withdraw_balance,
-        WithdrawBalanceExported => withdraw_balance,
-        PublishStorageDeals => publish_storage_deals,
-        PublishStorageDealsExported => publish_storage_deals,
+        AddBalance|AddBalanceExported => add_balance,
+        WithdrawBalance|WithdrawBalanceExported => withdraw_balance,
+        PublishStorageDeals|PublishStorageDealsExported => publish_storage_deals,
         VerifyDealsForActivation => verify_deals_for_activation,
-        ActivateDeals => activate_deals,
+        BatchActivateDeals => batch_activate_deals,
         OnMinerSectorsTerminate => on_miner_sectors_terminate,
-        ComputeDataCommitment => compute_data_commitment,
         CronTick => cron_tick,
         GetBalanceExported => get_balance,
         GetDealDataCommitmentExported => get_deal_data_commitment,
@@ -1415,5 +1822,8 @@ impl ActorCode for Actor {
         GetDealProviderCollateralExported => get_deal_provider_collateral,
         GetDealVerifiedExported => get_deal_verified,
         GetDealActivationExported => get_deal_activation,
+        GetDealSectorExported => get_deal_sector,
+        SettleDealPaymentsExported => settle_deal_payments,
+        SectorContentChangedExported => sector_content_changed,
     }
 }

@@ -1,14 +1,14 @@
 use fil_actor_miner::{
     power_for_sectors, testing::PartitionStateSummary, BitFieldQueue, ExpirationQueue, Partition,
-    PowerPair, SectorOnChainInfo,
+    PowerPair, QuantSpec, SectorOnChainInfo,
 };
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredSealProof, SectorSize};
 
@@ -976,7 +976,7 @@ mod miner_actor_test_partitions {
         let mut ids = vec![0u64; partition_sectors as usize];
         for (i, info) in many_sectors.iter_mut().enumerate() {
             let id = (i as u64 + 1) << 50;
-            ids[i as usize] = id;
+            ids[i] = id;
             *info = test_sector(i as i64 + 1, id, 50, 60, 1000);
         }
         let sector_numbers = bitfield_from_slice(&ids);

@@ -1,6 +1,6 @@
 use fil_actor_miner::{expected_reward_for_power, pledge_penalty_for_continued_fault};
+use fil_actors_runtime::reward::FilterEstimate;
 use fvm_shared::bigint::{BigInt, Zero};
-use fvm_shared::smooth::FilterEstimate;
 use std::ops::Neg;
 
 #[test]

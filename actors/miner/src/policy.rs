@@ -11,9 +11,7 @@ use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, POSEIDON_BLS12_381_A1_FC1};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::{
-    RegisteredPoStProof, RegisteredSealProof, SectorQuality, SectorSize, StoragePower,
-};
+use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, SectorSize, StoragePower};
 use lazy_static::lazy_static;
 
 use super::types::SectorOnChainInfo;
@@ -50,7 +48,7 @@ pub fn is_sealed_sector(c: &Cid) -> bool {
 
 /// List of proof types which can be used when creating new miner actors
 pub fn can_pre_commit_seal_proof(policy: &Policy, proof: RegisteredSealProof) -> bool {
-    policy.valid_pre_commit_proof_type.contains(&proof)
+    policy.valid_pre_commit_proof_type.contains(proof)
 }
 
 /// Checks whether a seal proof type is supported for new miners and sectors.
@@ -68,8 +66,18 @@ pub fn max_prove_commit_duration(
     match proof {
         StackedDRG32GiBV1 | StackedDRG2KiBV1 | StackedDRG8MiBV1 | StackedDRG512MiBV1
         | StackedDRG64GiBV1 => Some(EPOCHS_IN_DAY + policy.pre_commit_challenge_delay),
-        StackedDRG32GiBV1P1 | StackedDRG64GiBV1P1 | StackedDRG512MiBV1P1 | StackedDRG8MiBV1P1
-        | StackedDRG2KiBV1P1 => Some(30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay),
+        StackedDRG32GiBV1P1
+        | StackedDRG64GiBV1P1
+        | StackedDRG512MiBV1P1
+        | StackedDRG8MiBV1P1
+        | StackedDRG2KiBV1P1
+        | StackedDRG32GiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG64GiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG512MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG8MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG2KiBV1P1_Feat_SyntheticPoRep => {
+            Some(30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay)
+        }
         _ => None,
     }
 }
@@ -81,8 +89,16 @@ pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<
     match proof {
         StackedDRG32GiBV1 | StackedDRG2KiBV1 | StackedDRG8MiBV1 | StackedDRG512MiBV1
         | StackedDRG64GiBV1 => Some(EPOCHS_IN_DAY * 540),
-        StackedDRG32GiBV1P1 | StackedDRG2KiBV1P1 | StackedDRG8MiBV1P1 | StackedDRG512MiBV1P1
-        | StackedDRG64GiBV1P1 => Some(EPOCHS_IN_YEAR * 5),
+        StackedDRG32GiBV1P1
+        | StackedDRG2KiBV1P1
+        | StackedDRG8MiBV1P1
+        | StackedDRG512MiBV1P1
+        | StackedDRG64GiBV1P1
+        | StackedDRG32GiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG2KiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG8MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG512MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG64GiBV1P1_Feat_SyntheticPoRep => Some(EPOCHS_IN_YEAR * 5),
         _ => None,
     }
 }
@@ -92,16 +108,16 @@ pub const MIN_SECTOR_EXPIRATION: i64 = 180 * EPOCHS_IN_DAY;
 
 /// DealWeight and VerifiedDealWeight are spacetime occupied by regular deals and verified deals in a sector.
 /// Sum of DealWeight and VerifiedDealWeight should be less than or equal to total SpaceTime of a sector.
-/// Sectors full of VerifiedDeals will have a SectorQuality of VerifiedDealWeightMultiplier/QualityBaseMultiplier.
-/// Sectors full of Deals will have a SectorQuality of DealWeightMultiplier/QualityBaseMultiplier.
-/// Sectors with neither will have a SectorQuality of QualityBaseMultiplier/QualityBaseMultiplier.
-/// SectorQuality of a sector is a weighted average of multipliers based on their proportions.
+/// Sectors full of VerifiedDeals will have a BigInt of VerifiedDealWeightMultiplier/QualityBaseMultiplier.
+/// Sectors full of Deals will have a BigInt of DealWeightMultiplier/QualityBaseMultiplier.
+/// Sectors with neither will have a BigInt of QualityBaseMultiplier/QualityBaseMultiplier.
+/// BigInt of a sector is a weighted average of multipliers based on their proportions.
 pub fn quality_for_weight(
     size: SectorSize,
     duration: ChainEpoch,
     deal_weight: &DealWeight,
     verified_weight: &DealWeight,
-) -> SectorQuality {
+) -> BigInt {
     let sector_space_time = BigInt::from(size as u64) * BigInt::from(duration);
     let total_deal_space_time = deal_weight + verified_weight;
 
@@ -111,7 +127,7 @@ pub fn quality_for_weight(
     let weighted_verified_space_time = verified_weight * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER;
     let weighted_sum_space_time =
         weighted_base_space_time + weighted_deal_space_time + weighted_verified_space_time;
-    let scaled_up_weighted_sum_space_time: SectorQuality =
+    let scaled_up_weighted_sum_space_time: BigInt =
         weighted_sum_space_time << SECTOR_QUALITY_PRECISION;
 
     scaled_up_weighted_sum_space_time
@@ -138,7 +154,7 @@ pub fn qa_power_for_weight(
 
 /// Returns the quality-adjusted power for a sector.
 pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> StoragePower {
-    let duration = sector.expiration - sector.activation;
+    let duration = sector.expiration - sector.power_base_epoch;
     qa_power_for_weight(size, duration, &sector.deal_weight, &sector.verified_deal_weight)
 }
 

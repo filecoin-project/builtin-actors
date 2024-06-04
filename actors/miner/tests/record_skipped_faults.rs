@@ -2,15 +2,15 @@ use fil_actor_miner::power_for_sectors;
 use fil_actor_miner::select_sectors;
 use fil_actor_miner::testing::PartitionStateSummary;
 use fil_actor_miner::Partition;
+use fil_actor_miner::QuantSpec;
 use fil_actor_miner::SectorOnChainInfo;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
 
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::clock::QuantSpec;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorSize;
 use std::ops::Neg;
