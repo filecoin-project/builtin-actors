@@ -1924,8 +1924,8 @@ impl Actor {
 
         if !params.aggregate_proof.is_empty() {
             // Aggregate fee is paid on the sectors successfully proven,
-            // but without regard to data activation which could subsequently fail
-            // and prevent sector activation.
+            // but without regard to data activation which may have subsequently failed
+            // and prevented sector activation.
             pay_aggregate_seal_proof_fee(rt, proven_activation_inputs.len())?;
         }
 
