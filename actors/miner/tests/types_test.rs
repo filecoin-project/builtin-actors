@@ -13,14 +13,14 @@ mod serialization {
             (
                 ProveCommitSectorsNIParams {
                     sectors: vec![],
-                    seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
-                    sector_proofs: vec![],
                     aggregate_proof: vec![].into(),
-                    aggregate_proof_type: None,
+                    seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
+                    aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+                    proving_deadline: 2,
                     require_activation_success: false,
                 },
-                // [[],8,[],byte[],null,false]
-                "8680088040f6f4",
+                // [[],byte[],8,1,2,false]
+                 "868040080102f4",
             ),
             (
                 ProveCommitSectorsNIParams {
@@ -32,14 +32,14 @@ mod serialization {
                         seal_rand_epoch: 4,
                         expiration: 5,
                     }],
-                    seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1_Feat_NiPoRep,
-                    sector_proofs: vec![],
+                    seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep,
                     aggregate_proof: vec![0xde, 0xad, 0xbe, 0xef].into(),
-                    aggregate_proof_type: Some(RegisteredAggregateProof::SnarkPackV2),
+                    aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+                    proving_deadline: 6,
                     require_activation_success: true,
                 },
-                // [[[1,2,bagboea4seaaqa,3,4,5]],18,[],byte[deadbeef],1,true]
-                "8681860102d82a49000182e20392200100030405128044deadbeef01f5",
+                // [[[1,2,bagboea4seaaqa,3,4,5]],byte[deadbeef],18,1,6,true]
+                "8681860102d82a49000182e2039220010003040544deadbeef120106f5",
             ),
             (
                 ProveCommitSectorsNIParams {
@@ -61,14 +61,14 @@ mod serialization {
                             expiration: 10,
                         },
                     ],
-                    seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1_Feat_NiPoRep,
-                    sector_proofs: vec![vec![0xde, 0xad].into(), vec![0xbe, 0xef].into()],
-                    aggregate_proof: vec![].into(),
-                    aggregate_proof_type: None,
+                    seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep,
+                    aggregate_proof: vec![0xde, 0xad, 0xbe, 0xef].into(),
+                    aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+                    proving_deadline: 11,
                     require_activation_success: false,
                 },
-                // [[[1,2,bagboea4seaaqa,3,4,5],[6,7,bagboea4seaaqc,8,9,10]],18,[byte[dead],byte[beef]],byte[],null,false]
-                "8682860102d82a49000182e20392200100030405860607d82a49000182e2039220010108090a128242dead42beef40f6f4",
+                // [[[1,2,bagboea4seaaqa,3,4,5],[6,7,bagboea4seaaqc,8,9,10]],byte[deadbeef],18,1,11,false]
+                "8682860102d82a49000182e20392200100030405860607d82a49000182e2039220010108090a44deadbeef12010bf4",
             ),
         ];
 
