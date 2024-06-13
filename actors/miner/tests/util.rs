@@ -81,7 +81,10 @@ use fil_actor_miner::{
     WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
     NO_QUANTIZATION, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
 };
-use fil_actor_miner::{ProveReplicaUpdates3Params, ProveReplicaUpdates3Return};
+use fil_actor_miner::{
+    ProveCommitSectorsNIParams, ProveReplicaUpdates3Params, ProveReplicaUpdates3Return,
+    SectorNIActivationInfo,
+};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
@@ -536,6 +539,39 @@ impl ActorHarness {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192].into() }
     }
 
+    pub fn make_prove_commit_ni_params(
+        &self,
+        sealer_id: ActorID,
+        sector_nums: &[SectorNumber],
+        seal_rand_epoch: ChainEpoch,
+        expiration: ChainEpoch,
+    ) -> ProveCommitSectorsNIParams {
+        fn make_proof(i: u8) -> RawBytes {
+            RawBytes::new(vec![i, i, i, i])
+        }
+
+        let sectors = sector_nums
+            .iter()
+            .map(|sector_num| SectorNIActivationInfo {
+                sealing_number: *sector_num,
+                sealer_id,
+                sector_number: *sector_num,
+                sealed_cid: make_sector_commr(*sector_num),
+                seal_rand_epoch,
+                expiration: expiration,
+            })
+            .collect::<Vec<_>>();
+
+        ProveCommitSectorsNIParams {
+            sectors,
+            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1_Feat_NiPoRep,
+            aggregate_proof: make_proof(0),
+            aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+            proving_deadline: 0,
+            require_activation_success: true,
+        }
+    }
+
     pub fn pre_commit_sector_batch(
         &self,
         rt: &MockRuntime,
@@ -804,6 +840,51 @@ impl ActorHarness {
         )?;
 
         Ok(self.get_sector(rt, sector_number))
+    }
+
+    pub fn prove_commit_sectors_ni(
+        &self,
+        rt: &MockRuntime,
+        params: ProveCommitSectorsNIParams,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        self.expect_query_network_info(rt);
+
+        let aggregate_fee =
+            aggregate_prove_commit_network_fee(params.sectors.len(), &rt.base_fee.borrow());
+        rt.expect_send_simple(
+            BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            None,
+            aggregate_fee,
+            None,
+            ExitCode::OK,
+        );
+
+        let state = self.get_state(rt);
+        let dlinfo = new_deadline_info_from_offset_and_epoch(
+            &rt.policy,
+            state.proving_period_start,
+            *rt.epoch.borrow(),
+        );
+        let cron_params = make_deadline_cron_event_params(dlinfo.last());
+        rt.expect_send_simple(
+            STORAGE_POWER_ACTOR_ADDR,
+            PowerMethod::EnrollCronEvent as u64,
+            IpldBlock::serialize_cbor(&cron_params).unwrap(),
+            TokenAmount::zero(),
+            None,
+            ExitCode::OK,
+        );
+
+        let result = rt.call::<Actor>(
+            Method::ProveCommitSectorsNI as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        expect_empty(result);
+        rt.verify();
+
+        Ok(())
     }
 
     pub fn prove_commit_aggregate_sector(

@@ -51,6 +51,10 @@ pub fn can_pre_commit_seal_proof(policy: &Policy, proof: RegisteredSealProof) ->
     policy.valid_pre_commit_proof_type.contains(proof)
 }
 
+pub fn can_prove_commit_ni_seal_proof(policy: &Policy, proof: RegisteredSealProof) -> bool {
+    policy.valid_prove_commit_ni_proof_type.contains(proof)
+}
+
 /// Checks whether a seal proof type is supported for new miners and sectors.
 pub fn can_extend_seal_proof_type(_proof: RegisteredSealProof) -> bool {
     true
@@ -156,6 +160,10 @@ pub fn qa_power_for_weight(
 pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> StoragePower {
     let duration = sector.expiration - sector.power_base_epoch;
     qa_power_for_weight(size, duration, &sector.deal_weight, &sector.verified_deal_weight)
+}
+
+pub fn base_power_for_sector(size: SectorSize) -> StoragePower {
+    BigInt::from(size as u64)
 }
 
 /// Determine maximum number of deal miner's sector can hold

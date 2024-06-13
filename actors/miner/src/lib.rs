@@ -18,6 +18,7 @@ use fvm_ipld_encoding::{from_slice, BytesDe, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::commcid::cid_to_replica_commitment_v1;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::*;
@@ -138,6 +139,7 @@ pub enum Method {
     // MovePartitions = 33,
     ProveCommitSectors3 = 34,
     ProveReplicaUpdates3 = 35,
+    ProveCommitSectorsNI = 36,
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
@@ -779,7 +781,12 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "no sectors"));
         }
 
-        validate_seal_aggregate_proof(&params.aggregate_proof, sector_numbers.len(), policy)?;
+        validate_seal_aggregate_proof(
+            &params.aggregate_proof,
+            sector_numbers.len(),
+            policy,
+            false,
+        )?;
 
         // Load and validate pre-commits.
         // Fail if any don't exist, but otherwise continue with valid ones.
@@ -1799,6 +1806,7 @@ impl Actor {
                 &params.aggregate_proof,
                 params.sector_activations.len() as u64,
                 policy,
+                false,
             )?;
         }
 
@@ -1948,6 +1956,283 @@ impl Actor {
 
         let result = util::stack(&[validation_batch, proven_batch, data_batch]);
         Ok(ProveCommitSectors3Return { activation_results: result })
+    }
+
+    fn prove_commit_sectors_ni(
+        rt: &impl Runtime,
+        params: ProveCommitSectorsNIParams,
+    ) -> Result<(), ActorError> {
+        let policy = rt.policy();
+        let miner_id = rt.message().receiver().id().unwrap();
+
+        if params.sectors.is_empty() {
+            return Err(actor_error!(illegal_argument, "batch empty"));
+        }
+
+        if !can_prove_commit_ni_seal_proof(rt.policy(), params.seal_proof_type) {
+            return Err(actor_error!(
+                illegal_argument,
+                "unsupported seal proof type {}",
+                i64::from(params.seal_proof_type)
+            ));
+        }
+
+        if params.aggregate_proof.is_empty() {
+            return Err(actor_error!(illegal_argument, "aggregate proof must be non-empty"));
+        }
+
+        if params.aggregate_proof_type != RegisteredAggregateProof::SnarkPackV2 {
+            return Err(actor_error!(illegal_argument, "aggregate proof type must be SnarkPackV2"));
+        }
+
+        let sector_count = params.sectors.len() as u64;
+        if sector_count > policy.max_aggregated_sectors_ni {
+            return Err(actor_error!(
+                illegal_argument,
+                "too many sectors addressed, addressed {} want <= {}",
+                sector_count,
+                policy.max_aggregated_sectors
+            ));
+        }
+        if sector_count < policy.min_aggregated_sectors_ni {
+            return Err(actor_error!(
+                illegal_argument,
+                "too few sectors addressed, addressed {} want >= {}",
+                sector_count,
+                policy.min_aggregated_sectors_ni
+            ));
+        }
+
+        validate_seal_aggregate_proof(
+            &params.aggregate_proof,
+            params.sectors.len() as u64,
+            policy,
+            true,
+        )?;
+
+        if params.sectors.iter().any(|sector| sector.sealer_id != miner_id) {
+            return Err(actor_error!(
+                illegal_argument,
+                "all sectors must be sealed for the same receiver actor"
+            ));
+        }
+
+        if params.sectors.iter().any(|sector| sector.sector_number != sector.sealing_number) {
+            return Err(actor_error!(
+                illegal_argument,
+                "all sealing number must be same as sector numbers"
+            ));
+        }
+
+        let curr_epoch = rt.curr_epoch();
+        let challenge_earliest = curr_epoch - rt.policy().max_prove_commit_ni_randomness_lookback;
+        let unsealed_cid = CompactCommD::empty().get_cid(params.seal_proof_type).unwrap();
+        let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
+
+        for sector in params.sectors.iter() {
+            if !is_sealed_sector(&sector.sealed_cid) {
+                return Err(actor_error!(illegal_argument, "sealed CID had wrong prefix"));
+            }
+
+            if sector.seal_rand_epoch >= curr_epoch {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "seal challenge epoch {} must be before now {}",
+                    sector.seal_rand_epoch,
+                    curr_epoch
+                ));
+            }
+
+            if sector.seal_rand_epoch < challenge_earliest {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "seal challenge epoch {} too old, must be after {}",
+                    sector.seal_rand_epoch,
+                    challenge_earliest
+                ));
+            }
+        }
+
+        let state: State = rt.state()?;
+        let store = rt.store();
+        let info = get_miner_info(rt.store(), &state)?;
+        let activation_epoch = rt.curr_epoch();
+
+        if consensus_fault_active(&info, rt.curr_epoch()) {
+            return Err(actor_error!(
+                forbidden,
+                "prove-commit-ni not allowed during active consensus fault"
+            ));
+        }
+
+        rt.validate_immediate_caller_is(
+            info.control_addresses.iter().chain(&[info.worker, info.owner]),
+        )?;
+
+        let proof_inputs = params
+            .sectors
+            .iter()
+            .map(|sector| -> Result<SectorSealProofInput, ActorError> {
+                Ok(SectorSealProofInput {
+                    registered_proof: params.seal_proof_type,
+                    sector_number: sector.sealing_number,
+                    randomness: Randomness(
+                        rt.get_randomness_from_tickets(
+                            DomainSeparationTag::SealRandomness,
+                            sector.seal_rand_epoch,
+                            &entropy,
+                        )?
+                        .into(),
+                    ),
+                    interactive_randomness: Randomness(
+                        cid_to_replica_commitment_v1(&sector.sealed_cid)
+                            .map_err(|e| {
+                                actor_error!(
+                                    illegal_argument,
+                                    "invalid sealed CID {}: {}",
+                                    sector.sealed_cid,
+                                    e
+                                )
+                            })?
+                            .to_vec(),
+                    ),
+                    sealed_cid: sector.sealed_cid,
+                    unsealed_cid,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        verify_aggregate_seal(
+            rt,
+            // All the proof inputs, even for invalid pre-commits,
+            // must be provided as witnesses to the aggregate proof.
+            &proof_inputs,
+            params.sectors[0].sealer_id,
+            params.seal_proof_type,
+            params.aggregate_proof_type,
+            &params.aggregate_proof,
+        )?;
+
+        let base_sector_power = base_power_for_sector(info.sector_size);
+
+        let rew = request_current_epoch_block_reward(rt)?;
+        let pwr = request_current_total_power(rt)?;
+        let circulating_supply = rt.total_fil_circ_supply();
+        let pledge_inputs = NetworkPledgeInputs {
+            network_qap: pwr.quality_adj_power_smoothed,
+            network_baseline: rew.this_epoch_baseline_power,
+            circulating_supply,
+            epoch_reward: rew.this_epoch_reward_smoothed,
+        };
+
+        let initial_pledge = initial_pledge_for_power(
+            &base_sector_power,
+            &pledge_inputs.network_baseline,
+            &pledge_inputs.epoch_reward,
+            &pledge_inputs.network_qap,
+            &pledge_inputs.circulating_supply,
+        );
+
+        let day_reward = expected_reward_for_power(
+            &pledge_inputs.epoch_reward,
+            &pledge_inputs.network_qap,
+            &base_sector_power,
+            fil_actors_runtime::EPOCHS_IN_DAY,
+        );
+
+        let storage_pledge = expected_reward_for_power(
+            &pledge_inputs.epoch_reward,
+            &pledge_inputs.network_qap,
+            &base_sector_power,
+            INITIAL_PLEDGE_PROJECTION_PERIOD,
+        );
+
+        let sectors_to_add = params
+            .sectors
+            .iter()
+            .map(|sector| SectorOnChainInfo {
+                sector_number: sector.sector_number,
+                seal_proof: params.seal_proof_type,
+                sealed_cid: sector.sealed_cid,
+                deprecated_deal_ids: vec![],
+                expiration: sector.expiration,
+                activation: activation_epoch,
+                deal_weight: DealWeight::zero(),
+                verified_deal_weight: DealWeight::zero(),
+                initial_pledge: initial_pledge.clone(),
+                expected_day_reward: day_reward.clone(),
+                expected_storage_pledge: storage_pledge.clone(),
+                power_base_epoch: activation_epoch,
+                replaced_day_reward: TokenAmount::zero(),
+                sector_key_cid: None,
+                flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
+            })
+            .collect::<Vec<SectorOnChainInfo>>();
+        let sectors_len = sectors_to_add.len();
+
+        let total_pledge = BigInt::from(sectors_len) * initial_pledge;
+        let mut needs_cron = false;
+
+        rt.transaction(|state: &mut State, rt| {
+            let current_balance = rt.current_balance();
+            let available_balance = state
+                .get_unlocked_balance(&current_balance)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    "failed to calculate unlocked balance"
+                })?;
+            if available_balance < total_pledge {
+                return Err(actor_error!(
+                    insufficient_funds,
+                    "insufficient funds for aggregate initial pledge requirement {}, available: {}",
+                    total_pledge,
+                    available_balance
+                ));
+            }
+            needs_cron = !state.deadline_cron_active;
+            state.deadline_cron_active = true;
+
+            state
+                .put_sectors(store, sectors_to_add.clone())
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || "failed to put new sectors")?;
+
+            state
+                .assign_sectors_to_deadlines(
+                    policy,
+                    store,
+                    rt.curr_epoch(),
+                    sectors_to_add,
+                    info.window_post_partition_sectors,
+                    info.sector_size,
+                )
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    "failed to assign new sectors to deadlines"
+                })?;
+
+            state
+                .add_initial_pledge(&total_pledge)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    "failed to add initial pledgs"
+                })?;
+
+            state
+                .check_balance_invariants(&rt.current_balance())
+                .map_err(balance_invariants_broken)?;
+
+            Ok(())
+        })?;
+
+        pay_aggregate_seal_proof_fee(rt, sectors_len)?;
+
+        if needs_cron {
+            let new_dl_info = state.deadline_info(rt.policy(), curr_epoch);
+            enroll_cron_event(
+                rt,
+                new_dl_info.last(),
+                CronEventPayload { event_type: CRON_EVENT_PROVING_DEADLINE },
+            )?;
+        }
+
+        Ok(())
     }
 
     fn check_sector_proven(
@@ -4678,20 +4963,26 @@ fn validate_seal_aggregate_proof(
     proof: &RawBytes,
     sector_count: u64,
     policy: &Policy,
+    interactive: bool,
 ) -> Result<(), ActorError> {
-    if sector_count > policy.max_aggregated_sectors {
+    let (min, max) = match interactive {
+        true => (policy.min_aggregated_sectors_ni, policy.max_aggregated_sectors_ni),
+        false => (policy.min_aggregated_sectors, policy.max_aggregated_sectors),
+    };
+
+    if sector_count > max {
         return Err(actor_error!(
             illegal_argument,
             "too many sectors addressed, addressed {} want <= {}",
             sector_count,
-            policy.max_aggregated_sectors
+            max
         ));
-    } else if sector_count < policy.min_aggregated_sectors {
+    } else if sector_count < min {
         return Err(actor_error!(
             illegal_argument,
             "too few sectors addressed, addressed {} want >= {}",
             sector_count,
-            policy.min_aggregated_sectors
+            min
         ));
     }
     if proof.len() > policy.max_aggregated_proof_size {
@@ -5632,6 +5923,7 @@ impl ActorCode for Actor {
         GetMultiaddrsExported => get_multiaddresses,
         ProveCommitSectors3 => prove_commit_sectors3,
         ProveReplicaUpdates3 => prove_replica_updates3,
+        ProveCommitSectorsNI => prove_commit_sectors_ni,
     }
 }
 

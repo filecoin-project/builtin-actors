@@ -383,6 +383,7 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
     // Checks on sector state.
     let sectors =
         manifests.iter().map(|m| sector_info(v, &maddr, m.sector_number)).collect::<Vec<_>>();
+    info!("sectors: {:#?}", sectors);
     for sector in &sectors {
         assert_eq!(activation_epoch, sector.activation);
         assert_eq!(activation_epoch, sector.power_base_epoch);
