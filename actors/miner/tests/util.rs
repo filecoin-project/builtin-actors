@@ -564,7 +564,7 @@ impl ActorHarness {
 
         ProveCommitSectorsNIParams {
             sectors,
-            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1_Feat_NiPoRep,
+            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep,
             aggregate_proof: make_proof(0),
             aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
             proving_deadline: 0,

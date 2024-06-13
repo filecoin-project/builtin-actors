@@ -454,7 +454,7 @@ impl ProofSet {
             proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1) as usize] = true;
             proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1_Feat_SyntheticPoRep)
                 as usize] = true;
-            proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1_Feat_NiPoRep) as usize] =
+            proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P2_Feat_NiPoRep) as usize] =
                 true;
         }
         ProofSet(proofs)
@@ -464,25 +464,25 @@ impl ProofSet {
         let mut proofs = vec![false; REGISTERED_SEAL_PROOF_VARIANTS];
         #[cfg(feature = "sector-2k")]
         {
-            proofs[i64::from(RegisteredSealProof::StackedDRG2KiBV1P1_Feat_NiPoRep) as usize] = true;
+            proofs[i64::from(RegisteredSealProof::StackedDRG2KiBV1P2_Feat_NiPoRep) as usize] = true;
         }
         #[cfg(feature = "sector-8m")]
         {
-            proofs[i64::from(RegisteredSealProof::StackedDRG8MiBV1P1_Feat_NiPoRep) as usize] = true;
+            proofs[i64::from(RegisteredSealProof::StackedDRG8MiBV1P2_Feat_NiPoRep) as usize] = true;
         }
         #[cfg(feature = "sector-512m")]
         {
-            proofs[i64::from(RegisteredSealProof::StackedDRG512MiBV1P1_Feat_NiPoRep) as usize] =
+            proofs[i64::from(RegisteredSealProof::StackedDRG512MiBV1P2_Feat_NiPoRep) as usize] =
                 true;
         }
         #[cfg(feature = "sector-32g")]
         {
-            proofs[i64::from(RegisteredSealProof::StackedDRG32GiBV1P1_Feat_NiPoRep) as usize] =
+            proofs[i64::from(RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep) as usize] =
                 true;
         }
         #[cfg(feature = "sector-64g")]
         {
-            proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1_Feat_NiPoRep) as usize] =
+            proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P2_Feat_NiPoRep) as usize] =
                 true;
         }
         ProofSet(proofs)

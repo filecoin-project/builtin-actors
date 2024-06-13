@@ -1,17 +1,11 @@
-use fil_actors_runtime::{
-    actor_error, cbor::serialize, test_utils::expect_empty, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-};
+use fil_actors_runtime::cbor::serialize;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{
-    clock::ChainEpoch,
-    commcid::cid_to_replica_commitment_v1,
-    error::ExitCode,
-    randomness::Randomness,
-    sector::{AggregateSealVerifyInfo, SealVerifyInfo},
-    METHOD_SEND,
+    clock::ChainEpoch, commcid::cid_to_replica_commitment_v1, error::ExitCode,
+    randomness::Randomness, sector::AggregateSealVerifyInfo,
 };
 
-use fil_actor_miner::{aggregate_prove_commit_network_fee, Actor, CompactCommD, Method};
+use fil_actor_miner::{Actor, CompactCommD, Method};
 use log::info;
 use util::*;
 
