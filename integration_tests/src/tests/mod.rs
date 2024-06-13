@@ -38,5 +38,7 @@ mod withdraw_balance_test;
 pub use withdraw_balance_test::*;
 mod prove_commit3_test;
 pub use prove_commit3_test::*;
+mod prove_commit_niporep_test;
+pub use prove_commit_niporep_test::*;
 mod replica_update3_test;
 pub use replica_update3_test::*;

@@ -553,6 +553,55 @@ impl State {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn assign_sectors_to_deadline<BS: Blockstore>(
+        &mut self,
+        policy: &Policy,
+        store: &BS,
+        current_epoch: ChainEpoch,
+        mut sectors: Vec<SectorOnChainInfo>,
+        partition_size: u64,
+        sector_size: SectorSize,
+        deadline_idx: u64,
+    ) -> Result<(), ActorError> {
+        let mut deadlines = self.load_deadlines(store)?;
+        let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
+
+        // Sort sectors by number to get better runs in partition bitfields.
+        sectors.sort_by_key(|info| info.sector_number);
+
+        if !deadline_is_mutable(
+            policy,
+            self.current_proving_period_start(policy, current_epoch),
+            deadline_idx,
+            current_epoch,
+        ) {
+            return Err(actor_error!(
+                illegal_argument,
+                "proving deadline {} must not be the current or next deadline ",
+                deadline_idx
+            ));
+        }
+
+        let quant = self.quant_spec_for_deadline(policy, deadline_idx);
+        let proven = false;
+        deadline
+            .add_sectors(store, partition_size, proven, &sectors, sector_size, quant)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to add sectors to deadline {}", deadline_idx)
+            })?;
+
+        deadlines
+            .update_deadline(policy, store, deadline_idx, &deadline)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to update deadline {}", deadline_idx)
+            })?;
+        self.save_deadlines(store, deadlines)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || "failed to save deadlines")?;
+
+        Ok(())
+    }
+
     /// Pops up to `max_sectors` early terminated sectors from all deadlines.
     ///
     /// Returns `true` if we still have more early terminations to process.

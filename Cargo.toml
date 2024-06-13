@@ -6,7 +6,7 @@ members = [
      "runtime",
      "test_vm",
      "vm_api",
-     "integration_tests"
+     "integration_tests",
 ]
 
 [workspace.package]
@@ -54,10 +54,16 @@ fil_actors_runtime = { workspace = true }
 num-traits = { workspace = true }
 
 [dependencies]
-clap = { version = "4.3.0", features = ["derive", "std", "help", "usage", "error-context"], default-features = false }
+clap = { version = "4.3.0", features = [
+     "derive",
+     "std",
+     "help",
+     "usage",
+     "error-context",
+], default-features = false }
 
 [features]
-default = [] ## translates to mainnet
+default = []             ## translates to mainnet
 mainnet = []
 caterpillarnet = []
 butterflynet = []
@@ -110,22 +116,27 @@ rlp = { version = "0.5.1", default-features = false }
 substrate-bn = { version = "0.6.0", default-features = false }
 
 # IPLD/Encoding
-cid = { version = "0.10.1", default-features = false, features = ["serde-codec", "std"] }
-multihash = { version = "0.18.1", default-features = false , features = ["multihash-impl"]}
+cid = { version = "0.10.1", default-features = false, features = [
+     "serde-codec",
+     "std",
+] }
+multihash = { version = "0.18.1", default-features = false, features = [
+     "multihash-impl",
+] }
 libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 integer-encoding = { version = "3.0.3", default-features = false }
 
 # helix-onchain
-fvm_actor_utils = "9.0.0"
-frc42_dispatch = "5.0.0"
-frc46_token = "9.0.0"
+fvm_actor_utils = "11.0.0"
+frc42_dispatch = "7.0.0"
+frc46_token = "11.0.0"
 
 # FVM
-fvm_sdk = "~4.0"
-fvm_shared = "~4.0"
+fvm_sdk = "4.3.0"
+fvm_shared = "4.3.0"
 fvm_ipld_encoding = "0.4.0"
 fvm_ipld_blockstore = "0.2.0"
-fvm_ipld_hamt = "0.8.0"
+fvm_ipld_hamt = "0.9.0"
 fvm_ipld_kamt = "0.3.0"
 fvm_ipld_amt = { version = "0.6.2" }
 fvm_ipld_bitfield = "0.6.0"
@@ -149,7 +160,7 @@ fil_actor_system = { path = "actors/system" }
 fil_actor_verifreg = { path = "actors/verifreg" }
 fil_actors_evm_shared = { path = "actors/evm/shared" }
 fil_actors_runtime = { path = "runtime" }
-fil_builtin_actors_state = { path = "state"}
+fil_builtin_actors_state = { path = "state" }
 fil_actors_integration_tests = { version = "1.0.0", path = "integration_tests" }
 vm_api = { version = "1.0.0", path = "vm_api" }
 test_vm = { path = "test_vm" }

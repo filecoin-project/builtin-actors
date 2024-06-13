@@ -150,6 +150,11 @@ pub fn sector_info(v: &dyn VM, m: &Address, s: SectorNumber) -> SectorOnChainInf
     st.get_sector(&DynBlockstore::wrap(v.blockstore()), s).unwrap().unwrap()
 }
 
+pub fn try_sector_info(v: &dyn VM, m: &Address, s: SectorNumber) -> Option<SectorOnChainInfo> {
+    let st: MinerState = get_state(v, m).unwrap();
+    st.get_sector(&DynBlockstore::wrap(v.blockstore()), s).unwrap()
+}
+
 pub fn miner_power(v: &dyn VM, m: &Address) -> PowerPair {
     let st: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
     let claim = st.get_claim(&DynBlockstore::wrap(v.blockstore()), m).unwrap().unwrap();
