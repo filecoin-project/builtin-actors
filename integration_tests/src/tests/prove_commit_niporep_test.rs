@@ -15,7 +15,8 @@ use vm_api::util::apply_ok;
 use vm_api::VM;
 
 use crate::util::{
-    create_accounts, create_miner, override_compute_unsealed_sector_cid, sector_info,
+    create_accounts, create_miner, deadline_state, override_compute_unsealed_sector_cid,
+    sector_info,
 };
 
 #[vm_test]
@@ -47,6 +48,7 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
         first_sector_number + 3,
         first_sector_number + 4,
     ];
+    let proving_deadline = 7;
 
     let sectors_info: Vec<SectorNIActivationInfo> = manifests
         .iter()
@@ -67,7 +69,7 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
         seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep,
         aggregate_proof,
         aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
-        proving_deadline: 0,
+        proving_deadline,
         require_activation_success: true,
     };
 
@@ -112,4 +114,7 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
         assert_eq!(activation_epoch, on_chain_sector.power_base_epoch);
         assert!(on_chain_sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER));
     }
+
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    assert_eq!(deadline.live_sectors, manifests.len() as u64);
 }

@@ -21,7 +21,9 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::commcid::{
+    cid_to_replica_commitment_v1, FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED,
+};
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::deal::DealID;
@@ -545,6 +547,7 @@ impl ActorHarness {
         sector_nums: &[SectorNumber],
         seal_rand_epoch: ChainEpoch,
         expiration: ChainEpoch,
+        proving_deadline: u64,
     ) -> ProveCommitSectorsNIParams {
         fn make_proof(i: u8) -> RawBytes {
             RawBytes::new(vec![i, i, i, i])
@@ -567,7 +570,7 @@ impl ActorHarness {
             seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep,
             aggregate_proof: make_proof(0),
             aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
-            proving_deadline: 0,
+            proving_deadline,
             require_activation_success: true,
         }
     }
@@ -846,8 +849,40 @@ impl ActorHarness {
         &self,
         rt: &MockRuntime,
         params: ProveCommitSectorsNIParams,
+        first_for_miner: bool,
     ) -> Result<(), ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        let randomness = Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.to_vec());
+
+        let entropy = serialize(&rt.receiver, "address for get verify info").unwrap();
+
+        params.sectors.iter().for_each(|s| {
+            rt.expect_get_randomness_from_tickets(
+                fil_actors_runtime::runtime::DomainSeparationTag::SealRandomness,
+                s.seal_rand_epoch,
+                entropy.to_vec(),
+                TEST_RANDOMNESS_ARRAY_FROM_ONE,
+            )
+        });
+
+        let seal_verify_info = params
+            .sectors
+            .iter()
+            .map(|sector| AggregateSealVerifyInfo {
+                sector_number: sector.sector_number,
+                randomness: randomness.clone(),
+                interactive_randomness: Randomness(
+                    cid_to_replica_commitment_v1(&sector.sealed_cid).unwrap().to_vec(),
+                ),
+                sealed_cid: sector.sealed_cid.clone(),
+                unsealed_cid: CompactCommD::empty().get_cid(params.seal_proof_type).unwrap(),
+            })
+            .collect::<Vec<_>>();
+
+        rt.expect_aggregate_verify_seals(seal_verify_info, params.aggregate_proof.to_vec(), Ok(()));
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
         self.expect_query_network_info(rt);
 
         let aggregate_fee =
@@ -861,21 +896,23 @@ impl ActorHarness {
             ExitCode::OK,
         );
 
-        let state = self.get_state(rt);
-        let dlinfo = new_deadline_info_from_offset_and_epoch(
-            &rt.policy,
-            state.proving_period_start,
-            *rt.epoch.borrow(),
-        );
-        let cron_params = make_deadline_cron_event_params(dlinfo.last());
-        rt.expect_send_simple(
-            STORAGE_POWER_ACTOR_ADDR,
-            PowerMethod::EnrollCronEvent as u64,
-            IpldBlock::serialize_cbor(&cron_params).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
+        if first_for_miner {
+            let state = self.get_state(rt);
+            let dlinfo = new_deadline_info_from_offset_and_epoch(
+                &rt.policy,
+                state.proving_period_start,
+                *rt.epoch.borrow(),
+            );
+            let cron_params = make_deadline_cron_event_params(dlinfo.last());
+            rt.expect_send_simple(
+                STORAGE_POWER_ACTOR_ADDR,
+                PowerMethod::EnrollCronEvent as u64,
+                IpldBlock::serialize_cbor(&cron_params).unwrap(),
+                TokenAmount::zero(),
+                None,
+                ExitCode::OK,
+            );
+        }
 
         let result = rt.call::<Actor>(
             Method::ProveCommitSectorsNI as u64,

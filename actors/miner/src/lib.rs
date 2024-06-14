@@ -2058,6 +2058,27 @@ impl Actor {
         let info = get_miner_info(rt.store(), &state)?;
         let activation_epoch = rt.curr_epoch();
 
+        if params.proving_deadline >= policy.wpost_period_deadlines {
+            return Err(actor_error!(
+                illegal_state,
+                "proving deadline index {} invalid",
+                params.proving_deadline
+            ));
+        }
+
+        if !deadline_is_mutable(
+            policy,
+            state.current_proving_period_start(policy, curr_epoch),
+            params.proving_deadline,
+            curr_epoch,
+        ) {
+            return Err(actor_error!(
+                illegal_argument,
+                "proving deadline {} must not be the current or next deadline ",
+                params.proving_deadline
+            ));
+        }
+
         if consensus_fault_active(&info, rt.curr_epoch()) {
             return Err(actor_error!(
                 forbidden,
@@ -2147,7 +2168,7 @@ impl Actor {
             INITIAL_PLEDGE_PROJECTION_PERIOD,
         );
 
-        let sectors_to_add = params
+        let mut sectors_to_add = params
             .sectors
             .iter()
             .map(|sector| SectorOnChainInfo {
@@ -2195,17 +2216,19 @@ impl Actor {
                 .put_sectors(store, sectors_to_add.clone())
                 .with_context_code(ExitCode::USR_ILLEGAL_STATE, || "failed to put new sectors")?;
 
+            sectors_to_add.sort_by_key(|info| info.sector_number);
             state
-                .assign_sectors_to_deadlines(
+                .assign_sectors_to_deadline(
                     policy,
                     store,
                     rt.curr_epoch(),
                     sectors_to_add,
                     info.window_post_partition_sectors,
                     info.sector_size,
+                    params.proving_deadline,
                 )
                 .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    "failed to assign new sectors to deadlines"
+                    format!("failed to assign new sectors to deadline {}", params.proving_deadline)
                 })?;
 
             state
