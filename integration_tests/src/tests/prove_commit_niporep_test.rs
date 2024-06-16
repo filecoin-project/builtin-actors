@@ -7,13 +7,14 @@ use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof, SectorNu
 use num_traits::Zero;
 
 use export_macro::vm_test;
-use fil_actor_miner::{Method as MinerMethod, SectorOnChainInfoFlags};
+use fil_actor_miner::{CompactCommD, Method as MinerMethod, SectorOnChainInfoFlags};
 use fil_actor_miner::{ProveCommitSectorsNIParams, SectorNIActivationInfo};
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use vm_api::trace::ExpectInvocation;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::apply_ok;
 use vm_api::VM;
 
+use crate::expects::Expect;
 use crate::util::{
     create_accounts, create_miner, deadline_state, override_compute_unsealed_sector_cid,
     sector_info,
@@ -85,13 +86,27 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
         Some(params.clone()),
     );
 
+    let unsealed_cid = CompactCommD::empty().get_cid(params.seal_proof_type).unwrap();
+    let events: Vec<EmittedEvent> = manifests
+        .iter()
+        .map(|sector_number| {
+            Expect::build_sector_activation_event(
+                "sector-activated",
+                miner_id,
+                *sector_number,
+                Some(unsealed_cid),
+                &vec![],
+            )
+        })
+        .collect();
+
     ExpectInvocation {
         from: worker_id,
         to: maddr,
         method: MinerMethod::ProveCommitSectorsNI as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         subinvocs: None,
-        events: None,
+        events: Some(events),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

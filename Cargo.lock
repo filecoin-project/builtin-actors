@@ -1903,8 +1903,9 @@ dependencies = [
 
 [[package]]
 name = "frc42_dispatch"
-version = "6.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=rvagg/nv23#68c943512804ada7289aeb2ac5f7c64ec5ec5aee"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b9567f7b38af6f277072c9ea230f7c5be12237905ef19348f4b490f563f3fef"
 dependencies = [
  "frc42_hasher",
  "frc42_macros",
@@ -1916,8 +1917,9 @@ dependencies = [
 
 [[package]]
 name = "frc42_hasher"
-version = "4.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=rvagg/nv23#68c943512804ada7289aeb2ac5f7c64ec5ec5aee"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "238a28ff638f138c4b4c75f4d35cd28cedcb45858cfcaa4df36dc25b0b3298db"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
@@ -1926,8 +1928,9 @@ dependencies = [
 
 [[package]]
 name = "frc42_macros"
-version = "4.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=rvagg/nv23#68c943512804ada7289aeb2ac5f7c64ec5ec5aee"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c07758f10c4a85a14b59c1c2d63d6200122f144b42e495dabdc997bf1c917e62"
 dependencies = [
  "blake2b_simd",
  "frc42_hasher",
@@ -1938,8 +1941,9 @@ dependencies = [
 
 [[package]]
 name = "frc46_token"
-version = "10.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=rvagg/nv23#68c943512804ada7289aeb2ac5f7c64ec5ec5aee"
+version = "11.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af558bacb4e00ac1aa47115464f2bfa3d8dbd2a3b032dc325d20eaaaa22522e7"
 dependencies = [
  "cid 0.10.1",
  "frc42_dispatch",
@@ -2088,8 +2092,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_actor_utils"
-version = "10.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=rvagg/nv23#68c943512804ada7289aeb2ac5f7c64ec5ec5aee"
+version = "11.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe8cad6375c09395099f25313600a53b1012a29595f9666a48c00eba7a8adaf9"
 dependencies = [
  "anyhow",
  "cid 0.10.1",

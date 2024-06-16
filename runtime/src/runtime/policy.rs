@@ -311,11 +311,11 @@ pub mod policy_constants {
     // a non-interactive PoRep proof. This balances the need to tie the seal to a particular chain with
     // but makes allowance for service providers to offer pre-sealed sectors within a larger window of
     // time.
-    pub const MAX_PROVE_COMMIT_NI_LOOKBACK: ChainEpoch = 180 * EPOCHS_IN_DAY + CHAIN_FINALITY;
+    pub const MAX_PROVE_COMMIT_NI_LOOKBACK: ChainEpoch = 180 * EPOCHS_IN_DAY;
 
     pub const MAX_AGGREGATED_SECTORS_NI: u64 = 65;
 
-    pub const MIN_AGGREGATED_SECTORS_NI: u64 = 2;
+    pub const MIN_AGGREGATED_SECTORS_NI: u64 = 1;
 
     // This lookback exists so that deadline windows can be non-overlapping (which make the programming simpler)
     // but without making the miner wait for chain stability before being able to start on PoSt computation.

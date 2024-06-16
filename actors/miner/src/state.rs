@@ -553,6 +553,7 @@ impl State {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn assign_sectors_to_deadline<BS: Blockstore>(
         &mut self,
         policy: &Policy,
@@ -583,10 +584,10 @@ impl State {
             .into());
         }
 
-        let quant = self.quant_spec_for_deadline(policy, deadline_idx as u64);
+        let quant = self.quant_spec_for_deadline(policy, deadline_idx);
         let proven = false;
         deadline.add_sectors(store, partition_size, proven, &sectors, sector_size, quant)?;
-        deadlines.update_deadline(policy, store, deadline_idx as u64, &deadline)?;
+        deadlines.update_deadline(policy, store, deadline_idx, &deadline)?;
         self.save_deadlines(store, deadlines)?;
 
         Ok(())

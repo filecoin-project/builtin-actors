@@ -854,6 +854,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         let randomness = Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.to_vec());
+        let unsealed_cid = CompactCommD::empty().get_cid(params.seal_proof_type).unwrap();
 
         let entropy = serialize(&rt.receiver, "address for get verify info").unwrap();
 
@@ -863,7 +864,15 @@ impl ActorHarness {
                 s.seal_rand_epoch,
                 entropy.to_vec(),
                 TEST_RANDOMNESS_ARRAY_FROM_ONE,
-            )
+            );
+
+            expect_sector_event(
+                rt,
+                "sector-activated",
+                &s.sealing_number,
+                Some(unsealed_cid.clone()),
+                &vec![],
+            );
         });
 
         let seal_verify_info = params

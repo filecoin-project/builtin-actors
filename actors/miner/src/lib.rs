@@ -1965,10 +1965,6 @@ impl Actor {
         let policy = rt.policy();
         let miner_id = rt.message().receiver().id().unwrap();
 
-        if params.sectors.is_empty() {
-            return Err(actor_error!(illegal_argument, "batch empty"));
-        }
-
         if !can_prove_commit_ni_seal_proof(rt.policy(), params.seal_proof_type) {
             return Err(actor_error!(
                 illegal_argument,
@@ -1977,30 +1973,8 @@ impl Actor {
             ));
         }
 
-        if params.aggregate_proof.is_empty() {
-            return Err(actor_error!(illegal_argument, "aggregate proof must be non-empty"));
-        }
-
         if params.aggregate_proof_type != RegisteredAggregateProof::SnarkPackV2 {
             return Err(actor_error!(illegal_argument, "aggregate proof type must be SnarkPackV2"));
-        }
-
-        let sector_count = params.sectors.len() as u64;
-        if sector_count > policy.max_aggregated_sectors_ni {
-            return Err(actor_error!(
-                illegal_argument,
-                "too many sectors addressed, addressed {} want <= {}",
-                sector_count,
-                policy.max_aggregated_sectors
-            ));
-        }
-        if sector_count < policy.min_aggregated_sectors_ni {
-            return Err(actor_error!(
-                illegal_argument,
-                "too few sectors addressed, addressed {} want >= {}",
-                sector_count,
-                policy.min_aggregated_sectors_ni
-            ));
         }
 
         validate_seal_aggregate_proof(
@@ -2013,14 +1987,14 @@ impl Actor {
         if params.sectors.iter().any(|sector| sector.sealer_id != miner_id) {
             return Err(actor_error!(
                 illegal_argument,
-                "all sectors must be sealed for the same receiver actor"
+                "sealer must be the same as the receiver actor for all sectors"
             ));
         }
 
         if params.sectors.iter().any(|sector| sector.sector_number != sector.sealing_number) {
             return Err(actor_error!(
                 illegal_argument,
-                "all sealing number must be same as sector numbers"
+                "sealing number must be same as sector number for all sectors"
             ));
         }
 
@@ -2146,14 +2120,6 @@ impl Actor {
             epoch_reward: rew.this_epoch_reward_smoothed,
         };
 
-        let initial_pledge = initial_pledge_for_power(
-            &base_sector_power,
-            &pledge_inputs.network_baseline,
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &pledge_inputs.circulating_supply,
-        );
-
         let day_reward = expected_reward_for_power(
             &pledge_inputs.epoch_reward,
             &pledge_inputs.network_qap,
@@ -2168,7 +2134,15 @@ impl Actor {
             INITIAL_PLEDGE_PROJECTION_PERIOD,
         );
 
-        let mut sectors_to_add = params
+        let initial_pledge = initial_pledge_for_power(
+            &base_sector_power,
+            &pledge_inputs.network_baseline,
+            &pledge_inputs.epoch_reward,
+            &pledge_inputs.network_qap,
+            &pledge_inputs.circulating_supply,
+        );
+
+        let sectors_to_add = params
             .sectors
             .iter()
             .map(|sector| SectorOnChainInfo {
@@ -2216,7 +2190,6 @@ impl Actor {
                 .put_sectors(store, sectors_to_add.clone())
                 .with_context_code(ExitCode::USR_ILLEGAL_STATE, || "failed to put new sectors")?;
 
-            sectors_to_add.sort_by_key(|info| info.sector_number);
             state
                 .assign_sectors_to_deadline(
                     policy,
@@ -2245,6 +2218,10 @@ impl Actor {
         })?;
 
         pay_aggregate_seal_proof_fee(rt, sectors_len)?;
+
+        for sector in params.sectors.iter() {
+            emit::sector_activated(rt, sector.sector_number, Some(unsealed_cid), &[])?;
+        }
 
         if needs_cron {
             let new_dl_info = state.deadline_info(rt.policy(), curr_epoch);
