@@ -42,7 +42,7 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
     let expiration = v.epoch() + policy.min_sector_expiration;
     let seal_rand_epoch = v.epoch();
     let first_sector_number: SectorNumber = 100;
-    let manifests = vec![
+    let manifests = [
         first_sector_number,
         first_sector_number + 1,
         first_sector_number + 2,
