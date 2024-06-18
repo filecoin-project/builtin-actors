@@ -14,7 +14,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
-    RegisteredUpdateProof, SectorNumber, SectorSize,
+    RegisteredUpdateProof, SectorNumber, SectorSize, StoragePower,
 };
 use fvm_shared::ActorID;
 use serde::{Deserialize, Serialize};
@@ -86,6 +86,15 @@ pub struct ChangePeerIDParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ChangeMultiaddrsParams {
     pub new_multi_addrs: Vec<BytesDe>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ConfirmSectorProofsParams {
+    pub sectors: Vec<SectorNumber>,
+    pub reward_smoothed: FilterEstimate,
+    #[serde(with = "bigint_ser")]
+    pub reward_baseline_power: StoragePower,
+    pub quality_adj_power_smoothed: FilterEstimate,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
