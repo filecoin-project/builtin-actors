@@ -39,8 +39,9 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
     let policy = Policy::default();
 
     // Onboard a batch of sectors
-    let expiration = v.epoch() + policy.min_sector_expiration;
     let seal_rand_epoch = v.epoch();
+    let activation_epoch = seal_rand_epoch + policy.max_prove_commit_ni_randomness_lookback / 2;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
     let first_sector_number: SectorNumber = 100;
     let sector_nos = [
         first_sector_number,
@@ -74,7 +75,6 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
         require_activation_success: true,
     };
 
-    let activation_epoch = v.epoch() + policy.max_prove_commit_ni_randomness_lookback / 2;
     v.set_epoch(activation_epoch);
 
     apply_ok(

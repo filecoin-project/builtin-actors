@@ -1,3 +1,4 @@
+use fil_actors_runtime::runtime::RuntimePolicy;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{bigint::BigInt, clock::ChainEpoch, error::ExitCode};
 
@@ -15,15 +16,16 @@ fn prove_zero_sectors_ni_fail() {
     let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
     let miner = rt.receiver.id().unwrap();
+    let policy = rt.policy();
 
     let seal_randomness_epoch = PERIOD_OFFSET + 1;
-    let expiration = seal_randomness_epoch + 1000;
+    let activation_epoch = seal_randomness_epoch + 400;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
 
     rt.set_epoch(seal_randomness_epoch);
     h.construct_and_verify(&rt);
 
-    rt.set_epoch(seal_randomness_epoch + 400);
-
+    rt.set_epoch(activation_epoch);
     let params = h.make_prove_commit_ni_params(miner, &[], seal_randomness_epoch, expiration, 0);
 
     let res = rt.call::<Actor>(
@@ -41,14 +43,16 @@ fn prove_one_sector_aggregate_ni() {
     let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
     let miner = rt.receiver.id().unwrap();
+    let policy = rt.policy();
 
     let seal_randomness_epoch = PERIOD_OFFSET + 1;
-    let expiration = seal_randomness_epoch + 1000;
+    let activation_epoch = seal_randomness_epoch + 400;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
 
     rt.set_epoch(seal_randomness_epoch);
     h.construct_and_verify(&rt);
 
-    rt.set_epoch(seal_randomness_epoch + 400);
+    rt.set_epoch(activation_epoch);
 
     let sector_nums = (0..1).collect::<Vec<_>>();
     let params =
@@ -67,20 +71,47 @@ fn prove_one_sector_aggregate_ni() {
 }
 
 #[test]
+fn prove_sectors_ni_short_duration_fail() {
+    let h = ActorHarness::new(PERIOD_OFFSET);
+    let rt = h.new_runtime();
+    rt.balance.replace(BIG_BALANCE.clone());
+    let miner = rt.receiver.id().unwrap();
+    let policy = rt.policy();
+
+    let seal_randomness_epoch = PERIOD_OFFSET + 1;
+    let activation_epoch = seal_randomness_epoch + 400;
+    let expiration = activation_epoch + policy.min_sector_expiration - 1;
+
+    rt.set_epoch(seal_randomness_epoch);
+    h.construct_and_verify(&rt);
+
+    rt.set_epoch(activation_epoch);
+
+    let sector_nums = (0..1).collect::<Vec<_>>();
+    let params =
+        h.make_prove_commit_ni_params(miner, &sector_nums, seal_randomness_epoch, expiration, 0);
+
+    let res = h.prove_commit_sectors_ni(&rt, params, true, 0);
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+}
+
+#[test]
 fn prove_sectors_max_aggregate_ni() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
     let miner = rt.receiver.id().unwrap();
+    let policy = rt.policy();
 
     let seal_randomness_epoch = PERIOD_OFFSET + 1;
-    let expiration = seal_randomness_epoch + 1000;
+    let activation_epoch = seal_randomness_epoch + 400;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
     let proving_deadline = 42;
 
     rt.set_epoch(seal_randomness_epoch);
     h.construct_and_verify(&rt);
 
-    let activation_epoch = seal_randomness_epoch + 400;
     rt.set_epoch(activation_epoch);
 
     let sector_nums = (0..rt.policy.max_aggregated_sectors_ni).collect::<Vec<_>>();
@@ -139,15 +170,16 @@ fn ni_prove_partialy_valid_sectors_not_required_activation() {
     let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
     let miner = rt.receiver.id().unwrap();
+    let policy = rt.policy();
 
     let seal_randomness_epoch = PERIOD_OFFSET + 1;
-    let expiration = seal_randomness_epoch + 1000;
+    let activation_epoch = seal_randomness_epoch + 400;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
     let proving_deadline = 42;
 
     rt.set_epoch(seal_randomness_epoch);
     h.construct_and_verify(&rt);
 
-    let activation_epoch = seal_randomness_epoch + 400;
     rt.set_epoch(activation_epoch);
 
     let sector_nums = (0..rt.policy.max_aggregated_sectors_ni).collect::<Vec<_>>();
@@ -209,15 +241,16 @@ fn ni_prove_partialy_valid_sectors_required_activation() {
     let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
     let miner = rt.receiver.id().unwrap();
+    let policy = rt.policy();
 
     let seal_randomness_epoch = PERIOD_OFFSET + 1;
-    let expiration = seal_randomness_epoch + 1000;
+    let activation_epoch = seal_randomness_epoch + 400;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
     let proving_deadline = 42;
 
     rt.set_epoch(seal_randomness_epoch);
     h.construct_and_verify(&rt);
 
-    let activation_epoch = seal_randomness_epoch + 400;
     rt.set_epoch(activation_epoch);
 
     let sector_nums = (0..rt.policy.max_aggregated_sectors_ni).collect::<Vec<_>>();
@@ -244,15 +277,16 @@ fn prove_sectors_multiple_max_aggregate_ni() {
     let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
     let miner = rt.receiver.id().unwrap();
+    let policy = rt.policy();
 
     let seal_randomness_epoch = PERIOD_OFFSET + 1;
-    let expiration = seal_randomness_epoch + 1000;
+    let activation_epoch = seal_randomness_epoch + 400;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
     let proving_deadline = 42;
 
     rt.set_epoch(seal_randomness_epoch);
     h.construct_and_verify(&rt);
 
-    let activation_epoch = seal_randomness_epoch + 400;
     rt.set_epoch(activation_epoch);
 
     // Iterating multiple times to verify that the all sectors will be in the same deadline
@@ -310,14 +344,16 @@ fn prove_too_much_sector_ni_fail() {
     let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
     let miner = rt.receiver.id().unwrap();
+    let policy = rt.policy();
 
     let seal_randomness_epoch = PERIOD_OFFSET + 1;
-    let expiration = seal_randomness_epoch + 1000;
+    let activation_epoch = seal_randomness_epoch + 400;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
 
     rt.set_epoch(seal_randomness_epoch);
     h.construct_and_verify(&rt);
 
-    rt.set_epoch(seal_randomness_epoch + 400);
+    rt.set_epoch(activation_epoch);
 
     let sector_nums = (0..rt.policy.max_aggregated_sectors_ni + 1).collect::<Vec<_>>();
 

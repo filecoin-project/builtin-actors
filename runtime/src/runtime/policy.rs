@@ -212,7 +212,7 @@ impl Default for Policy {
             chain_finality: policy_constants::CHAIN_FINALITY,
 
             valid_post_proof_type: ProofSet::default_post_proofs(),
-            valid_pre_commit_proof_type: ProofSet::default_seal_proofs(),
+            valid_pre_commit_proof_type: ProofSet::default_precommit_seal_proofs(),
             minimum_verified_allocation_size: StoragePower::from_i32(
                 policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE,
             )
@@ -421,7 +421,7 @@ impl ProofSet {
     }
 
     /// Create a `ProofSet` for enabled `RegisteredSealProof`s
-    pub fn default_seal_proofs() -> Self {
+    pub fn default_precommit_seal_proofs() -> Self {
         let mut proofs = vec![false; REGISTERED_SEAL_PROOF_VARIANTS];
         #[cfg(feature = "sector-2k")]
         {
@@ -454,8 +454,6 @@ impl ProofSet {
             proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1) as usize] = true;
             proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1_Feat_SyntheticPoRep)
                 as usize] = true;
-            proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P2_Feat_NiPoRep) as usize] =
-                true;
         }
         ProofSet(proofs)
     }

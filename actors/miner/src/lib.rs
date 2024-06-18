@@ -2002,7 +2002,7 @@ impl Actor {
         if consensus_fault_active(&info, rt.curr_epoch()) {
             return Err(actor_error!(
                 forbidden,
-                "prove-commit-ni not allowed during active consensus fault"
+                "ProveCommitSectorsNI not allowed during active consensus fault"
             ));
         }
 
@@ -4875,6 +4875,7 @@ fn validate_ni_sectors(
     seal_proof_type: RegisteredSealProof,
     all_or_nothing: bool,
 ) -> Result<(BatchReturn, Vec<SectorSealProofInput>), ActorError> {
+    let policy = rt.policy();
     let receiver = rt.message().receiver();
     let miner_id = receiver.id().unwrap();
     let curr_epoch = rt.curr_epoch();
@@ -4890,6 +4891,18 @@ fn validate_ni_sectors(
     let mut verify_infos = vec![];
     for (i, sector) in sectors.iter().enumerate() {
         let mut fail_validation = false;
+
+        let duration = sector.expiration - curr_epoch;
+        if duration < policy.min_sector_expiration {
+            return Err(actor_error!(
+                illegal_argument,
+                "NI commit sector {} has lifetime {} less than minimum {}. ignoring",
+                sector.sector_number,
+                duration,
+                policy.min_sector_expiration
+            ));
+        }
+
         if sector.sealer_id != miner_id {
             warn!("sealer must be the same as the receiver actor for all sectors");
             fail_validation = true;
