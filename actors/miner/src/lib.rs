@@ -2123,19 +2123,15 @@ impl Actor {
                 .put_sectors(store, sectors_to_add.clone())
                 .with_context_code(ExitCode::USR_ILLEGAL_STATE, || "failed to put new sectors")?;
 
-            state
-                .assign_sectors_to_deadline(
-                    policy,
-                    store,
-                    rt.curr_epoch(),
-                    sectors_to_add,
-                    info.window_post_partition_sectors,
-                    info.sector_size,
-                    params.proving_deadline,
-                )
-                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    format!("failed to assign new sectors to deadline {}", params.proving_deadline)
-                })?;
+            state.assign_sectors_to_deadline(
+                policy,
+                store,
+                rt.curr_epoch(),
+                sectors_to_add,
+                info.window_post_partition_sectors,
+                info.sector_size,
+                params.proving_deadline,
+            )?;
 
             state
                 .add_initial_pledge(&total_pledge)
