@@ -102,7 +102,12 @@ pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<
         | StackedDRG2KiBV1P1_Feat_SyntheticPoRep
         | StackedDRG8MiBV1P1_Feat_SyntheticPoRep
         | StackedDRG512MiBV1P1_Feat_SyntheticPoRep
-        | StackedDRG64GiBV1P1_Feat_SyntheticPoRep => Some(EPOCHS_IN_YEAR * 5),
+        | StackedDRG64GiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG32GiBV1P2_Feat_NiPoRep
+        | StackedDRG2KiBV1P2_Feat_NiPoRep
+        | StackedDRG8MiBV1P2_Feat_NiPoRep
+        | StackedDRG512MiBV1P2_Feat_NiPoRep
+        | StackedDRG64GiBV1P2_Feat_NiPoRep => Some(EPOCHS_IN_YEAR * 5),
         _ => None,
     }
 }

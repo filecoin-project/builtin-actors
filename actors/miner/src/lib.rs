@@ -4875,10 +4875,10 @@ fn validate_ni_sectors(
     seal_proof_type: RegisteredSealProof,
     all_or_nothing: bool,
 ) -> Result<(BatchReturn, Vec<SectorSealProofInput>), ActorError> {
-    let policy = rt.policy();
     let receiver = rt.message().receiver();
     let miner_id = receiver.id().unwrap();
     let curr_epoch = rt.curr_epoch();
+    let activation_epoch = curr_epoch;
     let challenge_earliest = curr_epoch - rt.policy().max_prove_commit_ni_randomness_lookback;
     let unsealed_cid = CompactCommD::empty().get_cid(seal_proof_type).unwrap();
     let entropy = serialize(&receiver, "address for get verify info")?;
@@ -4892,15 +4892,15 @@ fn validate_ni_sectors(
     for (i, sector) in sectors.iter().enumerate() {
         let mut fail_validation = false;
 
-        let duration = sector.expiration - curr_epoch;
-        if duration < policy.min_sector_expiration {
-            return Err(actor_error!(
-                illegal_argument,
-                "NI commit sector {} has lifetime {} less than minimum {}. ignoring",
-                sector.sector_number,
-                duration,
-                policy.min_sector_expiration
-            ));
+        if let Err(err) = validate_expiration(
+            rt.policy(),
+            curr_epoch,
+            activation_epoch,
+            sector.expiration,
+            seal_proof_type,
+        ) {
+            warn!("invalid expiration: {}", err);
+            fail_validation = true;
         }
 
         if sector.sealer_id != miner_id {
