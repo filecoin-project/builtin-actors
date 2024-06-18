@@ -4889,8 +4889,22 @@ fn validate_ni_sectors(
     let mut batch = BatchReturnGen::new(sectors.len());
 
     let mut verify_infos = vec![];
+    let mut sector_numbers = BitField::new();
     for (i, sector) in sectors.iter().enumerate() {
         let mut fail_validation = false;
+
+        let set = sector_numbers.get(sector.sector_number);
+        if set {
+            warn!("duplicate sector number {}", sector.sector_number);
+            fail_validation = true;
+        }
+
+        if sector.sector_number > MAX_SECTOR_NUMBER {
+            warn!("sector number {} out of range 0..(2^63-1)", sector.sector_number);
+            fail_validation = true;
+        }
+
+        sector_numbers.set(sector.sector_number);
 
         if let Err(err) = validate_expiration(
             rt.policy(),
