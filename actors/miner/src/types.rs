@@ -213,6 +213,12 @@ pub struct ProveCommitSectors3Return {
     pub activation_results: BatchReturn,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ProveCommitSectorsNIReturn {
+    pub activation_results: BatchReturn,
+}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CheckSectorProvenParams {
     pub sector_number: SectorNumber,

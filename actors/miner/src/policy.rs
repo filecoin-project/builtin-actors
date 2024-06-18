@@ -162,7 +162,7 @@ pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> Stor
     qa_power_for_weight(size, duration, &sector.deal_weight, &sector.verified_deal_weight)
 }
 
-pub fn base_power_for_sector(size: SectorSize) -> StoragePower {
+pub fn raw_power_for_sector(size: SectorSize) -> StoragePower {
     BigInt::from(size as u64)
 }
 

@@ -21,9 +21,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::commcid::{
-    cid_to_replica_commitment_v1, FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED,
-};
+use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::deal::DealID;
@@ -84,8 +82,8 @@ use fil_actor_miner::{
     NO_QUANTIZATION, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
 };
 use fil_actor_miner::{
-    ProveCommitSectorsNIParams, ProveReplicaUpdates3Params, ProveReplicaUpdates3Return,
-    SectorNIActivationInfo,
+    ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn, ProveReplicaUpdates3Params,
+    ProveReplicaUpdates3Return, SectorNIActivationInfo,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -850,7 +848,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         params: ProveCommitSectorsNIParams,
         first_for_miner: bool,
-    ) -> Result<(), ActorError> {
+    ) -> Result<ProveCommitSectorsNIReturn, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         let randomness = Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.to_vec());
@@ -881,9 +879,7 @@ impl ActorHarness {
             .map(|sector| AggregateSealVerifyInfo {
                 sector_number: sector.sector_number,
                 randomness: randomness.clone(),
-                interactive_randomness: Randomness(
-                    cid_to_replica_commitment_v1(&sector.sealed_cid).unwrap().to_vec(),
-                ),
+                interactive_randomness: Randomness(vec![1u8; 32]),
                 sealed_cid: sector.sealed_cid.clone(),
                 unsealed_cid: CompactCommD::empty().get_cid(params.seal_proof_type).unwrap(),
             })
@@ -894,16 +890,18 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
 
-        let aggregate_fee =
-            aggregate_prove_commit_network_fee(params.sectors.len(), &rt.base_fee.borrow());
-        rt.expect_send_simple(
-            BURNT_FUNDS_ACTOR_ADDR,
-            METHOD_SEND,
-            None,
-            aggregate_fee,
-            None,
-            ExitCode::OK,
-        );
+        if params.sectors.len() > 5 {
+            let aggregate_fee =
+                aggregate_prove_commit_network_fee(params.sectors.len() - 5, &rt.base_fee.borrow());
+            rt.expect_send_simple(
+                BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                aggregate_fee,
+                None,
+                ExitCode::OK,
+            );
+        }
 
         if first_for_miner {
             let state = self.get_state(rt);
@@ -926,11 +924,22 @@ impl ActorHarness {
         let result = rt.call::<Actor>(
             Method::ProveCommitSectorsNI as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-        expect_empty(result);
+        );
+
+        let result = result
+            .map(|r| {
+                let ret: ProveCommitSectorsNIReturn = r.unwrap().deserialize().unwrap();
+                assert_eq!(params.sectors.len(), ret.activation_results.size());
+                ret
+            })
+            .or_else(|e| {
+                rt.reset();
+                Err(e)
+            })?;
+
         rt.verify();
 
-        Ok(())
+        Ok(result)
     }
 
     pub fn prove_commit_aggregate_sector(
