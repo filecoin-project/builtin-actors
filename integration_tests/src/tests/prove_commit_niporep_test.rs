@@ -42,7 +42,7 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
     let expiration = v.epoch() + policy.min_sector_expiration;
     let seal_rand_epoch = v.epoch();
     let first_sector_number: SectorNumber = 100;
-    let manifests = [
+    let sector_nos = [
         first_sector_number,
         first_sector_number + 1,
         first_sector_number + 2,
@@ -51,7 +51,7 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
     ];
     let proving_deadline = 7;
 
-    let sectors_info: Vec<SectorNIActivationInfo> = manifests
+    let sectors_info: Vec<SectorNIActivationInfo> = sector_nos
         .iter()
         .map(|sector_number| SectorNIActivationInfo {
             sealing_number: *sector_number,
@@ -87,7 +87,7 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
     );
 
     let unsealed_cid = CompactCommD::empty().get_cid(params.seal_proof_type).unwrap();
-    let events: Vec<EmittedEvent> = manifests
+    let events: Vec<EmittedEvent> = sector_nos
         .iter()
         .map(|sector_number| {
             Expect::build_sector_activation_event(
@@ -112,7 +112,7 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
     .matches(v.take_invocations().last().unwrap());
 
     // Checks on sector state.
-    let sectors = manifests
+    let sectors = sector_nos
         .iter()
         .map(|sector_number| sector_info(v, &maddr, *sector_number))
         .collect::<Vec<_>>();
@@ -131,5 +131,5 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
     }
 
     let deadline = deadline_state(v, &maddr, proving_deadline);
-    assert_eq!(deadline.live_sectors, manifests.len() as u64);
+    assert_eq!(deadline.live_sectors, sector_nos.len() as u64);
 }

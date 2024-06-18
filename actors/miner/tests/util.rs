@@ -559,7 +559,7 @@ impl ActorHarness {
                 sector_number: *sector_num,
                 sealed_cid: make_sector_commr(*sector_num),
                 seal_rand_epoch,
-                expiration: expiration,
+                expiration,
             })
             .collect::<Vec<_>>();
 
@@ -848,6 +848,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         params: ProveCommitSectorsNIParams,
         first_for_miner: bool,
+        fail_count: usize,
     ) -> Result<ProveCommitSectorsNIReturn, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
@@ -891,8 +892,10 @@ impl ActorHarness {
         self.expect_query_network_info(rt);
 
         if params.sectors.len() > 5 {
-            let aggregate_fee =
-                aggregate_prove_commit_network_fee(params.sectors.len() - 5, &rt.base_fee.borrow());
+            let aggregate_fee = aggregate_prove_commit_network_fee(
+                params.sectors.len() - fail_count - 5,
+                &rt.base_fee.borrow(),
+            );
             rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
