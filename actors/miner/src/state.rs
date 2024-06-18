@@ -563,7 +563,7 @@ impl State {
         partition_size: u64,
         sector_size: SectorSize,
         deadline_idx: u64,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         let mut deadlines = self.load_deadlines(store)?;
         let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
 
@@ -586,9 +586,21 @@ impl State {
 
         let quant = self.quant_spec_for_deadline(policy, deadline_idx);
         let proven = false;
-        deadline.add_sectors(store, partition_size, proven, &sectors, sector_size, quant)?;
-        deadlines.update_deadline(policy, store, deadline_idx, &deadline)?;
-        self.save_deadlines(store, deadlines)?;
+        deadline
+            .add_sectors(store, partition_size, proven, &sectors, sector_size, quant)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to add sectors to deadline {}", deadline_idx)
+            })?;
+
+        deadlines
+            .update_deadline(policy, store, deadline_idx, &deadline)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to update deadline {}", deadline_idx)
+            })?;
+        self.save_deadlines(store, deadlines)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to save deadlines")
+            })?;
 
         Ok(())
     }

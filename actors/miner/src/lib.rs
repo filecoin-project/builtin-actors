@@ -1980,7 +1980,7 @@ impl Actor {
 
         if params.proving_deadline >= policy.wpost_period_deadlines {
             return Err(actor_error!(
-                illegal_state,
+                illegal_argument,
                 "proving deadline index {} invalid",
                 params.proving_deadline
             ));
@@ -1993,7 +1993,7 @@ impl Actor {
             curr_epoch,
         ) {
             return Err(actor_error!(
-                illegal_argument,
+                forbidden,
                 "proving deadline {} must not be the current or next deadline ",
                 params.proving_deadline
             ));
@@ -2032,7 +2032,7 @@ impl Actor {
 
         verify_aggregate_seal(
             rt,
-            // All the proof inputs, even for invalid NI commits,
+            // All the proof inputs, even for invalid activations,
             // must be provided as witnesses to the aggregate proof.
             &proof_inputs,
             params.sectors[0].sealer_id,
@@ -2041,7 +2041,8 @@ impl Actor {
             &params.aggregate_proof,
         )?;
 
-        let raw_sector_power = raw_power_for_sector(info.sector_size);
+        // With no data, QA power = raw power
+        let qa_sector_power = raw_power_for_sector(info.sector_size);
 
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
@@ -2053,22 +2054,22 @@ impl Actor {
             epoch_reward: rew.this_epoch_reward_smoothed,
         };
 
-        let day_reward = expected_reward_for_power(
+        let sector_day_reward = expected_reward_for_power(
             &pledge_inputs.epoch_reward,
             &pledge_inputs.network_qap,
-            &raw_sector_power,
+            &qa_sector_power,
             fil_actors_runtime::EPOCHS_IN_DAY,
         );
 
-        let storage_pledge = expected_reward_for_power(
+        let sector_storage_pledge = expected_reward_for_power(
             &pledge_inputs.epoch_reward,
             &pledge_inputs.network_qap,
-            &raw_sector_power,
+            &qa_sector_power,
             INITIAL_PLEDGE_PROJECTION_PERIOD,
         );
 
-        let initial_pledge = initial_pledge_for_power(
-            &raw_sector_power,
+        let sector_initial_pledge = initial_pledge_for_power(
+            &qa_sector_power,
             &pledge_inputs.network_baseline,
             &pledge_inputs.epoch_reward,
             &pledge_inputs.network_qap,
@@ -2086,9 +2087,9 @@ impl Actor {
                 activation: curr_epoch,
                 deal_weight: DealWeight::zero(),
                 verified_deal_weight: DealWeight::zero(),
-                initial_pledge: initial_pledge.clone(),
-                expected_day_reward: day_reward.clone(),
-                expected_storage_pledge: storage_pledge.clone(),
+                initial_pledge: sector_initial_pledge.clone(),
+                expected_day_reward: sector_day_reward.clone(),
+                expected_storage_pledge: sector_storage_pledge.clone(),
                 power_base_epoch: curr_epoch,
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
@@ -2097,7 +2098,7 @@ impl Actor {
             .collect::<Vec<SectorOnChainInfo>>();
         let sectors_len = sectors_to_add.len();
 
-        let total_pledge = BigInt::from(sectors_len) * initial_pledge;
+        let total_pledge = BigInt::from(sectors_len) * sector_initial_pledge;
         let mut needs_cron = false;
 
         rt.transaction(|state: &mut State, rt| {
