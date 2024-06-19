@@ -8,7 +8,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::{RegisteredPoStProof, SealVerifyInfo, StoragePower};
+use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use fvm_shared::ActorID;
 
 use serde::{Deserialize, Serialize};
@@ -58,12 +58,6 @@ pub struct EnrollCronEventParams {
 #[serde(transparent)]
 pub struct UpdatePledgeTotalParams {
     pub pledge_delta: TokenAmount,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
-#[serde(transparent)]
-pub struct SubmitPoRepForBulkVerifyParams {
-    pub seal_info: SealVerifyInfo,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
