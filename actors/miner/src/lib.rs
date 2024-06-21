@@ -1955,7 +1955,6 @@ impl Actor {
         params: InternalSectorSetupForPresealParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
-        
         let st: State = rt.state()?;
         let store = rt.store();
         // This skips missing pre-commits.
