@@ -92,6 +92,7 @@ pub mod power {
     pub const UPDATE_PLEDGE_TOTAL_METHOD: u64 = 6;
     pub const SUBMIT_POREP_FOR_BULK_VERIFY_METHOD: u64 = 8;
     pub const CURRENT_TOTAL_POWER_METHOD: u64 = 9;
+    pub const MINER_RAMP_PARAMS_METHOD: u64 = 10;  // TODO: how to set this value properly??
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct CurrentTotalPowerReturn {
@@ -114,6 +115,11 @@ pub mod power {
         pub raw_byte_delta: StoragePower,
         #[serde(with = "bigint_ser")]
         pub quality_adjusted_delta: StoragePower,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    pub struct MinerRampParamsReturn {
+        pub ramp_duration_epochs: u64
     }
 
     pub const MAX_MINER_PROVE_COMMITS_PER_EPOCH: usize = 200;

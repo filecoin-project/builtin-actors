@@ -811,11 +811,13 @@ impl Actor {
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
         let circulating_supply = rt.total_fil_circ_supply();
+        let ramp_duration_epochs = request_miner_ramp_params(rt)?.ramp_duration_epochs;
         let pledge_inputs = NetworkPledgeInputs {
             network_qap: pwr.quality_adj_power_smoothed,
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
+            ramp_duration_epochs: ramp_duration_epochs,
         };
 
         /*
@@ -1908,11 +1910,13 @@ impl Actor {
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
         let circulating_supply = rt.total_fil_circ_supply();
+        let ramp_duration_epochs = request_miner_ramp_params(rt)?.ramp_duration_epochs;
         let pledge_inputs = NetworkPledgeInputs {
             network_qap: pwr.quality_adj_power_smoothed,
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
+            ramp_duration_epochs: ramp_duration_epochs
         };
         activate_new_sector_infos(
             rt,
@@ -3844,11 +3848,13 @@ where
     let rew = request_current_epoch_block_reward(rt)?;
     let pow = request_current_total_power(rt)?;
     let circulating_supply = rt.total_fil_circ_supply();
+    let ramp_duration_epochs = request_miner_ramp_params(rt)?.ramp_duration_epochs;
     let pledge_inputs = NetworkPledgeInputs {
         network_qap: pow.quality_adj_power_smoothed,
         network_baseline: rew.this_epoch_baseline_power,
         circulating_supply,
         epoch_reward: rew.this_epoch_reward_smoothed,
+        ramp_duration_epochs: ramp_duration_epochs
     };
     let mut power_delta = PowerPair::zero();
     let mut pledge_delta = TokenAmount::zero();
@@ -4045,6 +4051,7 @@ fn update_existing_sector_info(
             &pledge_inputs.epoch_reward,
             &pledge_inputs.network_qap,
             &pledge_inputs.circulating_supply,
+            &pledge_inputs.ramp_duration_epochs,
         ),
     );
     new_sector_info
@@ -4803,6 +4810,21 @@ fn request_current_total_power(
     )
 }
 
+/// Request the ramp duration from the power actor
+fn request_miner_ramp_params(
+    rt: &impl Runtime,
+) -> Result<ext::power::MinerRampParamsReturn, ActorError> {
+    deserialize_block(
+        extract_send_result(rt.send_simple(
+            &STORAGE_POWER_ACTOR_ADDR,
+            ext::power::MINER_RAMP_PARAMS_METHOD,
+            Default::default(),
+            TokenAmount::zero(),
+        ))
+        .map_err(|e| e.wrap("failed to check miner ramp params"))?,
+    )
+}
+
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
 /// The worker must be BLS since the worker key will be used alongside a BLS-VRF.
 fn resolve_worker_address(rt: &impl Runtime, raw: Address) -> Result<ActorID, ActorError> {
@@ -5166,6 +5188,7 @@ fn activate_new_sector_infos(
                 &pledge_inputs.epoch_reward,
                 &pledge_inputs.network_qap,
                 &pledge_inputs.circulating_supply,
+                &pledge_inputs.ramp_duration_epochs,
             );
 
             deposit_to_unlock += pci.pre_commit_deposit.clone();
@@ -5578,6 +5601,7 @@ struct NetworkPledgeInputs {
     pub network_baseline: StoragePower,
     pub circulating_supply: TokenAmount,
     pub epoch_reward: FilterEstimate,
+    pub ramp_duration_epochs: u64
 }
 
 // Note: probably better to push this one level down into state

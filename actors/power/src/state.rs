@@ -44,6 +44,8 @@ pub const CRON_QUEUE_AMT_BITWIDTH: u32 = 6;
 pub type ClaimsMap<BS> = Map2<BS, Address, Claim>;
 pub const CLAIMS_CONFIG: Config = DEFAULT_HAMT_CONFIG;
 
+const RAMP_DURATION_EPOCHS: u64 = 365 * 2880; // 1Y
+
 /// Storage power actor state
 #[derive(Default, Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
@@ -67,6 +69,8 @@ pub struct State {
     pub miner_count: i64,
     /// Number of miners having proven the minimum consensus power.
     pub miner_above_min_power_count: i64,
+
+    pub ramp_duration_epochs: u64,
 
     /// A queue of events to be triggered by cron, indexed by epoch.
     pub cron_event_queue: Cid, // Multimap, (HAMT[ChainEpoch]AMT[CronEvent]

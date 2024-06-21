@@ -316,6 +316,13 @@ impl Actor {
         Ok(MinerConsensusCountReturn { miner_consensus_count: st.miner_above_min_power_count })
     }
 
+    fn ramp_duration(rt: &impl Runtime) -> Result<u64, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+        
+        Ok(st.ramp_duration_epochs)
+    }
+
     fn process_deferred_cron_events(
         rt: &impl Runtime,
         rewret: ThisEpochRewardReturn,
@@ -438,5 +445,6 @@ impl ActorCode for Actor {
         MinerRawPowerExported => miner_raw_power,
         MinerCountExported => miner_count,
         MinerConsensusCountExported => miner_consensus_count,
+        RampDurationExported => ramp_duration,
     }
 }
