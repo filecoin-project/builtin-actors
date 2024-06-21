@@ -21,6 +21,7 @@ use fil_actor_miner::{
     TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
+use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
@@ -1032,8 +1033,20 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     assert_eq!(vec![100], bf_all(updated_sectors));
 
     let claim_id = 1_u64;
-    let claim_event =
-        Expect::build_verifreg_event("claim", claim_id, client.id().unwrap(), maddr.id().unwrap());
+    let deal_term = proposal.end_epoch - proposal.start_epoch;
+    let term_max = deal_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
+    let claim_event = Expect::build_verifreg_claim_event(
+        "claim",
+        claim_id,
+        client.id().unwrap(),
+        maddr.id().unwrap(),
+        &proposal.piece_cid,
+        proposal.piece_size.0,
+        deal_term,
+        term_max,
+        v.epoch(),
+        sector_number,
+    );
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);
 
     let pieces: Vec<(Cid, u64)> = vec![(proposal.piece_cid, proposal.piece_size.0)];

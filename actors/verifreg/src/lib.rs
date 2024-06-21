@@ -131,7 +131,7 @@ impl Actor {
                 .context("failed to add verifier")
         })?;
 
-        emit::verifier_balance(rt, verifier, &params.allowance)
+        emit::verifier_balance(rt, verifier, &params.allowance, None)
     }
 
     pub fn remove_verifier(
@@ -146,7 +146,7 @@ impl Actor {
             st.remove_verifier(rt.store(), &verifier_addr).context("failed to remove verifier")
         })?;
 
-        emit::verifier_balance(rt, verifier, &DataCap::zero())
+        emit::verifier_balance(rt, verifier, &DataCap::zero(), None)
     }
 
     pub fn add_verified_client(
@@ -165,8 +165,8 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_actor_id(rt, &params.address, true)?;
-        let client = Address::new_id(client);
+        let client_id = resolve_to_actor_id(rt, &params.address, true)?;
+        let client = Address::new_id(client_id);
 
         rt.transaction(|st: &mut State, rt| {
             if client == st.root_key {
@@ -204,7 +204,12 @@ impl Actor {
             st.put_verifier(rt.store(), &verifier_addr, &new_verifier_cap)
                 .context("failed to update verifier allowance")?;
 
-            emit::verifier_balance(rt, verifier_addr.id().unwrap(), &new_verifier_cap)
+            emit::verifier_balance(
+                rt,
+                verifier_addr.id().unwrap(),
+                &new_verifier_cap,
+                Some(client.id().unwrap()),
+            )
         })?;
 
         // Credit client token allowance.
@@ -345,7 +350,7 @@ impl Actor {
                         )?
                         .unwrap(); // Unwrapping here as both paths to here should ensure the allocation exists.
 
-                    emit::allocation_removed(rt, *id, existing.client, existing.provider)?;
+                    emit::allocation_removed(rt, *id, &existing)?;
 
                     // Unwrapping here as both paths to here should ensure the allocation exists.
                     recovered_datacap += existing.size.0;
@@ -448,7 +453,8 @@ impl Actor {
                         return Err(actor_error!(illegal_argument, "claim {} already exists", id));
                     }
 
-                    emit::claim(rt, id, new_claim.client, new_claim.provider)?;
+                    // Emit a claim event below
+                    emit::claim(rt, id, &new_claim)?;
 
                     allocs.remove(new_claim.client, id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -565,7 +571,7 @@ impl Actor {
                         "HAMT put failure storing new claims",
                     )?;
                     batch_gen.add_success();
-                    emit::claim_updated(rt, term.claim_id, new_claim.client, new_claim.provider)?;
+                    emit::claim_updated(rt, term.claim_id, &new_claim)?;
                 } else {
                     batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
                     info!("no claim {} for provider {}", term.claim_id, term.provider);
@@ -617,7 +623,7 @@ impl Actor {
                     )?
                     .unwrap();
 
-                emit::claim_removed(rt, *id, removed.client, removed.provider)?;
+                emit::claim_removed(rt, *id, &removed)?;
             }
 
             st.save_claims(&mut claims)?;
@@ -717,13 +723,13 @@ impl Actor {
             let ids = st.insert_allocations(rt.store(), client, new_allocs.clone())?;
 
             for (id, alloc) in ids.iter().zip(new_allocs.iter()) {
-                emit::allocation(rt, *id, alloc.client, alloc.provider)?;
+                emit::allocation(rt, *id, alloc)?;
             }
 
             st.put_claims(rt.store(), updated_claims.clone())?;
 
             for (id, claim) in updated_claims {
-                emit::claim_updated(rt, id, claim.client, claim.provider)?;
+                emit::claim_updated(rt, id, &claim)?;
             }
 
             Ok(ids)

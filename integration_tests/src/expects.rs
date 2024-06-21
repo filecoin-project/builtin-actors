@@ -357,11 +357,17 @@ impl Expect {
         }
     }
 
-    pub fn build_verifreg_event(
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_verifreg_allocation_event(
         typ: &str,
         id: u64,
         client: ActorID,
         provider: ActorID,
+        piece_cid: &Cid,
+        piece_size: u64,
+        term_min: ChainEpoch,
+        term_max: ChainEpoch,
+        expiration: ChainEpoch,
     ) -> EmittedEvent {
         EmittedEvent {
             emitter: VERIFIED_REGISTRY_ACTOR_ID,
@@ -370,11 +376,47 @@ impl Expect {
                 .field_indexed("id", &id)
                 .field_indexed("client", &client)
                 .field_indexed("provider", &provider)
+                .field_indexed("piece-cid", piece_cid)
+                .field("piece-size", &piece_size)
+                .field("term-min", &term_min)
+                .field("term-max", &term_max)
+                .field("expiration", &expiration)
                 .build()
                 .unwrap(),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_verifreg_claim_event(
+        typ: &str,
+        id: u64,
+        client: ActorID,
+        provider: ActorID,
+        piece_cid: &Cid,
+        piece_size: u64,
+        term_min: ChainEpoch,
+        term_max: ChainEpoch,
+        term_start: ChainEpoch,
+        sector: SectorNumber,
+    ) -> EmittedEvent {
+        EmittedEvent {
+            emitter: VERIFIED_REGISTRY_ACTOR_ID,
+            event: EventBuilder::new()
+                .typ(typ)
+                .field_indexed("id", &id)
+                .field_indexed("client", &client)
+                .field_indexed("provider", &provider)
+                .field_indexed("piece-cid", piece_cid)
+                .field("piece-size", &piece_size)
+                .field("term-min", &term_min)
+                .field("term-max", &term_max)
+                .field("term-start", &term_start)
+                .field_indexed("sector", &sector)
+                .build()
+                .unwrap(),
+        }
+    }
+    #[allow(clippy::too_many_arguments)]
     pub fn build_market_event(
         typ: &str,
         deal_id: DealID,
