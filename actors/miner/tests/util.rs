@@ -82,8 +82,8 @@ use fil_actor_miner::{
     NO_QUANTIZATION, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
 };
 use fil_actor_miner::{
-    ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn, ProveReplicaUpdates3Params,
-    ProveReplicaUpdates3Return, SectorNIActivationInfo,
+    raw_power_for_sector, ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn,
+    ProveReplicaUpdates3Params, ProveReplicaUpdates3Return, SectorNIActivationInfo,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -853,7 +853,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         let randomness = Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.to_vec());
-        let unsealed_cid = CompactCommD::empty().get_cid(params.seal_proof_type).unwrap();
+        let success_count = params.sectors.len() - fail_count;
 
         let entropy = serialize(&rt.receiver, "address for get verify info").unwrap();
 
@@ -865,20 +865,14 @@ impl ActorHarness {
                 TEST_RANDOMNESS_ARRAY_FROM_ONE,
             );
 
-            expect_sector_event(
-                rt,
-                "sector-activated",
-                &s.sealing_number,
-                Some(unsealed_cid.clone()),
-                &vec![],
-            );
+            expect_sector_event(rt, "sector-activated", &s.sealing_number, None, &vec![]);
         });
 
         let seal_verify_info = params
             .sectors
             .iter()
             .map(|sector| AggregateSealVerifyInfo {
-                sector_number: sector.sector_number,
+                sector_number: sector.sealing_number,
                 randomness: randomness.clone(),
                 interactive_randomness: Randomness(vec![1u8; 32]),
                 sealed_cid: sector.sealed_cid.clone(),
@@ -905,6 +899,19 @@ impl ActorHarness {
                 ExitCode::OK,
             );
         }
+
+        let qa_sector_power = raw_power_for_sector(self.sector_size);
+        let sector_pledge = self.initial_pledge_for_power(rt, &qa_sector_power);
+        let total_pledge = BigInt::from(success_count) * sector_pledge;
+
+        rt.expect_send_simple(
+            STORAGE_POWER_ACTOR_ADDR,
+            PowerMethod::UpdatePledgeTotal as u64,
+            IpldBlock::serialize_cbor(&total_pledge).unwrap(),
+            TokenAmount::zero(),
+            None,
+            ExitCode::OK,
+        );
 
         if first_for_miner {
             let state = self.get_state(rt);

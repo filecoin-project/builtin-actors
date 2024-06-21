@@ -7,7 +7,7 @@ use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof, SectorNu
 use num_traits::Zero;
 
 use export_macro::vm_test;
-use fil_actor_miner::{CompactCommD, Method as MinerMethod, SectorOnChainInfoFlags};
+use fil_actor_miner::{Method as MinerMethod, SectorOnChainInfoFlags};
 use fil_actor_miner::{ProveCommitSectorsNIParams, SectorNIActivationInfo};
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
@@ -86,7 +86,6 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
         Some(params.clone()),
     );
 
-    let unsealed_cid = CompactCommD::empty().get_cid(params.seal_proof_type).unwrap();
     let events: Vec<EmittedEvent> = sector_nos
         .iter()
         .map(|sector_number| {
@@ -94,7 +93,7 @@ pub fn prove_commit_sectors_aggregate_niporep_test(v: &dyn VM) {
                 "sector-activated",
                 miner_id,
                 *sector_number,
-                Some(unsealed_cid),
+                None,
                 &vec![],
             )
         })

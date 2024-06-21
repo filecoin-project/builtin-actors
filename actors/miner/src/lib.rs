@@ -2018,7 +2018,7 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "aggregate proof type must be SnarkPackV2"));
         }
 
-        let (validation_batch, proof_inputs) = validate_ni_sectors(
+        let (validation_batch, proof_inputs, sector_numbers) = validate_ni_sectors(
             rt,
             &params.sectors,
             params.seal_proof_type,
@@ -2035,7 +2035,7 @@ impl Actor {
             // All the proof inputs, even for invalid activations,
             // must be provided as witnesses to the aggregate proof.
             &proof_inputs,
-            params.sectors[0].sealer_id,
+            valid_sectors[0].sealer_id,
             params.seal_proof_type,
             params.aggregate_proof_type,
             &params.aggregate_proof,
@@ -2096,12 +2096,12 @@ impl Actor {
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
             })
             .collect::<Vec<SectorOnChainInfo>>();
+
         let sectors_len = sectors_to_add.len();
 
         let total_pledge = BigInt::from(sectors_len) * sector_initial_pledge;
-        let mut needs_cron = false;
 
-        rt.transaction(|state: &mut State, rt| {
+        let (needs_cron, fee_to_burn) = rt.transaction(|state: &mut State, rt| {
             let current_balance = rt.current_balance();
             let available_balance = state
                 .get_unlocked_balance(&current_balance)
@@ -2116,8 +2116,14 @@ impl Actor {
                     available_balance
                 ));
             }
-            needs_cron = !state.deadline_cron_active;
+            let needs_cron = !state.deadline_cron_active;
             state.deadline_cron_active = true;
+
+            state.allocate_sector_numbers(
+                store,
+                &sector_numbers,
+                CollisionPolicy::DenyCollisions,
+            )?;
 
             state
                 .put_sectors(store, sectors_to_add.clone())
@@ -2139,19 +2145,23 @@ impl Actor {
                     "failed to add initial pledgs"
                 })?;
 
-            state
-                .check_balance_invariants(&rt.current_balance())
-                .map_err(balance_invariants_broken)?;
+            let fee_to_burn = repay_debts_or_abort(rt, state)?;
 
-            Ok(())
+            Ok((needs_cron, fee_to_burn))
         })?;
+
+        burn_funds(rt, fee_to_burn)?;
 
         let len_for_aggregate_fee = if sectors_len <= 5 { 0 } else { sectors_len - 5 };
         pay_aggregate_seal_proof_fee(rt, len_for_aggregate_fee)?;
 
-        let unsealed_cid = CompactCommD::empty().get_cid(params.seal_proof_type).unwrap();
+        notify_pledge_changed(rt, &total_pledge)?;
+
+        let state: State = rt.state()?;
+        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+
         for sector in params.sectors.iter() {
-            emit::sector_activated(rt, sector.sector_number, Some(unsealed_cid), &[])?;
+            emit::sector_activated(rt, sector.sector_number, None, &[])?;
         }
 
         if needs_cron {
@@ -2163,8 +2173,7 @@ impl Actor {
             )?;
         }
 
-        let result = util::stack(&[validation_batch]);
-        Ok(ProveCommitSectorsNIReturn { activation_results: result })
+        Ok(ProveCommitSectorsNIReturn { activation_results: validation_batch })
     }
 
     fn check_sector_proven(
@@ -4874,7 +4883,7 @@ fn validate_ni_sectors(
     sectors: &[SectorNIActivationInfo],
     seal_proof_type: RegisteredSealProof,
     all_or_nothing: bool,
-) -> Result<(BatchReturn, Vec<SectorSealProofInput>), ActorError> {
+) -> Result<(BatchReturn, Vec<SectorSealProofInput>, BitField), ActorError> {
     let receiver = rt.message().receiver();
     let miner_id = receiver.id().unwrap();
     let curr_epoch = rt.curr_epoch();
@@ -4884,7 +4893,7 @@ fn validate_ni_sectors(
     let entropy = serialize(&receiver, "address for get verify info")?;
 
     if sectors.is_empty() {
-        return Ok((BatchReturn::empty(), vec![]));
+        return Ok((BatchReturn::empty(), vec![], BitField::new()));
     }
     let mut batch = BatchReturnGen::new(sectors.len());
 
@@ -4895,8 +4904,11 @@ fn validate_ni_sectors(
 
         let set = sector_numbers.get(sector.sector_number);
         if set {
-            warn!("duplicate sector number {}", sector.sector_number);
-            fail_validation = true;
+            return Err(actor_error!(
+                illegal_argument,
+                "duplicate sector number {}",
+                sector.sector_number
+            ));
         }
 
         if sector.sector_number > MAX_SECTOR_NUMBER {
@@ -4979,7 +4991,7 @@ fn validate_ni_sectors(
         }
     }
 
-    Ok((batch.gen(), verify_infos))
+    Ok((batch.gen(), verify_infos, sector_numbers))
 }
 
 // Validates a batch of sector sealing proofs.
