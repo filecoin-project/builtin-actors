@@ -89,7 +89,7 @@ pub struct ChangeMultiaddrsParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ConfirmSectorProofsParams {
+pub struct InternalSectorSetupForPresealParams {
     pub sectors: Vec<SectorNumber>,
     pub reward_smoothed: FilterEstimate,
     #[serde(with = "bigint_ser")]

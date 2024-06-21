@@ -119,7 +119,7 @@ pub enum Method {
     ApplyRewards = 14,
     ReportConsensusFault = 15,
     WithdrawBalance = 16,
-    ConfirmSectorProofsValid = 17,
+    InternalSectorSetupForPreseal = 17,
     ChangeMultiaddrs = 18,
     CompactPartitions = 19,
     CompactSectorNumbers = 20,
@@ -1950,22 +1950,12 @@ impl Actor {
         Ok(ProveCommitSectors3Return { activation_results: result })
     }
 
-    fn confirm_sector_proofs_valid(
+    fn internal_sector_setup_preseal(
         rt: &impl Runtime,
-        params: ConfirmSectorProofsParams,
+        params: InternalSectorSetupForPresealParams,
     ) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
-
-        /* validate params */
-        // This should be enforced by the power actor. We log here just in case
-        // something goes wrong.
-        if params.sectors.len() > ext::power::MAX_MINER_PROVE_COMMITS_PER_EPOCH {
-            warn!(
-                "confirmed more prove commits in an epoch than permitted: {} > {}",
-                params.sectors.len(),
-                ext::power::MAX_MINER_PROVE_COMMITS_PER_EPOCH
-            );
-        }
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
+        
         let st: State = rt.state()?;
         let store = rt.store();
         // This skips missing pre-commits.
@@ -5674,7 +5664,7 @@ impl ActorCode for Actor {
         ApplyRewards => apply_rewards,
         ReportConsensusFault => report_consensus_fault,
         WithdrawBalance|WithdrawBalanceExported => withdraw_balance,
-        ConfirmSectorProofsValid => confirm_sector_proofs_valid,
+        InternalSectorSetupForPreseal => internal_sector_setup_preseal,
         ChangeMultiaddrs|ChangeMultiaddrsExported => change_multiaddresses,
         CompactPartitions => compact_partitions,
         CompactSectorNumbers => compact_sector_numbers,

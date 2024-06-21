@@ -3,8 +3,7 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{strict_bytes, BytesDe};
 
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
-use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, StoragePower};
+use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
 
@@ -36,17 +35,7 @@ pub mod init {
 pub mod miner {
     use super::*;
 
-    pub const CONFIRM_SECTOR_PROOFS_VALID_METHOD: u64 = 17;
     pub const ON_DEFERRED_CRON_EVENT_METHOD: u64 = 12;
-
-    #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct ConfirmSectorProofsParams {
-        pub sectors: Vec<SectorNumber>,
-        pub reward_smoothed: FilterEstimate,
-        #[serde(with = "bigint_ser")]
-        pub reward_baseline_power: StoragePower,
-        pub quality_adj_power_smoothed: FilterEstimate,
-    }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct MinerConstructorParams {
