@@ -1,6 +1,6 @@
 #![allow(clippy::all)]
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::iter;
 use std::ops::Neg;
@@ -846,10 +846,20 @@ impl ActorHarness {
     pub fn prove_commit_sectors_ni(
         &self,
         rt: &MockRuntime,
-        params: ProveCommitSectorsNIParams,
+        mut params: ProveCommitSectorsNIParams,
         first_for_miner: bool,
-        fail_count: usize,
+        mut fail_fn: impl FnMut(&mut SectorNIActivationInfo) -> bool,
     ) -> Result<ProveCommitSectorsNIReturn, ActorError> {
+        let failed_sectors =
+            params.sectors.iter_mut().fold(HashSet::new(), |mut failed_sectors, sector| {
+                if fail_fn(sector) {
+                    failed_sectors.insert(sector.sealing_number);
+                }
+
+                failed_sectors
+            });
+        let fail_count = failed_sectors.len();
+
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         let randomness = Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.to_vec());
@@ -864,9 +874,13 @@ impl ActorHarness {
                 entropy.to_vec(),
                 TEST_RANDOMNESS_ARRAY_FROM_ONE,
             );
-
-            expect_sector_event(rt, "sector-activated", &s.sealing_number, None, &vec![]);
         });
+
+        params.sectors.iter().filter(|s| !failed_sectors.contains(&s.sector_number)).for_each(
+            |s| {
+                expect_sector_event(rt, "sector-activated", &s.sealing_number, None, &vec![]);
+            },
+        );
 
         let seal_verify_info = params
             .sectors

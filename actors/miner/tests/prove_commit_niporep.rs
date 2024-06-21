@@ -2,7 +2,9 @@ use fil_actors_runtime::runtime::RuntimePolicy;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{bigint::BigInt, clock::ChainEpoch, error::ExitCode};
 
-use fil_actor_miner::{Actor, Method, SectorOnChainInfo, SectorOnChainInfoFlags};
+use fil_actor_miner::{
+    Actor, Method, SectorNIActivationInfo, SectorOnChainInfo, SectorOnChainInfoFlags,
+};
 use num_traits::Zero;
 use util::*;
 
@@ -58,7 +60,7 @@ fn prove_one_sector_aggregate_ni() {
     let params =
         h.make_prove_commit_ni_params(miner, &sector_nums, seal_randomness_epoch, expiration, 0);
 
-    let res = h.prove_commit_sectors_ni(&rt, params, true, 0);
+    let res = h.prove_commit_sectors_ni(&rt, params, true, no_fails());
     assert!(res.is_ok());
 
     let activation_results = res.unwrap().activation_results;
@@ -91,7 +93,7 @@ fn prove_sectors_ni_short_duration_fail() {
     let params =
         h.make_prove_commit_ni_params(miner, &sector_nums, seal_randomness_epoch, expiration, 0);
 
-    let res = h.prove_commit_sectors_ni(&rt, params, true, 0);
+    let res = h.prove_commit_sectors_ni(&rt, params, true, no_fails());
     assert!(res.is_err());
     assert_eq!(res.unwrap_err().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
 }
@@ -124,7 +126,7 @@ fn prove_sectors_max_aggregate_ni() {
     );
     let seal_proof_type = params.seal_proof_type;
 
-    let res = h.prove_commit_sectors_ni(&rt, params, true, 0);
+    let res = h.prove_commit_sectors_ni(&rt, params, true, no_fails());
 
     assert!(res.is_ok());
 
@@ -194,13 +196,15 @@ fn ni_prove_partialy_valid_sectors_not_required_activation() {
     );
     params.require_activation_success = false;
 
-    // Purposefully fail some sectors by setting the seal_rand_epoch to the activation_epoch
-    for i in 0..num_fails {
-        params.sectors[i].seal_rand_epoch = activation_epoch;
-    }
     let seal_proof_type = params.seal_proof_type;
 
-    let res = h.prove_commit_sectors_ni(&rt, params, true, num_fails);
+    // Purposefully fail some sectors by setting the seal_rand_epoch to the activation_epoch
+    let res = h.prove_commit_sectors_ni(
+        &rt,
+        params,
+        true,
+        fail_for_seal_rand_epoch(num_fails as u64, activation_epoch),
+    );
     assert!(res.is_ok());
 
     let activation_results = res.unwrap().activation_results;
@@ -266,7 +270,8 @@ fn ni_prove_partialy_valid_sectors_required_activation() {
     // Purposefully fail some sectors by setting the seal_rand_epoch to the activation_epoch
     params.sectors[0].seal_rand_epoch = activation_epoch;
 
-    let res = h.prove_commit_sectors_ni(&rt, params, true, 1);
+    let res =
+        h.prove_commit_sectors_ni(&rt, params, true, fail_for_seal_rand_epoch(1, activation_epoch));
     assert!(res.is_err());
     assert_eq!(res.unwrap_err().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
 }
@@ -302,7 +307,7 @@ fn prove_sectors_multiple_max_aggregate_ni() {
         );
         let seal_proof_type = params.seal_proof_type;
 
-        let res = h.prove_commit_sectors_ni(&rt, params, i == 0, 0);
+        let res = h.prove_commit_sectors_ni(&rt, params, i == 0, no_fails());
         assert!(res.is_ok());
 
         let deadlines = h.get_state(&rt).load_deadlines(&rt.store).unwrap();
@@ -367,4 +372,22 @@ fn prove_too_much_sector_ni_fail() {
 
     assert!(res.is_err());
     assert_eq!(res.unwrap_err().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+}
+
+fn fail_for_seal_rand_epoch(
+    num_fails: u64,
+    activation_epoch: i64,
+) -> impl FnMut(&mut SectorNIActivationInfo) -> bool {
+    move |s: &mut SectorNIActivationInfo| {
+        if s.sealing_number < num_fails {
+            s.seal_rand_epoch = activation_epoch;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+fn no_fails() -> impl FnMut(&mut SectorNIActivationInfo) -> bool {
+    |_| false
 }

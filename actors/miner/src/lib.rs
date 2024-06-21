@@ -2160,7 +2160,7 @@ impl Actor {
         let state: State = rt.state()?;
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
 
-        for sector in params.sectors.iter() {
+        for sector in valid_sectors.iter() {
             emit::sector_activated(rt, sector.sector_number, None, &[])?;
         }
 
