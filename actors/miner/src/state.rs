@@ -580,8 +580,7 @@ impl State {
                 illegal_argument,
                 "proving deadline {} must not be the current or next deadline ",
                 deadline_idx
-            )
-            .into());
+            ));
         }
 
         let quant = self.quant_spec_for_deadline(policy, deadline_idx);
@@ -598,9 +597,7 @@ impl State {
                 format!("failed to update deadline {}", deadline_idx)
             })?;
         self.save_deadlines(store, deadlines)
-            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("failed to save deadlines")
-            })?;
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || "failed to save deadlines")?;
 
         Ok(())
     }
