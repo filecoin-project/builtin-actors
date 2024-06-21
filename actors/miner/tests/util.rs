@@ -860,10 +860,18 @@ impl ActorHarness {
             });
         let fail_count = failed_sectors.len();
 
+        let expected_success_sectors = params
+            .sectors
+            .iter()
+            .map(|s| s.sealing_number)
+            .filter(|s| !failed_sectors.contains(&s))
+            .collect::<Vec<_>>();
+        let expected_success_count = expected_success_sectors.len();
+        assert_eq!(params.sectors.len(), expected_success_count + fail_count);
+
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         let randomness = Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.to_vec());
-        let success_count = params.sectors.len() - fail_count;
 
         let entropy = serialize(&rt.receiver, "address for get verify info").unwrap();
 
@@ -916,7 +924,7 @@ impl ActorHarness {
 
         let qa_sector_power = raw_power_for_sector(self.sector_size);
         let sector_pledge = self.initial_pledge_for_power(rt, &qa_sector_power);
-        let total_pledge = BigInt::from(success_count) * sector_pledge;
+        let total_pledge = BigInt::from(expected_success_count) * sector_pledge;
 
         rt.expect_send_simple(
             STORAGE_POWER_ACTOR_ADDR,
@@ -953,7 +961,16 @@ impl ActorHarness {
         let result = result
             .map(|r| {
                 let ret: ProveCommitSectorsNIReturn = r.unwrap().deserialize().unwrap();
+                let successes = ret.activation_results.successes(&params.sectors);
+
                 assert_eq!(params.sectors.len(), ret.activation_results.size());
+                assert_eq!(expected_success_count as u32, ret.activation_results.success_count);
+                assert_eq!(fail_count, ret.activation_results.fail_codes.len());
+
+                successes.iter().for_each(|s| {
+                    assert!(expected_success_sectors.contains(&s.sealing_number));
+                });
+
                 ret
             })
             .or_else(|e| {
