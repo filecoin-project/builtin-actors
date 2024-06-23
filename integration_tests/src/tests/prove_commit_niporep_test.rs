@@ -11,13 +11,14 @@ use fil_actor_miner::{Method as MinerMethod, SectorOnChainInfoFlags};
 use fil_actor_miner::{ProveCommitSectorsNIParams, SectorNIActivationInfo};
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
-use vm_api::util::apply_ok;
+use vm_api::util::{apply_ok, DynBlockstore};
 use vm_api::VM;
 
 use crate::expects::Expect;
 use crate::util::{
-    create_accounts, create_miner, deadline_state, override_compute_unsealed_sector_cid,
-    sector_info, try_sector_info,
+    advance_by_deadline_to_epoch, advance_by_deadline_to_index, create_accounts, create_miner,
+    deadline_state, declare_recovery, override_compute_unsealed_sector_cid, sector_info,
+    submit_windowed_post, try_sector_info,
 };
 
 #[vm_test]
@@ -252,6 +253,87 @@ pub fn prove_commit_ni_partial_success_not_required_test(v: &dyn VM) {
         assert!(on_chain_sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER));
     }
 
+    // Check if sectors are properly assigned to deadline
     let deadline = deadline_state(v, &maddr, proving_deadline);
     assert_eq!(deadline.live_sectors, valid_sector_nos.len() as u64);
+
+    let store = &DynBlockstore::wrap(v.blockstore());
+    let partition = deadline.load_partition(store, 0).unwrap();
+    for sector_number in invalid_sector_nos {
+        assert!(!partition.sectors.get(sector_number));
+    }
+    for sector_number in &valid_sector_nos {
+        assert!(partition.sectors.get(*sector_number));
+        assert!(partition.unproven.get(*sector_number));
+    }
+
+    // Advance to proving deadline and submit WindowPoSt
+    let deadline_info = advance_by_deadline_to_index(v, &maddr, proving_deadline);
+
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let submissions = deadline.optimistic_proofs_amt(store).unwrap();
+    assert_eq!(submissions.count(), 0);
+
+    submit_windowed_post(v, &worker, &maddr, deadline_info, 0, Some(partition.unproven_power));
+
+    // Check if post is registered in deadline submissions
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let submissions = deadline.optimistic_proofs_amt(store).unwrap();
+    assert_eq!(submissions.count(), 1);
+
+    // Move to next deadline and check if sectors are active
+    let deadline_info = advance_by_deadline_to_index(
+        v,
+        &maddr,
+        proving_deadline + 1 % policy.wpost_proving_period as u64,
+    );
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let partition = deadline.load_partition(store, 0).unwrap();
+
+    for sector_number in &valid_sector_nos {
+        assert!(partition.active_sectors().get(*sector_number));
+        assert!(partition.faults.is_empty());
+    }
+
+    // Move to next deadline period while skipping window post submission
+    // and check if sectors are faulty
+    advance_by_deadline_to_epoch(v, &maddr, deadline_info.close + policy.wpost_proving_period);
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let partition = deadline.load_partition(store, 0).unwrap();
+
+    for sector_number in &valid_sector_nos {
+        assert!(partition.faults.get(*sector_number));
+        assert!(partition.active_sectors().is_empty());
+        assert!(partition.recoveries.is_empty());
+    }
+
+    // Recover faulty sectors
+    for sector_number in &valid_sector_nos {
+        declare_recovery(v, &worker, &maddr, proving_deadline, 0, *sector_number);
+    }
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let partition = deadline.load_partition(store, 0).unwrap();
+    for sector_number in &valid_sector_nos {
+        assert!(partition.faults.get(*sector_number));
+        assert!(partition.recoveries.get(*sector_number));
+    }
+
+    // Move to next deadline period and prove sectors
+    let deadline_info = advance_by_deadline_to_index(v, &maddr, proving_deadline);
+    submit_windowed_post(v, &worker, &maddr, deadline_info, 0, None);
+
+    // Move to next deadline and check if sectors are active
+    advance_by_deadline_to_index(
+        v,
+        &maddr,
+        proving_deadline + 1 % policy.wpost_proving_period as u64,
+    );
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let partition = deadline.load_partition(store, 0).unwrap();
+
+    for sector_number in &valid_sector_nos {
+        assert!(partition.active_sectors().get(*sector_number));
+        assert!(partition.faults.is_empty());
+        assert!(partition.recoveries.is_empty());
+    }
 }
