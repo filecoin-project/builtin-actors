@@ -848,16 +848,18 @@ impl ActorHarness {
         rt: &MockRuntime,
         mut params: ProveCommitSectorsNIParams,
         first_for_miner: bool,
-        mut fail_fn: impl FnMut(&mut SectorNIActivationInfo) -> bool,
+        mut fail_fn: impl FnMut(&mut SectorNIActivationInfo, usize) -> bool,
     ) -> Result<ProveCommitSectorsNIReturn, ActorError> {
-        let failed_sectors =
-            params.sectors.iter_mut().fold(HashSet::new(), |mut failed_sectors, sector| {
-                if fail_fn(sector) {
+        let failed_sectors = params.sectors.iter_mut().enumerate().fold(
+            HashSet::new(),
+            |mut failed_sectors, (index, sector)| {
+                if fail_fn(sector, index) {
                     failed_sectors.insert(sector.sealing_number);
                 }
 
                 failed_sectors
-            });
+            },
+        );
         let fail_count = failed_sectors.len();
 
         let expected_success_sectors = params

@@ -1712,10 +1712,7 @@ impl Actor {
                         "failed to add pre-commit deposit {}: {}",
                         total_deposit_required, e
                 ))?;
-            state.allocate_sector_numbers(store, &sector_numbers, CollisionPolicy::DenyCollisions)
-                .map_err(|e|
-                    e.wrap("failed to allocate sector numbers")
-                )?;
+            state.allocate_sector_numbers(store, &sector_numbers, CollisionPolicy::DenyCollisions)?;
             state.put_precommitted_sectors(store, chain_infos)
                 .map_err(|e|
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to write pre-committed sectors")
