@@ -811,13 +811,12 @@ impl Actor {
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
         let circulating_supply = rt.total_fil_circ_supply();
-        let ramp_duration_epochs = request_miner_ramp_params(rt)?.ramp_duration_epochs;
         let pledge_inputs = NetworkPledgeInputs {
             network_qap: pwr.quality_adj_power_smoothed,
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
-            ramp_duration_epochs: ramp_duration_epochs,
+            ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
 
         /*
@@ -1910,13 +1909,12 @@ impl Actor {
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
         let circulating_supply = rt.total_fil_circ_supply();
-        let ramp_duration_epochs = request_miner_ramp_params(rt)?.ramp_duration_epochs;
         let pledge_inputs = NetworkPledgeInputs {
             network_qap: pwr.quality_adj_power_smoothed,
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
-            ramp_duration_epochs: ramp_duration_epochs
+            ramp_duration_epochs: pwr.ramp_duration_epochs
         };
         activate_new_sector_infos(
             rt,
@@ -3901,13 +3899,12 @@ where
     let rew = request_current_epoch_block_reward(rt)?;
     let pow = request_current_total_power(rt)?;
     let circulating_supply = rt.total_fil_circ_supply();
-    let ramp_duration_epochs = request_miner_ramp_params(rt)?.ramp_duration_epochs;
     let pledge_inputs = NetworkPledgeInputs {
         network_qap: pow.quality_adj_power_smoothed,
         network_baseline: rew.this_epoch_baseline_power,
         circulating_supply,
         epoch_reward: rew.this_epoch_reward_smoothed,
-        ramp_duration_epochs: ramp_duration_epochs
+        ramp_duration_epochs: pow.ramp_duration_epochs
     };
     let mut power_delta = PowerPair::zero();
     let mut pledge_delta = TokenAmount::zero();
@@ -4860,21 +4857,6 @@ fn request_current_total_power(
             TokenAmount::zero(),
         ))
         .map_err(|e| e.wrap("failed to check current power"))?,
-    )
-}
-
-/// Request the ramp duration from the power actor
-fn request_miner_ramp_params(
-    rt: &impl Runtime,
-) -> Result<ext::power::MinerRampParamsReturn, ActorError> {
-    deserialize_block(
-        extract_send_result(rt.send_simple(
-            &STORAGE_POWER_ACTOR_ADDR,
-            ext::power::MINER_RAMP_PARAMS_METHOD,
-            Default::default(),
-            TokenAmount::zero(),
-        ))
-        .map_err(|e| e.wrap("failed to check miner ramp params"))?,
     )
 }
 

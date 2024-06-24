@@ -267,6 +267,7 @@ impl Actor {
             quality_adj_power: st.this_epoch_quality_adj_power,
             pledge_collateral: st.this_epoch_pledge_collateral,
             quality_adj_power_smoothed: st.this_epoch_qa_power_smoothed,
+            ramp_duration_epochs: st.ramp_duration_epochs,
         })
     }
 
@@ -314,13 +315,6 @@ impl Actor {
         let st: State = rt.state()?;
 
         Ok(MinerConsensusCountReturn { miner_consensus_count: st.miner_above_min_power_count })
-    }
-
-    fn ramp_duration(rt: &impl Runtime) -> Result<u64, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        let st: State = rt.state()?;
-        
-        Ok(st.ramp_duration_epochs)
     }
 
     fn process_deferred_cron_events(
@@ -445,6 +439,5 @@ impl ActorCode for Actor {
         MinerRawPowerExported => miner_raw_power,
         MinerCountExported => miner_count,
         MinerConsensusCountExported => miner_consensus_count,
-        RampDurationExported => ramp_duration,
     }
 }
