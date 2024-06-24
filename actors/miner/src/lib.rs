@@ -119,7 +119,7 @@ pub enum Method {
     ApplyRewards = 14,
     ReportConsensusFault = 15,
     WithdrawBalance = 16,
-    //ConfirmSectorProofsValid = 17, // Deprecated
+    InternalSectorSetupForPreseal = 17,
     ChangeMultiaddrs = 18,
     CompactPartitions = 19,
     CompactSectorNumbers = 20,
@@ -1952,6 +1952,59 @@ impl Actor {
 
         let result = util::stack(&[validation_batch, proven_batch, data_batch]);
         Ok(ProveCommitSectors3Return { activation_results: result })
+    }
+
+    fn internal_sector_setup_preseal(
+        rt: &impl Runtime,
+        params: InternalSectorSetupForPresealParams,
+    ) -> Result<(), ActorError> {
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
+        let st: State = rt.state()?;
+        let store = rt.store();
+        // This skips missing pre-commits.
+        let precommited_sectors =
+            st.find_precommitted_sectors(store, &params.sectors).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to load pre-committed sectors",
+                )
+            })?;
+
+        let data_activations: Vec<DealsActivationInput> =
+            precommited_sectors.iter().map(|x| x.clone().into()).collect();
+        let info = get_miner_info(rt.store(), &st)?;
+
+        /*
+            For all sectors
+            - CommD was specified at precommit
+            - If deal IDs were specified at precommit the CommD was checked against them
+            Therefore CommD on precommit has already been provided and checked so no further processing needed
+        */
+        let compute_commd = false;
+        let (batch_return, data_activations) =
+            activate_sectors_deals(rt, &data_activations, compute_commd)?;
+        let successful_activations = batch_return.successes(&precommited_sectors);
+
+        let pledge_inputs = NetworkPledgeInputs {
+            network_qap: params.quality_adj_power_smoothed,
+            network_baseline: params.reward_baseline_power,
+            circulating_supply: rt.total_fil_circ_supply(),
+            epoch_reward: params.reward_smoothed,
+        };
+        activate_new_sector_infos(
+            rt,
+            successful_activations.clone(),
+            data_activations.clone(),
+            &pledge_inputs,
+            &info,
+        )?;
+
+        for (pc, data) in successful_activations.iter().zip(data_activations.iter()) {
+            let unsealed_cid = pc.info.unsealed_cid.0;
+            emit::sector_activated(rt, pc.info.sector_number, unsealed_cid, &data.pieces)?;
+        }
+
+        Ok(())
     }
 
     fn check_sector_proven(
@@ -5634,6 +5687,7 @@ impl ActorCode for Actor {
         ApplyRewards => apply_rewards,
         ReportConsensusFault => report_consensus_fault,
         WithdrawBalance|WithdrawBalanceExported => withdraw_balance,
+        InternalSectorSetupForPreseal => internal_sector_setup_preseal,
         ChangeMultiaddrs|ChangeMultiaddrsExported => change_multiaddresses,
         CompactPartitions => compact_partitions,
         CompactSectorNumbers => compact_sector_numbers,
