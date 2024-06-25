@@ -780,12 +780,7 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "no sectors"));
         }
 
-        validate_seal_aggregate_proof(
-            &params.aggregate_proof,
-            sector_numbers.len(),
-            policy,
-            false,
-        )?;
+        validate_seal_aggregate_proof(&params.aggregate_proof, sector_numbers.len(), policy, true)?;
 
         // Load and validate pre-commits.
         // Fail if any don't exist, but otherwise continue with valid ones.
@@ -1802,7 +1797,7 @@ impl Actor {
                 &params.aggregate_proof,
                 params.sector_activations.len() as u64,
                 policy,
-                false,
+                true,
             )?;
         }
 
@@ -2021,7 +2016,7 @@ impl Actor {
             &params.aggregate_proof,
             params.sectors.len() as u64,
             policy,
-            true,
+            false,
         )?;
 
         rt.validate_immediate_caller_is(
@@ -5073,8 +5068,8 @@ fn validate_seal_aggregate_proof(
     interactive: bool,
 ) -> Result<(), ActorError> {
     let (min, max) = match interactive {
-        false => (policy.min_aggregated_sectors, policy.max_aggregated_sectors),
-        true => (policy.min_aggregated_sectors_ni, policy.max_aggregated_sectors_ni),
+        true => (policy.min_aggregated_sectors, policy.max_aggregated_sectors),
+        false => (policy.min_aggregated_sectors_ni, policy.max_aggregated_sectors_ni),
     };
 
     if sector_count > max {
