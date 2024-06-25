@@ -1,6 +1,6 @@
 #![allow(clippy::all)]
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::iter;
 use std::ops::Neg;
@@ -79,9 +79,13 @@ use fil_actor_miner::{
     SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
     TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, VestingFunds,
     WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
-    NO_QUANTIZATION, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
+    NI_AGGREGATE_FEE_BASE_SECTOR_COUNT, NO_QUANTIZATION, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH,
+    SECTOR_CONTENT_CHANGED,
 };
-use fil_actor_miner::{ProveReplicaUpdates3Params, ProveReplicaUpdates3Return};
+use fil_actor_miner::{
+    raw_power_for_sector, ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn,
+    ProveReplicaUpdates3Params, ProveReplicaUpdates3Return, SectorNIActivationInfo,
+};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
@@ -536,6 +540,40 @@ impl ActorHarness {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192].into() }
     }
 
+    pub fn make_prove_commit_ni_params(
+        &self,
+        sealer_id: ActorID,
+        sector_nums: &[SectorNumber],
+        seal_rand_epoch: ChainEpoch,
+        expiration: ChainEpoch,
+        proving_deadline: u64,
+    ) -> ProveCommitSectorsNIParams {
+        fn make_proof(i: u8) -> RawBytes {
+            RawBytes::new(vec![i, i, i, i])
+        }
+
+        let sectors = sector_nums
+            .iter()
+            .map(|sector_num| SectorNIActivationInfo {
+                sealing_number: *sector_num,
+                sealer_id,
+                sector_number: *sector_num,
+                sealed_cid: make_sector_commr(*sector_num),
+                seal_rand_epoch,
+                expiration,
+            })
+            .collect::<Vec<_>>();
+
+        ProveCommitSectorsNIParams {
+            sectors,
+            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep,
+            aggregate_proof: make_proof(0),
+            aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+            proving_deadline,
+            require_activation_success: true,
+        }
+    }
+
     pub fn pre_commit_sector_batch(
         &self,
         rt: &MockRuntime,
@@ -804,6 +842,148 @@ impl ActorHarness {
         )?;
 
         Ok(self.get_sector(rt, sector_number))
+    }
+
+    pub fn prove_commit_sectors_ni(
+        &self,
+        rt: &MockRuntime,
+        mut params: ProveCommitSectorsNIParams,
+        first_for_miner: bool,
+        mut fail_fn: impl FnMut(&mut SectorNIActivationInfo, usize) -> bool,
+    ) -> Result<ProveCommitSectorsNIReturn, ActorError> {
+        let failed_sectors = params.sectors.iter_mut().enumerate().fold(
+            HashSet::new(),
+            |mut failed_sectors, (index, sector)| {
+                if fail_fn(sector, index) {
+                    failed_sectors.insert(sector.sealing_number);
+                }
+
+                failed_sectors
+            },
+        );
+        let fail_count = failed_sectors.len();
+
+        let expected_success_sectors = params
+            .sectors
+            .iter()
+            .map(|s| s.sealing_number)
+            .filter(|s| !failed_sectors.contains(&s))
+            .collect::<Vec<_>>();
+        let expected_success_count = expected_success_sectors.len();
+        assert_eq!(params.sectors.len(), expected_success_count + fail_count);
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        let randomness = Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.to_vec());
+
+        let entropy = serialize(&rt.receiver, "address for get verify info").unwrap();
+
+        params.sectors.iter().for_each(|s| {
+            rt.expect_get_randomness_from_tickets(
+                fil_actors_runtime::runtime::DomainSeparationTag::SealRandomness,
+                s.seal_rand_epoch,
+                entropy.to_vec(),
+                TEST_RANDOMNESS_ARRAY_FROM_ONE,
+            );
+        });
+
+        params.sectors.iter().filter(|s| !failed_sectors.contains(&s.sector_number)).for_each(
+            |s| {
+                expect_sector_event(rt, "sector-activated", &s.sealing_number, None, &vec![]);
+            },
+        );
+
+        let seal_verify_info = params
+            .sectors
+            .iter()
+            .map(|sector| AggregateSealVerifyInfo {
+                sector_number: sector.sealing_number,
+                randomness: randomness.clone(),
+                interactive_randomness: Randomness(vec![1u8; 32]),
+                sealed_cid: sector.sealed_cid.clone(),
+                unsealed_cid: CompactCommD::empty().get_cid(params.seal_proof_type).unwrap(),
+            })
+            .collect::<Vec<_>>();
+
+        rt.expect_aggregate_verify_seals(seal_verify_info, params.aggregate_proof.to_vec(), Ok(()));
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        self.expect_query_network_info(rt);
+
+        if params.sectors.len() - fail_count > NI_AGGREGATE_FEE_BASE_SECTOR_COUNT {
+            let aggregate_fee = aggregate_prove_commit_network_fee(
+                params.sectors.len() - fail_count - NI_AGGREGATE_FEE_BASE_SECTOR_COUNT,
+                &rt.base_fee.borrow(),
+            );
+            rt.expect_send_simple(
+                BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                aggregate_fee,
+                None,
+                ExitCode::OK,
+            );
+        }
+
+        let qa_sector_power = raw_power_for_sector(self.sector_size);
+        let sector_pledge = self.initial_pledge_for_power(rt, &qa_sector_power);
+        let total_pledge = BigInt::from(expected_success_count) * sector_pledge;
+
+        rt.expect_send_simple(
+            STORAGE_POWER_ACTOR_ADDR,
+            PowerMethod::UpdatePledgeTotal as u64,
+            IpldBlock::serialize_cbor(&total_pledge).unwrap(),
+            TokenAmount::zero(),
+            None,
+            ExitCode::OK,
+        );
+
+        if first_for_miner {
+            let state = self.get_state(rt);
+            let dlinfo = new_deadline_info_from_offset_and_epoch(
+                &rt.policy,
+                state.proving_period_start,
+                *rt.epoch.borrow(),
+            );
+            let cron_params = make_deadline_cron_event_params(dlinfo.last());
+            rt.expect_send_simple(
+                STORAGE_POWER_ACTOR_ADDR,
+                PowerMethod::EnrollCronEvent as u64,
+                IpldBlock::serialize_cbor(&cron_params).unwrap(),
+                TokenAmount::zero(),
+                None,
+                ExitCode::OK,
+            );
+        }
+
+        let result = rt.call::<Actor>(
+            Method::ProveCommitSectorsNI as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        );
+
+        let result = result
+            .map(|r| {
+                let ret: ProveCommitSectorsNIReturn = r.unwrap().deserialize().unwrap();
+                let successes = ret.activation_results.successes(&params.sectors);
+
+                assert_eq!(params.sectors.len(), ret.activation_results.size());
+                assert_eq!(expected_success_count as u32, ret.activation_results.success_count);
+                assert_eq!(fail_count, ret.activation_results.fail_codes.len());
+
+                successes.iter().for_each(|s| {
+                    assert!(expected_success_sectors.contains(&s.sealing_number));
+                });
+
+                ret
+            })
+            .or_else(|e| {
+                rt.reset();
+                Err(e)
+            })?;
+
+        rt.verify();
+
+        Ok(result)
     }
 
     pub fn prove_commit_aggregate_sector(

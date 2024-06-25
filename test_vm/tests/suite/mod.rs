@@ -12,6 +12,7 @@ mod market_miner_withdrawal_test;
 mod multisig_test;
 mod power_scenario_tests;
 mod prove_commit3_test;
+mod prove_commit_niporep_test;
 mod publish_deals_test;
 mod replica_update3_test;
 mod replica_update_test;

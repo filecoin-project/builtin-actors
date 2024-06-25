@@ -81,6 +81,18 @@ pub struct Policy {
     /// used to ensure it is not predictable by miner.
     pub pre_commit_challenge_delay: ChainEpoch,
 
+    /// Maximum amount of sectors that can be aggregated in NI PoRep.
+    pub max_aggregated_sectors_ni: u64,
+
+    /// Minimum amount of sectors that can be aggregated.
+    pub min_aggregated_sectors_ni: u64,
+
+    /// Number of epochs between publishing the commit and when the randomness for non interactive PoRep is drawn
+    pub max_prove_commit_ni_randomness_lookback: ChainEpoch,
+
+    /// Allowed non interactive proof types for new miners
+    pub valid_prove_commit_ni_proof_type: ProofSet,
+
     /// Lookback from the deadline's challenge window opening from which to sample chain randomness for the challenge seed.
     pub wpost_challenge_lookback: ChainEpoch,
 
@@ -182,6 +194,10 @@ impl Default for Policy {
             posted_partitions_max: policy_constants::POSTED_PARTITIONS_MAX,
             max_pre_commit_randomness_lookback:
                 policy_constants::MAX_PRE_COMMIT_RANDOMNESS_LOOKBACK,
+            valid_prove_commit_ni_proof_type: ProofSet::default_seal_ni_proofs(),
+            max_aggregated_sectors_ni: policy_constants::MAX_AGGREGATED_SECTORS_NI,
+            min_aggregated_sectors_ni: policy_constants::MIN_AGGREGATED_SECTORS_NI,
+            max_prove_commit_ni_randomness_lookback: policy_constants::MAX_PROVE_COMMIT_NI_LOOKBACK,
             pre_commit_challenge_delay: policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
             wpost_challenge_lookback: policy_constants::WPOST_CHALLENGE_LOOKBACK,
             fault_declaration_cutoff: policy_constants::FAULT_DECLARATION_CUTOFF,
@@ -196,7 +212,7 @@ impl Default for Policy {
             chain_finality: policy_constants::CHAIN_FINALITY,
 
             valid_post_proof_type: ProofSet::default_post_proofs(),
-            valid_pre_commit_proof_type: ProofSet::default_seal_proofs(),
+            valid_pre_commit_proof_type: ProofSet::default_precommit_seal_proofs(),
             minimum_verified_allocation_size: StoragePower::from_i32(
                 policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE,
             )
@@ -291,6 +307,16 @@ pub mod policy_constants {
     #[cfg(feature = "short-precommit")]
     pub const PRE_COMMIT_CHALLENGE_DELAY: ChainEpoch = 10;
 
+    // Maximum number of epochs within which to fetch a valid seal randomness from the chain for
+    // a non-interactive PoRep proof. This balances the need to tie the seal to a particular chain with
+    // but makes allowance for service providers to offer pre-sealed sectors within a larger window of
+    // time.
+    pub const MAX_PROVE_COMMIT_NI_LOOKBACK: ChainEpoch = 180 * EPOCHS_IN_DAY;
+
+    pub const MAX_AGGREGATED_SECTORS_NI: u64 = 65;
+
+    pub const MIN_AGGREGATED_SECTORS_NI: u64 = 1;
+
     // This lookback exists so that deadline windows can be non-overlapping (which make the programming simpler)
     // but without making the miner wait for chain stability before being able to start on PoSt computation.
     // The challenge is available this many epochs before the window is actually open to receiving a PoSt.
@@ -365,7 +391,7 @@ pub struct ProofSet(Vec<bool>);
 const REGISTERED_POST_PROOF_VARIANTS: usize = 15;
 
 /// The number of total possible types (enum variants) of RegisteredSealProof
-const REGISTERED_SEAL_PROOF_VARIANTS: usize = 15;
+const REGISTERED_SEAL_PROOF_VARIANTS: usize = 20;
 
 impl ProofSet {
     /// Create a `ProofSet` for enabled `RegisteredPoStProof`s
@@ -395,7 +421,7 @@ impl ProofSet {
     }
 
     /// Create a `ProofSet` for enabled `RegisteredSealProof`s
-    pub fn default_seal_proofs() -> Self {
+    pub fn default_precommit_seal_proofs() -> Self {
         let mut proofs = vec![false; REGISTERED_SEAL_PROOF_VARIANTS];
         #[cfg(feature = "sector-2k")]
         {
@@ -428,6 +454,34 @@ impl ProofSet {
             proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1) as usize] = true;
             proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1_Feat_SyntheticPoRep)
                 as usize] = true;
+        }
+        ProofSet(proofs)
+    }
+
+    pub fn default_seal_ni_proofs() -> Self {
+        let mut proofs = vec![false; REGISTERED_SEAL_PROOF_VARIANTS];
+        #[cfg(feature = "sector-2k")]
+        {
+            proofs[i64::from(RegisteredSealProof::StackedDRG2KiBV1P2_Feat_NiPoRep) as usize] = true;
+        }
+        #[cfg(feature = "sector-8m")]
+        {
+            proofs[i64::from(RegisteredSealProof::StackedDRG8MiBV1P2_Feat_NiPoRep) as usize] = true;
+        }
+        #[cfg(feature = "sector-512m")]
+        {
+            proofs[i64::from(RegisteredSealProof::StackedDRG512MiBV1P2_Feat_NiPoRep) as usize] =
+                true;
+        }
+        #[cfg(feature = "sector-32g")]
+        {
+            proofs[i64::from(RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep) as usize] =
+                true;
+        }
+        #[cfg(feature = "sector-64g")]
+        {
+            proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P2_Feat_NiPoRep) as usize] =
+                true;
         }
         ProofSet(proofs)
     }
