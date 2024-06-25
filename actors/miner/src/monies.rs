@@ -258,6 +258,7 @@ pub fn initial_pledge_for_power(
     network_qa_power_estimate: &FilterEstimate,
     circulating_supply: &TokenAmount,
     epochs_since_ramp_start: i64,
+    ramp_duration_epochs: u64
 ) -> TokenAmount {
     let ip_base = expected_reward_for_power_clamped_at_atto_fil(
         reward_estimate,
@@ -274,8 +275,8 @@ pub fn initial_pledge_for_power(
     // Compute gamma based on current_epoch
     let mut gamma = FIXED_POINT_FACTOR; // Initialize as 1000
     if epochs_since_ramp_start > 0 {
-        if epochs_since_ramp_start as u64 < RAMP_DURATION_EPOCHS {
-            let reduction = (300 * FIXED_POINT_FACTOR) / RAMP_DURATION_EPOCHS; // 0.3 as fixed-point
+        if epochs_since_ramp_start as u64 < ramp_duration_epochs {
+            let reduction = (300 * FIXED_POINT_FACTOR) / ramp_duration_epochs; // 0.3 as fixed-point
             gamma -= reduction;
         } else {
             gamma = 700; // 0.7 as fixed-point

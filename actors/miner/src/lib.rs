@@ -816,7 +816,8 @@ impl Actor {
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
-            epochs_since_ramp_start: pwr.epochs_since_ramp_start,
+            epochs_since_ramp_start: pwr.ramp_start_epoch - rt.curr_epoch(),
+            ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
 
         /*
@@ -1914,7 +1915,8 @@ impl Actor {
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
-            epochs_since_ramp_start: pwr.epochs_since_ramp_start
+            epochs_since_ramp_start: pwr.ramp_start_epoch - rt.curr_epoch(),
+            ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
         activate_new_sector_infos(
             rt,
@@ -1983,12 +1985,14 @@ impl Actor {
             activate_sectors_deals(rt, &data_activations, compute_commd)?;
         let successful_activations = batch_return.successes(&precommited_sectors);
 
-        // TODO: total_power is not requested here, so how can we get epochs_since_ramp_start ?
+        // TODO: total_power is not requested here, so how can we get ramp_start_epoch & ramp_duration_epochs ?
         let pledge_inputs = NetworkPledgeInputs {
             network_qap: params.quality_adj_power_smoothed,
             network_baseline: params.reward_baseline_power,
             circulating_supply: rt.total_fil_circ_supply(),
             epoch_reward: params.reward_smoothed,
+            // TODO: set ramp_start_epoch
+            // TODO: set ramp_duration_epochs
         };
         activate_new_sector_infos(
             rt,
@@ -3905,7 +3909,8 @@ where
         network_baseline: rew.this_epoch_baseline_power,
         circulating_supply,
         epoch_reward: rew.this_epoch_reward_smoothed,
-        epochs_since_ramp_start: pwr.epochs_since_ramp_start
+        epochs_since_ramp_start: pwr.ramp_start_epoch - rt.curr_epoch(),
+        ramp_duration_epochs: pwr.ramp_duration_epochs,
     };
     let mut power_delta = PowerPair::zero();
     let mut pledge_delta = TokenAmount::zero();
@@ -5637,7 +5642,8 @@ struct NetworkPledgeInputs {
     pub network_baseline: StoragePower,
     pub circulating_supply: TokenAmount,
     pub epoch_reward: FilterEstimate,
-    pub epochs_since_ramp_start: i64
+    pub epochs_since_ramp_start: i64,
+    pub ramp_duration_epochs: u64,
 }
 
 // Note: probably better to push this one level down into state
