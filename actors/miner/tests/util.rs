@@ -909,7 +909,7 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
 
-        if params.sectors.len() > 5 {
+        if params.sectors.len() - fail_count > 5 {
             let aggregate_fee = aggregate_prove_commit_network_fee(
                 params.sectors.len() - fail_count - 5,
                 &rt.base_fee.borrow(),

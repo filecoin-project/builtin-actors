@@ -94,7 +94,7 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
 
     assert_eq!(pcsni_ret.activation_results.size(), 5);
     assert!(pcsni_ret.activation_results.all_ok());
-    assert_eq!(pcsni_ret.activation_results.codes(), vec![ExitCode::OK].repeat(5));
+    assert_eq!(pcsni_ret.activation_results.codes(), [ExitCode::OK].repeat(5));
 
     let events: Vec<EmittedEvent> = sector_nos
         .iter()
@@ -166,13 +166,7 @@ pub fn prove_commit_ni_partial_success_not_required_test(v: &dyn VM) {
     let activation_epoch = seal_rand_epoch + policy.max_prove_commit_ni_randomness_lookback / 2;
     let expiration = activation_epoch + policy.min_sector_expiration + 1;
     let first_sector_number: SectorNumber = 100;
-    let sector_nos = [
-        first_sector_number,
-        first_sector_number + 1,
-        first_sector_number + 2,
-        first_sector_number + 3,
-        first_sector_number + 4,
-    ];
+    let sector_nos: Vec<_> = (first_sector_number..first_sector_number + 20).collect();
     let proving_deadline = 7;
 
     let mut sectors_info: Vec<SectorNIActivationInfo> = sector_nos
@@ -187,13 +181,20 @@ pub fn prove_commit_ni_partial_success_not_required_test(v: &dyn VM) {
         })
         .collect();
 
-    // non-fatal error
+    // non-fatal errors
     sectors_info[0].seal_rand_epoch =
         v.epoch() - policy.max_prove_commit_ni_randomness_lookback - 1;
+    sectors_info[2].sealer_id = miner_id + 1;
 
-    let invalid_sector_nos = sector_nos.iter().take(1).copied().collect::<Vec<_>>();
-    let valid_sector_nos = sector_nos.iter().skip(1).copied().collect::<Vec<_>>();
-    let valid_sectors_info = sectors_info.iter().skip(1).cloned().collect::<Vec<_>>();
+    let invalid_sector_nos = vec![sector_nos[0], sector_nos[2]];
+    let valid_sector_nos: Vec<_> =
+        sector_nos.iter().enumerate().filter(|&(i, _)| i != 0 && i != 2).map(|(_, &v)| v).collect();
+    let valid_sectors_info: Vec<_> = sectors_info
+        .iter()
+        .enumerate()
+        .filter(|&(i, _)| i != 0 && i != 2)
+        .map(|(_, v)| v.clone())
+        .collect();
 
     // Prove-commit NI-PoRep
     let aggregate_proof = RawBytes::new(vec![1, 2, 3, 4]);
@@ -219,17 +220,13 @@ pub fn prove_commit_ni_partial_success_not_required_test(v: &dyn VM) {
     .deserialize()
     .unwrap();
 
-    assert_eq!(pcsni_ret.activation_results.size(), 5);
+    assert_eq!(pcsni_ret.activation_results.size(), sector_nos.len());
     assert!(!pcsni_ret.activation_results.all_ok());
     assert_eq!(
         pcsni_ret.activation_results.codes(),
-        vec![
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            ExitCode::OK,
-            ExitCode::OK,
-            ExitCode::OK,
-            ExitCode::OK
-        ]
+        (0..sector_nos.len())
+            .map(|i| if i == 0 || i == 2 { ExitCode::USR_ILLEGAL_ARGUMENT } else { ExitCode::OK })
+            .collect::<Vec<_>>()
     );
 
     let events: Vec<EmittedEvent> = valid_sector_nos

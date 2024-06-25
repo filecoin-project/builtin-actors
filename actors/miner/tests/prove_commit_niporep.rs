@@ -184,8 +184,8 @@ fn ni_prove_partialy_valid_sectors_not_required_activation() {
 
     rt.set_epoch(activation_epoch);
 
-    let sector_nums = (0..rt.policy.max_aggregated_sectors_ni).collect::<Vec<_>>();
-    let num_fails = sector_nums.len() / 2;
+    let sector_nums = (0..7).collect::<Vec<_>>();
+    let num_fails = 5;
     let num_success = sector_nums.len() - num_fails;
     let mut params = h.make_prove_commit_ni_params(
         miner,
@@ -203,7 +203,10 @@ fn ni_prove_partialy_valid_sectors_not_required_activation() {
         &rt,
         params,
         true,
-        fail_for_seal_rand_epoch(num_fails, activation_epoch),
+        fail_for_seal_rand_epoch(
+            num_fails,
+            activation_epoch - policy.max_prove_commit_ni_randomness_lookback - 1,
+        ),
     );
     assert!(res.is_ok());
 
@@ -524,11 +527,11 @@ fn ni_prove_fail_duplicated_sector_numbers() {
 
 fn fail_for_seal_rand_epoch(
     num_fails: usize,
-    activation_epoch: i64,
+    bad_seal_rand_epoch: i64,
 ) -> impl FnMut(&mut SectorNIActivationInfo, usize) -> bool {
     move |s: &mut SectorNIActivationInfo, index: usize| {
         if index < num_fails {
-            s.seal_rand_epoch = activation_epoch;
+            s.seal_rand_epoch = bad_seal_rand_epoch;
             true
         } else {
             false
