@@ -267,7 +267,7 @@ impl Actor {
             quality_adj_power: st.this_epoch_quality_adj_power,
             pledge_collateral: st.this_epoch_pledge_collateral,
             quality_adj_power_smoothed: st.this_epoch_qa_power_smoothed,
-            ramp_duration_epochs: st.ramp_duration_epochs,
+            epochs_since_ramp_start: st.epochs_since_ramp_start,
         })
     }
 

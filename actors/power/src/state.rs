@@ -70,7 +70,7 @@ pub struct State {
     /// Number of miners having proven the minimum consensus power.
     pub miner_above_min_power_count: i64,
 
-    pub ramp_duration_epochs: u64,
+    pub epochs_since_ramp_start: u64,
 
     /// A queue of events to be triggered by cron, indexed by epoch.
     pub cron_event_queue: Cid, // Multimap, (HAMT[ChainEpoch]AMT[CronEvent]
