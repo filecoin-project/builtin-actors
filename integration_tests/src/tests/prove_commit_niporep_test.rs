@@ -187,7 +187,9 @@ pub fn prove_commit_ni_partial_success_not_required_test(v: &dyn VM) {
         })
         .collect();
 
-    sectors_info[0].seal_rand_epoch = activation_epoch;
+    // non-fatal error
+    sectors_info[0].seal_rand_epoch =
+        v.epoch() - policy.max_prove_commit_ni_randomness_lookback - 1;
 
     let invalid_sector_nos = sector_nos.iter().take(1).copied().collect::<Vec<_>>();
     let valid_sector_nos = sector_nos.iter().skip(1).copied().collect::<Vec<_>>();

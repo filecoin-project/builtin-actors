@@ -4947,8 +4947,7 @@ fn validate_ni_sectors(
     for (i, sector) in sectors.iter().enumerate() {
         let mut fail_validation = false;
 
-        let set = sector_numbers.get(sector.sector_number);
-        if set {
+        if sector_numbers.get(sector.sector_number) {
             return Err(actor_error!(
                 illegal_argument,
                 "duplicate sector number {}",
@@ -4990,11 +4989,13 @@ fn validate_ni_sectors(
         }
 
         if sector.seal_rand_epoch >= curr_epoch {
-            warn!(
+            // hard-fail because we can't access necessary randomness from the future
+            return Err(actor_error!(
+                illegal_argument,
                 "seal challenge epoch {} must be before now {}",
-                sector.seal_rand_epoch, curr_epoch
-            );
-            fail_validation = true;
+                sector.seal_rand_epoch,
+                curr_epoch
+            ));
         }
 
         if sector.seal_rand_epoch < challenge_earliest {
