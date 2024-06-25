@@ -5637,7 +5637,7 @@ struct NetworkPledgeInputs {
     pub network_baseline: StoragePower,
     pub circulating_supply: TokenAmount,
     pub epoch_reward: FilterEstimate,
-    pub epochs_since_ramp_start: u64
+    pub epochs_since_ramp_start: i64
 }
 
 // Note: probably better to push this one level down into state

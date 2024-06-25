@@ -101,7 +101,7 @@ pub mod power {
         pub quality_adj_power: StoragePower,
         pub pledge_collateral: TokenAmount,
         pub quality_adj_power_smoothed: FilterEstimate,
-        pub epochs_since_ramp_start: u64
+        pub epochs_since_ramp_start: i64
     }
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct EnrollCronEventParams {
