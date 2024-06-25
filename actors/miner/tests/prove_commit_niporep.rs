@@ -413,7 +413,7 @@ fn prove_sectors_multiple_max_aggregate_ni() {
 }
 
 #[test]
-fn prove_too_much_sector_ni_fail() {
+fn prove_too_many_sectors_ni_fail() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
