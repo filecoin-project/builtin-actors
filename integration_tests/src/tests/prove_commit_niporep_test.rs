@@ -3,12 +3,15 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof, SectorNumber};
 use num_traits::Zero;
 
 use export_macro::vm_test;
 use fil_actor_miner::{Method as MinerMethod, SectorOnChainInfoFlags};
-use fil_actor_miner::{ProveCommitSectorsNIParams, SectorNIActivationInfo};
+use fil_actor_miner::{
+    ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn, SectorNIActivationInfo,
+};
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::{apply_ok, DynBlockstore};
@@ -78,14 +81,20 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
 
     v.set_epoch(activation_epoch);
 
-    apply_ok(
+    let pcsni_ret: ProveCommitSectorsNIReturn = apply_ok(
         v,
         &worker,
         &maddr,
         &TokenAmount::zero(),
         MinerMethod::ProveCommitSectorsNI as u64,
         Some(params.clone()),
-    );
+    )
+    .deserialize()
+    .unwrap();
+
+    assert_eq!(pcsni_ret.activation_results.size(), 5);
+    assert!(pcsni_ret.activation_results.all_ok());
+    assert_eq!(pcsni_ret.activation_results.codes(), vec![ExitCode::OK].repeat(5));
 
     let events: Vec<EmittedEvent> = sector_nos
         .iter()
@@ -197,13 +206,28 @@ pub fn prove_commit_ni_partial_success_not_required_test(v: &dyn VM) {
 
     v.set_epoch(activation_epoch);
 
-    apply_ok(
+    let pcsni_ret: ProveCommitSectorsNIReturn = apply_ok(
         v,
         &worker,
         &maddr,
         &TokenAmount::zero(),
         MinerMethod::ProveCommitSectorsNI as u64,
         Some(params.clone()),
+    )
+    .deserialize()
+    .unwrap();
+
+    assert_eq!(pcsni_ret.activation_results.size(), 5);
+    assert!(!pcsni_ret.activation_results.all_ok());
+    assert_eq!(
+        pcsni_ret.activation_results.codes(),
+        vec![
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            ExitCode::OK,
+            ExitCode::OK,
+            ExitCode::OK,
+            ExitCode::OK
+        ]
     );
 
     let events: Vec<EmittedEvent> = valid_sector_nos
