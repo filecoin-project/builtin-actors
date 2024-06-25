@@ -79,7 +79,8 @@ use fil_actor_miner::{
     SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
     TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, VestingFunds,
     WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
-    NO_QUANTIZATION, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
+    NI_AGGREGATE_FEE_BASE_SECTOR_COUNT, NO_QUANTIZATION, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH,
+    SECTOR_CONTENT_CHANGED,
 };
 use fil_actor_miner::{
     raw_power_for_sector, ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn,
@@ -909,9 +910,9 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
 
-        if params.sectors.len() - fail_count > 5 {
+        if params.sectors.len() - fail_count > NI_AGGREGATE_FEE_BASE_SECTOR_COUNT {
             let aggregate_fee = aggregate_prove_commit_network_fee(
-                params.sectors.len() - fail_count - 5,
+                params.sectors.len() - fail_count - NI_AGGREGATE_FEE_BASE_SECTOR_COUNT,
                 &rt.base_fee.borrow(),
             );
             rt.expect_send_simple(

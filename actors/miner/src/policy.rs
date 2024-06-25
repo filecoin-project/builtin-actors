@@ -20,6 +20,9 @@ use super::{PowerPair, BASE_REWARD_FOR_DISPUTED_WINDOW_POST};
 /// Precision used for making QA power calculations
 pub const SECTOR_QUALITY_PRECISION: i64 = 20;
 
+/// Base number of sectors before imposing the additional aggregate fee in ProveCommitSectorsNI
+pub const NI_AGGREGATE_FEE_BASE_SECTOR_COUNT: usize = 5;
+
 lazy_static! {
     /// Quality multiplier for committed capacity (no deals) in a sector
     pub static ref QUALITY_BASE_MULTIPLIER: BigInt = BigInt::from(10);
@@ -29,6 +32,7 @@ lazy_static! {
 
     /// Quality multiplier for verified deals in a sector
     pub static ref VERIFIED_DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(100);
+
 }
 
 /// The maximum number of partitions that may be required to be loaded in a single invocation,

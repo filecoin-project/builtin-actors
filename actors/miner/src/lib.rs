@@ -2197,7 +2197,11 @@ impl Actor {
 
         burn_funds(rt, fee_to_burn)?;
 
-        let len_for_aggregate_fee = if sectors_len <= 5 { 0 } else { sectors_len - 5 };
+        let len_for_aggregate_fee = if sectors_len <= NI_AGGREGATE_FEE_BASE_SECTOR_COUNT {
+            0
+        } else {
+            sectors_len - NI_AGGREGATE_FEE_BASE_SECTOR_COUNT
+        };
         pay_aggregate_seal_proof_fee(rt, len_for_aggregate_fee)?;
 
         notify_pledge_changed(rt, &total_pledge)?;
