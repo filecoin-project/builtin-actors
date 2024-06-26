@@ -136,6 +136,27 @@ pub struct ProveCommitSectorParams {
     pub proof: RawBytes,
 }
 
+// Note no UnsealedCID because it must be "zero" data.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorNIActivationInfo {
+    pub sealing_number: SectorNumber, // Sector number used to generate replica id
+    pub sealer_id: ActorID,           // Must be set to ID of receiving actor for now
+    pub sealed_cid: Cid,              // CommR
+    pub sector_number: SectorNumber,  // Unique id of sector in actor state
+    pub seal_rand_epoch: ChainEpoch,
+    pub expiration: ChainEpoch,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct ProveCommitSectorsNIParams {
+    pub sectors: Vec<SectorNIActivationInfo>, // Information about sealing of each sector
+    pub aggregate_proof: RawBytes,            // Aggregate proof for all sectors
+    pub seal_proof_type: RegisteredSealProof, // Proof type for each seal (must be an NI-PoRep variant)
+    pub aggregate_proof_type: RegisteredAggregateProof, // Proof type for aggregation
+    pub proving_deadline: u64, // The Window PoST deadline index at which to schedule the new sectors
+    pub require_activation_success: bool, // Whether to abort if any sector activation fails
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectors3Params {
     // Activation manifest for each sector being proven.
@@ -198,6 +219,12 @@ pub struct DataActivationNotification {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct ProveCommitSectors3Return {
+    pub activation_results: BatchReturn,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ProveCommitSectorsNIReturn {
     pub activation_results: BatchReturn,
 }
 
