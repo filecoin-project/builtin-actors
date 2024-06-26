@@ -2103,6 +2103,8 @@ impl Actor {
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
+            epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
+            ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
 
         let sector_day_reward = expected_reward_for_power(
@@ -2125,6 +2127,8 @@ impl Actor {
             &pledge_inputs.epoch_reward,
             &pledge_inputs.network_qap,
             &pledge_inputs.circulating_supply,
+            pledge_inputs.epochs_since_ramp_start,
+            pledge_inputs.ramp_duration_epochs,
         );
 
         let sectors_to_add = valid_sectors
