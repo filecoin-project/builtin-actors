@@ -38,6 +38,10 @@ fn initial_pledge_clamped_at_one_attofil() {
         &reward_estimate(),
         &power_estimate(),
         &circulating_supply(),
+        // NOTE: setting this to zero preserves the original pledge definition (before baseline bug fix)
+        //       so these inputs configure the function to return the original pledge
+        0,
+        0
     );
     assert_eq!(TokenAmount::from_atto(1), initial_pledge);
 }
