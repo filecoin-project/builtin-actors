@@ -204,7 +204,7 @@ fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
 
     // give miner enough balance to pay both but not any extra for pcd
     let balance = 2 * net_fee;
-    rt.set_balance(balance);
+    rt.set_balance(balance + &actor.create_depost);
 
     let res = actor.pre_commit_sector_batch(
         &rt,
@@ -266,7 +266,7 @@ fn enough_funds_for_everything() {
         &qa_power_max(actor.sector_size),
     ) * precommits.len();
     balance += expected_deposit.clone();
-    rt.set_balance(balance);
+    rt.set_balance(balance + &actor.create_depost);
 
     actor
         .pre_commit_sector_batch(

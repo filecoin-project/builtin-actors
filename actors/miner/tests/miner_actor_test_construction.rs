@@ -1,20 +1,23 @@
+use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime::{INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR};
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{
     Actor, Deadline, Deadlines, Method, MinerConstructorParams as ConstructorParams, State,
 };
+use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 
 use fvm_ipld_encoding::{BytesDe, CborStore};
 use fvm_shared::address::Address;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredPoStProof, SectorSize};
+use fvm_shared::sector::{RegisteredPoStProof, SectorSize, StoragePower};
 
 use cid::Cid;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use num_traits::Zero;
+use num_traits::{FromPrimitive, Zero};
 
 mod util;
 
@@ -27,10 +30,19 @@ struct TestEnv {
     control_addrs: Vec<Address>,
     peer_id: Vec<u8>,
     multiaddrs: Vec<BytesDe>,
+
+    power: StoragePower,
+    reward: TokenAmount,
+    epoch_reward_smooth: FilterEstimate,
+
     rt: MockRuntime,
 }
 
 fn prepare_env() -> TestEnv {
+    let reward = TokenAmount::from_whole(10);
+    let power = StoragePower::from_i128(1 << 50).unwrap();
+    let epoch_reward_smooth = FilterEstimate::new(reward.atto().clone(), BigInt::from(0u8));
+
     let mut env = TestEnv {
         receiver: Address::new_id(1000),
         owner: Address::new_id(100),
@@ -39,6 +51,9 @@ fn prepare_env() -> TestEnv {
         control_addrs: vec![Address::new_id(999), Address::new_id(998)],
         peer_id: vec![1, 2, 3],
         multiaddrs: vec![BytesDe(vec![1, 2, 3])],
+        power,
+        reward,
+        epoch_reward_smooth,
         rt: MockRuntime::default(),
     };
 
@@ -50,6 +65,7 @@ fn prepare_env() -> TestEnv {
     env.rt.hash_func = Box::new(hash);
     env.rt.caller.replace(INIT_ACTOR_ADDR);
     env.rt.caller_type.replace(*INIT_ACTOR_CODE_ID);
+    env.rt.add_balance(TokenAmount::from_atto(633318697598976000u64));
     env
 }
 
@@ -61,16 +77,29 @@ fn constructor_params(env: &TestEnv) -> ConstructorParams {
         window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         peer_id: env.peer_id.clone(),
         multi_addresses: env.multiaddrs.clone(),
+        network_qap: env.epoch_reward_smooth.clone(),
     }
 }
 
 #[test]
 fn simple_construction() {
     let env = prepare_env();
+    let current_reward = ThisEpochRewardReturn {
+        this_epoch_baseline_power: env.power.clone(),
+        this_epoch_reward_smoothed: env.epoch_reward_smooth.clone(),
+    };
     let params = constructor_params(&env);
 
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+    env.rt.expect_send_simple(
+        REWARD_ACTOR_ADDR,
+        RewardMethod::ThisEpochReward as u64,
+        None,
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&current_reward).unwrap(),
+        ExitCode::OK,
+    );
     env.rt.expect_send_simple(
         env.worker,
         AccountMethod::PubkeyAddress as u64,

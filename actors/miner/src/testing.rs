@@ -268,8 +268,7 @@ fn check_miner_balances<BS: Blockstore>(
         !state.fee_debt.is_negative(),
         format!("miner fee debt is less than zero: {}", state.fee_debt),
     );
-
-    acc.require(!(balance - &state.locked_funds - &state.pre_commit_deposits - &state.initial_pledge).is_negative(), format!("miner balance {balance} is less than sum of locked funds ({}), precommit deposit ({}) and initial pledge ({})", state.locked_funds, state.pre_commit_deposits, state.initial_pledge));
+    acc.require(!(balance - &state.locked_funds - &state.pre_commit_deposits - &state.initial_pledge).is_negative(), format!("miner balance {balance} is less than sum of locked funds ({}), precommit deposit ({}), initial pledge ({})", state.locked_funds, state.pre_commit_deposits, state.initial_pledge));
 
     // locked funds must be sum of vesting table and vesting table payments must be quantized
     let mut vesting_sum = TokenAmount::zero();

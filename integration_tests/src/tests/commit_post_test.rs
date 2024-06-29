@@ -270,7 +270,9 @@ pub fn overdue_precommit_test(v: &dyn VM) {
         &TokenAmount::from_whole(10_000),
     )
     .0;
-    v.set_epoch(200);
+
+    // unlock create miner deposit
+    v.set_epoch(180 * fil_actors_runtime::EPOCHS_IN_DAY);
 
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;

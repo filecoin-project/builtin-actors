@@ -54,7 +54,8 @@ fn setup(v: &dyn VM) -> (Addrs, ChainEpoch) {
     let owner = worker;
 
     // setup provider
-    let miner_balance = TokenAmount::from_whole(100);
+    let deposit = TokenAmount::from_atto(319999994978159820800u128);
+    let miner_balance = TokenAmount::from_whole(100) + deposit;
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let maddr = create_miner(

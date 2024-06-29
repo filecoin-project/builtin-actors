@@ -82,6 +82,7 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let value = rt.message().value_received();
 
+        let state: State = rt.state()?;
         let constructor_params = RawBytes::serialize(ext::miner::MinerConstructorParams {
             owner: params.owner,
             worker: params.worker,
@@ -89,6 +90,7 @@ impl Actor {
             peer_id: params.peer,
             multi_addresses: params.multiaddrs,
             control_addresses: Default::default(),
+            network_qap: state.this_epoch_qa_power_smoothed,
         })?;
 
         let miner_actor_code_cid = rt.get_code_cid_for_type(Type::Miner);
