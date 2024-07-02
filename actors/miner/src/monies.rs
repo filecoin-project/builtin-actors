@@ -258,7 +258,7 @@ pub fn initial_pledge_for_power(
     network_qa_power_estimate: &FilterEstimate,
     circulating_supply: &TokenAmount,
     epochs_since_ramp_start: i64,
-    ramp_duration_epochs: u64
+    ramp_duration_epochs: u64,
 ) -> TokenAmount {
     let ip_base = expected_reward_for_power_clamped_at_atto_fil(
         reward_estimate,
@@ -285,16 +285,19 @@ pub fn initial_pledge_for_power(
 
     let additional_ip_num = lock_target_num * pledge_share_num;
 
-    let pledge_share_denom_baseline = cmp::max(cmp::max(&network_qa_power, baseline_power), qa_power);
+    let pledge_share_denom_baseline =
+        cmp::max(cmp::max(&network_qa_power, baseline_power), qa_power);
     let pledge_share_denom_simple = cmp::max(&network_qa_power, qa_power);
-    
+
     let additional_ip_denom_baseline = pledge_share_denom_baseline * lock_target_denom;
     let additional_ip_baseline = additional_ip_num.div_floor(&additional_ip_denom_baseline);
     let additional_ip_denom_simple = pledge_share_denom_simple * lock_target_denom;
     let additional_ip_simple = additional_ip_num.div_floor(&additional_ip_denom_simple);
 
     // convex combination of simple and baseline pledge
-    let additional_ip = (additional_ip_baseline * gamma + additional_ip_simple * (FIXED_POINT_FACTOR - gamma)) / FIXED_POINT_FACTOR;
+    let additional_ip = (additional_ip_baseline * gamma
+        + additional_ip_simple * (FIXED_POINT_FACTOR - gamma))
+        / FIXED_POINT_FACTOR;
 
     let nominal_pledge = ip_base + TokenAmount::from_atto(additional_ip);
     let pledge_cap = TokenAmount::from_atto(INITIAL_PLEDGE_MAX_PER_BYTE.atto() * qa_power);
