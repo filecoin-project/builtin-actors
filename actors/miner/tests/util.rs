@@ -771,7 +771,7 @@ impl ActorHarness {
             quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),
             // TODO: maybe this is where we setup the inputs to test different values of epoch and ramp_start to test update to pledge function
             ramp_start_epoch: 0,
-            ramp_duration_epochs: 0 
+            ramp_duration_epochs: 0,
         };
         let current_reward = ThisEpochRewardReturn {
             this_epoch_baseline_power: self.baseline_power.clone(),
@@ -2350,7 +2350,7 @@ impl ActorHarness {
             // TODO: zeros preserve original functionality, but we may need to update it here
             //   to test the new pledge function properly
             0,
-            0
+            0,
         )
     }
 
