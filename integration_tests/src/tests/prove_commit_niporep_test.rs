@@ -120,7 +120,7 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
     }
     .matches(v.take_invocations().last().unwrap());
 
-    // Checks on sector state.
+    // Check sector state.
     let sectors = sector_nos
         .iter()
         .map(|sector_number| sector_info(v, &maddr, *sector_number))
@@ -253,7 +253,7 @@ pub fn prove_commit_ni_partial_success_not_required_test(v: &dyn VM) {
     }
     .matches(v.take_invocations().last().unwrap());
 
-    // Checks on sector state.
+    // Check sector state.
     invalid_sector_nos
         .iter()
         .for_each(|sector_number| assert!(try_sector_info(v, &maddr, *sector_number).is_none()));
@@ -299,7 +299,7 @@ pub fn prove_commit_ni_partial_success_not_required_test(v: &dyn VM) {
 
     submit_windowed_post(v, &worker, &maddr, deadline_info, 0, Some(partition.unproven_power));
 
-    // Check if post is registered in deadline submissions
+    // Check if post is registered in deadline's optimistic submissions
     let deadline = deadline_state(v, &maddr, proving_deadline);
     let submissions = deadline.optimistic_proofs_amt(store).unwrap();
     assert_eq!(submissions.count(), 1);
@@ -359,4 +359,154 @@ pub fn prove_commit_ni_partial_success_not_required_test(v: &dyn VM) {
         assert!(partition.faults.is_empty());
         assert!(partition.recoveries.is_empty());
     }
+}
+
+#[vm_test]
+pub fn prove_commit_ni_next_deadline_post_required_test(v: &dyn VM) {
+    // Expectations depend on the correct unsealed CID for empty sector.
+    override_compute_unsealed_sector_cid(v);
+    let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep;
+    let (owner, worker, _, _) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let worker_id = worker.id().unwrap();
+    let (maddr, _) = create_miner(
+        v,
+        &owner,
+        &worker,
+        seal_proof.registered_window_post_proof().unwrap(),
+        &TokenAmount::from_whole(8_000),
+    );
+    let miner_id = maddr.id().unwrap();
+    let policy = Policy::default();
+
+    // Onboard a single sector
+    let seal_rand_epoch = v.epoch();
+    let activation_epoch = seal_rand_epoch + policy.max_prove_commit_ni_randomness_lookback / 2;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
+    let sector_number: SectorNumber = 101;
+    let proving_deadline = 14;
+
+    let ni_sector_info = SectorNIActivationInfo {
+        sealing_number: sector_number,
+        sealer_id: miner_id,
+        sector_number,
+        sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
+        seal_rand_epoch,
+        expiration,
+    };
+
+    // Prove-commit NI-PoRep
+    let aggregate_proof = RawBytes::new(vec![1, 2, 3, 4]);
+    let params = ProveCommitSectorsNIParams {
+        sectors: vec![ni_sector_info.clone()],
+        seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep,
+        aggregate_proof,
+        aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+        proving_deadline,
+        require_activation_success: true,
+    };
+
+    v.set_epoch(activation_epoch);
+
+    let pcsni_ret: ProveCommitSectorsNIReturn = apply_ok(
+        v,
+        &worker,
+        &maddr,
+        &TokenAmount::zero(),
+        MinerMethod::ProveCommitSectorsNI as u64,
+        Some(params.clone()),
+    )
+    .deserialize()
+    .unwrap();
+
+    assert_eq!(pcsni_ret.activation_results.size(), 1);
+    assert!(pcsni_ret.activation_results.all_ok());
+    assert_eq!(pcsni_ret.activation_results.codes(), [ExitCode::OK]);
+
+    ExpectInvocation {
+        from: worker_id,
+        to: maddr,
+        method: MinerMethod::ProveCommitSectorsNI as u64,
+        params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        subinvocs: None,
+        events: Some(vec![Expect::build_sector_activation_event(
+            "sector-activated",
+            miner_id,
+            sector_number,
+            None,
+            &vec![],
+        )]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+
+    // Check sector state.
+    let on_chain_sector = sector_info(v, &maddr, sector_number);
+    assert_eq!(ni_sector_info.sector_number, on_chain_sector.sector_number);
+    assert_eq!(params.seal_proof_type, on_chain_sector.seal_proof);
+    assert_eq!(ni_sector_info.sealed_cid, on_chain_sector.sealed_cid);
+    assert!(on_chain_sector.deprecated_deal_ids.is_empty());
+    assert_eq!(activation_epoch, on_chain_sector.activation);
+    assert_eq!(ni_sector_info.expiration, on_chain_sector.expiration);
+    assert_eq!(BigInt::zero(), on_chain_sector.deal_weight);
+    assert_eq!(BigInt::zero(), on_chain_sector.verified_deal_weight);
+    assert_eq!(activation_epoch, on_chain_sector.power_base_epoch);
+    assert!(on_chain_sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER));
+
+    // Check if sector is properly assigned to the deadline
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    assert_eq!(deadline.live_sectors, 1u64);
+
+    let store = &DynBlockstore::wrap(v.blockstore());
+    let partition = deadline.load_partition(store, 0).unwrap();
+    assert!(partition.sectors.get(sector_number));
+    assert!(partition.unproven.get(sector_number));
+
+    // Move past the first proving deadline while skipping window post submission
+    // and check if the sector is faulty
+    let deadline_info = advance_by_deadline_to_index(v, &maddr, proving_deadline);
+    advance_by_deadline_to_epoch(v, &maddr, deadline_info.close + policy.wpost_proving_period);
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let partition = deadline.load_partition(store, 0).unwrap();
+
+    assert!(partition.faults.get(sector_number));
+    assert!(partition.active_sectors().is_empty());
+    assert!(partition.recoveries.is_empty());
+
+    // Recover faulty sectors
+    declare_recovery(v, &worker, &maddr, proving_deadline, 0, sector_number);
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let partition = deadline.load_partition(store, 0).unwrap();
+    assert!(partition.faults.get(sector_number));
+    assert!(partition.recoveries.get(sector_number));
+
+    // Move to the next proving deadline and submit WindowPoSt
+    let deadline_info = advance_by_deadline_to_index(v, &maddr, proving_deadline);
+    submit_windowed_post(v, &worker, &maddr, deadline_info, 0, None);
+
+    // Move to next deadline and check if sectors are active
+    advance_by_deadline_to_index(
+        v,
+        &maddr,
+        proving_deadline + 1 % policy.wpost_proving_period as u64,
+    );
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let partition = deadline.load_partition(store, 0).unwrap();
+
+    assert!(partition.active_sectors().get(sector_number));
+    assert!(partition.faults.is_empty());
+    assert!(partition.recoveries.is_empty());
+
+    // Move to the next proving deadline and submit WindowPoSt
+    let deadline_info = advance_by_deadline_to_index(v, &maddr, proving_deadline);
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let submissions = deadline.optimistic_proofs_amt(store).unwrap();
+    assert_eq!(submissions.count(), 0);
+
+    submit_windowed_post(v, &worker, &maddr, deadline_info, 0, Some(partition.unproven_power));
+
+    // Check if post is registered in deadline's optimistic submissions
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    let submissions = deadline.optimistic_proofs_amt(store).unwrap();
+    assert_eq!(submissions.count(), 1);
 }
