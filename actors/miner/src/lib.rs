@@ -1544,14 +1544,9 @@ impl Actor {
                 ));
             }
 
-            match &precommit.unsealed_cid.0 {
-                Some(cid) => {
-                    if !is_unsealed_sector(cid) {
-                        return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
-                    }
-                },
-                None => {
-                    todo!();
+            if let Some(cid) = &precommit.unsealed_cid.0 {
+                if !is_unsealed_sector(cid) {
+                    return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
                 }
             }
 
