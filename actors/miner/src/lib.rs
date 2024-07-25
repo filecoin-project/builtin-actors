@@ -1467,7 +1467,7 @@ impl Actor {
                     deal_ids: spci.deal_ids,
                     expiration: spci.expiration,
 
-                    unsealed_cid: Some(spci.unsealed_cid),
+                    unsealed_cid: spci.unsealed_cid,
                 })
                 .collect(),
         )
@@ -1544,14 +1544,10 @@ impl Actor {
                 ));
             }
 
-            match &precommit.unsealed_cid {
-                Some(CompactCommD(Some(commd))) if !is_unsealed_sector(commd) => {
+            if let Some(commd) = &precommit.unsealed_cid.0 {
+                if !is_unsealed_sector(commd) {
                     return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
                 }
-                None => return Err(actor_error!(
-                                illegal_argument,
-                                "unspecified CompactCommD not allowed past nv21, need explicit None value for CC or CommD")),
-                _ => {}
             }
 
             // Require sector lifetime meets minimum by assuming activation happens at last epoch permitted for seal proof.
@@ -1657,7 +1653,7 @@ impl Actor {
 
                 // Presence of unsealed CID is checked in the preconditions.
                 // It must always be specified from nv22 onwards.
-                let declared_commd = precommit.unsealed_cid.unwrap();
+                let declared_commd = precommit.unsealed_cid;
                 // This is not a CompactCommD, None means that nothing was computed and nothing needs to be checked
                 if let Some(computed_cid) = verify_return.unsealed_cids[i] {
                     // It is possible the computed commd is the zero commd so expand declared_commd
@@ -3594,7 +3590,7 @@ struct SectorPreCommitInfoInner {
     pub deal_ids: Vec<DealID>,
     pub expiration: ChainEpoch,
     /// CommD
-    pub unsealed_cid: Option<CompactCommD>,
+    pub unsealed_cid: CompactCommD,
 }
 
 /// ReplicaUpdate param with Option<Cid> for CommD
