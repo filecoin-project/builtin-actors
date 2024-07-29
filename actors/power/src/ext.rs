@@ -46,6 +46,7 @@ pub mod miner {
         #[serde(with = "strict_bytes")]
         pub peer_id: Vec<u8>,
         pub multi_addresses: Vec<BytesDe>,
+        pub network_qap: FilterEstimate,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -60,6 +61,7 @@ pub mod miner {
 pub mod reward {
     use super::*;
 
+    pub const THIS_EPOCH_REWARD_METHOD: u64 = 3;
     pub const UPDATE_NETWORK_KPI: u64 = 4;
 
     #[derive(FromPrimitive)]
