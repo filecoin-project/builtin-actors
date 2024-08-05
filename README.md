@@ -84,9 +84,7 @@ Precompiled actor bundles are provided as [release binaries][releases] in this r
 
 ## Releasing
 
-We release all actors, the runtime, and the state abstraction at the same time by:
-
-1. Changing the `workspace.package.version` in the top-level `Cargo.toml` file.
+We release all actors, the runtime, and the state abstraction at the same time by opening a PR changing the `workspace.package.version` in the top-level `Cargo.toml` file.
 
 This triggers CI to create a draft GitHub Release, create the associated tags, and built and upload assets to the release.  When the PR is merged, the GitHub Release will be published.
 
