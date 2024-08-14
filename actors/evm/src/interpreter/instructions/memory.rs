@@ -61,20 +61,39 @@ pub fn mcopy(
     src_index: U256,
     size: U256,
 ) -> Result<(), ActorError> {
-    // We are copying between two potentially overlapping slices in the same memory.
-    // MCOPY spec: Copying takes place as if an intermediate buffer was used,
-    //             allowing the destination and source to overlap.
+    // Copy memory from src_index to dest_index.
+    // Handles overlapping slices as if using an intermediate buffer, ensuring correct copying.
+    // Expands memory if src_index + size or dest_index + size exceeds current bounds.
+    // Returns an error if memory regions are invalid or cannot be allocated.
 
-    // expand memory to accomodate requested src_index + size
-    let region = get_memory_region(&mut state.memory, src_index, size)?.expect("empty region");
-    let memory_slice = state.memory[region.offset..region.offset + region.size.get()].to_vec();
+    copy_within_memory(&mut state.memory, dest_index, src_index, size)
+}
 
-    // expand memory to match dest_index + size
-    let _destination_region =
-        get_memory_region(&mut state.memory, dest_index, size)?.expect("empty region");
+pub fn copy_within_memory(
+    memory: &mut Memory,
+    dest_index: U256,
+    src_index: U256,
+    size: U256,
+) -> Result<(), ActorError> {
+    // Expand memory to accommodate requested src_index + size
+    let region = get_memory_region(memory, src_index, size)?.expect("empty region");
 
-    //copy
-    copy_to_memory(&mut state.memory, dest_index, size, U256::zero(), &memory_slice, true)
+    // Expand memory to match dest_index + size
+    let _destination_region = get_memory_region(memory, dest_index, size)?.expect("empty region");
+
+    if size > 0 {
+        let src_start = src_index.low_u64() as usize;
+        let src_end = src_start + size.low_u64() as usize;
+        let dest_start = dest_index.low_u64() as usize;
+
+        // Named variables for clarity
+        let source_range = src_start..src_end;
+        let destination_index = dest_start;
+
+        memory.copy_within(source_range, destination_index);
+    }
+
+    Ok(())
 }
 
 pub fn copy_to_memory(
