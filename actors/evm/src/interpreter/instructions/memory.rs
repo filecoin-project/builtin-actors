@@ -61,7 +61,7 @@ pub fn mcopy(
     input_index: U256,
     size: U256,
 ) -> Result<(), ActorError> {
-    //TODO be careful because we'll be copying between two potentially overlapping slices in the same memory.
+    // We are copying between two potentially overlapping slices in the same memory.
     // MCOPY spec: Copying takes place as if an intermediate buffer was used,
     //             allowing the destination and source to overlap.
 
@@ -245,6 +245,125 @@ mod tests {
             let mut expected = [0u8; 32];
             expected[..3].copy_from_slice(&[0x01, 0x02, 0x02]);
             assert_eq!(&*m.state.memory, &expected);
+        };
+    }
+
+    #[test]
+    fn test_mcopy_0_32_32() {
+        evm_unit_test! {
+            (m) {
+                MCOPY;
+            }
+
+            // Grow memory and set initial values
+            m.state.memory.grow(64);
+            m.state.memory[32..64].copy_from_slice(&[
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+                0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
+            ]);
+
+            // Set up stack
+            m.state.stack.push(U256::from(32)).unwrap();  // length
+            m.state.stack.push(U256::from(32)).unwrap();  // source offset
+            m.state.stack.push(U256::from(0)).unwrap();   // destination offset
+
+            // Execute and assert
+            assert!(m.step().is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+
+            // Setup expected memory and assert
+            let mut expected = [0u8; 64];
+            expected[0..64].copy_from_slice(&[
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+                0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+                0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
+            ]);
+            assert_eq!(&*m.state.memory, &expected);
+        };
+    }
+
+    #[test]
+    fn test_mcopy_0_0_32() {
+        evm_unit_test! {
+            (m) {
+                MCOPY;
+            }
+
+            // Grow memory and set initial values
+            m.state.memory.grow(32);
+            m.state.memory[..32].copy_from_slice(&[0x01; 32]);
+
+            // Set up stack
+            m.state.stack.push(U256::from(32)).unwrap();  // length
+            m.state.stack.push(U256::from(0)).unwrap();   // source offset
+            m.state.stack.push(U256::from(0)).unwrap();   // destination offset
+
+            // Execute and assert
+            assert!(m.step().is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+
+            // Setup expected memory and assert
+            let expected = [0x01; 32];
+            assert_eq!(&m.state.memory[..32], &expected);
+        };
+    }
+
+    #[test]
+    fn test_mcopy_0_1_8() {
+        evm_unit_test! {
+            (m) {
+                MCOPY;
+            }
+
+            // Grow memory and set initial values
+            m.state.memory.grow(32);
+            m.state.memory[..8].copy_from_slice(&[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
+            m.state.memory[8] = 0x08;
+
+            // Set up stack
+            m.state.stack.push(U256::from(8)).unwrap();   // length
+            m.state.stack.push(U256::from(1)).unwrap();   // source offset
+            m.state.stack.push(U256::from(0)).unwrap();   // destination offset
+
+            // Execute and assert
+            assert!(m.step().is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+
+            // Setup expected memory and assert
+            let mut expected = [0u8; 32];
+            expected[..8].copy_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+            expected[8] = 0x08;
+            assert_eq!(&m.state.memory[..9], &expected[..9]);
+        };
+    }
+
+    #[test]
+    fn test_mcopy_1_0_8() {
+        evm_unit_test! {
+            (m) {
+                MCOPY;
+            }
+
+            // Grow memory and set initial values
+            m.state.memory.grow(32);
+            m.state.memory[..8].copy_from_slice(&[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
+            m.state.memory[8] = 0x08;
+
+            // Set up stack
+            m.state.stack.push(U256::from(8)).unwrap();   // length
+            m.state.stack.push(U256::from(0)).unwrap();   // source offset
+            m.state.stack.push(U256::from(1)).unwrap();   // destination offset
+
+            // Execute and assert
+            assert!(m.step().is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+
+            // Setup expected memory and assert
+            let mut expected = [0u8; 32];
+            expected[..8].copy_from_slice(&[0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06]);
+            expected[8] = 0x07;
+            assert_eq!(&m.state.memory[..9], &expected[..9]);
         };
     }
 
