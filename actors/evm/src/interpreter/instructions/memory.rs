@@ -62,15 +62,13 @@ pub fn mcopy(
     size: U256,
 ) -> Result<(), ActorError> {
     //TODO be careful because we'll be copying between two potentially overlapping slices in the same memory.
-    // MCOPY spec: Copying takes place as if an intermediate buffer was used, 
+    // MCOPY spec: Copying takes place as if an intermediate buffer was used,
     //             allowing the destination and source to overlap.
 
     let region = get_memory_region(&mut state.memory, input_index, size)?.expect("empty region");
     let memory_slice = state.memory[region.offset..region.offset + region.size.get()].to_vec();
-    copy_to_memory(&mut state.memory, mem_index, size, U256::zero(), &memory_slice,  true)
-
+    copy_to_memory(&mut state.memory, mem_index, size, U256::zero(), &memory_slice, true)
 }
-
 
 pub fn copy_to_memory(
     memory: &mut Memory,
@@ -219,27 +217,33 @@ mod tests {
         assert_eq!(&mem[0..4], result_data);
     }
 
-
     #[test]
     fn test_mcopy() {
-        // happy path
+        const LENGTH: usize = 2;
+        const OFFSET: usize = 1;
+        const DEST_OFFSET: usize = 0;
+
         evm_unit_test! {
             (m) {
                 MCOPY;
             }
+
+            // Grow memory and set initial values
             m.state.memory.grow(32);
             m.state.memory[..3].copy_from_slice(&[0x00, 0x01, 0x02]);
 
-            m.state.stack.push(U256::from(2)).unwrap();  // length
-            m.state.stack.push(U256::from(1)).unwrap();  // offset
-            m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
-            let result = m.step();
-            assert!(result.is_ok(), "execution step failed");
+            // Set up stack
+            m.state.stack.push(U256::from(LENGTH)).unwrap();
+            m.state.stack.push(U256::from(OFFSET)).unwrap();
+            m.state.stack.push(U256::from(DEST_OFFSET)).unwrap();
+
+            // Execute and assert
+            assert!(m.step().is_ok(), "execution step failed");
             assert_eq!(m.state.stack.len(), 0);
+
+            // Setup expected memory and assert
             let mut expected = [0u8; 32];
-            expected[0] = 0x01;
-            expected[1] = 0x02;
-            expected[2] = 0x02;
+            expected[..3].copy_from_slice(&[0x01, 0x02, 0x02]);
             assert_eq!(&*m.state.memory, &expected);
         };
     }
