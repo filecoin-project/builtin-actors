@@ -4,7 +4,8 @@ This document describes the process for releasing a new version of the `builtin-
 
 ## Current State
 
-1. Create a pull request which updates the `workspace.package.version` in the top-level `Cargo.toml` file.
+1. Create a pull request which updates the `workspace.package.version` in the [top-level `Cargo.toml` file](https://github.com/filecoin-project/builtin-actors/blob/master/Cargo.toml).
+   - Title the PR `chore: release X.Y.Z`
 2. On pull request creation, a [Release Checker](.github/workflows/release-check.yml) workflow will run. It will perform the following actions:
     1. Extract the version from the top-level `Cargo.toml` file.
     2. Check if a git tag for the version already exists. Continue only if it does not.
