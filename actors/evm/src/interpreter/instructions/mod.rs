@@ -352,6 +352,7 @@ def_stdfun_code! { CODESIZE() => call::codesize }
 def_stdproc_code! { CODECOPY(a, b, c) => call::codecopy }
 def_stdfun! { CREATE(a, b, c) => lifecycle::create }
 def_stdfun! { CREATE2(a, b, c, d) => lifecycle::create2 }
+def_stdproc! { MCOPY(a,b,c) => memory::mcopy }
 def_stdproc! { JUMPDEST() => control::nop }
 def_stdproc! { INVALID() => control::invalid }
 def_exit! { RETURN(a, b) => control::ret }
