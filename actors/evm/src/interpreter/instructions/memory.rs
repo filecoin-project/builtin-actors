@@ -57,17 +57,23 @@ pub fn get_memory_region(
 pub fn mcopy(
     state: &mut ExecutionState,
     _: &System<impl Runtime>,
-    mem_index: U256,
-    input_index: U256,
+    dest_index: U256,
+    src_index: U256,
     size: U256,
 ) -> Result<(), ActorError> {
     // We are copying between two potentially overlapping slices in the same memory.
     // MCOPY spec: Copying takes place as if an intermediate buffer was used,
     //             allowing the destination and source to overlap.
 
-    let region = get_memory_region(&mut state.memory, input_index, size)?.expect("empty region");
+    // expand memory to accomodate requested src_index + size
+    let region = get_memory_region(&mut state.memory, src_index, size)?.expect("empty region");
     let memory_slice = state.memory[region.offset..region.offset + region.size.get()].to_vec();
-    copy_to_memory(&mut state.memory, mem_index, size, U256::zero(), &memory_slice, true)
+
+    // expand memory to match dest_index + size
+    let _destination_region = get_memory_region(&mut state.memory, dest_index, size)?.expect("empty region");
+
+    //copy
+    copy_to_memory(&mut state.memory, dest_index, size, U256::zero(), &memory_slice, true)
 }
 
 pub fn copy_to_memory(
@@ -364,6 +370,92 @@ mod tests {
             expected[..8].copy_from_slice(&[0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06]);
             expected[8] = 0x07;
             assert_eq!(&m.state.memory[..9], &expected[..9]);
+        };
+    }
+
+    #[test]
+    fn test_mcopy_out_of_range_dest() {
+        evm_unit_test! {
+            (m) {
+                MCOPY;
+            }
+
+            // Initial memory setup
+            m.state.memory.grow(32);
+            m.state.memory[..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+
+            // Set up stack: Attempt to copy to a destination beyond the current memory range
+            m.state.stack.push(U256::from(4)).unwrap();  // length
+            m.state.stack.push(U256::from(0)).unwrap();  // source offset
+            m.state.stack.push(U256::from(64)).unwrap(); // out of range destination offset
+
+            // Execute and expect memory expansion
+            assert!(m.step().is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+
+            // Check that memory was expanded correctly
+            assert_eq!(m.state.memory.len(), 96);
+
+            // Check the memory contents
+            let mut expected = vec![0u8; 68];
+            expected[64..68].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+            assert_eq!(&*m.state.memory, &expected[..]);
+        };
+    }
+
+    #[test]
+    fn test_mcopy_partially_out_of_range_source() {
+        evm_unit_test! {
+            (m) {
+                MCOPY;
+            }
+
+            // Initial memory setup
+            m.state.memory.grow(32);
+            m.state.memory[..28].copy_from_slice(&[0x01; 28]);
+
+            // Set up stack: Source partially out of range
+            m.state.stack.push(U256::from(8)).unwrap();  // length
+            m.state.stack.push(U256::from(24)).unwrap(); // source offset (partially out of range)
+            m.state.stack.push(U256::from(0)).unwrap();  // destination offset
+
+            // Execute and expect memory expansion
+            assert!(m.step().is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+
+            // Check that memory was expanded correctly
+            let mut expected = vec![0u8; 32];
+            expected[..8].copy_from_slice(&[0x01; 8]);
+            assert_eq!(&m.state.memory[..8], &expected[..8]);
+        };
+    }
+
+    #[test]
+    fn test_mcopy_fully_out_of_range_dest_fails() {
+        evm_unit_test! {
+            (m) {
+                MCOPY;
+            }
+
+            // Initial memory setup
+            m.state.memory.grow(32);
+            m.state.memory[..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+
+            // Set up stack: Attempt to copy to a destination fully out of range
+            m.state.stack.push(U256::from(4)).unwrap();  // length
+            m.state.stack.push(U256::from(0)).unwrap();  // source offset
+            m.state.stack.push(U256::from(128)).unwrap(); // fully out of range destination offset
+
+
+                    // Execute and assert memory grows
+        assert!(m.step().is_ok(), "expected step to succeed and grow memory");
+        assert_eq!(m.state.memory.len(), 160);  // Expected memory to grow
+
+        // Check the memory contents
+        let mut expected = vec![0u8; 132];
+        expected[128..132].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+        assert_eq!(&m.state.memory[0..132], &expected[0..132]);
+
         };
     }
 
