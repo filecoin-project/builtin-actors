@@ -398,7 +398,7 @@ mod tests {
             assert_eq!(m.state.memory.len(), 96);
 
             // Check the memory contents
-            let mut expected = vec![0u8; 96];
+            let mut expected = [0u8; 96];
             expected[..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
             expected[64..68].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
             assert_eq!(&*m.state.memory, &expected[..]);
@@ -452,15 +452,15 @@ mod tests {
             m.state.stack.push(U256::from(128)).unwrap(); // fully out of range destination offset
 
 
-                    // Execute and assert memory grows
-        assert!(m.step().is_ok(), "expected step to succeed and grow memory");
-        assert_eq!(m.state.memory.len(), 160);  // Expected memory to grow
+            // Execute and assert memory grows
+            assert!(m.step().is_ok(), "expected step to succeed and grow memory");
+            assert_eq!(m.state.memory.len(), 160);  // Expected memory to grow
 
-        // Check the memory contents
-        let mut expected = vec![0u8; 132];
+            // Check the memory contents
+            let mut expected = [0u8; 132];
             expected[..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
-        expected[128..132].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
-        assert_eq!(&m.state.memory[0..132], &expected[0..132]);
+            expected[128..132].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+            assert_eq!(&m.state.memory[0..132], &expected[0..132]);
 
         };
     }
