@@ -70,7 +70,8 @@ pub fn mcopy(
     let memory_slice = state.memory[region.offset..region.offset + region.size.get()].to_vec();
 
     // expand memory to match dest_index + size
-    let _destination_region = get_memory_region(&mut state.memory, dest_index, size)?.expect("empty region");
+    let _destination_region =
+        get_memory_region(&mut state.memory, dest_index, size)?.expect("empty region");
 
     //copy
     copy_to_memory(&mut state.memory, dest_index, size, U256::zero(), &memory_slice, true)
@@ -397,7 +398,8 @@ mod tests {
             assert_eq!(m.state.memory.len(), 96);
 
             // Check the memory contents
-            let mut expected = vec![0u8; 68];
+            let mut expected = vec![0u8; 96];
+            expected[..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
             expected[64..68].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
             assert_eq!(&*m.state.memory, &expected[..]);
         };
@@ -415,7 +417,7 @@ mod tests {
             m.state.memory[..28].copy_from_slice(&[0x01; 28]);
 
             // Set up stack: Source partially out of range
-            m.state.stack.push(U256::from(8)).unwrap();  // length
+            m.state.stack.push(U256::from(10)).unwrap();  // length
             m.state.stack.push(U256::from(24)).unwrap(); // source offset (partially out of range)
             m.state.stack.push(U256::from(0)).unwrap();  // destination offset
 
@@ -423,9 +425,12 @@ mod tests {
             assert!(m.step().is_ok(), "execution step failed");
             assert_eq!(m.state.stack.len(), 0);
 
+            // Check the length of the memory after the operation
+            assert_eq!(m.state.memory.len(), 32+EVM_WORD_SIZE);  // Memory should remain at 32 bytes after the operation
+
             // Check that memory was expanded correctly
-            let mut expected = vec![0u8; 32];
-            expected[..8].copy_from_slice(&[0x01; 8]);
+            let mut expected = vec![0x01; 4];  // First 4 bytes copied
+            expected.extend_from_slice(&[0x00; 4]);  // Remaining 4 bytes unchanged
             assert_eq!(&m.state.memory[..8], &expected[..8]);
         };
     }
@@ -453,6 +458,7 @@ mod tests {
 
         // Check the memory contents
         let mut expected = vec![0u8; 132];
+            expected[..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
         expected[128..132].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
         assert_eq!(&m.state.memory[0..132], &expected[0..132]);
 
