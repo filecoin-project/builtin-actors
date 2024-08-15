@@ -68,6 +68,8 @@ pub fn mcopy(
 
     if size > 0 {
         copy_within_memory(&mut state.memory, dest_index, src_index, size)
+    } else {
+        Ok(())
     }
 }
 
