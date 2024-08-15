@@ -66,7 +66,9 @@ pub fn mcopy(
     // Expands memory if src_index + size or dest_index + size exceeds current bounds.
     // Returns an error if memory regions are invalid or cannot be allocated.
 
-    copy_within_memory(&mut state.memory, dest_index, src_index, size)
+    if size > 0 {
+        copy_within_memory(&mut state.memory, dest_index, src_index, size)
+    }
 }
 
 pub fn copy_within_memory(
@@ -81,17 +83,15 @@ pub fn copy_within_memory(
     // Expand memory to match dest_index + size
     let _destination_region = get_memory_region(memory, dest_index, size)?.expect("empty region");
 
-    if size > 0 {
-        let src_start = src_index.low_u64() as usize;
-        let src_end = src_start + size.low_u64() as usize;
-        let dest_start = dest_index.low_u64() as usize;
+    let src_start = src_index.low_u64() as usize;
+    let src_end = src_start + size.low_u64() as usize;
+    let dest_start = dest_index.low_u64() as usize;
 
-        // Named variables for clarity
-        let source_range = src_start..src_end;
-        let destination_index = dest_start;
+    // Named variables for clarity
+    let source_range = src_start..src_end;
+    let destination_index = dest_start;
 
-        memory.copy_within(source_range, destination_index);
-    }
+    memory.copy_within(source_range, destination_index);
 
     Ok(())
 }
