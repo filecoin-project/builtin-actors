@@ -76,7 +76,7 @@ pub fn copy_within_memory(
     size: U256,
 ) -> Result<(), ActorError> {
     // Expand memory to accommodate requested src_index + size
-    let region = get_memory_region(memory, src_index, size)?.expect("empty region");
+    let _region = get_memory_region(memory, src_index, size)?.expect("empty region");
 
     // Expand memory to match dest_index + size
     let _destination_region = get_memory_region(memory, dest_index, size)?.expect("empty region");
