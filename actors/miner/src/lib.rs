@@ -3892,12 +3892,8 @@ fn extend_simple_qap_sector(
 
         // We only bother updating the expected_day_reward, expected_storage_pledge, and replaced_day_reward
         //  for verified deals, as it can increase power.
-        let qa_pow = qa_power_for_weight(
-            sector_size,
-            new_duration,
-            &new_sector.deal_weight,
-            &new_sector.verified_deal_weight,
-        );
+        let qa_pow =
+            qa_power_for_weight(sector_size, new_duration, &new_sector.verified_deal_weight);
         new_sector.expected_day_reward = expected_reward_for_power(
             &reward_stats.this_epoch_reward_smoothed,
             &power_stats.quality_adj_power_smoothed,
@@ -4283,12 +4279,7 @@ fn update_existing_sector_info(
     new_sector_info.verified_deal_weight = activated_data.verified_space.clone() * duration;
 
     // compute initial pledge
-    let qa_pow = qa_power_for_weight(
-        sector_size,
-        duration,
-        &new_sector_info.deal_weight,
-        &new_sector_info.verified_deal_weight,
-    );
+    let qa_pow = qa_power_for_weight(sector_size, duration, &new_sector_info.verified_deal_weight);
 
     new_sector_info.replaced_day_reward =
         max(&sector_info.expected_day_reward, &sector_info.replaced_day_reward).clone();
@@ -5530,12 +5521,7 @@ fn activate_new_sector_infos(
             let deal_weight = &deal_spaces.unverified_space * duration;
             let verified_deal_weight = &deal_spaces.verified_space * duration;
 
-            let power = qa_power_for_weight(
-                info.sector_size,
-                duration,
-                &deal_weight,
-                &verified_deal_weight,
-            );
+            let power = qa_power_for_weight(info.sector_size, duration, &verified_deal_weight);
 
             let day_reward = expected_reward_for_power(
                 &pledge_inputs.epoch_reward,

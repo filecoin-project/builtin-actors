@@ -27,9 +27,6 @@ lazy_static! {
     /// Quality multiplier for committed capacity (no deals) in a sector
     pub static ref QUALITY_BASE_MULTIPLIER: BigInt = BigInt::from(10);
 
-    /// Quality multiplier for unverified deals in a sector
-    pub static ref DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(10);
-
     /// Quality multiplier for verified deals in a sector
     pub static ref VERIFIED_DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(100);
 
@@ -119,27 +116,22 @@ pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<
 /// minimum number of epochs past the current epoch a sector may be set to expire
 pub const MIN_SECTOR_EXPIRATION: i64 = 180 * EPOCHS_IN_DAY;
 
-/// DealWeight and VerifiedDealWeight are spacetime occupied by regular deals and verified deals in a sector.
-/// Sum of DealWeight and VerifiedDealWeight should be less than or equal to total SpaceTime of a sector.
+/// VerifiedDealWeight is spacetime occupied by verified pieces in a sector.
+/// VerifiedDealWeight should be less than or equal to total SpaceTime of a sector.
 /// Sectors full of VerifiedDeals will have a BigInt of VerifiedDealWeightMultiplier/QualityBaseMultiplier.
-/// Sectors full of Deals will have a BigInt of DealWeightMultiplier/QualityBaseMultiplier.
-/// Sectors with neither will have a BigInt of QualityBaseMultiplier/QualityBaseMultiplier.
+/// Sectors without VerifiedDeals will have a BigInt of QualityBaseMultiplier/QualityBaseMultiplier.
 /// BigInt of a sector is a weighted average of multipliers based on their proportions.
 pub fn quality_for_weight(
     size: SectorSize,
     duration: ChainEpoch,
-    deal_weight: &DealWeight,
     verified_weight: &DealWeight,
 ) -> BigInt {
     let sector_space_time = BigInt::from(size as u64) * BigInt::from(duration);
-    let total_deal_space_time = deal_weight + verified_weight;
 
     let weighted_base_space_time =
-        (&sector_space_time - total_deal_space_time) * &*QUALITY_BASE_MULTIPLIER;
-    let weighted_deal_space_time = deal_weight * &*DEAL_WEIGHT_MULTIPLIER;
+        (&sector_space_time - verified_weight) * &*QUALITY_BASE_MULTIPLIER;
     let weighted_verified_space_time = verified_weight * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER;
-    let weighted_sum_space_time =
-        weighted_base_space_time + weighted_deal_space_time + weighted_verified_space_time;
+    let weighted_sum_space_time = weighted_base_space_time + weighted_verified_space_time;
     let scaled_up_weighted_sum_space_time: BigInt =
         weighted_sum_space_time << SECTOR_QUALITY_PRECISION;
 
@@ -158,17 +150,16 @@ pub fn qa_power_max(size: SectorSize) -> StoragePower {
 pub fn qa_power_for_weight(
     size: SectorSize,
     duration: ChainEpoch,
-    deal_weight: &DealWeight,
     verified_weight: &DealWeight,
 ) -> StoragePower {
-    let quality = quality_for_weight(size, duration, deal_weight, verified_weight);
+    let quality = quality_for_weight(size, duration, verified_weight);
     (BigInt::from(size as u64) * quality) >> SECTOR_QUALITY_PRECISION
 }
 
 /// Returns the quality-adjusted power for a sector.
 pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> StoragePower {
     let duration = sector.expiration - sector.power_base_epoch;
-    qa_power_for_weight(size, duration, &sector.deal_weight, &sector.verified_deal_weight)
+    qa_power_for_weight(size, duration, &sector.verified_deal_weight)
 }
 
 pub fn raw_power_for_sector(size: SectorSize) -> StoragePower {

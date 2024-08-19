@@ -1203,19 +1203,12 @@ impl ActorHarness {
             let mut expected_raw_power = BigInt::from(0);
 
             for pc in valid_pcs {
-                let deal_space = cfg.deal_space(pc.info.sector_number);
                 let verified_deal_space = cfg.verified_deal_space(pc.info.sector_number);
-
                 let duration = pc.info.expiration - *rt.epoch.borrow();
-                let deal_weight = deal_space * duration;
                 let verified_deal_weight = verified_deal_space * duration;
                 if duration >= rt.policy.min_sector_expiration {
-                    let qa_power_delta = qa_power_for_weight(
-                        self.sector_size,
-                        duration,
-                        &deal_weight,
-                        &verified_deal_weight,
-                    );
+                    let qa_power_delta =
+                        qa_power_for_weight(self.sector_size, duration, &verified_deal_weight);
                     expected_qa_power += &qa_power_delta;
                     expected_raw_power += self.sector_size as u64;
                     expected_pledge += self.initial_pledge_for_power(rt, &qa_power_delta);
@@ -1382,8 +1375,7 @@ impl ActorHarness {
                     deal_size += piece.size.0 * duration as u64;
                 }
             }
-            let qa_power_delta =
-                qa_power_for_weight(self.sector_size, duration, &deal_size, &verified_size);
+            let qa_power_delta = qa_power_for_weight(self.sector_size, duration, &verified_size);
             expected_qa_power += &qa_power_delta;
             expected_pledge += self.initial_pledge_for_power(rt, &qa_power_delta);
         }
@@ -1596,9 +1588,8 @@ impl ActorHarness {
                 }
             }
 
-            let qa_power_delta =
-                qa_power_for_weight(self.sector_size, duration, &deal_size, &verified_size)
-                    - qa_power_for_sector(self.sector_size, &sector);
+            let qa_power_delta = qa_power_for_weight(self.sector_size, duration, &verified_size)
+                - qa_power_for_sector(self.sector_size, &sector);
             expected_qa_power += &qa_power_delta;
             expected_pledge += self.initial_pledge_for_power(rt, &qa_power_delta);
         }
