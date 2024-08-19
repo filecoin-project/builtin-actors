@@ -91,7 +91,6 @@ fn valid_precommits_then_aggregate_provecommit() {
     let qa_power = qa_power_for_weight(
         actor.sector_size,
         expiration - *rt.epoch.borrow(),
-        &deal_weight,
         &verified_deal_weight,
     );
     assert_eq!(expected_power, qa_power);
