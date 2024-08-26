@@ -13,7 +13,7 @@ mod evm;
 mod fvm;
 
 use evm::{blake2f, ec_add, ec_mul, ec_pairing, ec_recover, identity, modexp, ripemd160, sha256};
-use fvm::{call_actor, call_actor_id, lookup_delegated_address, resolve_address, get_randomness};
+use fvm::{call_actor, call_actor_id, get_randomness, lookup_delegated_address, resolve_address};
 
 type PrecompileFn<RT> = fn(&mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>;
