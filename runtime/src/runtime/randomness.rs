@@ -20,6 +20,7 @@ pub enum DomainSeparationTag {
     MarketDealCronSeed = 8,
     PoStChainCommit = 9,
     EvmPrevRandao = 10,
+    EvmRandPrecompile = 11,
 }
 
 #[allow(unused)]

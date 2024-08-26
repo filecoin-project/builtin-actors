@@ -220,3 +220,31 @@ pub(super) fn call_actor_shared<RT: Runtime>(
 
     Ok(output)
 }
+
+/// Params:
+///
+/// | Param            | Value                     |
+/// |------------------|---------------------------|
+/// | randomness_epoch | U256 - low i64             |
+/// | entropy_length   | U256 - low u32             |
+/// | entropy          | input\[32..] (right padded)|
+///
+/// any bytes in between values are ignored
+///
+/// Returns empty array if invalid randomness type
+/// Errors if unable to fetch randomness
+pub(super) fn get_randomness<RT: Runtime>(
+    system: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
+
+    let mut input_params = ValueReader::new(input);
+
+    let randomness_epoch = input_params.read_value()?;
+    let entropy_length: u32 = input_params.read_value()?;
+    let entropy = input_params.read_padded(entropy_length.try_into().unwrap_or(0));
+
+    let randomness = system.rt.get_randomness_from_beacon(fil_actors_runtime::runtime::DomainSeparationTag::EvmRandPrecompile, randomness_epoch, &entropy);
+    randomness.map(|r| r.to_vec()).map_err(|_| PrecompileError::InvalidInput)
+}

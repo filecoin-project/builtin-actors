@@ -13,7 +13,7 @@ mod evm;
 mod fvm;
 
 use evm::{blake2f, ec_add, ec_mul, ec_pairing, ec_recover, identity, modexp, ripemd160, sha256};
-use fvm::{call_actor, call_actor_id, lookup_delegated_address, resolve_address};
+use fvm::{call_actor, call_actor_id, lookup_delegated_address, resolve_address, get_randomness};
 
 type PrecompileFn<RT> = fn(&mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>;
@@ -41,12 +41,13 @@ pub struct Precompiles<RT>(PhantomData<RT>);
 
 impl<RT: Runtime> Precompiles<RT> {
     /// FEVM specific precompiles (0xfe prefix)
-    const NATIVE_PRECOMPILES: PrecompileTable<RT, 5> = PrecompileTable([
+    const NATIVE_PRECOMPILES: PrecompileTable<RT, 6> = PrecompileTable([
         Some(resolve_address::<RT>),          // 0xfe00..01
         Some(lookup_delegated_address::<RT>), // 0xfe00..02
         Some(call_actor::<RT>),               // 0xfe00..03
         None,                                 // 0xfe00..04 DISABLED
         Some(call_actor_id::<RT>),            // 0xfe00..05
+        Some(get_randomness::<RT>),           // 0xfe00..06
     ]);
 
     /// EVM specific precompiles
