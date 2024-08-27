@@ -225,7 +225,7 @@ pub(super) fn call_actor_shared<RT: Runtime>(
 ///
 /// | Param            | Value                     |
 /// |------------------|---------------------------|
-/// | randomness_epoch | U256 - low i64             |
+/// | epoch            | U256 - low i64            |
 ///
 /// Errors if unable to fetch randomness
 pub(super) fn get_randomness<RT: Runtime>(
@@ -234,9 +234,7 @@ pub(super) fn get_randomness<RT: Runtime>(
     _: PrecompileContext,
 ) -> PrecompileResult {
     let mut input_params = ValueReader::new(input);
-
     let randomness_epoch = input_params.read_value()?;
-
     let randomness = system.rt.get_beacon_randomness(randomness_epoch);
     randomness.map(|r| r.to_vec()).map_err(|_| PrecompileError::InvalidInput)
 }
