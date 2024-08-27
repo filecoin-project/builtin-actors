@@ -432,6 +432,7 @@ pub struct ExpectRandomness {
 pub struct ExpectGetBeacon {
     epoch: ChainEpoch,
     out: [u8; RANDOMNESS_LENGTH],
+    exit_code: ExitCode,
 }
 
 #[derive(Debug)]
@@ -761,8 +762,13 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
-    pub fn expect_get_beacon_randomness(&self, epoch: ChainEpoch, out: [u8; RANDOMNESS_LENGTH]) {
-        let a = ExpectGetBeacon { epoch, out };
+    pub fn expect_get_beacon_randomness(
+        &self,
+        epoch: ChainEpoch,
+        out: [u8; RANDOMNESS_LENGTH],
+        exit_code: ExitCode,
+    ) {
+        let a = ExpectGetBeacon { epoch, out, exit_code };
         self.expectations.borrow_mut().expect_get_beacon_randomness.push_back(a);
     }
 
@@ -1035,7 +1041,6 @@ impl Runtime for MockRuntime {
             .pop_front()
             .expect("unexpected call to get_randomness_from_tickets");
 
-        assert!(epoch <= *self.epoch.borrow(), "attempt to get randomness from future");
         assert_eq!(
             expected.tag, tag,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
@@ -1068,7 +1073,6 @@ impl Runtime for MockRuntime {
             .pop_front()
             .expect("unexpected call to get_randomness_from_beacon");
 
-        assert!(epoch <= *self.epoch.borrow(), "attempt to get randomness from future");
         assert_eq!(
             expected.tag, tag,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
@@ -1092,20 +1096,22 @@ impl Runtime for MockRuntime {
         &self,
         epoch: ChainEpoch,
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        let expected = self
+        let exp = self
             .expectations
             .borrow_mut()
             .expect_get_beacon_randomness
             .pop_front()
             .expect("unexpected call to get_randomness_from_beacon");
 
-        assert!(epoch <= *self.epoch.borrow(), "attempt to get randomness from future");
         assert_eq!(
-            expected.epoch, epoch,
+            exp.epoch, epoch,
             "unexpected epoch, expected: {:?}, actual: {:?}",
-            expected.epoch, epoch
+            exp.epoch, epoch
         );
-        Ok(expected.out)
+        if exp.exit_code != ExitCode::OK {
+            return Err(ActorError::unchecked(exp.exit_code, "Expected Failure".to_string()));
+        }
+        Ok(exp.out)
     }
 
     fn create<T: Serialize>(&self, obj: &T) -> Result<(), ActorError> {

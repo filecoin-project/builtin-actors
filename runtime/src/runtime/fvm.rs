@@ -234,8 +234,8 @@ where
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         let digest = fvm::rand::get_chain_randomness(rand_epoch).map_err(|e| {
             match e {
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                ErrorNumber::LimitExceeded | ErrorNumber::IllegalArgument => {
+                    actor_error!(illegal_argument; "invalid lookback epoch: {}", e)
                 }
                 e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
             }
@@ -271,8 +271,8 @@ where
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         fvm::rand::get_beacon_randomness(rand_epoch).map_err(|e| {
             match e {
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                ErrorNumber::LimitExceeded | ErrorNumber::IllegalArgument => {
+                    actor_error!(illegal_argument; "invalid lookback epoch: {}", e)
                 }
                 e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
             }

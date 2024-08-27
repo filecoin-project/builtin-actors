@@ -48,7 +48,6 @@ impl<RT: Runtime> Precompiles<RT> {
         None,                                 // 0xfe00..04 get_actor_type DISABLED
         Some(call_actor_id::<RT>),            // 0xfe00..05
         Some(get_randomness::<RT>),           // 0xfe00..06
-
     ]);
 
     /// EVM specific precompiles
