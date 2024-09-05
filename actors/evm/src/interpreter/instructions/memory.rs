@@ -80,19 +80,16 @@ pub fn copy_within_memory(
     size: U256,
 ) -> Result<(), ActorError> {
     // Expand memory to accommodate requested src_index + size
-    let _region = get_memory_region(memory, src_index, size)?.expect("empty region");
+    let src_region = get_memory_region(memory, src_index, size)?.expect("empty region");
 
     // Expand memory to match dest_index + size
-    let _destination_region = get_memory_region(memory, dest_index, size)?.expect("empty region");
-
-    let src_start = src_index.low_u64() as usize;
-    let src_end = src_start + size.low_u64() as usize;
-    let dest_start = dest_index.low_u64() as usize;
+    let destination_region = get_memory_region(memory, dest_index, size)?.expect("empty region");
 
     // Named variables for clarity
-    let source_range = src_start..src_end;
-    let destination_index = dest_start;
+    let source_range = src_region.offset..(src_region.offset+src_region.size.get());
+    let destination_index = destination_region.offset;
 
+    // Copy memory
     memory.copy_within(source_range, destination_index);
 
     Ok(())
