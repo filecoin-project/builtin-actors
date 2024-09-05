@@ -82,14 +82,7 @@ Precompiled actor bundles are provided as [release binaries][releases] in this r
 [`fil_builtin_actors_bundle`](https://crates.io/crates/fil_builtin_actors_bundle) crate on
 [crates.io](https://crates.io) will not be updated.
 
-## Releasing
-
-We release all actors, the runtime, and the state abstraction at the same time by:
-
-1. Changing the `workspace.package.version` in the top-level `Cargo.toml` file.
-2. Creating a [release][releases] in GitHub.
-
-This will trigger an automatic bundle-build by GitHub CI, and the generated bundles will be attached to the GitHub release.
+## [Releasing](RELEASE.md)
 
 ## Instructions for client implementations
 

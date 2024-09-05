@@ -1,25 +1,39 @@
-name: Release
+name: Release Checker
 
 on:
-  release:
-    types: [published]
+  pull_request_target:
+    paths: ["Cargo.toml"]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+  workflow_dispatch:
 
-env:
-  RUSTFLAGS: -Dwarnings
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  release:
+  release-check:
+    uses: ipdxco/unified-github-workflows/.github/workflows/release-check.yml@v1.0
+    with:
+      sources: '["Cargo.toml"]'
+  upload-release-assets:
+    needs: [release-check]
+    if: fromJSON(needs.release-check.outputs.json)['Cargo.toml']
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CARGO_INCREMENTAL: 0
       CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
+      RUSTFLAGS: -Dwarnings
     strategy:
       matrix:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
     steps:
     - name: Checking out
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: Setting up cache
       uses: pl-strflt/rust-sccache-action@v1
       env:
@@ -31,10 +45,10 @@ jobs:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
         cargo run --locked -- -o output/builtin-actors.car
-    - name: Publishing release and uploading bundle to GitHub
+    - name: Upload release assets to GitHub Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_REF: ${{ github.ref }}
+        GITHUB_RELEASE_URL: ${{ fromJSON(needs.release-check.outputs.json)['Cargo.toml'].url }}
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
-        ./scripts/publish-release.sh
+        ./scripts/upload-release-assets.sh
