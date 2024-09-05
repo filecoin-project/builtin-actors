@@ -86,7 +86,7 @@ pub fn copy_within_memory(
     let destination_region = get_memory_region(memory, dest_index, size)?.expect("empty region");
 
     // Named variables for clarity
-    let source_range = src_region.offset..(src_region.offset+src_region.size.get());
+    let source_range = src_region.offset..(src_region.offset + src_region.size.get());
     let destination_index = destination_region.offset;
 
     // Copy memory
