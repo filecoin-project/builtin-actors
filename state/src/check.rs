@@ -351,7 +351,7 @@ fn check_market_against_verifreg(
         let info = match market_summary.deals.get(deal_id) {
             None => {
                 acc.add(format!(
-                    "internal invariant error invalid market state referrences missing deal {}",
+                    "internal invariant error invalid market state references missing deal {}",
                     deal_id
                 ));
                 continue;
