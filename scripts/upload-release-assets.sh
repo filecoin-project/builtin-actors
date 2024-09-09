@@ -12,9 +12,9 @@ if [ -z "$GITHUB_TOKEN" ]; then
     die "no GITHUB_TOKEN"
 fi
 
-# make sure we have a release tag set
-if [ -z "$GITHUB_REF" ]; then
-    die "no GITHUB_REF"
+# make sure we have a release url set
+if [ -z "$GITHUB_RELEASE_URL" ]; then
+    die "no GITHUB_RELEASE_URL"
 fi
 
 # make sure we have a target set
@@ -28,8 +28,6 @@ release_target=builtin-actors-${BUILD_FIL_NETWORK}.car
 release_target_hash=builtin-actors-${BUILD_FIL_NETWORK}.sha256
 release_file=output/$release_target
 release_file_hash=output/$release_target_hash
-# the ref is of the form refs/tags/<tag>; drop the prefix to get the actual release tag
-release_tag="${GITHUB_REF:10}"
 
 # prepare artifacts
 pushd output
@@ -45,15 +43,26 @@ REPO="builtin-actors"
 __release_response=`
   curl \
    --header "Authorization: token $GITHUB_TOKEN" \
-   "https://api.github.com/repos/$ORG/$REPO/releases/tags/$release_tag"
+   "$GITHUB_RELEASE_URL"
 `
 __release_id=`echo $__release_response | jq '.id'`
 if [ "$__release_id" = "null" ]; then
-    echo "release $release_tag does not exist"
+    echo "release does not exist"
     exit 1
 fi
 
 __release_upload_url=`echo $__release_response | jq -r '.upload_url' | cut -d'{' -f1`
+
+__release_target_asset=`echo $__release_response | jq -r ".assets | .[] | select(.name == \"$release_target\")"`
+
+if [ -n "$__release_target_asset" ]; then
+    echo "deleting $release_target"
+    __release_target_asset_url=`echo $__release_target_asset | jq -r '.url'`
+    curl \
+     --request DELETE \
+     --header "Authorization: token $GITHUB_TOKEN" \
+     "$__release_target_asset_url"
+fi
 
 echo "uploading $release_target"
 curl \
@@ -62,6 +71,17 @@ curl \
  --header "Content-Type: application/octet-stream" \
  --data-binary "@$release_file" \
  "$__release_upload_url?name=$release_target"
+
+__release_target_hash_asset=`echo $__release_response | jq -r ".assets | .[] | select(.name == \"$release_target_hash\")"`
+
+if [ -n "$__release_target_hash_asset" ]; then
+    echo "deleting $release_target_hash"
+    __release_target_hash_asset_url=`echo $__release_target_hash_asset | jq -r '.url'`
+    curl \
+     --request DELETE \
+     --header "Authorization: token $GITHUB_TOKEN" \
+     "$__release_target_hash_asset_url"
+fi
 
 echo "uploading $release_target_hash"
 curl \

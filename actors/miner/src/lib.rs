@@ -1469,7 +1469,7 @@ impl Actor {
                     deal_ids: spci.deal_ids,
                     expiration: spci.expiration,
 
-                    unsealed_cid: Some(spci.unsealed_cid),
+                    unsealed_cid: spci.unsealed_cid,
                 })
                 .collect(),
         )
@@ -1546,14 +1546,10 @@ impl Actor {
                 ));
             }
 
-            match &precommit.unsealed_cid {
-                Some(CompactCommD(Some(commd))) if !is_unsealed_sector(commd) => {
+            if let Some(commd) = &precommit.unsealed_cid.0 {
+                if !is_unsealed_sector(commd) {
                     return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
                 }
-                None => return Err(actor_error!(
-                                illegal_argument,
-                                "unspecified CompactCommD not allowed past nv21, need explicit None value for CC or CommD")),
-                _ => {}
             }
 
             // Require sector lifetime meets minimum by assuming activation happens at last epoch permitted for seal proof.
@@ -1659,7 +1655,7 @@ impl Actor {
 
                 // Presence of unsealed CID is checked in the preconditions.
                 // It must always be specified from nv22 onwards.
-                let declared_commd = precommit.unsealed_cid.unwrap();
+                let declared_commd = precommit.unsealed_cid;
                 // This is not a CompactCommD, None means that nothing was computed and nothing needs to be checked
                 if let Some(computed_cid) = verify_return.unsealed_cids[i] {
                     // It is possible the computed commd is the zero commd so expand declared_commd
@@ -3604,7 +3600,7 @@ struct SectorPreCommitInfoInner {
     pub deal_ids: Vec<DealID>,
     pub expiration: ChainEpoch,
     /// CommD
-    pub unsealed_cid: Option<CompactCommD>,
+    pub unsealed_cid: CompactCommD,
 }
 
 /// ReplicaUpdate param with Option<Cid> for CommD
@@ -3906,12 +3902,8 @@ fn extend_simple_qap_sector(
 
         // We only bother updating the expected_day_reward, expected_storage_pledge, and replaced_day_reward
         //  for verified deals, as it can increase power.
-        let qa_pow = qa_power_for_weight(
-            sector_size,
-            new_duration,
-            &new_sector.deal_weight,
-            &new_sector.verified_deal_weight,
-        );
+        let qa_pow =
+            qa_power_for_weight(sector_size, new_duration, &new_sector.verified_deal_weight);
         new_sector.expected_day_reward = expected_reward_for_power(
             &reward_stats.this_epoch_reward_smoothed,
             &power_stats.quality_adj_power_smoothed,
@@ -4299,12 +4291,7 @@ fn update_existing_sector_info(
     new_sector_info.verified_deal_weight = activated_data.verified_space.clone() * duration;
 
     // compute initial pledge
-    let qa_pow = qa_power_for_weight(
-        sector_size,
-        duration,
-        &new_sector_info.deal_weight,
-        &new_sector_info.verified_deal_weight,
-    );
+    let qa_pow = qa_power_for_weight(sector_size, duration, &new_sector_info.verified_deal_weight);
 
     new_sector_info.replaced_day_reward =
         max(&sector_info.expected_day_reward, &sector_info.replaced_day_reward).clone();
@@ -5548,12 +5535,7 @@ fn activate_new_sector_infos(
             let deal_weight = &deal_spaces.unverified_space * duration;
             let verified_deal_weight = &deal_spaces.verified_space * duration;
 
-            let power = qa_power_for_weight(
-                info.sector_size,
-                duration,
-                &deal_weight,
-                &verified_deal_weight,
-            );
+            let power = qa_power_for_weight(info.sector_size, duration, &verified_deal_weight);
 
             let day_reward = expected_reward_for_power(
                 &pledge_inputs.epoch_reward,
