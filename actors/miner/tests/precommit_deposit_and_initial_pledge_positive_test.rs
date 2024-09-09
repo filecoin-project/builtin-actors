@@ -46,6 +46,60 @@ fn initial_pledge_clamped_at_one_attofil() {
     assert_eq!(TokenAmount::from_atto(1), initial_pledge);
 }
 
+// Pre-ramp where 'baseline power' dominates
+#[test]
+fn initial_pledge_pre_ramp() {
+    let initial_pledge = initial_pledge_for_power(
+        &qa_sector_power(),
+        &StoragePower::from(1u64 << 37),
+        &reward_estimate(),
+        &power_estimate(),
+        &TokenAmount::from_whole(1),
+        0,
+        100,
+    );
+    assert_eq!(
+        TokenAmount::from_atto(1) + TokenAmount::from_whole(1500).div_floor(10000),
+        initial_pledge
+    );
+}
+
+// Post-ramp where 'baseline power' has reduced effect (70%).
+#[test]
+fn initial_pledge_on_ramp() {
+    let initial_pledge = initial_pledge_for_power(
+        &qa_sector_power(),
+        &StoragePower::from(1u64 << 37),
+        &reward_estimate(),
+        &power_estimate(),
+        &TokenAmount::from_whole(1),
+        50,
+        100,
+    );
+    assert_eq!(
+        TokenAmount::from_atto(1) + TokenAmount::from_whole(1725).div_floor(10000),
+        initial_pledge
+    );
+}
+
+// Post-ramp where 'baseline power' has reduced effect (70%).
+#[test]
+fn initial_pledge_post_ramp() {
+    let initial_pledge = initial_pledge_for_power(
+        &qa_sector_power(),
+        &StoragePower::from(1u64 << 37),
+        &reward_estimate(),
+        &power_estimate(),
+        &TokenAmount::from_whole(1),
+        500,
+        100,
+    );
+    assert_eq!(
+        TokenAmount::from_atto(1) + TokenAmount::from_whole(1950).div_floor(10000),
+        initial_pledge
+    );
+}
+
 #[test]
 fn precommit_deposit_is_clamped_at_one_attofil() {
     let precommit_deposit =

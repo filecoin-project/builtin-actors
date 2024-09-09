@@ -272,16 +272,15 @@ pub fn initial_pledge_for_power(
     let pledge_share_num = qa_power;
     let network_qa_power = network_qa_power_estimate.estimate();
 
-    // Compute gamma based on current_epoch
-    let mut gamma = FIXED_POINT_FACTOR; // Initialize as 1000
-    if epochs_since_ramp_start > 0 {
-        if (epochs_since_ramp_start as u64) < ramp_duration_epochs {
-            let reduction = (300 * FIXED_POINT_FACTOR) / ramp_duration_epochs; // 0.3 as fixed-point
-            gamma -= reduction;
-        } else {
-            gamma = 700; // 0.7 as fixed-point
-        }
-    }
+    // Once FIP-0081 has fully activated, additional pledge will be 70% baseline
+    // pledge + 30% simple pledge.
+    const FIP_0081_ACTIVATION_PERMILLE: i64 = 300;
+    // gamma = 1000 - 300 * (epochs_since_ramp_start / ramp_duration_epochs).max(0).min(1)
+    let skew = ((epochs_since_ramp_start * FIP_0081_ACTIVATION_PERMILLE)
+        / ramp_duration_epochs.max(1) as i64)
+        .max(0)
+        .min(FIP_0081_ACTIVATION_PERMILLE) as u64;
+    let gamma = FIXED_POINT_FACTOR - skew;
 
     let additional_ip_num = lock_target_num * pledge_share_num;
 
