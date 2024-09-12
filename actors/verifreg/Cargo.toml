@@ -30,9 +30,9 @@ log = { workspace = true }
 num-derive = { workspace = true }
 num-traits = { workspace = true }
 serde = { workspace = true }
-const-hex = { workspace = true }
 
 [dev-dependencies]
+const-hex = { workspace = true }
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
 
 [features]

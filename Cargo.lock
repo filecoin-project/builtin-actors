@@ -1777,6 +1777,7 @@ dependencies = [
  "byteorder",
  "castaway",
  "cid 0.10.1",
+ "const-hex",
  "derive_builder",
  "fil_actors_runtime",
  "fvm_ipld_amt",
