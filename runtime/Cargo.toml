@@ -34,7 +34,6 @@ serde_repr = { workspace = true }
 thiserror = { workspace = true }
 unsigned-varint = { workspace = true }
 vm_api = { workspace = true }
-const-hex = { workspace = true }
 
 # A fake-proofs dependency but... we can't select on that feature here because we enable it from
 # build.rs.
@@ -56,6 +55,7 @@ optional = true
 derive_builder = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
+const-hex = { workspace = true }
 # Enable the test_utils feature when testing.
 fil_actors_runtime = { workspace = true, features = ["test_utils"] }
 
