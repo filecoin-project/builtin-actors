@@ -118,6 +118,24 @@ fn initial_pledge_on_ramp_early() {
     );
 }
 
+// Post-ramp, first epoch, pledge should be 97% 'baseline' + 3% simple.
+#[test]
+fn initial_pledge_on_ramp_step() {
+    let initial_pledge = initial_pledge_for_power(
+        &qa_sector_power(),
+        &StoragePower::from(1u64 << 37),
+        &reward_estimate(),
+        &power_estimate(),
+        &TokenAmount::from_whole(1),
+        1,
+        10,
+    );
+    assert_eq!(
+        TokenAmount::from_atto(1) + TokenAmount::from_whole(1545).div_floor(10000),
+        initial_pledge
+    );
+}
+
 // Post-ramp where 'baseline power' has reduced effect (70%).
 #[test]
 fn initial_pledge_post_ramp() {
