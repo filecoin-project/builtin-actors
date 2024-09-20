@@ -275,11 +275,19 @@ pub fn initial_pledge_for_power(
     // Once FIP-0081 has fully activated, additional pledge will be 70% baseline
     // pledge + 30% simple pledge.
     const FIP_0081_ACTIVATION_PERMILLE: i64 = 300;
+    // Gamma is the share of pledge coming from the baseline formulation, with 1-gamma coming from simple pledge.
+    // Gamma ranges from 1.0 before the ramp to 0.7 at the end.
     // gamma = 1000 - 300 * (epochs_since_ramp_start / ramp_duration_epochs).max(0).min(1)
-    let skew = ((epochs_since_ramp_start * FIP_0081_ACTIVATION_PERMILLE)
-        / ramp_duration_epochs.max(1) as i64)
-        .max(0)
-        .min(FIP_0081_ACTIVATION_PERMILLE) as u64;
+    let skew = if epochs_since_ramp_start < 0 {
+        // No skew before ramp start
+        0
+    } else if ramp_duration_epochs == 0 || epochs_since_ramp_start >= ramp_duration_epochs as i64 {
+        // 100% skew after ramp end
+        FIP_0081_ACTIVATION_PERMILLE as u64
+    } else {
+        ((epochs_since_ramp_start * FIP_0081_ACTIVATION_PERMILLE) / ramp_duration_epochs as i64)
+            as u64
+    };
     let gamma = FIXED_POINT_FACTOR - skew;
 
     let additional_ip_num = lock_target_num * pledge_share_num;
