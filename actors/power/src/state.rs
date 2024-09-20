@@ -68,7 +68,13 @@ pub struct State {
     /// Number of miners having proven the minimum consensus power.
     pub miner_above_min_power_count: i64,
 
+    /// FIP0081 changed pledge calculations, moving from ruleset A to ruleset B.
+    /// This change is spread over several epochs to avoid sharp jumps in pledge
+    /// amounts. At `ramp_start_epoch`, we use the old ruleset. At
+    /// `ramp_start_epoch + ramp_duration_epochs`, we use 70% old rules + 30%
+    /// new rules. See FIP0081 for more details.
     pub ramp_start_epoch: i64,
+    /// Number of epochs over which the new pledge calculation is ramped up.
     pub ramp_duration_epochs: u64,
 
     /// A queue of events to be triggered by cron, indexed by epoch.
