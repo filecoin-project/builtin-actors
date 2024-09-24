@@ -64,6 +64,37 @@ fn initial_pledge_pre_ramp_negative() {
     );
 }
 
+#[test]
+fn initial_pledge_zero_ramp_duration() {
+    let initial_pledge = initial_pledge_for_power(
+        &qa_sector_power(),
+        &StoragePower::from(1u64 << 37),
+        &reward_estimate(),
+        &power_estimate(),
+        &TokenAmount::from_whole(1),
+        0,
+        0,
+    );
+    assert_eq!(
+        TokenAmount::from_atto(1) + TokenAmount::from_whole(1950).div_floor(10000),
+        initial_pledge
+    );
+
+    let initial_pledge = initial_pledge_for_power(
+        &qa_sector_power(),
+        &StoragePower::from(1u64 << 37),
+        &reward_estimate(),
+        &power_estimate(),
+        &TokenAmount::from_whole(1),
+        10,
+        0,
+    );
+    assert_eq!(
+        TokenAmount::from_atto(1) + TokenAmount::from_whole(1950).div_floor(10000),
+        initial_pledge
+    );
+}
+
 // Pre-ramp where 'baseline power' dominates
 #[test]
 fn initial_pledge_pre_ramp() {
@@ -96,6 +127,24 @@ fn initial_pledge_on_ramp_mid() {
     );
     assert_eq!(
         TokenAmount::from_atto(1) + TokenAmount::from_whole(1725).div_floor(10000),
+        initial_pledge
+    );
+}
+
+// On-ramp where 'baseline power' (85%).
+#[test]
+fn initial_pledge_after_ramp() {
+    let initial_pledge = initial_pledge_for_power(
+        &qa_sector_power(),
+        &StoragePower::from(1u64 << 37),
+        &reward_estimate(),
+        &power_estimate(),
+        &TokenAmount::from_whole(1),
+        150,
+        100,
+    );
+    assert_eq!(
+        TokenAmount::from_atto(1) + TokenAmount::from_whole(1950).div_floor(10000),
         initial_pledge
     );
 }
