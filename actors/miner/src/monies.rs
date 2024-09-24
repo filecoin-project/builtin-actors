@@ -75,7 +75,7 @@ pub const TERMINATION_LIFETIME_CAP: ChainEpoch = 140;
 // Multiplier of whole per-winner rewards for a consensus fault penalty.
 const CONSENSUS_FAULT_FACTOR: u64 = 5;
 
-const FIXED_POINT_FACTOR: u64 = 1000; // 3 decimal places
+const GAMMA_FIXED_POINT_FACTOR: u64 = 1000; // 3 decimal places
 
 /// The projected block reward a sector would earn over some period.
 /// Also known as "BR(t)".
@@ -275,8 +275,9 @@ pub fn initial_pledge_for_power(
     // Once FIP-0081 has fully activated, additional pledge will be 70% baseline
     // pledge + 30% simple pledge.
     const FIP_0081_ACTIVATION_PERMILLE: i64 = 300;
-    // Gamma is the share of pledge coming from the baseline formulation, with 1-gamma coming from simple pledge.
-    // Gamma ranges from 1.0 before the ramp to 0.7 at the end.
+    // Gamma/GAMMA_FIXED_POINT_FACTOR is the share of pledge coming from the
+    // baseline formulation, with 1-(gamma/GAMMA_FIXED_POINT_FACTOR) coming from
+    // simple pledge.
     // gamma = 1000 - 300 * (epochs_since_ramp_start / ramp_duration_epochs).max(0).min(1)
     let skew = if epochs_since_ramp_start < 0 {
         // No skew before ramp start
@@ -288,7 +289,7 @@ pub fn initial_pledge_for_power(
         ((epochs_since_ramp_start * FIP_0081_ACTIVATION_PERMILLE) / ramp_duration_epochs as i64)
             as u64
     };
-    let gamma = FIXED_POINT_FACTOR - skew;
+    let gamma = GAMMA_FIXED_POINT_FACTOR - skew;
 
     let additional_ip_num = lock_target_num * pledge_share_num;
 
@@ -298,10 +299,10 @@ pub fn initial_pledge_for_power(
 
     let additional_ip_denom_baseline = pledge_share_denom_baseline * lock_target_denom;
     let additional_ip_baseline = (gamma * &additional_ip_num)
-        .div_floor(&(additional_ip_denom_baseline * FIXED_POINT_FACTOR));
+        .div_floor(&(additional_ip_denom_baseline * GAMMA_FIXED_POINT_FACTOR));
     let additional_ip_denom_simple = pledge_share_denom_simple * lock_target_denom;
-    let additional_ip_simple = ((FIXED_POINT_FACTOR - gamma) * &additional_ip_num)
-        .div_floor(&(additional_ip_denom_simple * FIXED_POINT_FACTOR));
+    let additional_ip_simple = ((GAMMA_FIXED_POINT_FACTOR - gamma) * &additional_ip_num)
+        .div_floor(&(additional_ip_denom_simple * GAMMA_FIXED_POINT_FACTOR));
 
     // convex combination of simple and baseline pledge
     let additional_ip = additional_ip_baseline + additional_ip_simple;
