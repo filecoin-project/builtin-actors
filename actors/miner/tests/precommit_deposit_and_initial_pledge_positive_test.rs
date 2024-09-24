@@ -136,6 +136,52 @@ fn initial_pledge_on_ramp_step() {
     );
 }
 
+// Validate pledges 1 epoch before and after ramp start.
+#[test]
+fn initial_pledge_ramp_edges() {
+    let initial_pledge_before_ramp = initial_pledge_for_power(
+        &qa_sector_power(),
+        &StoragePower::from(1u64 << 37),
+        &reward_estimate(),
+        &power_estimate(),
+        &TokenAmount::from_whole(1),
+        -1,
+        10,
+    );
+    assert_eq!(
+        TokenAmount::from_atto(1) + TokenAmount::from_whole(1500).div_floor(10000),
+        initial_pledge_before_ramp
+    );
+
+    let initial_pledge_at_ramp = initial_pledge_for_power(
+        &qa_sector_power(),
+        &StoragePower::from(1u64 << 37),
+        &reward_estimate(),
+        &power_estimate(),
+        &TokenAmount::from_whole(1),
+        0,
+        10,
+    );
+    assert_eq!(
+        TokenAmount::from_atto(1) + TokenAmount::from_whole(1500).div_floor(10000),
+        initial_pledge_at_ramp
+    );
+
+    let initial_pledge_on_ramp = initial_pledge_for_power(
+        &qa_sector_power(),
+        &StoragePower::from(1u64 << 37),
+        &reward_estimate(),
+        &power_estimate(),
+        &TokenAmount::from_whole(1),
+        1,
+        10,
+    );
+    assert_eq!(
+        TokenAmount::from_atto(1) + TokenAmount::from_whole(1545).div_floor(10000),
+        initial_pledge_on_ramp
+    );
+}
+
 // Post-ramp where 'baseline power' has reduced effect (70%).
 #[test]
 fn initial_pledge_post_ramp() {
