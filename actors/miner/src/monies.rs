@@ -297,14 +297,14 @@ pub fn initial_pledge_for_power(
     let pledge_share_denom_simple = cmp::max(&network_qa_power, qa_power);
 
     let additional_ip_denom_baseline = pledge_share_denom_baseline * lock_target_denom;
-    let additional_ip_baseline = additional_ip_num.div_floor(&additional_ip_denom_baseline);
+    let additional_ip_baseline = (gamma * &additional_ip_num)
+        .div_floor(&(additional_ip_denom_baseline * FIXED_POINT_FACTOR));
     let additional_ip_denom_simple = pledge_share_denom_simple * lock_target_denom;
-    let additional_ip_simple = additional_ip_num.div_floor(&additional_ip_denom_simple);
+    let additional_ip_simple = ((FIXED_POINT_FACTOR - gamma) * &additional_ip_num)
+        .div_floor(&(additional_ip_denom_simple * FIXED_POINT_FACTOR));
 
     // convex combination of simple and baseline pledge
-    let additional_ip = (additional_ip_baseline * gamma
-        + additional_ip_simple * (FIXED_POINT_FACTOR - gamma))
-        / FIXED_POINT_FACTOR;
+    let additional_ip = additional_ip_baseline + additional_ip_simple;
 
     let nominal_pledge = ip_base + TokenAmount::from_atto(additional_ip);
     let pledge_cap = TokenAmount::from_atto(INITIAL_PLEDGE_MAX_PER_BYTE.atto() * qa_power);
