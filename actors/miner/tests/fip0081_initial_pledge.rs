@@ -95,7 +95,7 @@ fn initial_pledge_pre_ramp() {
     );
 }
 
-// On-ramp where 'baseline power' (85%).
+// On-ramp where 'baseline power' is at 85% and `simple power` is at 15%.
 #[test]
 fn initial_pledge_on_ramp_mid() {
     let initial_pledge = initial_pledge_for_power(
@@ -113,7 +113,7 @@ fn initial_pledge_on_ramp_mid() {
     );
 }
 
-// On-ramp where 'baseline power' (85%).
+// After-ramp where 'baseline power' is at 70% and `simple power` is at 30%.
 #[test]
 fn initial_pledge_after_ramp() {
     let initial_pledge = initial_pledge_for_power(
@@ -131,7 +131,7 @@ fn initial_pledge_after_ramp() {
     );
 }
 
-// Post-ramp where 'baseline power' has reduced effect (97%).
+// On-ramp where 'baseline power' has reduced effect (97%).
 #[test]
 fn initial_pledge_on_ramp_early() {
     let initial_pledge = initial_pledge_for_power(
@@ -149,7 +149,7 @@ fn initial_pledge_on_ramp_early() {
     );
 }
 
-// Post-ramp, first epoch, pledge should be 97% 'baseline' + 3% simple.
+// On-ramp, first epoch, pledge should be 97% 'baseline' + 3% simple.
 #[test]
 fn initial_pledge_on_ramp_step() {
     let initial_pledge = initial_pledge_for_power(
