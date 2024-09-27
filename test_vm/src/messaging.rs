@@ -549,6 +549,13 @@ impl<'invocation> Runtime for InvocationCtx<'invocation> {
         Ok(TEST_VM_RAND_ARRAY)
     }
 
+    fn get_beacon_randomness(
+        &self,
+        _rand_epoch: ChainEpoch,
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
+    }
+
     fn get_state_root(&self) -> Result<Cid, ActorError> {
         Ok(self.v.actor(&self.to()).unwrap().state)
     }

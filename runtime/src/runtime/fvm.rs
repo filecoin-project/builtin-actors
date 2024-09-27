@@ -234,8 +234,8 @@ where
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         let digest = fvm::rand::get_chain_randomness(rand_epoch).map_err(|e| {
             match e {
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                ErrorNumber::LimitExceeded | ErrorNumber::IllegalArgument => {
+                    actor_error!(illegal_argument; "invalid lookback epoch: {}", e)
                 }
                 e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
             }
@@ -255,14 +255,7 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        let digest = fvm::rand::get_beacon_randomness(rand_epoch).map_err(|e| {
-            match e {
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                }
-                e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
-            }
-        })?;
+        let digest = self.get_beacon_randomness(rand_epoch)?;
         Ok(draw_randomness(
             fvm::crypto::hash_blake2b,
             &digest,
@@ -270,6 +263,20 @@ where
             rand_epoch,
             entropy,
         ))
+    }
+
+    fn get_beacon_randomness(
+        &self,
+        rand_epoch: ChainEpoch,
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        fvm::rand::get_beacon_randomness(rand_epoch).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded | ErrorNumber::IllegalArgument => {
+                    actor_error!(illegal_argument; "invalid lookback epoch: {}", e)
+                }
+                e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
+            }
+        })
     }
 
     fn get_state_root(&self) -> Result<Cid, ActorError> {

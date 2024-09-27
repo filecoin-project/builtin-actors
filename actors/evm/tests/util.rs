@@ -112,8 +112,9 @@ pub enum NativePrecompile {
     ResolveAddress = 1,
     LookupDelegatedAddress = 2,
     CallActor = 3,
-    GetActorType = 4,
+    GetActorTypeDISABLED = 4,
     CallActorId = 5,
+    GetRandomness = 6,
 }
 
 #[allow(dead_code)]

@@ -224,6 +224,44 @@ fn test_resolve_delegated() {
 }
 
 #[test]
+fn test_precompile_randomness() {
+    let (init, body) = PrecompileTest::test_runner_assembly();
+    let rt =
+        util::construct_and_verify(asm::new_contract("precompile-tester", &init, &body).unwrap());
+    let rand_epoch = 100;
+    let rand_epoch_u256 = U256::from(rand_epoch);
+    {
+        // Underlying syscall succeeds.
+        let result = U256::from(0xdeadbeefu32).to_bytes();
+        let test = PrecompileTest {
+            precompile_address: NativePrecompile::GetRandomness.eth_address(),
+            output_size: 32,
+            expected_exit_code: PrecompileExit::Success,
+            gas_avaliable: 10_000_000_000,
+            call_op: util::PrecompileCallOpcode::StaticCall,
+            input: rand_epoch_u256.to_bytes().to_vec(),
+            expected_return: result.to_vec(),
+        };
+        rt.expect_get_beacon_randomness(rand_epoch, result, ExitCode::OK);
+        test.run_test(&rt);
+    }
+    {
+        // Underlying syscall fails.
+        let test = PrecompileTest {
+            precompile_address: NativePrecompile::GetRandomness.eth_address(),
+            output_size: 32,
+            expected_exit_code: PrecompileExit::Reverted, // Precompile reverts due to syscall failure
+            gas_avaliable: 10_000_000_000,
+            call_op: util::PrecompileCallOpcode::StaticCall,
+            input: rand_epoch_u256.to_bytes().to_vec(),
+            expected_return: vec![],
+        };
+        rt.expect_get_beacon_randomness(rand_epoch, [0u8; 32], ExitCode::USR_ILLEGAL_ARGUMENT);
+        test.run_test(&rt);
+    }
+}
+
+#[test]
 fn test_precompile_transfer() {
     let (init, body) = util::PrecompileTest::test_runner_assembly();
 

@@ -117,6 +117,14 @@ pub trait Runtime: Primitives + RuntimePolicy {
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 
+    /// Returns a (pseudo)random byte array drawing from the latest
+    /// beacon from a given epoch.
+    /// This randomness is not tied to any fork of the chain, and is unbiasable.
+    fn get_beacon_randomness(
+        &self,
+        rand_epoch: ChainEpoch,
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
+
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.
     /// NOTE: we should also limit this to being invoked during the constructor method

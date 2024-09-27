@@ -200,6 +200,7 @@ pub struct Expectations {
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
     pub expect_get_randomness_tickets: VecDeque<ExpectRandomness>,
     pub expect_get_randomness_beacon: VecDeque<ExpectRandomness>,
+    pub expect_get_beacon_randomness: VecDeque<ExpectGetBeacon>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: VecDeque<ExpectReplicaVerify>,
@@ -284,6 +285,11 @@ impl Expectations {
             this.expect_get_randomness_beacon.is_empty(),
             "expect_get_randomness_beacon {:?}, not received",
             this.expect_get_randomness_beacon
+        );
+        assert!(
+            this.expect_get_beacon_randomness.is_empty(),
+            "expect_get_beacon_randomness {:?}, not received",
+            this.expect_get_beacon_randomness
         );
         assert!(
             this.expect_batch_verify_seals.is_none(),
@@ -420,6 +426,13 @@ pub struct ExpectRandomness {
     epoch: ChainEpoch,
     entropy: Vec<u8>,
     out: [u8; RANDOMNESS_LENGTH],
+}
+
+#[derive(Clone, Debug)]
+pub struct ExpectGetBeacon {
+    epoch: ChainEpoch,
+    out: [u8; RANDOMNESS_LENGTH],
+    exit_code: ExitCode,
 }
 
 #[derive(Debug)]
@@ -749,6 +762,17 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn expect_get_beacon_randomness(
+        &self,
+        epoch: ChainEpoch,
+        out: [u8; RANDOMNESS_LENGTH],
+        exit_code: ExitCode,
+    ) {
+        let a = ExpectGetBeacon { epoch, out, exit_code };
+        self.expectations.borrow_mut().expect_get_beacon_randomness.push_back(a);
+    }
+
+    #[allow(dead_code)]
     pub fn expect_batch_verify_seals(
         &self,
         input: Vec<SealVerifyInfo>,
@@ -1017,7 +1041,6 @@ impl Runtime for MockRuntime {
             .pop_front()
             .expect("unexpected call to get_randomness_from_tickets");
 
-        assert!(epoch <= *self.epoch.borrow(), "attempt to get randomness from future");
         assert_eq!(
             expected.tag, tag,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
@@ -1050,7 +1073,6 @@ impl Runtime for MockRuntime {
             .pop_front()
             .expect("unexpected call to get_randomness_from_beacon");
 
-        assert!(epoch <= *self.epoch.borrow(), "attempt to get randomness from future");
         assert_eq!(
             expected.tag, tag,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
@@ -1068,6 +1090,28 @@ impl Runtime for MockRuntime {
         );
 
         Ok(expected.out)
+    }
+
+    fn get_beacon_randomness(
+        &self,
+        epoch: ChainEpoch,
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_get_beacon_randomness
+            .pop_front()
+            .expect("unexpected call to get_randomness_from_beacon");
+
+        assert_eq!(
+            exp.epoch, epoch,
+            "unexpected epoch, expected: {:?}, actual: {:?}",
+            exp.epoch, epoch
+        );
+        if exp.exit_code != ExitCode::OK {
+            return Err(ActorError::unchecked(exp.exit_code, "Expected Failure".to_string()));
+        }
+        Ok(exp.out)
     }
 
     fn create<T: Serialize>(&self, obj: &T) -> Result<(), ActorError> {
