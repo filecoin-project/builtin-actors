@@ -155,7 +155,7 @@ pub mod power {
     pub const CURRENT_TOTAL_POWER_METHOD: u64 = 9;
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct CurrentTotalPowerReturnParams {
+    pub struct CurrentTotalPowerReturn {
         #[serde(with = "bigint_ser")]
         pub raw_byte_power: StoragePower,
         #[serde(with = "bigint_ser")]
