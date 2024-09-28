@@ -48,7 +48,7 @@ jobs:
     - name: Upload release assets to GitHub Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_RELEASE_URL: ${{ fromJSON(needs.release-check.outputs.json)['Cargo.toml'].url }}
+        GITHUB_RELEASE_URL: ${{ github.api_url }}/repos/${{ github.repository }}/releases/${{ fromJSON(needs.release-check.outputs.json)['Cargo.toml'].id }}
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
         ./scripts/upload-release-assets.sh
