@@ -100,6 +100,9 @@ fn valid_precommits_then_aggregate_provecommit() {
         &actor.epoch_reward_smooth,
         &actor.epoch_qa_power_smooth,
         &rt.total_fil_circ_supply(),
+        // NOTE: zero inputs here preserve the original pledge functionality
+        0,
+        0,
     );
     let ten_sectors_initial_pledge = BigInt::from(10i32) * expected_initial_pledge.clone();
     assert_eq!(ten_sectors_initial_pledge, st.initial_pledge);

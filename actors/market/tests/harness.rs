@@ -1150,6 +1150,8 @@ pub fn expect_query_network_info(rt: &MockRuntime) {
         quality_adj_power: power.clone(),
         pledge_collateral: TokenAmount::default(),
         quality_adj_power_smoothed: FilterEstimate::new(reward.atto().clone(), BigInt::zero()),
+        ramp_start_epoch: 0,
+        ramp_duration_epochs: 0,
     };
     let current_reward = ThisEpochRewardReturn {
         this_epoch_baseline_power: power,

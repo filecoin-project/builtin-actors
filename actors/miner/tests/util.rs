@@ -769,6 +769,8 @@ impl ActorHarness {
             quality_adj_power: self.network_qa_power.clone(),
             pledge_collateral: self.network_pledge.clone(),
             quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),
+            ramp_start_epoch: 0,
+            ramp_duration_epochs: 0,
         };
         let current_reward = ThisEpochRewardReturn {
             this_epoch_baseline_power: self.baseline_power.clone(),
@@ -2335,6 +2337,8 @@ impl ActorHarness {
             &self.epoch_reward_smooth,
             &self.epoch_qa_power_smooth,
             &rt.total_fil_circ_supply(),
+            0,
+            0,
         )
     }
 

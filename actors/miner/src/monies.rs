@@ -75,6 +75,8 @@ pub const TERMINATION_LIFETIME_CAP: ChainEpoch = 140;
 // Multiplier of whole per-winner rewards for a consensus fault penalty.
 const CONSENSUS_FAULT_FACTOR: u64 = 5;
 
+const GAMMA_FIXED_POINT_FACTOR: u64 = 1000; // 3 decimal places
+
 /// The projected block reward a sector would earn over some period.
 /// Also known as "BR(t)".
 /// BR(t) = ProjectedRewardFraction(t) * SectorQualityAdjustedPower
@@ -255,6 +257,8 @@ pub fn initial_pledge_for_power(
     reward_estimate: &FilterEstimate,
     network_qa_power_estimate: &FilterEstimate,
     circulating_supply: &TokenAmount,
+    epochs_since_ramp_start: i64,
+    ramp_duration_epochs: u64,
 ) -> TokenAmount {
     let ip_base = expected_reward_for_power_clamped_at_atto_fil(
         reward_estimate,
@@ -267,10 +271,41 @@ pub fn initial_pledge_for_power(
     let lock_target_denom = LOCK_TARGET_FACTOR_DENOM;
     let pledge_share_num = qa_power;
     let network_qa_power = network_qa_power_estimate.estimate();
-    let pledge_share_denom = cmp::max(cmp::max(&network_qa_power, baseline_power), qa_power);
+
+    // Once FIP-0081 has fully activated, additional pledge will be 70% baseline
+    // pledge + 30% simple pledge.
+    const FIP_0081_ACTIVATION_PERMILLE: i64 = 300;
+    // Gamma/GAMMA_FIXED_POINT_FACTOR is the share of pledge coming from the
+    // baseline formulation, with 1-(gamma/GAMMA_FIXED_POINT_FACTOR) coming from
+    // simple pledge.
+    // gamma = 1000 - 300 * (epochs_since_ramp_start / ramp_duration_epochs).max(0).min(1)
+    let skew = if epochs_since_ramp_start < 0 {
+        // No skew before ramp start
+        0
+    } else if ramp_duration_epochs == 0 || epochs_since_ramp_start >= ramp_duration_epochs as i64 {
+        // 100% skew after ramp end
+        FIP_0081_ACTIVATION_PERMILLE as u64
+    } else {
+        ((epochs_since_ramp_start * FIP_0081_ACTIVATION_PERMILLE) / ramp_duration_epochs as i64)
+            as u64
+    };
+    let gamma = GAMMA_FIXED_POINT_FACTOR - skew;
+
     let additional_ip_num = lock_target_num * pledge_share_num;
-    let additional_ip_denom = pledge_share_denom * lock_target_denom;
-    let additional_ip = additional_ip_num.div_floor(&additional_ip_denom);
+
+    let pledge_share_denom_baseline =
+        cmp::max(cmp::max(&network_qa_power, baseline_power), qa_power);
+    let pledge_share_denom_simple = cmp::max(&network_qa_power, qa_power);
+
+    let additional_ip_denom_baseline = pledge_share_denom_baseline * lock_target_denom;
+    let additional_ip_baseline = (gamma * &additional_ip_num)
+        .div_floor(&(additional_ip_denom_baseline * GAMMA_FIXED_POINT_FACTOR));
+    let additional_ip_denom_simple = pledge_share_denom_simple * lock_target_denom;
+    let additional_ip_simple = ((GAMMA_FIXED_POINT_FACTOR - gamma) * &additional_ip_num)
+        .div_floor(&(additional_ip_denom_simple * GAMMA_FIXED_POINT_FACTOR));
+
+    // convex combination of simple and baseline pledge
+    let additional_ip = additional_ip_baseline + additional_ip_simple;
 
     let nominal_pledge = ip_base + TokenAmount::from_atto(additional_ip);
     let pledge_cap = TokenAmount::from_atto(INITIAL_PLEDGE_MAX_PER_BYTE.atto() * qa_power);

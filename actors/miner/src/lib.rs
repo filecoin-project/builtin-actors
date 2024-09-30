@@ -817,6 +817,8 @@ impl Actor {
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
+            epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
+            ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
 
         /*
@@ -1908,6 +1910,8 @@ impl Actor {
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
+            epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
+            ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
         activate_new_sector_infos(
             rt,
@@ -1981,6 +1985,8 @@ impl Actor {
             network_baseline: params.reward_baseline_power,
             circulating_supply: rt.total_fil_circ_supply(),
             epoch_reward: params.reward_smoothed,
+            epochs_since_ramp_start: 0,
+            ramp_duration_epochs: 0,
         };
         activate_new_sector_infos(
             rt,
@@ -2093,6 +2099,8 @@ impl Actor {
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
+            epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
+            ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
 
         let sector_day_reward = expected_reward_for_power(
@@ -2115,6 +2123,8 @@ impl Actor {
             &pledge_inputs.epoch_reward,
             &pledge_inputs.network_qap,
             &pledge_inputs.circulating_supply,
+            pledge_inputs.epochs_since_ramp_start,
+            pledge_inputs.ramp_duration_epochs,
         );
 
         let sectors_to_add = valid_sectors
@@ -4116,6 +4126,8 @@ where
         network_baseline: rew.this_epoch_baseline_power,
         circulating_supply,
         epoch_reward: rew.this_epoch_reward_smoothed,
+        epochs_since_ramp_start: rt.curr_epoch() - pow.ramp_start_epoch,
+        ramp_duration_epochs: pow.ramp_duration_epochs,
     };
     let mut power_delta = PowerPair::zero();
     let mut pledge_delta = TokenAmount::zero();
@@ -4307,6 +4319,8 @@ fn update_existing_sector_info(
             &pledge_inputs.epoch_reward,
             &pledge_inputs.network_qap,
             &pledge_inputs.circulating_supply,
+            pledge_inputs.epochs_since_ramp_start,
+            pledge_inputs.ramp_duration_epochs,
         ),
     );
     new_sector_info
@@ -5546,6 +5560,8 @@ fn activate_new_sector_infos(
                 &pledge_inputs.epoch_reward,
                 &pledge_inputs.network_qap,
                 &pledge_inputs.circulating_supply,
+                pledge_inputs.epochs_since_ramp_start,
+                pledge_inputs.ramp_duration_epochs,
             );
 
             deposit_to_unlock += pci.pre_commit_deposit.clone();
@@ -5958,6 +5974,8 @@ struct NetworkPledgeInputs {
     pub network_baseline: StoragePower,
     pub circulating_supply: TokenAmount,
     pub epoch_reward: FilterEstimate,
+    pub epochs_since_ramp_start: i64,
+    pub ramp_duration_epochs: u64,
 }
 
 // Note: probably better to push this one level down into state
