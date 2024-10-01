@@ -1775,7 +1775,7 @@ fn request_current_baseline_power(rt: &impl Runtime) -> Result<StoragePower, Act
 fn request_current_network_power(
     rt: &impl Runtime,
 ) -> Result<(StoragePower, StoragePower), ActorError> {
-    let ret: ext::power::CurrentTotalPowerReturnParams =
+    let ret: ext::power::CurrentTotalPowerReturn =
         deserialize_block(extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::CURRENT_TOTAL_POWER_METHOD,

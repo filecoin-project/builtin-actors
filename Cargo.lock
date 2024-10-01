@@ -1630,6 +1630,7 @@ version = "14.0.0"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
+ "const-hex",
  "fil_actor_reward",
  "fil_actors_runtime",
  "frc42_dispatch",
