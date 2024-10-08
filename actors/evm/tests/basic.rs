@@ -202,3 +202,28 @@ fn test_push_last_byte() {
 
     util::invoke_contract(&rt, &[]);
 }
+
+#[test]
+fn mcopy() {
+    let bytecode = hex::decode(include_str!("contracts/MCOPYTest.hex")).unwrap();
+    mcopy_test(bytecode);
+}
+
+fn mcopy_test(bytecode: Vec<u8>) {
+    let contract = Address::new_id(100);
+
+    let rt = util::init_construct_and_verify(bytecode, |rt| {
+        rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
+        rt.set_origin(contract);
+    });
+
+    // invoke contract
+
+    let mut solidity_params = vec![];
+
+    solidity_params.append(&mut hex::decode("73358055").unwrap()); // function selector, "optimizedCopy(bytes)"
+    solidity_params.append(&mut "testdata".as_bytes().to_vec());
+
+    let result = util::invoke_contract(&rt, &solidity_params);
+    assert_eq!(result, "testdata".as_bytes().to_vec());
+}
