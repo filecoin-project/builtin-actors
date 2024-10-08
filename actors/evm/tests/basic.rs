@@ -219,11 +219,13 @@ fn mcopy_test(bytecode: Vec<u8>) {
 
     // invoke contract
 
+    let encoded_testdata = hex::decode("000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000087465737464617461000000000000000000000000000000000000000000000000").unwrap();
+
     let mut solidity_params = vec![];
 
-    solidity_params.append(&mut hex::decode("73358055").unwrap()); // function selector, "optimizedCopy(bytes)"
-    solidity_params.append(&mut "testdata".as_bytes().to_vec());
+    solidity_params.extend_from_slice(&hex::decode("73358055").unwrap()); // function selector, "optimizedCopy(bytes)"
+    solidity_params.extend_from_slice(&encoded_testdata);
 
     let result = util::invoke_contract(&rt, &solidity_params);
-    assert_eq!(result, "testdata".as_bytes().to_vec());
+    assert_eq!(&*result, &*encoded_testdata);
 }
