@@ -130,11 +130,31 @@ impl Harness {
         window_post_proof_type: RegisteredPoStProof,
         value: &TokenAmount,
     ) -> Result<(), ActorError> {
+        // add create miner deposit into balance
+        let deposit = TokenAmount::from_atto(320);
+        let total = value + deposit;
+
+        // starting to create
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *owner);
-        rt.set_received(value.clone());
-        rt.set_balance(value.clone());
+        rt.set_received(total.clone());
+        rt.set_balance(total.clone());
         rt.expect_validate_caller_any();
 
+        // set request current epoch block reward expectation
+        let request_this_epoch_reward_ret = ThisEpochRewardReturn {
+            this_epoch_reward_smoothed: Default::default(),
+            this_epoch_baseline_power: BigInt::zero(),
+        };
+        rt.expect_send_simple(
+            REWARD_ACTOR_ADDR,
+            ext::reward::THIS_EPOCH_REWARD_METHOD,
+            Default::default(),
+            TokenAmount::zero(),
+            IpldBlock::serialize_cbor(&request_this_epoch_reward_ret).unwrap(),
+            ExitCode::OK,
+        );
+
+        // set constructor miner expectation
         let miner_ctor_params = MinerConstructorParams {
             owner: *owner,
             worker: *worker,
@@ -142,6 +162,7 @@ impl Harness {
             window_post_proof_type,
             peer_id: peer.clone(),
             multi_addresses: multiaddrs.clone(),
+            network_qap: Default::default(),
         };
         let expected_init_params = ExecParams {
             code_cid: *MINER_ACTOR_CODE_ID,
@@ -152,10 +173,24 @@ impl Harness {
             INIT_ACTOR_ADDR,
             ext::init::EXEC_METHOD,
             IpldBlock::serialize_cbor(&expected_init_params).unwrap(),
-            value.clone(),
+            total.clone(),
             IpldBlock::serialize_cbor(&create_miner_ret).unwrap(),
             ExitCode::OK,
         );
+
+        // FIXME:
+        // // set lock create miner deposit expectation
+        // let expected_lock_create_miner_deposit_params =
+        //     ext::miner::LockCreateMinerDepositParams { amount: TokenAmount::from_atto(320) };
+        // rt.expect_send_simple(
+        //     *miner,
+        //     ext::miner::LOCK_CREATE_MINER_DESPOIT_METHOD,
+        //     IpldBlock::serialize_cbor(&expected_lock_create_miner_deposit_params).unwrap(),
+        //     TokenAmount::zero(),
+        //     IpldBlock::serialize_cbor(&()).unwrap(),
+        //     ExitCode::OK,
+        // );
+
         let params = CreateMinerParams {
             owner: *owner,
             worker: *worker,

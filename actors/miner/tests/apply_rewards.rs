@@ -6,6 +6,7 @@ use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::REWARD_ACTOR_CODE_ID;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
+use fil_actors_runtime::EPOCHS_IN_DAY;
 use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 
@@ -31,9 +32,9 @@ fn funds_are_locked() {
     h.construct_and_verify(&rt);
 
     let rwd = TokenAmount::from_atto(1_000_000);
-    h.apply_rewards(&rt, rwd, TokenAmount::zero());
+    h.apply_rewards(&rt, rwd, TokenAmount::zero(), &h.create_depost);
 
-    let expected = TokenAmount::from_atto(750_000);
+    let expected = TokenAmount::from_atto(750_000) + &h.create_depost;
     assert_eq!(expected, h.get_locked_funds(&rt));
 }
 
@@ -47,13 +48,14 @@ fn funds_vest() {
 
     let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
 
-    // Nothing vesting to start
-    assert!(vesting_funds.funds.is_empty());
-    assert!(st.locked_funds.is_zero());
+    // create miner deposit
+    assert!(vesting_funds.funds.len() == 180);
+    assert!(st.locked_funds == h.create_depost);
+    rt.set_epoch(181 * EPOCHS_IN_DAY);
 
     // Lock some funds with AddLockedFund
     let amt = TokenAmount::from_atto(600_000);
-    h.apply_rewards(&rt, amt.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, amt.clone(), TokenAmount::zero(), &h.create_depost);
     let st = h.get_state(&rt);
     let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
 
@@ -94,11 +96,11 @@ fn penalty_is_burnt() {
     let rwd = TokenAmount::from_atto(600_000);
     let penalty = TokenAmount::from_atto(300_000);
     rt.add_balance(rwd.clone());
-    h.apply_rewards(&rt, rwd.clone(), penalty.clone());
+    h.apply_rewards(&rt, rwd.clone(), penalty.clone(), &h.create_depost);
 
     let (mut expected_lock_amt, _) = locked_reward_from_reward(rwd);
     expected_lock_amt -= penalty;
-    assert_eq!(expected_lock_amt, h.get_locked_funds(&rt));
+    assert_eq!(expected_lock_amt + &h.create_depost, h.get_locked_funds(&rt));
     // technically applying rewards without first activating cron is an impossible state but convenient for testing
     let (_, acc) =
         check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
@@ -115,20 +117,26 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
     let st = h.get_state(&rt);
     assert!(st.fee_debt.is_zero());
 
-    let amt = rt.get_balance();
+    let amt = BIG_BALANCE.clone();
     let penalty = &amt * 3;
     let reward = amt.clone();
 
     // manually update actor balance to include the added funds on reward message
     let new_balance = &reward + &amt;
     rt.set_balance(new_balance);
-
+    rt.set_epoch(181 * EPOCHS_IN_DAY);
     rt.set_caller(*REWARD_ACTOR_CODE_ID, REWARD_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![REWARD_ACTOR_ADDR]);
 
-    // pledge change is new reward - reward taken for fee debt
-    // zero here since all reward goes to debt
-    // so do not expect pledge update
+    // unlock create miner deposit
+    rt.expect_send_simple(
+        STORAGE_POWER_ACTOR_ADDR,
+        fil_actor_miner::ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
+        IpldBlock::serialize_cbor(&-h.create_depost.clone()).unwrap(),
+        TokenAmount::zero(),
+        None,
+        ExitCode::OK,
+    );
 
     // burn initial balance + reward = 2*amt
     let expect_burnt = 2 * &amt;

@@ -70,7 +70,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
     // terminate sector 1
     let epoch = *rt.epoch.borrow();
     rt.set_epoch(epoch + 100);
-    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
 
     let terminated_sector = &sectors_info[0];
     let sector_size = terminated_sector.seal_proof.sector_size().unwrap();

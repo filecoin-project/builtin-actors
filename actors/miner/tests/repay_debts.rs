@@ -120,7 +120,7 @@ fn pay_debt_partially_from_vested_funds() {
     let reward_amount: TokenAmount = 4 * &*BIG_BALANCE;
     let (amount_locked, _) = locked_reward_from_reward(reward_amount.clone());
     rt.set_balance(amount_locked.clone());
-    h.apply_rewards(&rt, reward_amount, TokenAmount::zero());
+    h.apply_rewards(&rt, reward_amount, TokenAmount::zero(), &h.create_depost);
     assert_eq!(amount_locked, h.get_locked_funds(&rt));
 
     // introduce fee debt

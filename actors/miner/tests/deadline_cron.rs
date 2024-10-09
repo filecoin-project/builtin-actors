@@ -30,9 +30,9 @@ fn cron_on_inactive_state() {
     h.construct_and_verify(&rt);
 
     let st = h.get_state(&rt);
-    assert_eq!(PERIOD_OFFSET - rt.policy.wpost_proving_period, st.proving_period_start);
-    assert!(!st.continue_deadline_cron());
+    assert!(st.continue_deadline_cron());
 
+    assert_eq!(PERIOD_OFFSET - rt.policy.wpost_proving_period, st.proving_period_start);
     // cron does nothing and does not enroll another cron
     let deadline = h.deadline(&rt);
     rt.set_epoch(deadline.last());
@@ -57,7 +57,7 @@ fn test_vesting_on_cron() {
     // --- ADD REWARDS FOR VESTING
     let apply_reward_fn = |target_epoch: ChainEpoch| {
         rt.set_epoch(target_epoch);
-        h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+        h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
     };
 
     let current_epoch = *rt.epoch.borrow();
@@ -231,7 +231,7 @@ fn detects_and_penalizes_faults() {
     let all_sectors = [active_sectors.clone(), unproven_sectors].concat();
 
     // add lots of funds so penalties come from vesting funds
-    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
 
     let st = h.get_state(&rt);
     let (dl_idx, p_idx) = st.find_sector(&rt.store, active_sectors[0].sector_number).unwrap();
@@ -307,7 +307,7 @@ fn test_cron_run_trigger_faults() {
     h.construct_and_verify(&rt);
 
     // add lots of funds so we can pay penalties without going into debt
-    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
 
     // create enough sectors that one will be in a different partition
     let all_sectors =

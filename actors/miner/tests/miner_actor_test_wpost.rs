@@ -4,6 +4,7 @@ use fil_actor_miner as miner;
 use fil_actor_miner::PowerPair;
 use fil_actors_runtime::runtime::DomainSeparationTag;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::EPOCHS_IN_DAY;
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -700,7 +701,8 @@ fn successful_recoveries_recover_power() {
     let infos = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let pwr = miner::power_for_sectors(h.sector_size, &infos);
 
-    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    rt.set_epoch(181 * EPOCHS_IN_DAY);
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
     let initial_locked = h.get_locked_funds(&rt);
 
     // Submit first PoSt to ensure we are sufficiently early to add a fault
@@ -772,7 +774,8 @@ fn skipped_faults_adjust_power() {
 
     let infos = h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    rt.set_epoch(181 * EPOCHS_IN_DAY);
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
@@ -859,7 +862,8 @@ fn skipping_all_sectors_in_a_partition_rejected() {
 
     let infos = h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    rt.set_epoch(181 * EPOCHS_IN_DAY);
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
@@ -907,7 +911,8 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
 
     let infos = h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    rt.set_epoch(181 * EPOCHS_IN_DAY);
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
 
     // Submit first PoSt to ensure we are sufficiently early to add a fault
     // advance to next proving period
@@ -1239,7 +1244,8 @@ fn bad_post_fails_when_verified() {
     let power_for_sectors =
         &miner::power_for_sectors(h.sector_size, &vec![infos[0].clone(), infos[1].clone()]);
 
-    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    rt.set_epoch(181 * EPOCHS_IN_DAY);
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
 
     let state = h.get_state(&rt);
     let (dlidx, pidx) = state.find_sector(&rt.store, infos[0].sector_number).unwrap();

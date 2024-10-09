@@ -29,7 +29,7 @@ fn declare_fault_pays_fee_at_window_post() {
     let pwr = power_for_sectors(h.sector_size, &all_sectors);
 
     // add lots of funds so penalties come from vesting funds
-    h.apply_rewards(&rt, big_rewards, TokenAmount::zero());
+    h.apply_rewards(&rt, big_rewards, TokenAmount::zero(), &h.create_depost);
 
     // find deadline for sector
     let st = h.get_state(&rt);

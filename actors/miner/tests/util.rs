@@ -39,7 +39,7 @@ use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_SEND};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use multihash::derive::Multihash;
-use num_traits::Signed;
+use num_traits::{FromPrimitive, Signed};
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
@@ -160,6 +160,7 @@ pub struct ActorHarness {
     pub epoch_qa_power_smooth: FilterEstimate,
 
     pub base_fee: TokenAmount,
+    pub create_depost: TokenAmount,
 
     pub options: HarnessOptions,
 }
@@ -211,7 +212,7 @@ impl ActorHarness {
             epoch_qa_power_smooth: FilterEstimate::new(pwr, BigInt::from(0)),
 
             base_fee: TokenAmount::zero(),
-
+            create_depost: TokenAmount::from_atto(633318697598976000u64),
             options,
         }
     }
@@ -254,6 +255,15 @@ impl ActorHarness {
     }
 
     pub fn construct_and_verify(&self, rt: &MockRuntime) {
+        let reward = TokenAmount::from_whole(10);
+        let power = StoragePower::from_i128(1 << 50).unwrap();
+        let epoch_reward_smooth = FilterEstimate::new(reward.atto().clone(), BigInt::from(0u8));
+
+        let current_reward = ThisEpochRewardReturn {
+            this_epoch_baseline_power: power.clone(),
+            this_epoch_reward_smoothed: epoch_reward_smooth.clone(),
+        };
+
         let params = ConstructorParams {
             owner: self.owner,
             worker: self.worker,
@@ -261,6 +271,7 @@ impl ActorHarness {
             window_post_proof_type: self.window_post_proof_type,
             peer_id: vec![0],
             multi_addresses: vec![],
+            network_qap: epoch_reward_smooth,
         };
 
         rt.actor_code_cids.borrow_mut().insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
@@ -269,8 +280,17 @@ impl ActorHarness {
             rt.actor_code_cids.borrow_mut().insert(*a, *ACCOUNT_ACTOR_CODE_ID);
         }
 
+        rt.add_balance(self.create_depost.clone());
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.expect_send_simple(
+            REWARD_ACTOR_ADDR,
+            RewardMethod::ThisEpochReward as u64,
+            None,
+            TokenAmount::zero(),
+            IpldBlock::serialize_cbor(&current_reward).unwrap(),
+            ExitCode::OK,
+        );
         rt.expect_send_simple(
             self.worker,
             AccountMethod::PubkeyAddress as u64,
@@ -2081,7 +2101,13 @@ impl ActorHarness {
         caller_addrs
     }
 
-    pub fn apply_rewards(&self, rt: &MockRuntime, amt: TokenAmount, penalty: TokenAmount) {
+    pub fn apply_rewards(
+        &self,
+        rt: &MockRuntime,
+        amt: TokenAmount,
+        penalty: TokenAmount,
+        unlock: &TokenAmount,
+    ) {
         // This harness function does not handle the state where apply rewards is
         // on a miner with existing fee debt.  This state is not protocol reachable
         // because currently fee debt prevents election participation.
@@ -2090,7 +2116,7 @@ impl ActorHarness {
         // goes into debt we can't rely on the harness call
         // TODO unify those cases
         let (lock_amt, _) = locked_reward_from_reward(amt.clone());
-        let pledge_delta = lock_amt - &penalty;
+        let pledge_delta = &lock_amt - &penalty - unlock;
 
         rt.set_caller(*REWARD_ACTOR_CODE_ID, REWARD_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![REWARD_ACTOR_ADDR]);

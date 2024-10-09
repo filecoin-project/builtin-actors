@@ -45,6 +45,7 @@ pub struct MinerConstructorParams {
     #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
     pub multi_addresses: Vec<BytesDe>,
+    pub network_qap: FilterEstimate,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -103,6 +104,11 @@ pub struct DeferredCronEventParams {
     pub event_payload: Vec<u8>,
     pub reward_smoothed: FilterEstimate,
     pub quality_adj_power_smoothed: FilterEstimate,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct LockCreateMinerDepositParams {
+    pub amount: TokenAmount,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
