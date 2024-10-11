@@ -863,7 +863,7 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     let precommits = precommit_sectors_v2(
         v,
         policy.min_aggregated_sectors as usize,
-        policy.pre_commit_sector_batch_max_size,
+        256,
         vec![],
         &worker,
         &maddr,

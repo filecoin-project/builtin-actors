@@ -20,11 +20,6 @@ pub struct Policy {
     /// Maximum total replica update proof size.
     pub max_replica_update_proof_size: usize,
 
-    /// The maximum number of sector pre-commitments in a single batch.
-    pub pre_commit_sector_batch_max_size: usize,
-    /// The maximum number of sector replica updates in a single batch.
-    pub prove_replica_updates_max_size: usize,
-
     /// The delay between pre commit expiration and clean up from state. This enforces that expired pre-commits
     /// stay in state for a period of time creating a grace period during which a late-running aggregated prove-commit
     /// can still prove its non-expired precommits without resubmitting a message
@@ -62,9 +57,6 @@ pub struct Policy {
     /// The maximum number of partitions that may be required to be loaded in a single invocation.
     /// This limits the number of simultaneous fault, recovery, or sector-extension declarations.
     pub addressed_partitions_max: u64,
-
-    /// Maximum number of unique "declarations" in batch operations.
-    pub declarations_max: u64,
 
     /// The maximum number of sector numbers addressable in a single invocation
     /// (which implies also the max infos that may be loaded at once).
@@ -175,8 +167,6 @@ impl Default for Policy {
             min_aggregated_sectors: policy_constants::MIN_AGGREGATED_SECTORS,
             max_aggregated_proof_size: policy_constants::MAX_AGGREGATED_PROOF_SIZE,
             max_replica_update_proof_size: policy_constants::MAX_REPLICA_UPDATE_PROOF_SIZE,
-            pre_commit_sector_batch_max_size: policy_constants::PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
-            prove_replica_updates_max_size: policy_constants::PROVE_REPLICA_UPDATES_MAX_SIZE,
             expired_pre_commit_clean_up_delay: policy_constants::EXPIRED_PRE_COMMIT_CLEAN_UP_DELAY,
             wpost_proving_period: policy_constants::WPOST_PROVING_PERIOD,
             wpost_challenge_window: policy_constants::WPOST_CHALLENGE_WINDOW,
@@ -189,7 +179,6 @@ impl Default for Policy {
             max_peer_id_length: policy_constants::MAX_PEER_ID_LENGTH,
             max_multiaddr_data: policy_constants::MAX_MULTIADDR_DATA,
             addressed_partitions_max: policy_constants::ADDRESSED_PARTITIONS_MAX,
-            declarations_max: policy_constants::DECLARATIONS_MAX,
             addressed_sectors_max: policy_constants::ADDRESSED_SECTORS_MAX,
             posted_partitions_max: policy_constants::POSTED_PARTITIONS_MAX,
             max_pre_commit_randomness_lookback:
@@ -254,12 +243,6 @@ pub mod policy_constants {
 
     pub const MAX_REPLICA_UPDATE_PROOF_SIZE: usize = 4096;
 
-    // 32 sectors per epoch would support a single miner onboarding 1EiB of 32GiB sectors in 1 year.
-    pub const PRE_COMMIT_SECTOR_BATCH_MAX_SIZE: usize = 256;
-
-    // Same as PRE_COMMIT_SECTOR_BATCH_MAX_SIZE for consistency.
-    pub const PROVE_REPLICA_UPDATES_MAX_SIZE: usize = PRE_COMMIT_SECTOR_BATCH_MAX_SIZE;
-
     pub const EXPIRED_PRE_COMMIT_CLEAN_UP_DELAY: i64 = 8 * EPOCHS_IN_HOUR;
 
     pub const WPOST_PROVING_PERIOD: ChainEpoch = EPOCHS_IN_DAY;
@@ -293,8 +276,6 @@ pub mod policy_constants {
     // of partitions of 32GiB sectors with 1 message per epoch within a single half-hour deadline.
     // A miner can of course submit more messages.
     pub const ADDRESSED_PARTITIONS_MAX: u64 = MAX_PARTITIONS_PER_DEADLINE;
-
-    pub const DECLARATIONS_MAX: u64 = ADDRESSED_PARTITIONS_MAX;
 
     pub const ADDRESSED_SECTORS_MAX: u64 = 25_000;
 

@@ -209,17 +209,6 @@ mod miner_actor_precommit_batch {
     }
 
     #[test]
-    fn too_many_sectors() {
-        assert_simple_batch(
-            Policy::default().pre_commit_sector_batch_max_size + 1,
-            TokenAmount::zero(),
-            TokenAmount::zero(),
-            &[],
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            "batch of 257 too large",
-        );
-    }
-    #[test]
     fn insufficient_balance() {
         assert_simple_batch(
             10,

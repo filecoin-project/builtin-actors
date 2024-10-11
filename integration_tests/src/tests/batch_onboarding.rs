@@ -2,9 +2,7 @@ use export_macro::vm_test;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::{power_for_sector, State as MinerState};
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
-use fil_actors_runtime::runtime::policy_constants::{
-    MAX_AGGREGATED_SECTORS, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
-};
+use fil_actors_runtime::runtime::policy_constants::MAX_AGGREGATED_SECTORS;
 use fil_actors_runtime::runtime::Policy;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
@@ -76,7 +74,6 @@ pub fn batch_onboarding_test(v: &dyn VM) {
     let mut pre_committed_count = 0;
 
     let vec_onboarding = vec![
-        Onboarding::new(0, 10, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE, 0, 0),
         Onboarding::new(1, 20, 12, 0, 0),
         Onboarding::new(PRE_COMMIT_CHALLENGE_DELAY + 1, 0, 0, 8, MAX_AGGREGATED_SECTORS as usize),
         Onboarding::new(1, 0, 0, 8, 4),

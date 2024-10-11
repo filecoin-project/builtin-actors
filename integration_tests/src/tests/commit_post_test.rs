@@ -390,7 +390,7 @@ pub fn aggregate_bad_sector_number_test(v: &dyn VM) {
         precommit_sectors_v2(
             v,
             4,
-            policy.pre_commit_sector_batch_max_size,
+            256,
             vec![],
             &worker,
             &id_addr,
@@ -464,7 +464,7 @@ pub fn aggregate_size_limits_test(v: &dyn VM) {
         precommit_sectors_v2(
             v,
             oversized_batch,
-            policy.pre_commit_sector_batch_max_size,
+            256,
             vec![],
             &worker,
             &id_addr,
@@ -568,7 +568,7 @@ pub fn aggregate_bad_sender_test(v: &dyn VM) {
         precommit_sectors_v2(
             v,
             4,
-            policy.pre_commit_sector_batch_max_size,
+            256,
             vec![],
             &worker,
             &id_addr,
@@ -640,7 +640,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     let early_precommits = precommit_sectors_v2(
         v,
         1,
-        policy.pre_commit_sector_batch_max_size,
+        256,
         vec![],
         &worker,
         &miner_addr,
@@ -660,7 +660,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     let later_precommits = precommit_sectors_v2(
         v,
         3,
-        policy.pre_commit_sector_batch_max_size,
+        256,
         vec![],
         &worker,
         &miner_addr,
