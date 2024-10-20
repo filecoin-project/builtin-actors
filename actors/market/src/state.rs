@@ -255,6 +255,26 @@ impl State {
         find_proposal(&self.load_proposals(store)?, deal_id)
     }
 
+    pub fn find_proposal_from_cache<BS: Blockstore>(
+        &self,
+        proposals: &DealArray<BS>,
+        deal_id: DealID,
+    ) -> Result<Option<DealProposal>, ActorError> {
+        proposals.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to load deal proposal {}", deal_id)
+        }).map(|opt| opt.cloned())
+    }
+
+    pub fn find_deal_state_from_cache<BS: Blockstore>(
+        &self,
+        states: &DealMetaArray<BS>,
+        deal_id: DealID,
+    ) -> Result<Option<DealState>, ActorError> {
+        states.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to load deal state {}", deal_id)
+        }).map(|opt| opt.cloned())
+    }
+
     pub fn remove_proposal<BS>(
         &mut self,
         store: &BS,
