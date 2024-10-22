@@ -794,7 +794,6 @@ impl Actor {
         let miner_addr = rt.message().caller();
 
         let burn_amount = rt.transaction(|st: &mut State, rt| {
-
             // Load the deal proposals and deal states once
             let proposals = st.load_proposals(rt.store())?;
             let states = st.load_deal_states(rt.store())?;
@@ -811,9 +810,10 @@ impl Actor {
 
             let mut total_slashed = TokenAmount::zero();
             for id in all_deal_ids {
-                let deal = proposals.get(id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    format!("failed to load deal proposal {}", id)
-                })?;
+                let deal =
+                    proposals.get(id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to load deal proposal {}", id)
+                    })?;
                 // The deal may have expired and been deleted before the sector is terminated.
                 // Nothing to do, but continue execution for the other deals.
                 if deal.is_none() {
@@ -838,9 +838,12 @@ impl Actor {
                     continue;
                 }
 
-                let mut state: DealState = *states.get(id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                                    format!("failed to load deal state {}", id)
-                                })?.ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
+                let mut state: DealState = *states
+                    .get(id)
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to load deal state {}", id)
+                    })?
+                    .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
 
                 // If a deal is already slashed, there should be no existing state for it
                 // but we process it here for deletion anyway
