@@ -813,7 +813,7 @@ impl Actor {
                 let deal =
                     proposals.get(id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                         format!("failed to load deal proposal {}", id)
-                    })?;
+                    })?.cloned();
                 // The deal may have expired and been deleted before the sector is terminated.
                 // Nothing to do, but continue execution for the other deals.
                 if deal.is_none() {
@@ -838,11 +838,11 @@ impl Actor {
                     continue;
                 }
 
-                let mut state: DealState = *states
+                let mut state: DealState = states
                     .get(id)
                     .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                         format!("failed to load deal state {}", id)
-                    })?
+                    })?.cloned()
                     .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
 
                 // If a deal is already slashed, there should be no existing state for it
