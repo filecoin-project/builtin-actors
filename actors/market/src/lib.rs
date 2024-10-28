@@ -794,6 +794,10 @@ impl Actor {
         let miner_addr = rt.message().caller();
 
         let burn_amount = rt.transaction(|st: &mut State, rt| {
+            // Load the deal proposals and deal states once
+            let proposals = st.load_proposals(rt.store())?;
+            let states = st.load_deal_states(rt.store())?;
+
             // The sector deals mapping is removed all at once.
             // Note there may be some deal states that are not removed here,
             // despite deletion of this mapping, e.g. for expired but not-yet-settled deals.
@@ -806,7 +810,12 @@ impl Actor {
 
             let mut total_slashed = TokenAmount::zero();
             for id in all_deal_ids {
-                let deal = st.find_proposal(rt.store(), id)?;
+                let deal = proposals
+                    .get(id)
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to load deal proposal {}", id)
+                    })?
+                    .cloned();
                 // The deal may have expired and been deleted before the sector is terminated.
                 // Nothing to do, but continue execution for the other deals.
                 if deal.is_none() {
@@ -831,10 +840,12 @@ impl Actor {
                     continue;
                 }
 
-                let mut state: DealState = st
-                    .find_deal_state(rt.store(), id)?
-                    // A deal with a proposal but no state is not activated, but then it should not be
-                    // part of a sector that is terminating.
+                let mut state: DealState = states
+                    .get(id)
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to load deal state {}", id)
+                    })?
+                    .cloned()
                     .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
 
                 // If a deal is already slashed, there should be no existing state for it
