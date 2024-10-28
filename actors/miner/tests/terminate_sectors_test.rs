@@ -56,7 +56,7 @@ fn removes_sector_with_correct_accounting() {
 
     // A miner will pay the minimum of termination fee and locked funds. Add some locked funds to ensure
     // correct fee calculation is used.
-    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
     let state: State = rt.get_state();
     let initial_locked_funds = state.locked_funds;
 
@@ -125,7 +125,7 @@ fn removes_sector_with_without_deals() {
 
     h.advance_and_submit_posts(&rt, &sectors);
     // Add locked funds to ensure correct fee calculation is used.
-    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero(), &h.create_depost);
 
     // Expectations about the correct call to market actor are in the harness method.
     let expected_fee: TokenAmount = sectors

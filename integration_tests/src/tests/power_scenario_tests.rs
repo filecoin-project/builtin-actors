@@ -1,14 +1,15 @@
 use export_macro::vm_test;
 use fil_actor_init::Method as InitMethod;
 use fil_actor_miner::{
-    max_prove_commit_duration, Method as MinerMethod, MinerConstructorParams, MIN_SECTOR_EXPIRATION,
+    max_prove_commit_duration, LockCreateMinerDepositParams, Method as MinerMethod,
+    MinerConstructorParams, MIN_SECTOR_EXPIRATION,
 };
 use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actors_runtime::runtime::Policy;
 
 use fil_actors_runtime::{
-    CRON_ACTOR_ADDR, CRON_ACTOR_ID, INIT_ACTOR_ADDR, INIT_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ID,
+    CRON_ACTOR_ADDR, CRON_ACTOR_ID, INIT_ACTOR_ADDR, INIT_ACTOR_ID, REWARD_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
@@ -32,14 +33,12 @@ use crate::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 #[vm_test]
 pub fn power_create_miner_test(v: &dyn VM) {
     let owner = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-    v.execute_message(
-        &TEST_FAUCET_ADDR,
-        &owner,
-        &TokenAmount::from_atto(10_000u32),
-        METHOD_SEND,
-        None,
-    )
-    .unwrap();
+
+    let deposit = TokenAmount::from_atto(319999994978159820800u128);
+    let value = &deposit + TokenAmount::from_atto(10_000u32);
+
+    v.execute_message(&TEST_FAUCET_ADDR, &owner, &value, METHOD_SEND, None).unwrap();
+
     let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
     let peer_id = "miner".as_bytes().to_vec();
     let post_proof = RegisteredPoStProof::StackedDRGWindow32GiBV1P1;
@@ -55,7 +54,7 @@ pub fn power_create_miner_test(v: &dyn VM) {
         .execute_message(
             &owner,
             &STORAGE_POWER_ACTOR_ADDR,
-            &TokenAmount::from_atto(1000u32),
+            &value,
             PowerMethod::CreateMiner as u64,
             Some(serialize_ok(&params)),
         )
@@ -70,6 +69,13 @@ pub fn power_create_miner_test(v: &dyn VM) {
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         return_value: Some(res.ret),
         subinvocs: Some(vec![
+            // request current epoch block reward
+            ExpectInvocation {
+                from: STORAGE_POWER_ACTOR_ID,
+                to: REWARD_ACTOR_ADDR,
+                method: fil_actor_power::ext::reward::THIS_EPOCH_REWARD_METHOD,
+                ..Default::default()
+            },
             // request init actor construct miner
             ExpectInvocation {
                 from: STORAGE_POWER_ACTOR_ID,
@@ -93,6 +99,17 @@ pub fn power_create_miner_test(v: &dyn VM) {
                     ),
                     ..Default::default()
                 }]),
+                ..Default::default()
+            },
+            ExpectInvocation {
+                // call miner actor to lock deposit
+                from: STORAGE_POWER_ACTOR_ID,
+                to: Address::new_id(FIRST_TEST_USER_ADDR + 1),
+                method: MinerMethod::LockCreateMinerDepositExported as u64,
+                params: Some(
+                    IpldBlock::serialize_cbor(&LockCreateMinerDepositParams { amount: deposit })
+                        .unwrap(),
+                ),
                 ..Default::default()
             },
         ]),
