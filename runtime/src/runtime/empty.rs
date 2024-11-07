@@ -28,8 +28,8 @@ pub const EMPTY_ARR_CID: Cid = Cid::new_v1(
 
 #[test]
 fn test_empty_arr_cid() {
-    use cid::multihash::{Code, MultihashDigest};
     use fvm_ipld_encoding::to_vec;
+    use multihash_codetable::{Code, MultihashDigest};
 
     let empty = to_vec::<[(); 0]>(&[]).unwrap();
     let expected = Cid::new_v1(DAG_CBOR, Code::Blake2b256.digest(&empty));

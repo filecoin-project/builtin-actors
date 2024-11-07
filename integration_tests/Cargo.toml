@@ -60,8 +60,8 @@ thiserror = { workspace = true }
 libsecp256k1 = { workspace = true }
 export_macro = { path = "./macro" }
 ctor = "0.2.5"
+multihash-codetable = { workspace = true }
 
 [dev-dependencies]
-multihash = { workspace = true }
 test-case = { workspace = true }
 hex-literal = { workspace = true }
