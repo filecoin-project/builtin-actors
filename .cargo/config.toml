@@ -8,5 +8,10 @@ rustflags = [
 rustflags = [
     "-Ctarget-feature=+bulk-memory",
     "-Ctarget-feature=+crt-static",
+    "-Ctarget-feature=+mutable-globals",
+    "-Ctarget-feature=+sign-ext",
+    "-Ctarget-feature=-reference-types",
+    "-Ctarget-feature=-multivalue",
+    "-Ctarget-feature=-atomics",
     "-Clink-arg=--export-table",
 ]
