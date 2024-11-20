@@ -338,6 +338,8 @@ def_stdproc! { MSTORE(a, b) => memory::mstore }
 def_stdproc! { MSTORE8(a, b) => memory::mstore8 }
 def_stdfun! { SLOAD(a) => storage::sload }
 def_stdproc! { SSTORE(a, b) => storage::sstore }
+def_stdfun! { TLOAD(a) => storage::tload }
+def_stdproc! { TSTORE(a, b) => storage::tstore }
 def_stdfun! { MSIZE() => memory::msize }
 def_stdfun! { GAS() => context::gas }
 def_stdlog! { LOG0(0, ()) }
