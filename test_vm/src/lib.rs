@@ -1,4 +1,3 @@
-use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
 use fil_actor_cron::{Entry as CronEntry, State as CronState};
@@ -32,6 +31,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{MethodNum, METHOD_SEND};
+use multihash_codetable::Code;
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};

@@ -50,8 +50,8 @@ const EVM_WORD_SIZE: usize = 32;
 #[test]
 fn test_method_selector() {
     // We could just _generate_ this method selector with a proc macro, but this is easier.
-    use cid::multihash::MultihashDigest;
-    let hash = cid::multihash::Code::Keccak256.digest(NATIVE_METHOD_SIGNATURE.as_bytes());
+    use multihash_codetable::MultihashDigest;
+    let hash = multihash_codetable::Code::Keccak256.digest(NATIVE_METHOD_SIGNATURE.as_bytes());
     let computed_selector = &hash.digest()[..4];
     assert_eq!(computed_selector, NATIVE_METHOD_SELECTOR);
 }

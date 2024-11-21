@@ -6,7 +6,6 @@ use std::iter;
 use std::ops::Neg;
 
 use anyhow::anyhow;
-use cid::multihash::MultihashDigest;
 use cid::Cid;
 use fil_actors_runtime::reward::FilterEstimate;
 use fvm_ipld_amt::Amt;
@@ -38,7 +37,7 @@ use fvm_shared::sector::{
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_SEND};
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use multihash::derive::Multihash;
+use multihash_codetable::MultihashDigest;
 use num_traits::Signed;
 
 use fil_actor_account::Method as AccountMethod;
@@ -3297,12 +3296,12 @@ pub fn make_prove_commit_aggregate(sector_nos: &BitField) -> ProveCommitAggregat
 }
 
 // multihash library doesn't support poseidon hashing, so we fake it
-#[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, MultihashDigest, PartialEq)]
 #[mh(alloc_size = 64)]
 enum MhCode {
-    #[mh(code = 0xb401, hasher = multihash::Sha2_256)]
+    #[mh(code = 0xb401, hasher = multihash_codetable::Sha2_256)]
     PoseidonFake,
-    #[mh(code = 0x1012, hasher = multihash::Sha2_256)]
+    #[mh(code = 0x1012, hasher = multihash_codetable::Sha2_256)]
     Sha256TruncPaddedFake,
 }
 

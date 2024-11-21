@@ -1207,8 +1207,7 @@ pub fn assert_deal_deleted(
     sector_number: SectorNumber,
     empty_sector_deals: bool,
 ) {
-    use cid::multihash::Code;
-    use cid::multihash::MultihashDigest;
+    use multihash_codetable::{Code, MultihashDigest};
 
     let st: State = rt.get_state();
 

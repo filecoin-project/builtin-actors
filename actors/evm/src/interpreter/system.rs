@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use cid::multihash::Code;
 use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{
     actor_error, extract_send_result, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID,
@@ -15,6 +14,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{MethodNum, Response, IPLD_RAW, METHOD_SEND};
+use multihash_codetable::Code;
 
 use crate::state::{State, Tombstone};
 use crate::BytecodeHash;
