@@ -409,36 +409,87 @@ impl<'r, RT: Runtime> System<'r, RT> {
         };
         Ok(())
     }
-    ///
-    /// Get value of a storage key.
-    pub fn get_transient_storage(&mut self, key: U256) -> Result<U256, ActorError> {
-        //TODO check tombstone for liveliness of data
-        Ok(self
-            .transient_slots
-            .get(&key)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to clear storage slot")?
-            .cloned()
-            .unwrap_or_default())
+
+    /// Returns the current transient data lifespan based on the execution environment.
+    pub fn get_current_transient_data_lifespan(&self) -> Option<TransientDataLifespan> {
+        match self.rt.message().origin().id() {
+            Ok(origin_id) => Some(TransientDataLifespan {
+                origin: origin_id,
+                nonce: self.rt.message().nonce(),
+            }),
+            Err(_) => None, // Handle the error case by returning None
+        }
     }
 
-    /// Set value of a storage key.
-    pub fn set_transient_storage(&mut self, key: U256, value: U256) -> Result<(), ActorError> {
-        //TODO check tombstone for liveliness of data
-        let changed = if value.is_zero() {
-            self.transient_slots
-                .delete(&key)
-                .map(|v| v.is_some())
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to clear storage slot")?
+    /// Get value of a transient storage key.
+    pub fn get_transient_storage(&mut self, key: U256) -> Result<U256, ActorError> {
+        if self.transient_data_lifespan == self.get_current_transient_data_lifespan() {
+            // Lifespan matches, retrieve value
+            Ok(self
+                .transient_slots
+                .get(&key)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to access transient storage slot")?
+                .cloned()
+                .unwrap_or_default())
         } else {
+            // Lifespan mismatch, return default value
+            Ok(U256::zero())
+        }
+    }
+
+
+    /// Set value of a transient storage key.
+    pub fn set_transient_storage(&mut self, key: U256, value: U256) -> Result<(), ActorError> {
+        let current_lifespan = self.get_current_transient_data_lifespan();
+
+        if self.transient_data_lifespan == current_lifespan {
+            // Lifespan matches, proceed to set value
+            let changed = if value.is_zero() {
+                self.transient_slots
+                    .delete(&key)
+                    .map(|v| v.is_some())
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to clear transient storage slot")?
+            } else {
+                self.transient_slots
+                    .set(key, value)
+                    .map(|v| v != Some(value))
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to update transient storage slot")?
+            };
+
+            if changed {
+                self.saved_state_root = None; // Mark state as dirty
+            }
+        } else {
+            // Lifespan mismatch
+            if value.is_zero() {
+                // If setting to default value, skip storage reset
+                return Ok(());
+            }
+
+            // Reset transient storage and update lifespan
+            self.reset_transient_storage(current_lifespan)?;
             self.transient_slots
                 .set(key, value)
-                .map(|v| v != Some(value))
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to update storage slot")?
-        };
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set transient storage after reset")?;
 
-        if changed {
-            self.saved_state_root = None; // dirty.
-        };
+        }
+
+        Ok(())
+    }
+
+    /// Reset transient storage and update lifespan.
+    pub fn reset_transient_storage(&mut self, new_lifespan: Option<TransientDataLifespan>) -> Result<(), ActorError> {
+        // Update lifespan
+        self.transient_data_lifespan = new_lifespan;
+
+        // Reinitialize the transient_slots with a fresh KAMT
+        //let transient_store = self.rt.store().clone();
+        //self.transient_slots = StateKamt::new_with_config(transient_store, KAMT_CONFIG.clone());
+        // TODO XXX reinitialize does not currently work due to blockstore reference issues
+
+        // Mark state as dirty
+        self.saved_state_root = None;
+
         Ok(())
     }
 
