@@ -196,7 +196,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
                 transient_store,
                 KAMT_CONFIG.clone(),
             )
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "transient_state not in blockstore")?,
             transient_data_lifespan: state.transient_data_lifespan,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
