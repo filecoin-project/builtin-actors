@@ -30,6 +30,30 @@ pub fn sstore(
     system.set_storage(key, value)
 }
 
+#[inline]
+pub fn tload(
+    _state: &mut ExecutionState,
+    system: &mut System<impl Runtime>,
+    location: U256,
+) -> Result<U256, ActorError> {
+    // get from storage and place on stack
+    system.get_transient_storage(location)
+}
+
+#[inline]
+pub fn tstore(
+    _state: &mut ExecutionState,
+    system: &mut System<impl Runtime>,
+    key: U256,
+    value: U256,
+) -> Result<(), ActorError> {
+    if system.readonly {
+        return Err(ActorError::read_only("store called while read-only".into()));
+    }
+
+    system.set_transient_storage(key, value)
+}
+
 #[cfg(test)]
 mod tests {
     use fil_actors_evm_shared::uints::U256;
@@ -80,6 +104,55 @@ mod tests {
             assert!(result.is_ok(), "execution step failed");
             assert_eq!(m.state.stack.len(), 0);
             assert_eq!(m.system.get_storage(U256::from(0)).unwrap(), U256::from(0x42));
+        };
+    }
+
+    // TODO test transient storage lifecycle
+
+    #[test]
+    fn test_tload() {
+        // happy path
+        evm_unit_test! {
+            (m) {
+                TLOAD;
+            }
+            m.system.set_transient_storage(U256::from(0), U256::from(0x42)).unwrap();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0x42));
+        };
+    }
+
+    #[test]
+    fn test_tload_oob() {
+        // oob access -- it is a zero
+        evm_unit_test! {
+            (m) {
+                TLOAD;
+            }
+            m.state.stack.push(U256::from(1234)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+        };
+    }
+
+    #[test]
+    fn test_tstore() {
+        evm_unit_test! {
+            (m) {
+                TSTORE;
+            }
+
+            m.state.stack.push(U256::from(0x42)).unwrap();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.system.get_transient_storage(U256::from(0)).unwrap(), U256::from(0x42));
         };
     }
 }
