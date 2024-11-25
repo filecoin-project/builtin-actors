@@ -5,9 +5,8 @@ use std::rc::Rc;
 use test_vm::TestVM;
 
 use fil_actors_integration_tests::tests::{
-    bad_batch_size_failure_test, bad_post_upgrade_dispute_test,
-    deal_included_in_multiple_sectors_failure_test, extend_after_upgrade_test,
-    immutable_deadline_failure_test, nodispute_after_upgrade_test,
+    bad_post_upgrade_dispute_test, deal_included_in_multiple_sectors_failure_test,
+    extend_after_upgrade_test, immutable_deadline_failure_test, nodispute_after_upgrade_test,
     prove_replica_update_multi_dline_test, replica_update_full_path_success_test,
     replica_update_verified_deal_max_term_violated_test, replica_update_verified_deal_test,
     terminate_after_upgrade_test, terminated_sector_failure_test, unhealthy_sector_failure_test,
@@ -69,13 +68,6 @@ fn terminated_sector_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     terminated_sector_failure_test(&v);
-}
-
-#[test]
-fn bad_batch_size_failure() {
-    let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
-    bad_batch_size_failure_test(&v);
 }
 
 #[test]
