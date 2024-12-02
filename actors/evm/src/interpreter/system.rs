@@ -16,7 +16,7 @@ use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{MethodNum, Response, IPLD_RAW, METHOD_SEND};
 
-use crate::state::{State, Tombstone, TransientDataLifespan};
+use crate::state::{State, Tombstone, TransientData, TransientDataLifespan};
 use crate::BytecodeHash;
 
 use cid::Cid;
@@ -192,12 +192,12 @@ impl<'r, RT: Runtime> System<'r, RT> {
             slots: StateKamt::load_with_config(&state.contract_state, store, KAMT_CONFIG.clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
             transient_slots: StateKamt::load_with_config(
-                &state.transient_state,
+                &state.transient_data.unwrap().transient_data_state.unwrap(),
                 transient_store,
                 KAMT_CONFIG.clone(),
             )
             .context_code(ExitCode::USR_ILLEGAL_STATE, "transient_state not in blockstore")?,
-            transient_data_lifespan: state.transient_data_lifespan,
+            transient_data_lifespan: state.transient_data.unwrap().transient_data_lifespan,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
             bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
@@ -297,11 +297,16 @@ impl<'r, RT: Runtime> System<'r, RT> {
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to flush contract state",
                     )?,
-                    transient_state: self.transient_slots.flush().context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to flush contract state",
-                    )?,
-                    transient_data_lifespan: self.transient_data_lifespan,
+                    transient_data:
+                    { Some(TransientData {
+                        transient_data_state: Some(self.transient_slots.flush().context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            "failed to flush contract state",
+                        )?),
+                        transient_data_lifespan: self.transient_data_lifespan,
+                                    })
+
+                    },
                     nonce: self.nonce,
                     tombstone: self.tombstone,
                 },
@@ -336,9 +341,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .set_root(&state.contract_state)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
         self.transient_slots
-            .set_root(&state.transient_state)
+            .set_root(&state.transient_data.unwrap().transient_data_state.unwrap())
             .context_code(ExitCode::USR_ILLEGAL_STATE, "transient_state not in blockstore")?;
-        self.transient_data_lifespan = state.transient_data_lifespan;
+        self.transient_data_lifespan = state.transient_data.unwrap().transient_data_lifespan;
         self.nonce = state.nonce;
         self.saved_state_root = Some(root);
         self.bytecode = Some(EvmBytecode::new(state.bytecode, state.bytecode_hash));
