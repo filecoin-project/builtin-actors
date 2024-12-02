@@ -297,15 +297,14 @@ impl<'r, RT: Runtime> System<'r, RT> {
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to flush contract state",
                     )?,
-                    transient_data:
-                    { Some(TransientData {
-                        transient_data_state: Some(self.transient_slots.flush().context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to flush contract state",
-                        )?),
-                        transient_data_lifespan: self.transient_data_lifespan,
-                                    })
-
+                    transient_data: {
+                        Some(TransientData {
+                            transient_data_state: Some(self.transient_slots.flush().context_code(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "failed to flush contract state",
+                            )?),
+                            transient_data_lifespan: self.transient_data_lifespan,
+                        })
                     },
                     nonce: self.nonce,
                     tombstone: self.tombstone,
@@ -418,10 +417,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
     /// Returns the current transient data lifespan based on the execution environment.
     pub fn get_current_transient_data_lifespan(&self) -> Option<TransientDataLifespan> {
         match self.rt.message().origin().id() {
-            Ok(origin_id) => Some(TransientDataLifespan {
-                origin: origin_id,
-                nonce: self.rt.message().nonce(),
-            }),
+            Ok(origin_id) => {
+                Some(TransientDataLifespan { origin: origin_id, nonce: self.rt.message().nonce() })
+            }
             Err(_) => None, // Handle the error case by returning None
         }
     }
@@ -433,7 +431,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
             Ok(self
                 .transient_slots
                 .get(&key)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to access transient storage slot")?
+                .context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to access transient storage slot",
+                )?
                 .cloned()
                 .unwrap_or_default())
         } else {
@@ -442,7 +443,6 @@ impl<'r, RT: Runtime> System<'r, RT> {
         }
     }
 
-
     /// Set value of a transient storage key.
     pub fn set_transient_storage(&mut self, key: U256, value: U256) -> Result<(), ActorError> {
         let current_lifespan = self.get_current_transient_data_lifespan();
@@ -450,15 +450,15 @@ impl<'r, RT: Runtime> System<'r, RT> {
         if self.transient_data_lifespan == current_lifespan {
             // Lifespan matches, proceed to set value
             let changed = if value.is_zero() {
-                self.transient_slots
-                    .delete(&key)
-                    .map(|v| v.is_some())
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to clear transient storage slot")?
+                self.transient_slots.delete(&key).map(|v| v.is_some()).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to clear transient storage slot",
+                )?
             } else {
-                self.transient_slots
-                    .set(key, value)
-                    .map(|v| v != Some(value))
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to update transient storage slot")?
+                self.transient_slots.set(key, value).map(|v| v != Some(value)).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to update transient storage slot",
+                )?
             };
 
             if changed {
@@ -473,17 +473,20 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
             // Reset transient storage and update lifespan
             self.reset_transient_storage(current_lifespan)?;
-            self.transient_slots
-                .set(key, value)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set transient storage after reset")?;
-
+            self.transient_slots.set(key, value).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to set transient storage after reset",
+            )?;
         }
 
         Ok(())
     }
 
     /// Reset transient storage and update lifespan.
-    pub fn reset_transient_storage(&mut self, new_lifespan: Option<TransientDataLifespan>) -> Result<(), ActorError> {
+    pub fn reset_transient_storage(
+        &mut self,
+        new_lifespan: Option<TransientDataLifespan>,
+    ) -> Result<(), ActorError> {
         // Update lifespan
         self.transient_data_lifespan = new_lifespan;
 

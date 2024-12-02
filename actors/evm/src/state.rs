@@ -24,7 +24,7 @@ pub struct TransientData {
     /// Transient Data State is a map of U256 -> U256 values.
     /// KAMT<U256, U256>
     pub transient_data_state: Option<Cid>,
-    /// The data representing the transient data lifespan 
+    /// The data representing the transient data lifespan
     pub transient_data_lifespan: Option<TransientDataLifespan>,
 }
 
@@ -127,7 +127,7 @@ pub struct State {
     pub contract_state: Cid,
 
     /// The data that containers tranisent state. The struct includes the CID of the KAMT that
-    /// contains the state data and the tuple of nonce and actor id that represents 
+    /// contains the state data and the tuple of nonce and actor id that represents
     /// the lifespan of the transient storage data
     pub transient_data: Option<TransientData>,
 
