@@ -229,3 +229,20 @@ fn mcopy_test(bytecode: Vec<u8>) {
     let result = util::invoke_contract(&rt, &solidity_params);
     assert_eq!(&*result, &*encoded_testdata);
 }
+
+#[test]
+fn transient_storage() {
+    //TODO XXX
+    /*
+        1. **Basic Functionality:**
+           - Verify `TLOAD` retrieves the correct value.
+           - Verify `TSTORE` writes data to the transient storage correctly.
+           - Verify `TLOAD` from an unitialized location returns the zero value.
+
+        2. **Lifecycle Validation:**
+           - Verify that transient storage is automatically cleared and becomes inaccessible after the transaction ends.
+           - Verify that transient storage is properly cleared at the end of each transaction and any out-of-lifecycle data does not interfere with subsequent transaction operations.
+           - Verify that nested contracts have independent transient storage spaces can read and write independently.
+           - Verify that memory remains accessible and stable after contract reentry.
+    */
+}

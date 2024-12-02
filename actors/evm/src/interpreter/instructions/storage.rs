@@ -107,8 +107,6 @@ mod tests {
         };
     }
 
-    // TODO test transient storage lifecycle
-
     #[test]
     fn test_tload() {
         // happy path
@@ -127,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_tload_oob() {
-        // oob access -- it is a zero
+        // oob access -- unitialized is zero
         evm_unit_test! {
             (m) {
                 TLOAD;
