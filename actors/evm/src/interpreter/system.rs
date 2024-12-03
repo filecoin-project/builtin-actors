@@ -490,13 +490,41 @@ impl<'r, RT: Runtime> System<'r, RT> {
         // Update lifespan
         self.transient_data_lifespan = new_lifespan;
 
-        // Reinitialize the transient_slots with a fresh KAMT
-        //let transient_store = self.rt.store().clone();
-        //self.transient_slots = StateKamt::new_with_config(transient_store, KAMT_CONFIG.clone());
-        // TODO XXX reinitialize does not currently work due to blockstore reference issues
+        // Delete all keys from transient storage
+        self.clear_transient_slots()?;
 
         // Mark state as dirty
         self.saved_state_root = None;
+
+        Ok(())
+    }
+
+    /// Clears all entries in `transient_slots`.
+    /// This is not ideal because it is iterating over each key
+    /// TODO create a PR for the KAMT library to support a "clear" method
+    /// and upgrade to the new KAMT library version once its updated
+    fn clear_transient_slots(&mut self) -> Result<(), ActorError> {
+        let mut keys_to_delete = Vec::new();
+
+        // Use `for_each` to collect all keys
+        self.transient_slots
+            .for_each(|key, _| {
+                keys_to_delete.push(key.clone());
+                Ok(())
+            })
+            .map_err(
+                |err| actor_error!(illegal_state; "iterating over transient_slots failed: {}", err),
+            )?;
+
+        for key in keys_to_delete {
+            self.transient_slots.delete(&key).map_err(|err| {
+                actor_error!(
+                    illegal_state;
+                    "deleting key {key:?} from transient_slots failed: {}",
+                    err
+                )
+            })?;
+        }
 
         Ok(())
     }
