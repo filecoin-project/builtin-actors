@@ -204,6 +204,26 @@ fn test_push_last_byte() {
 }
 
 #[test]
+fn transient_storage() {
+    let bytecode = hex::decode(include_str!("contracts/TransientStorageTest.bin")).unwrap();
+    transient_storage_test(bytecode);
+}
+
+fn transient_storage_test(bytecode: Vec<u8>) {
+    let contract = Address::new_id(100);
+
+    let rt = util::init_construct_and_verify(bytecode, |rt| {
+        rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
+        rt.set_origin(contract);
+    });
+
+    let mut solidity_params = vec![];
+
+    solidity_params.extend_from_slice(&hex::decode("23d74628").unwrap()); // function selector, "runTests()"
+    let _result = util::invoke_contract(&rt, &solidity_params);
+}
+
+#[test]
 fn mcopy() {
     let bytecode = hex::decode(include_str!("contracts/MCOPYTest.hex")).unwrap();
     mcopy_test(bytecode);
@@ -230,19 +250,3 @@ fn mcopy_test(bytecode: Vec<u8>) {
     assert_eq!(&*result, &*encoded_testdata);
 }
 
-#[test]
-fn transient_storage() {
-    //TODO XXX
-    /*
-        1. **Basic Functionality:**
-           - Verify `TLOAD` retrieves the correct value.
-           - Verify `TSTORE` writes data to the transient storage correctly.
-           - Verify `TLOAD` from an unitialized location returns the zero value.
-
-        2. **Lifecycle Validation:**
-           - Verify that transient storage is automatically cleared and becomes inaccessible after the transaction ends.
-           - Verify that transient storage is properly cleared at the end of each transaction and any out-of-lifecycle data does not interfere with subsequent transaction operations.
-           - Verify that nested contracts have independent transient storage spaces can read and write independently.
-           - Verify that memory remains accessible and stable after contract reentry.
-    */
-}

@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "./NestedContract.sol";
+import "./ReentrantContract.sol";
+
 contract TransientStorageTest {
     event TestResult(bool success, string message);
 
     constructor() {
         // Automatically run tests on deployment
-        _runTests();
+        //_runTests();
+    }
+
+    function runTests() public returns (bool) {
+	    _runTests();
     }
 
     function _runTests() internal {
@@ -122,36 +129,5 @@ contract TransientStorageTest {
 
         require(success, "Reentry failed");
         emit TestResult(true, "Reentry validation passed");
-    }
-}
-
-contract NestedContract {
-    function writeTransientData(uint256 slot, uint256 value) external {
-        assembly {
-            tstore(slot, value)
-        }
-    }
-
-    function readTransientData(uint256 slot) external view returns (uint256) {
-        uint256 value;
-        assembly {
-            value := tload(slot)
-        }
-        return value;
-    }
-}
-
-contract ReentrantContract {
-    event ReentrySuccess(bool success);
-
-    function callReentry(uint256 slot, uint256 expectedValue) external returns (bool) {
-        uint256 storedValue;
-        assembly {
-            storedValue := tload(slot)
-        }
-        require(storedValue == expectedValue, "Reentrant value mismatch");
-
-        emit ReentrySuccess(true);
-        return true;
     }
 }

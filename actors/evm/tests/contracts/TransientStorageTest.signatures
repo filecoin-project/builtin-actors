@@ -1,5 +1,6 @@
 Function signatures:
 18e1813f: isStorageCleared(uint256)
+23d74628: runTests()
 cf83c71c: testBasicFunctionality()
 e90bf998: testLifecycleValidation()
 5fcbdd3a: testNestedContracts()
