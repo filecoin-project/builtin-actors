@@ -29,7 +29,7 @@ pub fn extcodesize(
         ContractType::EVM(addr) => {
             get_evm_bytecode(system, &addr).map(|bytecode| bytecode.len())?
         }
-        ContractType::Native(_) => 1,
+        ContractType::Native => 1,
         // account, not found, and precompiles are 0 size
         _ => 0,
     };
@@ -45,7 +45,7 @@ pub fn extcodehash(
     let addr = match get_contract_type(system.rt, &addr.into()) {
         ContractType::EVM(a) => a,
         // _Technically_ since we have native "bytecode" set as 0xfe this is valid, though we cant differentiate between different native actors.
-        ContractType::Native(_) => return Ok(BytecodeHash::NATIVE_ACTOR.into()),
+        ContractType::Native => return Ok(BytecodeHash::NATIVE_ACTOR.into()),
         // Precompiles "exist" and therefore aren't empty (although spec-wise they can be either 0 or keccak("") ).
         ContractType::Precompile => return Ok(BytecodeHash::EMPTY.into()),
         // NOTE: There may be accounts that in EVM would be considered "empty" (as defined in EIP-161) and give 0, but we will instead return keccak("").
@@ -94,7 +94,7 @@ pub enum ContractType {
     Precompile,
     /// EVM ID Address and the CID of the actor (not the bytecode)
     EVM(Address),
-    Native(Cid),
+    Native,
     Account,
     NotFound,
 }
@@ -115,7 +115,7 @@ pub fn get_contract_type<RT: Runtime>(rt: &RT, addr: &EthAddress) -> ContractTyp
             Some(Type::Account | Type::Placeholder | Type::EthAccount) => ContractType::Account,
             Some(Type::EVM) => ContractType::EVM(Address::new_id(id)),
             // remaining builtin actors are native
-            _ => ContractType::Native(cid),
+            _ => ContractType::Native,
         })
         .unwrap_or(ContractType::NotFound)
 }

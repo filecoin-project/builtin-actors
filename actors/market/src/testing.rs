@@ -167,7 +167,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                 let deal_id: u64 = u64::decode_var(key.0.as_slice()).unwrap().0;
 
                 acc.require(
-                    proposal_stats.get(&deal_id).is_some(),
+                    proposal_stats.contains_key(&deal_id),
                     format!("pending deal allocation {} not found in proposals", deal_id),
                 );
 

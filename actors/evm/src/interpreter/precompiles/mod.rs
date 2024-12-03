@@ -114,18 +114,18 @@ impl<RT: Runtime> Precompiles<RT> {
 #[derive(Debug)]
 pub enum PrecompileError {
     // EVM precompile errors
-    EcErr(CurveError),
+    EcErr,
     IncorrectInputSize,
     // FVM precompile errors
     InvalidInput,
     CallForbidden,
     TransferFailed,
-    VMError(ActorError),
+    VMError,
 }
 
 impl From<ActorError> for PrecompileError {
-    fn from(e: ActorError) -> Self {
-        Self::VMError(e)
+    fn from(_: ActorError) -> Self {
+        Self::VMError
     }
 }
 impl From<TryFromIntError> for PrecompileError {
@@ -141,20 +141,20 @@ impl From<OverflowError> for PrecompileError {
 }
 
 impl From<FieldError> for PrecompileError {
-    fn from(src: FieldError) -> Self {
-        PrecompileError::EcErr(src.into())
+    fn from(_: FieldError) -> Self {
+        PrecompileError::EcErr
     }
 }
 
 impl From<CurveError> for PrecompileError {
-    fn from(src: CurveError) -> Self {
-        PrecompileError::EcErr(src)
+    fn from(_: CurveError) -> Self {
+        PrecompileError::EcErr
     }
 }
 
 impl From<GroupError> for PrecompileError {
     fn from(_: GroupError) -> Self {
-        PrecompileError::EcErr(CurveError::NotMember)
+        PrecompileError::EcErr
     }
 }
 
