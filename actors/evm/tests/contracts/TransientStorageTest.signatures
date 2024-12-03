@@ -1,0 +1,9 @@
+Function signatures:
+18e1813f: isStorageCleared(uint256)
+cf83c71c: testBasicFunctionality()
+e90bf998: testLifecycleValidation()
+5fcbdd3a: testNestedContracts()
+17d68eb1: testReentry()
+
+Event signatures:
+08ac145f3e770071f0c37bc3ff2567bb378849e8681fd23c65de36a8e6a4955f: TestResult(bool,string)
