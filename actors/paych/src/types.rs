@@ -13,7 +13,7 @@ use fvm_shared::MethodNum;
 use super::Merge;
 
 /// Maximum number of lanes in a channel
-pub const MAX_LANE: u64 = std::i64::MAX as u64;
+pub const MAX_LANE: u64 = i64::MAX as u64;
 
 pub const SETTLE_DELAY: ChainEpoch = EPOCHS_IN_HOUR * 12;
 

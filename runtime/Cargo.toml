@@ -86,6 +86,8 @@ short-precommit = []
 min-power-2k = []
 # Lower the minimum power requirement to 2g
 min-power-2g = []
+# Lower the minimum power requirement to 32g
+min-power-32g = []
 
 # no collateral for deals (for testing)
 no-provider-deal-collateral = []

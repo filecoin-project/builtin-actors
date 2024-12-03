@@ -55,7 +55,7 @@ fn create_deadline_sector_map(
 }
 
 fn create_bitfield_sequence(start: u64, end: u64) -> BitField {
-    let ranges = vec![Range { start, end }];
+    let ranges = [Range { start, end }];
     let ranges = Ranges::new(ranges.iter().cloned());
     BitField::from_ranges(ranges)
 }
