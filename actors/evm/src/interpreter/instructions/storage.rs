@@ -153,4 +153,27 @@ mod tests {
             assert_eq!(m.system.get_transient_storage(U256::from(0)).unwrap(), U256::from(0x42));
         };
     }
+
+    #[test]
+    fn test_tstore_clear() {
+        evm_unit_test! {
+            (m) {
+                TSTORE;
+            }
+
+            m.state.stack.push(U256::from(0x42)).unwrap();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.system.get_transient_storage(U256::from(0)).unwrap(), U256::from(0x42));
+
+            //clear transient storage
+            let result = m.system.reset_transient_storage(None);
+            assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
+
+            //confirm getting value at slot 0 returns 0
+            assert_eq!(m.system.get_transient_storage(U256::from(0)).unwrap(), U256::from(0));
+        };
+    }
 }
