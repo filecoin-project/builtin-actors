@@ -81,6 +81,36 @@ pub fn invoke_contract(rt: &MockRuntime, input_data: &[u8]) -> Vec<u8> {
 }
 
 #[allow(dead_code)]
+pub fn invoke_contract_expect_fail(rt: &MockRuntime, input_data: &[u8]) {
+    rt.expect_validate_caller_any();
+
+    // Call the contract and check if it results in an error
+    let result = rt.call::<evm::EvmContractActor>(
+        evm::Method::InvokeContract as u64,
+        IpldBlock::serialize_cbor(&BytesSer(input_data)).unwrap(),
+    );
+
+    // Ensure the call fails as expected
+    match result {
+        Ok(_) => panic!("Expected contract invocation to fail, but it succeeded"),
+        Err(err) => {
+            // Use accessor methods for `exit_code` and `msg`
+            assert_eq!(err.exit_code().value(), 33, "Unexpected exit code");
+
+            // Directly use `err.msg()` as it returns `&str`
+            let msg = err.msg();
+            assert!(
+                msg.contains("contract reverted"),
+                "Unexpected error message: {}",
+                msg
+            );
+        }
+    }
+}
+
+
+
+#[allow(dead_code)]
 // silly to have the full word for a single byte but...
 pub fn dispatch_num_word(method_num: u8) -> [u8; 32] {
     let mut word = [0u8; 32];

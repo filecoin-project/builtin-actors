@@ -11,7 +11,7 @@ contract ReentrantContract {
         }
         require(storedValue == expectedValue, "Reentrant value mismatch");
 
-        emit ReentrySuccess(true);
+        //emit ReentrySuccess(true);
         return true;
     }
 }

@@ -3,6 +3,7 @@ Function signatures:
 23d74628: runTests()
 cf83c71c: testBasicFunctionality()
 e90bf998: testLifecycleValidation()
+54e84d1b: testLifecycleValidationSubsequentTransaction()
 5fcbdd3a: testNestedContracts()
 17d68eb1: testReentry()
 

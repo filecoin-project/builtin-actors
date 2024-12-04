@@ -205,22 +205,70 @@ fn test_push_last_byte() {
 
 #[test]
 fn transient_storage() {
-    let bytecode = hex::decode(include_str!("contracts/TransientStorageTest.bin")).unwrap();
-    transient_storage_test(bytecode);
+    let transient_storage_bytecode =
+        hex::decode(include_str!("contracts/TransientStorageTest.bin")).unwrap();
+    let nested_storage_bytecode =
+        hex::decode(include_str!("contracts/NestedContract.bin")).unwrap();
+    let reentrant_storage_bytecode =
+        hex::decode(include_str!("contracts/ReentrantContract.bin")).unwrap();
+    transient_storage_test(
+        transient_storage_bytecode,
+        nested_storage_bytecode,
+        reentrant_storage_bytecode,
+    );
 }
 
-fn transient_storage_test(bytecode: Vec<u8>) {
-    let contract = Address::new_id(100);
+fn transient_storage_test(
+    mut transient_storage_bytecode: Vec<u8>,
+    nested_contract_bytecode: Vec<u8>,
+    reentrant_contract_bytecode: Vec<u8>,
+) {
+    let nested_contract = Address::new_id(100);
+    let _rt_nested_contract = util::init_construct_and_verify(nested_contract_bytecode, |rt| {
+        rt.actor_code_cids.borrow_mut().insert(nested_contract, *EVM_ACTOR_CODE_ID);
+        rt.set_origin(nested_contract);
+    });
 
-    let rt = util::init_construct_and_verify(bytecode, |rt| {
+    let reentrant_contract = Address::new_id(101);
+    let _rt_reentrant_contract =
+        util::init_construct_and_verify(reentrant_contract_bytecode, |rt| {
+            rt.actor_code_cids.borrow_mut().insert(reentrant_contract, *EVM_ACTOR_CODE_ID);
+            rt.set_origin(reentrant_contract);
+        });
+
+    let mut arg_nested_address = vec![0u8; 32];
+    arg_nested_address[12] = 0xff; // it's an ID address, so we enable the flag
+    arg_nested_address[31] = 100; // the owner address
+    transient_storage_bytecode.append(&mut arg_nested_address);
+
+    let mut arg_reentrant_address = vec![0u8; 32];
+    arg_reentrant_address[12] = 0xff; // it's an ID address, so we enable the flag
+    arg_reentrant_address[31] = 101; // the owner address
+    transient_storage_bytecode.append(&mut arg_reentrant_address);
+
+    let contract = Address::new_id(102);
+    let rt = util::init_construct_and_verify(transient_storage_bytecode, |rt| {
         rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
         rt.set_origin(contract);
     });
 
     let mut solidity_params = vec![];
-
     solidity_params.extend_from_slice(&hex::decode("23d74628").unwrap()); // function selector, "runTests()"
     let _result = util::invoke_contract(&rt, &solidity_params);
+
+    // Setup for testing that the transient storage data clears when a new transaction occurs
+    let mut solidity_params_test_cleared = vec![];
+    solidity_params_test_cleared.extend_from_slice(&hex::decode("54e84d1b").unwrap()); // function selector, "testLifecycleValidationSubsequentTransaction()"
+                                                                                       //
+    // We expect this to fail because no changes are made
+    util::invoke_contract_expect_fail(&rt, &solidity_params_test_cleared);
+
+    //use a new address for our calling context
+    //This will cause the transient storage data to reset because the transient storage lifecycle value has changed
+    let new_context = Address::new_id(200);
+    rt.set_origin(new_context);
+
+    util::invoke_contract(&rt, &solidity_params_test_cleared);
 }
 
 #[test]
@@ -249,4 +297,3 @@ fn mcopy_test(bytecode: Vec<u8>) {
     let result = util::invoke_contract(&rt, &solidity_params);
     assert_eq!(&*result, &*encoded_testdata);
 }
-
