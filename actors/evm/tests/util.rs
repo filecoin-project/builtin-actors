@@ -99,16 +99,10 @@ pub fn invoke_contract_expect_fail(rt: &MockRuntime, input_data: &[u8]) {
 
             // Directly use `err.msg()` as it returns `&str`
             let msg = err.msg();
-            assert!(
-                msg.contains("contract reverted"),
-                "Unexpected error message: {}",
-                msg
-            );
+            assert!(msg.contains("contract reverted"), "Unexpected error message: {}", msg);
         }
     }
 }
-
-
 
 #[allow(dead_code)]
 // silly to have the full word for a single byte but...

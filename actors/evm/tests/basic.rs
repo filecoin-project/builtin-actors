@@ -260,7 +260,7 @@ fn transient_storage_test(
     let mut solidity_params_test_cleared = vec![];
     solidity_params_test_cleared.extend_from_slice(&hex::decode("54e84d1b").unwrap()); // function selector, "testLifecycleValidationSubsequentTransaction()"
                                                                                        //
-    // We expect this to fail because no changes are made
+                                                                                       // We expect this to fail because no changes are made
     util::invoke_contract_expect_fail(&rt, &solidity_params_test_cleared);
 
     //use a new address for our calling context
