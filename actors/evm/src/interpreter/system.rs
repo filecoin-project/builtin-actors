@@ -509,7 +509,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         // Use `for_each` to collect all keys
         self.transient_slots
             .for_each(|key, _| {
-                keys_to_delete.push(key.clone());
+                keys_to_delete.push(*key);
                 Ok(())
             })
             .map_err(
