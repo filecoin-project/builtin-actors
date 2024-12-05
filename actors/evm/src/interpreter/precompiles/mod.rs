@@ -4,6 +4,7 @@ use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{runtime::Runtime, ActorError};
 use fvm_shared::{address::Address, econ::TokenAmount};
 use substrate_bn::{CurveError, FieldError, GroupError};
+use thiserror::Error;
 
 use crate::reader::OverflowError;
 
@@ -111,15 +112,21 @@ impl<RT: Runtime> Precompiles<RT> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum PrecompileError {
     // EVM precompile errors
+    #[error("EC curve error in data passed to precompile: {0:?}")]
     EcErr(CurveError),
+    #[error("incorrect input size to precompile")]
     IncorrectInputSize,
     // FVM precompile errors
+    #[error("invalid input to precompile")]
     InvalidInput,
+    #[error("calling convention forbidden for precompile")]
     CallForbidden,
+    #[error("transfering funds to precompile failed")]
     TransferFailed,
+    #[error("internal evm error when calling precompile: {0}")]
     VMError(ActorError),
 }
 

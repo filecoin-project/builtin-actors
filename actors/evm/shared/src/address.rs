@@ -19,9 +19,16 @@ impl From<U256> for EthAddress {
     }
 }
 
+impl std::fmt::Display for EthAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("0x")?;
+        f.write_str(&hex::encode(self.0))
+    }
+}
+
 impl std::fmt::Debug for EthAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&hex::encode(self.0))
+        write!(f, "{}", self)
     }
 }
 
