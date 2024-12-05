@@ -1518,6 +1518,7 @@ dependencies = [
  "serde",
  "serde_json",
  "substrate-bn",
+ "thiserror",
 ]
 
 [[package]]
