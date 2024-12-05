@@ -291,8 +291,8 @@ pub fn call_generic<RT: Runtime>(
                     // this is how the EVM behaves.
                     ContractType::Account | ContractType::NotFound => Ok(None),
                     // If we're calling a "native" actor, always revert.
-                    ContractType::Native => {
-                        log::info!("attempted to delegatecall a native actor at {dst:?}");
+                    ContractType::Native(cid) => {
+                        log::info!("attempted to delegatecall a native actor {cid} at {dst:?}");
                         Err(None)
                     }
                     ContractType::Precompile => {

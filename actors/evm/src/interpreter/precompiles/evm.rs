@@ -488,7 +488,10 @@ mod tests {
             )
             .unwrap();
             let res = ec_add(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            assert!(matches!(
+                res,
+                Err(PrecompileError::EcErr(substrate_bn::CurveError::NotMember))
+            ));
         }
 
         const TESTDATA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/precompile-testdata/");
@@ -590,7 +593,10 @@ mod tests {
             )
             .unwrap();
             let res = ec_mul(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            assert!(matches!(
+                res,
+                Err(PrecompileError::EcErr(substrate_bn::CurveError::NotMember))
+            ));
 
             let input = hex::decode(
                 "\
@@ -672,7 +678,10 @@ mod tests {
             )
             .unwrap();
             let res = ec_pairing(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            assert!(matches!(
+                res,
+                Err(PrecompileError::EcErr(substrate_bn::CurveError::NotMember))
+            ));
             // invalid input length
             let input = hex::decode(
                 "\
