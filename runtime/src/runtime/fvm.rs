@@ -573,8 +573,8 @@ where
 /// 2.  Obtains the method number for the invocation.
 /// 3.  Creates an FVM runtime shim.
 /// 4.  Invokes the target method.
-/// 5a. In case of error, aborts the execution with the emitted exit code, or
-/// 5b. In case of success, stores the return data as a block and returns the latter.
+/// 5. (a) In case of error, aborts the execution with the emitted exit code, or
+/// 5. (b) In case of success, stores the return data as a block and returns the latter.
 pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     init_logging(C::name());
 

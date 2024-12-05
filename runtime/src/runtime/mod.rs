@@ -227,6 +227,7 @@ pub trait Runtime: Primitives + RuntimePolicy {
     /// The circulating supply is the sum of:
     /// - rewards emitted by the reward actor,
     /// - funds vested from lock-ups in the genesis state,
+    ///
     /// less the sum of:
     /// - funds burnt,
     /// - pledge collateral locked in storage miner actors (recorded in the storage power actor)

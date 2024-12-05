@@ -767,7 +767,7 @@ pub fn publish_deals(
         if deal.verified_deal {
             // Expect query for the client's datacap balance, just once per client.
             let client_id = deal.client.id().unwrap();
-            if client_verified_deals.get(&client_id).is_none() {
+            if !client_verified_deals.contains_key(&client_id) {
                 rt.expect_send_simple(
                     DATACAP_TOKEN_ACTOR_ADDR,
                     ext::datacap::BALANCE_OF_METHOD,

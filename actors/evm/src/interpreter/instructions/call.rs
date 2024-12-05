@@ -191,7 +191,7 @@ pub fn call_generic<RT: Runtime>(
             match precompiles::Precompiles::call_precompile(system, &dst, input_data, context) {
                 Ok(return_data) => (1, return_data),
                 Err(err) => {
-                    log::warn!(target: "evm", "Precompile failed: error {:?}", err);
+                    log::warn!(target: "evm", "call to precompile {} failed: {}", &dst, err);
                     // precompile failed, exit with reverted and no output
                     (0, vec![])
                 }
@@ -291,8 +291,8 @@ pub fn call_generic<RT: Runtime>(
                     // this is how the EVM behaves.
                     ContractType::Account | ContractType::NotFound => Ok(None),
                     // If we're calling a "native" actor, always revert.
-                    ContractType::Native(_) => {
-                        log::info!("attempted to delegatecall a native actor at {dst:?}");
+                    ContractType::Native(cid) => {
+                        log::info!("attempted to delegatecall a native actor {cid} at {dst:?}");
                         Err(None)
                     }
                     ContractType::Precompile => {
