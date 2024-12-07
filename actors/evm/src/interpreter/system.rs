@@ -94,7 +94,6 @@ pub struct System<'r, RT: Runtime> {
 
     /// The contract's EVM transient storage slots.
     transient_slots: StateKamt<RT::Blockstore>,
-    transient_data_lifespan: Option<TransientDataLifespan>,
 
     /// The contracts "nonce" (incremented when creating new actors).
     pub(crate) nonce: u64,
@@ -121,7 +120,6 @@ impl<'r, RT: Runtime> System<'r, RT> {
             rt,
             slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
             transient_slots: StateKamt::new_with_config(transient_store, KAMT_CONFIG.clone()),
-            transient_data_lifespan: None,
             nonce: 1,
             saved_state_root: None,
             bytecode: None,
@@ -186,18 +184,30 @@ impl<'r, RT: Runtime> System<'r, RT> {
         }
 
         let read_only = rt.read_only();
+        let current_lifespan = Self::get_current_transient_data_lifespan(rt);
+
+        // Handle transient storage based on the presence and lifespan of `transient_data`
+        let transient_slots = match state.transient_data {
+            Some(transient_data) if current_lifespan == transient_data.transient_data_lifespan => {
+                // Lifespans match, load the transient storage
+                StateKamt::load_with_config(
+                    &transient_data.transient_data_state.unwrap(),
+                    transient_store,
+                    KAMT_CONFIG.clone(),
+                )
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "transient_state not in blockstore")?
+            }
+            _ => {
+                // Lifespan mismatch or `transient_data` is `None`, initialize an empty transient storage KAMT
+                StateKamt::new_with_config(transient_store, KAMT_CONFIG.clone())
+            }
+        };
 
         Ok(Self {
             rt,
             slots: StateKamt::load_with_config(&state.contract_state, store, KAMT_CONFIG.clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
-            transient_slots: StateKamt::load_with_config(
-                &state.transient_data.unwrap().transient_data_state.unwrap(),
-                transient_store,
-                KAMT_CONFIG.clone(),
-            )
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "transient_state not in blockstore")?,
-            transient_data_lifespan: state.transient_data.unwrap().transient_data_lifespan,
+            transient_slots,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
             bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
@@ -286,6 +296,18 @@ impl<'r, RT: Runtime> System<'r, RT> {
             // set empty bytecode hashes
             None => self.set_bytecode(&[])?,
         };
+
+        let transient_data = match self.transient_slots.is_empty() {
+            true => None,
+            false => Some(TransientData {
+                transient_data_state: Some(self.transient_slots.flush().context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to flush transient storage state",
+                )?),
+                transient_data_lifespan: Self::get_current_transient_data_lifespan(self.rt),
+            }),
+        };
+
         let new_root = self
             .rt
             .store()
@@ -297,15 +319,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to flush contract state",
                     )?,
-                    transient_data: {
-                        Some(TransientData {
-                            transient_data_state: Some(self.transient_slots.flush().context_code(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                "failed to flush contract state",
-                            )?),
-                            transient_data_lifespan: self.transient_data_lifespan,
-                        })
-                    },
+                    transient_data,
                     nonce: self.nonce,
                     tombstone: self.tombstone,
                 },
@@ -335,14 +349,23 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .get_cbor(&root)
             .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
+        //
+        let transient_data_lifespan = state.transient_data.unwrap().transient_data_lifespan;
+        /*
+         * TODO compare transient_data_state with current lifespan
+         */
+        let current_lifespan = Self::get_current_transient_data_lifespan(self.rt);
+
+        if current_lifespan == transient_data_lifespan {
+            self.transient_slots
+                .set_root(&state.transient_data.unwrap().transient_data_state.unwrap())
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "transient_state not in blockstore")?;
+        } else {
+        }
 
         self.slots
             .set_root(&state.contract_state)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
-        self.transient_slots
-            .set_root(&state.transient_data.unwrap().transient_data_state.unwrap())
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "transient_state not in blockstore")?;
-        self.transient_data_lifespan = state.transient_data.unwrap().transient_data_lifespan;
         self.nonce = state.nonce;
         self.saved_state_root = Some(root);
         self.bytecode = Some(EvmBytecode::new(state.bytecode, state.bytecode_hash));
@@ -415,10 +438,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
     }
 
     /// Returns the current transient data lifespan based on the execution environment.
-    pub fn get_current_transient_data_lifespan(&self) -> Option<TransientDataLifespan> {
-        match self.rt.message().origin().id() {
+    pub fn get_current_transient_data_lifespan(rt: &RT) -> Option<TransientDataLifespan> {
+        match rt.message().origin().id() {
             Ok(origin_id) => {
-                Some(TransientDataLifespan { origin: origin_id, nonce: self.rt.message().nonce() })
+                Some(TransientDataLifespan { origin: origin_id, nonce: rt.message().nonce() })
             }
             Err(_) => None, // Handle the error case by returning None
         }
@@ -426,104 +449,32 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
     /// Get value of a transient storage key.
     pub fn get_transient_storage(&mut self, key: U256) -> Result<U256, ActorError> {
-        if self.transient_data_lifespan == self.get_current_transient_data_lifespan() {
-            // Lifespan matches, retrieve value
-            Ok(self
-                .transient_slots
-                .get(&key)
-                .context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to access transient storage slot",
-                )?
-                .cloned()
-                .unwrap_or_default())
-        } else {
-            // Lifespan mismatch, return default value
-            Ok(U256::zero())
-        }
+        // Lifespan matches, retrieve value
+        Ok(self
+            .transient_slots
+            .get(&key)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to access transient storage slot")?
+            .cloned()
+            .unwrap_or_default())
     }
 
     /// Set value of a transient storage key.
     pub fn set_transient_storage(&mut self, key: U256, value: U256) -> Result<(), ActorError> {
-        let current_lifespan = self.get_current_transient_data_lifespan();
-
-        if self.transient_data_lifespan == current_lifespan {
-            // Lifespan matches, proceed to set value
-            let changed = if value.is_zero() {
-                self.transient_slots.delete(&key).map(|v| v.is_some()).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to clear transient storage slot",
-                )?
-            } else {
-                self.transient_slots.set(key, value).map(|v| v != Some(value)).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to update transient storage slot",
-                )?
-            };
-
-            if changed {
-                self.saved_state_root = None; // Mark state as dirty
-            }
-        } else {
-            // Lifespan mismatch
-            if value.is_zero() {
-                // If setting to default value, skip storage reset
-                return Ok(());
-            }
-
-            // Reset transient storage and update lifespan
-            self.reset_transient_storage(current_lifespan)?;
-            self.transient_slots.set(key, value).context_code(
+        // Lifespan matches, proceed to set value
+        let changed = if value.is_zero() {
+            self.transient_slots.delete(&key).map(|v| v.is_some()).context_code(
                 ExitCode::USR_ILLEGAL_STATE,
-                "failed to set transient storage after reset",
-            )?;
-        }
+                "failed to clear transient storage slot",
+            )?
+        } else {
+            self.transient_slots.set(key, value).map(|v| v != Some(value)).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to update transient storage slot",
+            )?
+        };
 
-        Ok(())
-    }
-
-    /// Reset transient storage and update lifespan.
-    pub fn reset_transient_storage(
-        &mut self,
-        new_lifespan: Option<TransientDataLifespan>,
-    ) -> Result<(), ActorError> {
-        // Update lifespan
-        self.transient_data_lifespan = new_lifespan;
-
-        // Delete all keys from transient storage
-        self.clear_transient_slots()?;
-
-        // Mark state as dirty
-        self.saved_state_root = None;
-
-        Ok(())
-    }
-
-    /// Clears all entries in `transient_slots`.
-    /// This is not ideal because it is iterating over each key
-    /// TODO create a PR for the KAMT library to support a "clear" method
-    /// and upgrade to the new KAMT library version once its updated
-    fn clear_transient_slots(&mut self) -> Result<(), ActorError> {
-        let mut keys_to_delete = Vec::new();
-
-        // Use `for_each` to collect all keys
-        self.transient_slots
-            .for_each(|key, _| {
-                keys_to_delete.push(*key);
-                Ok(())
-            })
-            .map_err(
-                |err| actor_error!(illegal_state; "iterating over transient_slots failed: {}", err),
-            )?;
-
-        for key in keys_to_delete {
-            self.transient_slots.delete(&key).map_err(|err| {
-                actor_error!(
-                    illegal_state;
-                    "deleting key {key:?} from transient_slots failed: {}",
-                    err
-                )
-            })?;
+        if changed {
+            self.saved_state_root = None; // Mark state as dirty
         }
 
         Ok(())
