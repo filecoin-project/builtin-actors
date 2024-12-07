@@ -760,7 +760,6 @@ pub fn evm_init_revert_data_test(v: &dyn VM) {
 pub fn evm_transient_nested_test(v: &dyn VM) {
     // Step 1: Create an EthAccount with an initial balance.
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
-    let address = id_to_eth(account.id().unwrap());
 
     // Step 2: Deploy the `TransientStorageTest` contract twice.
     let bytecode =
@@ -843,7 +842,6 @@ pub fn evm_transient_nested_test(v: &dyn VM) {
 pub fn evm_transient_reentry_test(v: &dyn VM) {
     // Step 1: Create an EthAccount with an initial balance.
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
-    let address = id_to_eth(account.id().unwrap());
 
     // Step 2: Deploy the `TransientStorageTest` contract twice.
     let bytecode =
