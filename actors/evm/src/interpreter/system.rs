@@ -349,18 +349,15 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .get_cbor(&root)
             .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
-        //
-        let transient_data_lifespan = state.transient_data.unwrap().transient_data_lifespan;
-        /*
-         * TODO compare transient_data_state with current lifespan
-         */
-        let current_lifespan = Self::get_current_transient_data_lifespan(self.rt);
 
+        let transient_data_lifespan = state.transient_data.unwrap().transient_data_lifespan;
+        let current_lifespan = Self::get_current_transient_data_lifespan(self.rt);
         if current_lifespan == transient_data_lifespan {
             self.transient_slots
                 .set_root(&state.transient_data.unwrap().transient_data_state.unwrap())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "transient_state not in blockstore")?;
         } else {
+            self.transient_slots.clear();
         }
 
         self.slots
