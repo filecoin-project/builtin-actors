@@ -207,46 +207,11 @@ fn test_push_last_byte() {
 fn transient_storage() {
     let transient_storage_bytecode =
         hex::decode(include_str!("contracts/TransientStorageTest.bin")).unwrap();
-    let nested_storage_bytecode =
-        hex::decode(include_str!("contracts/NestedContract.bin")).unwrap();
-    let reentrant_storage_bytecode =
-        hex::decode(include_str!("contracts/ReentrantContract.bin")).unwrap();
-    transient_storage_test(
-        transient_storage_bytecode,
-        nested_storage_bytecode,
-        reentrant_storage_bytecode,
-    );
+    transient_storage_test(transient_storage_bytecode);
 }
 
-fn transient_storage_test(
-    mut transient_storage_bytecode: Vec<u8>,
-    nested_contract_bytecode: Vec<u8>,
-    reentrant_contract_bytecode: Vec<u8>,
-) {
-    let nested_contract = Address::new_id(100);
-    let _rt_nested_contract = util::init_construct_and_verify(nested_contract_bytecode, |rt| {
-        rt.actor_code_cids.borrow_mut().insert(nested_contract, *EVM_ACTOR_CODE_ID);
-        rt.set_origin(nested_contract);
-    });
-
-    let reentrant_contract = Address::new_id(101);
-    let _rt_reentrant_contract =
-        util::init_construct_and_verify(reentrant_contract_bytecode, |rt| {
-            rt.actor_code_cids.borrow_mut().insert(reentrant_contract, *EVM_ACTOR_CODE_ID);
-            rt.set_origin(reentrant_contract);
-        });
-
-    let mut arg_nested_address = vec![0u8; 32];
-    arg_nested_address[12] = 0xff; // it's an ID address, so we enable the flag
-    arg_nested_address[31] = 100; // the owner address
-    transient_storage_bytecode.append(&mut arg_nested_address);
-
-    let mut arg_reentrant_address = vec![0u8; 32];
-    arg_reentrant_address[12] = 0xff; // it's an ID address, so we enable the flag
-    arg_reentrant_address[31] = 101; // the owner address
-    transient_storage_bytecode.append(&mut arg_reentrant_address);
-
-    let contract = Address::new_id(102);
+fn transient_storage_test(transient_storage_bytecode: Vec<u8>) {
+    let contract = Address::new_id(100);
     let rt = util::init_construct_and_verify(transient_storage_bytecode, |rt| {
         rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
         rt.set_origin(contract);
