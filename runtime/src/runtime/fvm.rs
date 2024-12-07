@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Error};
-use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -28,6 +27,7 @@ use fvm_shared::sector::{
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
+use multihash_codetable::Code;
 use num_traits::FromPrimitive;
 use serde::de::DeserializeOwned;
 use serde::Serialize;

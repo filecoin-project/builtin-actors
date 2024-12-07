@@ -150,6 +150,7 @@ pub fn base_fee(
 #[cfg(test)]
 mod tests {
     use crate::evm_unit_test;
+    use cid::multihash::Multihash;
     use cid::Cid;
     use fil_actors_evm_shared::uints::U256;
     use fil_actors_runtime::EAM_ACTOR_ID;
@@ -160,12 +161,10 @@ mod tests {
     fn test_blockhash() {
         // truncate to 32 bytes
         let counting_byte_hash: Vec<u8> = (0..40u8).collect();
-        let long_unknown =
-            Cid::new_v1(IPLD_RAW, multihash::Multihash::wrap(0, &counting_byte_hash).unwrap());
+        let long_unknown = Cid::new_v1(IPLD_RAW, Multihash::wrap(0, &counting_byte_hash).unwrap());
         let long_expect = counting_byte_hash[..32].try_into().unwrap();
         // multihash code ignored
-        let cbor_odd_hash =
-            Cid::new_v1(DAG_CBOR, multihash::Multihash::wrap(123, &[0xfe; 32]).unwrap());
+        let cbor_odd_hash = Cid::new_v1(DAG_CBOR, Multihash::wrap(123, &[0xfe; 32]).unwrap());
         let cbor_odd_expect = [0xfe; 32];
 
         let nothing = [0; 32];

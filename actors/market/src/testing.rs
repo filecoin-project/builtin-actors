@@ -4,7 +4,6 @@ use std::{
     convert::TryFrom,
 };
 
-use cid::multihash::{Code, MultihashDigest};
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::DAG_CBOR;
@@ -18,6 +17,7 @@ use fvm_shared::{
     ActorID,
 };
 use integer_encoding::VarInt;
+use multihash_codetable::{Code, MultihashDigest};
 use num_traits::Zero;
 
 use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;

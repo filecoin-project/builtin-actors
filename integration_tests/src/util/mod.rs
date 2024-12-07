@@ -1,4 +1,3 @@
-use cid::multihash::{Code, MultihashDigest};
 use cid::Cid;
 use fil_actor_market::{load_provider_sector_deals, DealProposal, DealState, State as MarketState};
 use fil_actor_miner::ext::verifreg::AllocationID;
@@ -27,6 +26,7 @@ use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use fvm_shared::{ActorID, METHOD_SEND};
 use integer_encoding::VarInt;
+use multihash_codetable::{Code, MultihashDigest};
 use num_traits::Zero;
 use regex::Regex;
 use std::collections::HashMap;
