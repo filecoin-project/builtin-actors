@@ -29,6 +29,7 @@ use crate::TEST_FAUCET_ADDR;
 abigen!(Recursive, "../actors/evm/tests/contracts/Recursive.abi");
 abigen!(Factory, "../actors/evm/tests/contracts/Factory.abi");
 abigen!(FactoryChild, "../actors/evm/tests/contracts/FactoryChild.abi");
+abigen!(TransientStorageTest, "../actors/evm/tests/contracts/TransientStorageTest.abi");
 
 pub fn id_to_eth(id: ActorID) -> EthAddress {
     let mut addr = [0u8; 20];
@@ -752,4 +753,163 @@ pub fn evm_init_revert_data_test(v: &dyn VM) {
     let mut expected = [0u8; 32];
     expected[31] = 0x42;
     assert_eq!(revert_data, expected);
+}
+
+#[allow(non_snake_case)]
+#[vm_test]
+pub fn evm_transient_nested_test(v: &dyn VM) {
+    // Step 1: Create an EthAccount with an initial balance.
+    let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
+    let address = id_to_eth(account.id().unwrap());
+
+    // Step 2: Deploy the `TransientStorageTest` contract twice.
+    let bytecode =
+        hex::decode(include_str!("../../../actors/evm/tests/contracts/TransientStorageTest.hex"))
+            .unwrap();
+
+    let create_contract = |account: &Address| {
+        let create_result = v
+            .execute_message(
+                account,
+                &EAM_ACTOR_ADDR,
+                &TokenAmount::zero(),
+                fil_actor_eam::Method::CreateExternal as u64,
+                Some(serialize_ok(&fil_actor_eam::CreateExternalParams(bytecode.clone()))),
+            )
+            .unwrap();
+
+        assert!(
+            create_result.code.is_success(),
+            "failed to create the contract {}",
+            create_result.message
+        );
+
+        let create_return: fil_actor_eam::CreateExternalReturn =
+            create_result.ret.unwrap().deserialize().expect("failed to decode results");
+
+        create_return.robust_address.unwrap()
+    };
+
+    // Deploy two instances of the contract.
+    let contract_1_addr = create_contract(&account);
+    let contract_2_addr = create_contract(&account);
+
+    // Step 3: Call `testNestedContracts` on the first contract, passing the address of the second.
+    let (client, _mock) = Provider::mocked();
+    let client = Arc::new(client);
+    let contract = TransientStorageTest::new(id_to_eth(account.id().unwrap()), client.clone());
+
+    let nested_contract_id = v.resolve_id_address(&contract_2_addr).unwrap().id().unwrap();
+    let nested_contract_address = id_to_eth(nested_contract_id);
+
+    let call_params = contract
+        .test_nested_contracts(nested_contract_address)
+        .calldata()
+        .expect("failed to serialize calldata");
+
+    let call_result = v
+        .execute_message(
+            &account,
+            &contract_1_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(serialize_ok(&ContractParams(call_params.to_vec()))),
+        )
+        .unwrap();
+
+    // Step 4: Check if the call was successful.
+    assert!(
+        call_result.code.is_success(),
+        "testNestedContracts call failed: {}",
+        call_result.message
+    );
+
+    // Step 5: Deserialize and verify the event emitted by the contract.
+    let BytesDe(return_value) =
+        call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+
+    let event_emitted: bool = contract
+        .decode_output(
+            &contract.test_nested_contracts(nested_contract_address).function.name,
+            return_value,
+        )
+        .expect("failed to decode return");
+
+    assert!(event_emitted, "testNestedContracts did not succeed as expected");
+}
+
+#[allow(non_snake_case)]
+#[vm_test]
+pub fn evm_transient_reentry_test(v: &dyn VM) {
+    // Step 1: Create an EthAccount with an initial balance.
+    let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
+    let address = id_to_eth(account.id().unwrap());
+
+    // Step 2: Deploy the `TransientStorageTest` contract twice.
+    let bytecode =
+        hex::decode(include_str!("../../../actors/evm/tests/contracts/TransientStorageTest.hex"))
+            .unwrap();
+
+    let create_contract = |account: &Address| {
+        let create_result = v
+            .execute_message(
+                account,
+                &EAM_ACTOR_ADDR,
+                &TokenAmount::zero(),
+                fil_actor_eam::Method::CreateExternal as u64,
+                Some(serialize_ok(&fil_actor_eam::CreateExternalParams(bytecode.clone()))),
+            )
+            .unwrap();
+
+        assert!(
+            create_result.code.is_success(),
+            "failed to create the contract {}",
+            create_result.message
+        );
+
+        let create_return: fil_actor_eam::CreateExternalReturn =
+            create_result.ret.unwrap().deserialize().expect("failed to decode results");
+
+        create_return.robust_address.unwrap()
+    };
+
+    // Deploy two instances of the contract.
+    let contract_1_addr = create_contract(&account);
+    let contract_2_addr = create_contract(&account);
+
+    // Step 3: Call `testReentry` on the first contract, passing the address of the second contract.
+    let (client, _mock) = Provider::mocked();
+    let client = Arc::new(client);
+    let contract = TransientStorageTest::new(id_to_eth(account.id().unwrap()), client.clone());
+
+    let nested_contract_id = v.resolve_id_address(&contract_2_addr).unwrap().id().unwrap();
+    let nested_contract_address = id_to_eth(nested_contract_id);
+
+    let call_params = contract
+        .test_reentry(nested_contract_address)
+        .calldata()
+        .expect("failed to serialize calldata");
+
+    let call_result = v
+        .execute_message(
+            &account,
+            &contract_1_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(serialize_ok(&ContractParams(call_params.to_vec()))),
+        )
+        .unwrap();
+
+    // Step 4: Check if the call was successful.
+    assert!(call_result.code.is_success(), "testReentry call failed: {}", call_result.message);
+
+    // Step 5: Deserialize and verify the return value.
+    let BytesDe(return_value) =
+        call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+
+    let event_emitted: bool = contract
+        .decode_output(&contract.test_reentry(nested_contract_address).function.name, return_value)
+        .expect("failed to decode return");
+
+    assert!(event_emitted, "testReentry did not succeed as expected");
 }
