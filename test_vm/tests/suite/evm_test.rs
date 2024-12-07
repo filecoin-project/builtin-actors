@@ -1,7 +1,7 @@
 use fil_actors_integration_tests::tests::{
     evm_call_test, evm_create_test, evm_delegatecall_test, evm_empty_initcode_test,
     evm_eth_create_external_test, evm_init_revert_data_test, evm_staticcall_delegatecall_test,
-    evm_staticcall_test,
+    evm_staticcall_test, evm_transient_nested_test, evm_transient_reentry_test,
 };
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
@@ -59,4 +59,18 @@ fn evm_init_revert_data() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     evm_init_revert_data_test(&v);
+}
+
+#[test]
+fn evm_transient_nested() {
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(store);
+    evm_transient_nested_test(&v);
+}
+
+#[test]
+fn evm_transient_reentry() {
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(store);
+    evm_transient_reentry_test(&v);
 }
