@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "15.0.0-rc1"
+version = "16.0.0-rc1"
 license = "MIT OR Apache-2.0"
 edition = "2021"
 repository = "https://github.com/filecoin-project/builtin-actors"
@@ -116,30 +116,30 @@ rlp = { version = "0.5.1", default-features = false }
 substrate-bn = { version = "0.6.0", default-features = false }
 
 # IPLD/Encoding
-cid = { version = "0.10.1", default-features = false, features = [
-     "serde-codec",
+cid = { version = "0.11.1", default-features = false, features = [
+     "serde",
      "std",
 ] }
-multihash = { version = "0.18.1", default-features = false, features = [
-     "multihash-impl",
-] }
-libipld-core = { version = "0.13.1", features = ["serde-codec"] }
+multihash = { version = "0.19.1", default-features = false }
+multihash-codetable = { version = "0.1.4", default-features = false }
+multihash-derive = { version = "0.9.1", default-features = false }
+ipld-core = { version = "0.4.1", features = ["serde"] }
 integer-encoding = { version = "3.0.3", default-features = false }
 
-# helix-onchain
-fvm_actor_utils = "11.0.0"
-frc42_dispatch = "7.0.0"
-frc46_token = "11.0.0"
+# actor-utils
+fvm_actor_utils = "12.0.0"
+frc42_dispatch = "8.0.0"
+frc46_token = "12.0.0"
 
 # FVM
-fvm_sdk = "4.3.0"
-fvm_shared = "4.3.0"
-fvm_ipld_encoding = "0.4.0"
-fvm_ipld_blockstore = "0.2.0"
-fvm_ipld_hamt = "0.9.0"
-fvm_ipld_kamt = "0.3.0"
-fvm_ipld_amt = { version = "0.6.2" }
-fvm_ipld_bitfield = "0.6.0"
+fvm_sdk = "4.5.1"
+fvm_shared = "4.5.1"
+fvm_ipld_encoding = "0.5.0"
+fvm_ipld_blockstore = "0.3.0"
+fvm_ipld_hamt = "0.10.2"
+fvm_ipld_kamt = "0.4.2"
+fvm_ipld_amt = { version = "0.7.3" }
+fvm_ipld_bitfield = "0.7.0"
 
 # workspace
 fil_actor_account = { path = "actors/account" }
@@ -165,7 +165,7 @@ fil_actors_integration_tests = { version = "1.0.0", path = "integration_tests" }
 vm_api = { version = "1.0.0", path = "vm_api" }
 test_vm = { path = "test_vm" }
 
-[patch.crates-io]
+#[patch.crates-io]
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
@@ -173,9 +173,9 @@ test_vm = { path = "test_vm" }
 #fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
-#fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
-#frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
-#frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
+#fvm_actor_utils = { git = "https://github.com/filecoin-project/actors-utils", branch = "main" }
+#frc42_dispatch = { git = "https://github.com/filecoin-project/actors-utils", branch = "main" }
+#frc46_token = { git = "https://github.com/filecoin-project/actors-utils", branch = "main" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
@@ -192,17 +192,19 @@ test_vm = { path = "test_vm" }
 ## Uncomment entries below when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
 ## (Valid once FVM modules are published to crates.io)
-# [patch.crates-io]
-# fvm_shared = { path = "../ref-fvm/shared" }
-# fvm_sdk = { path = "../ref-fvm/sdk" }
-# fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
-# fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
-# fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
-# fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
-# fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
-#fvm_actor_utils = { path = "../../filecoin/fvm_actor_utils"}
-#frc42_dispatch = { path = "../../filecoin/frc42_dispatch"}
-#frc46_token = { path = "../../filecoin/frc46_token"}
+#[patch.crates-io]
+#fvm_shared = { path = "../ref-fvm/shared" }
+#fvm_sdk = { path = "../ref-fvm/sdk" }
+#fvm_ipld_car = { path = "../ref-fvm/ipld/car" }
+#fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
+#fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
+#fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
+#fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
+#fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
+#fvm_actor_utils = { path = "../actors-utils/fvm_actor_utils"}
+#fil_actor_bundler = { path = "../builtin-actors-bundler"}
+#frc42_dispatch = { path = "../actors-utils/frc42_dispatch"}
+#frc46_token = { path = "../actors-utils/frc46_token"}
 
 [profile.wasm]
 inherits = "release"
