@@ -504,28 +504,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
     /// TODO create a PR for the KAMT library to support a "clear" method
     /// and upgrade to the new KAMT library version once its updated
     fn clear_transient_slots(&mut self) -> Result<(), ActorError> {
-        let mut keys_to_delete = Vec::new();
-
-        // Use `for_each` to collect all keys
-        self.transient_slots
-            .for_each(|key, _| {
-                keys_to_delete.push(*key);
-                Ok(())
-            })
-            .map_err(
-                |err| actor_error!(illegal_state; "iterating over transient_slots failed: {}", err),
-            )?;
-
-        for key in keys_to_delete {
-            self.transient_slots.delete(&key).map_err(|err| {
-                actor_error!(
-                    illegal_state;
-                    "deleting key {key:?} from transient_slots failed: {}",
-                    err
-                )
-            })?;
-        }
-
+        self.transient_slots.clear();
         Ok(())
     }
 
