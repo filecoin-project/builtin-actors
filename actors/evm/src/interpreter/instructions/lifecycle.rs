@@ -150,6 +150,7 @@ fn create_common(
 pub fn selfdestruct(
     _state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
+    pc: usize,
     beneficiary: U256,
 ) -> Result<Output, ActorError> {
     use crate::interpreter::output::Outcome;
@@ -185,7 +186,7 @@ pub fn selfdestruct(
     //
     // 1. In the constructor, this will set our code to "empty". This is correct.
     // 2. Otherwise, we'll successfully return nothing to the caller.
-    Ok(Output { outcome: Outcome::Return, return_data: Vec::new() })
+    Ok(Output { outcome: Outcome::Return, return_data: Vec::new(), pc })
 }
 
 #[cfg(test)]
