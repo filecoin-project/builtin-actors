@@ -187,7 +187,7 @@ macro_rules! def_exit {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         def_op!{ $op (m) => {
             let &rev![$($arg),*] = m.state.stack.pop_many()?;
-            m.output = $impl(&mut m.state, &mut m.system, $($arg),*)?;
+            m.output = $impl(&mut m.state, &mut m.system, m.pc, $($arg),*)?;
             m.pc = m.bytecode.len(); // stop execution
             Ok(())
         }}

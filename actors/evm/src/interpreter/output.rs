@@ -14,4 +14,6 @@ pub struct Output {
     pub outcome: Outcome,
     /// The return data.
     pub return_data: Vec<u8>,
+    /// The final program counter (for debugging).
+    pub pc: usize,
 }

@@ -31,33 +31,37 @@ pub fn invalid(
 pub fn ret(
     state: &mut ExecutionState,
     _system: &System<impl Runtime>,
+    pc: usize,
     offset: U256,
     size: U256,
 ) -> Result<Output, ActorError> {
-    exit(&mut state.memory, offset, size, Outcome::Return)
+    exit(&mut state.memory, pc, offset, size, Outcome::Return)
 }
 
 #[inline]
 pub fn revert(
     state: &mut ExecutionState,
     _system: &System<impl Runtime>,
+    pc: usize,
     offset: U256,
     size: U256,
 ) -> Result<Output, ActorError> {
-    exit(&mut state.memory, offset, size, Outcome::Revert)
+    exit(&mut state.memory, pc, offset, size, Outcome::Revert)
 }
 
 #[inline]
 pub fn stop(
     _state: &mut ExecutionState,
     _system: &System<impl Runtime>,
+    pc: usize,
 ) -> Result<Output, ActorError> {
-    Ok(Output { return_data: Vec::new(), outcome: Outcome::Return })
+    Ok(Output { return_data: Vec::new(), outcome: Outcome::Return, pc })
 }
 
 #[inline]
 fn exit(
     memory: &mut Memory,
+    pc: usize,
     offset: U256,
     size: U256,
     status: Outcome,
@@ -67,6 +71,7 @@ fn exit(
         return_data: super::memory::get_memory_region(memory, offset, size)?
             .map(|region| memory[region.offset..region.offset + region.size.get()].to_vec())
             .unwrap_or_default(),
+        pc,
     })
 }
 

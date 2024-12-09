@@ -181,7 +181,7 @@ where
         }
         Outcome::Revert => Err(ActorError::unchecked_with_data(
             EVM_CONTRACT_REVERTED,
-            "contract reverted".to_string(),
+            format!("contract reverted at {0}", output.pc),
             IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
         )),
     }
