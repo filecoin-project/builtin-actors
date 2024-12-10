@@ -94,6 +94,7 @@ pub struct System<'r, RT: Runtime> {
 
     /// The contract's EVM transient storage slots.
     transient_slots: StateKamt<RT::Blockstore>,
+    current_transient_data_lifespan: Option<TransientDataLifespan>,
 
     /// The contracts "nonce" (incremented when creating new actors).
     pub(crate) nonce: u64,
@@ -116,10 +117,12 @@ impl<'r, RT: Runtime> System<'r, RT> {
     {
         let store = rt.store().clone();
         let transient_store = rt.store().clone();
+        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
         Self {
             rt,
             slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
             transient_slots: StateKamt::new_with_config(transient_store, KAMT_CONFIG.clone()),
+            current_transient_data_lifespan,
             nonce: 1,
             saved_state_root: None,
             bytecode: None,
@@ -184,10 +187,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
         }
 
         let read_only = rt.read_only();
-        let current_lifespan = Self::get_current_transient_data_lifespan(rt);
+        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
 
         // Handle transient storage based on the presence and lifespan of `transient_data`
-        let transient_slots = match (current_lifespan, state.transient_data) {
+        let transient_slots = match (current_transient_data_lifespan, state.transient_data) {
             (Some(current_lifespan), Some(transient_data))
                 if current_lifespan == transient_data.transient_data_lifespan =>
             {
@@ -210,6 +213,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             slots: StateKamt::load_with_config(&state.contract_state, store, KAMT_CONFIG.clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
             transient_slots,
+            current_transient_data_lifespan: current_transient_data_lifespan,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
             bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
@@ -301,7 +305,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
         let transient_data = match self.transient_slots.is_empty() {
             true => None,
-            false => match Self::get_current_transient_data_lifespan(self.rt) {
+            false => match self.current_transient_data_lifespan {
                 Some(lifespan_value) => Some(TransientData {
                     transient_data_state: self.transient_slots.flush().context_code(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -356,10 +360,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
 
         if let Some(transient_data) = state.transient_data {
-            let transient_data_lifespan = transient_data.transient_data_lifespan;
-            let current_lifespan = Self::get_current_transient_data_lifespan(self.rt);
+            let state_transient_data_lifespan = transient_data.transient_data_lifespan;
+            let current_transient_data_lifespan = get_current_transient_data_lifespan(self.rt);
 
-            if current_lifespan == Some(transient_data_lifespan) {
+            if current_transient_data_lifespan == Some(state_transient_data_lifespan) {
                 self.transient_slots.set_root(&transient_data.transient_data_state).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
                     "transient_state not in blockstore",
@@ -443,16 +447,6 @@ impl<'r, RT: Runtime> System<'r, RT> {
             self.saved_state_root = None; // dirty.
         };
         Ok(())
-    }
-
-    /// Returns the current transient data lifespan based on the execution environment.
-    pub fn get_current_transient_data_lifespan(rt: &RT) -> Option<TransientDataLifespan> {
-        match rt.message().origin().id() {
-            Ok(origin_id) => {
-                Some(TransientDataLifespan { origin: origin_id, nonce: rt.message().nonce() })
-            }
-            Err(_) => None, // Handle the error case by returning None
-        }
     }
 
     /// Get value of a transient storage key.
@@ -547,5 +541,15 @@ impl<'r, RT: Runtime> System<'r, RT> {
     pub fn mark_selfdestructed(&mut self) {
         self.saved_state_root = None;
         self.tombstone = Some(crate::current_tombstone(self.rt));
+    }
+}
+
+/// Returns the current transient data lifespan based on the execution environment.
+pub fn get_current_transient_data_lifespan<RT: Runtime>(rt: &RT) -> Option<TransientDataLifespan> {
+    match rt.message().origin().id() {
+        Ok(origin_id) => {
+            Some(TransientDataLifespan { origin: origin_id, nonce: rt.message().nonce() })
+        }
+        Err(_) => None,
     }
 }
