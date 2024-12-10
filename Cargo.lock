@@ -2271,9 +2271,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_kamt"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02250be2140aa2e805e18b9427dc93fa1ad9753c8169d0807389f31739683450"
+checksum = "270444092b6cb62319b5a8f1ca6ae21265d31e0c818019e9ebd63cf8b2d51cb5"
 dependencies = [
  "anyhow",
  "byteorder",

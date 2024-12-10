@@ -314,6 +314,8 @@ mod tests {
     #[test]
     fn bn_recover() {
         let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+
         let mut system = System::create(&rt).unwrap();
 
         let input = &hex!(
@@ -357,6 +359,8 @@ mod tests {
         let input = "foo bar baz boxy".as_bytes();
 
         let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+
         let mut system = System::create(&rt).unwrap();
 
         let expected = hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");
@@ -370,6 +374,8 @@ mod tests {
         let input = "foo bar baz boxy".as_bytes();
 
         let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+
         let mut system = System::create(&rt).unwrap();
 
         let expected = hex!("0000000000000000000000004cd7a0452bd3d682e4cbd5fa90f446d7285b156a");
@@ -389,6 +395,8 @@ mod tests {
         );
 
         let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+
         let mut system = System::create(&rt).unwrap();
 
         let expected = hex!("08");
@@ -450,6 +458,8 @@ mod tests {
         #[test]
         fn bn_add() {
             let rt = MockRuntime::default();
+            rt.in_call.replace(true);
+
             let mut system = System::create(&rt).unwrap();
 
             let input = hex::decode(
@@ -519,6 +529,8 @@ mod tests {
             ];
 
             let rt = MockRuntime::default();
+            rt.in_call.replace(true);
+
             let mut system = System::create(&rt).unwrap();
 
             for (f, name) in tests {
@@ -546,6 +558,8 @@ mod tests {
                 &[(blake2f, "fail-blake2f")];
 
             let rt = MockRuntime::default();
+            rt.in_call.replace(true);
+
             let mut system = System::create(&rt).unwrap();
 
             for (f, name) in failures {
@@ -561,6 +575,8 @@ mod tests {
         #[test]
         fn bn_mul() {
             let rt = MockRuntime::default();
+            rt.in_call.replace(true);
+
             let mut system = System::create(&rt).unwrap();
 
             let input = hex::decode(
@@ -614,6 +630,8 @@ mod tests {
         #[test]
         fn bn_pair() {
             let rt = MockRuntime::default();
+            rt.in_call.replace(true);
+
             let mut system = System::create(&rt).unwrap();
 
             let input = hex::decode(
@@ -701,6 +719,8 @@ mod tests {
     fn blake2() {
         use super::blake2f;
         let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+
         let mut system = System::create(&rt).unwrap();
 
         // // helper to turn EIP test cases into something readable
