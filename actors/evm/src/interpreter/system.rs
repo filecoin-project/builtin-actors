@@ -213,7 +213,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             slots: StateKamt::load_with_config(&state.contract_state, store, KAMT_CONFIG.clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
             transient_slots,
-            current_transient_data_lifespan: current_transient_data_lifespan,
+            current_transient_data_lifespan,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
             bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
