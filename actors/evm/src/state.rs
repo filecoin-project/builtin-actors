@@ -23,9 +23,9 @@ pub struct TransientData {
     /// The contract transient data state dictionary.
     /// Transient Data State is a map of U256 -> U256 values.
     /// KAMT<U256, U256>
-    pub transient_data_state: Option<Cid>,
+    pub transient_data_state: Cid,
     /// The data representing the transient data lifespan
-    pub transient_data_lifespan: Option<TransientDataLifespan>,
+    pub transient_data_lifespan: TransientDataLifespan,
 }
 
 /// A structure representing the transient data lifespan.

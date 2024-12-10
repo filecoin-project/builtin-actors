@@ -187,11 +187,13 @@ impl<'r, RT: Runtime> System<'r, RT> {
         let current_lifespan = Self::get_current_transient_data_lifespan(rt);
 
         // Handle transient storage based on the presence and lifespan of `transient_data`
-        let transient_slots = match state.transient_data {
-            Some(transient_data) if current_lifespan == transient_data.transient_data_lifespan => {
+        let transient_slots = match (current_lifespan, state.transient_data) {
+            (Some(current_lifespan), Some(transient_data))
+                if current_lifespan == transient_data.transient_data_lifespan =>
+            {
                 // Lifespans match, load the transient storage
                 StateKamt::load_with_config(
-                    &transient_data.transient_data_state.unwrap(),
+                    &transient_data.transient_data_state,
                     transient_store,
                     KAMT_CONFIG.clone(),
                 )
@@ -299,13 +301,16 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
         let transient_data = match self.transient_slots.is_empty() {
             true => None,
-            false => Some(TransientData {
-                transient_data_state: Some(self.transient_slots.flush().context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to flush transient storage state",
-                )?),
-                transient_data_lifespan: Self::get_current_transient_data_lifespan(self.rt),
-            }),
+            false => match Self::get_current_transient_data_lifespan(self.rt) {
+                Some(lifespan_value) => Some(TransientData {
+                    transient_data_state: self.transient_slots.flush().context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to flush transient storage state",
+                    )?,
+                    transient_data_lifespan: lifespan_value,
+                }),
+                None => None,
+            },
         };
 
         let new_root = self
@@ -350,12 +355,18 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
 
-        let transient_data_lifespan = state.transient_data.unwrap().transient_data_lifespan;
-        let current_lifespan = Self::get_current_transient_data_lifespan(self.rt);
-        if current_lifespan == transient_data_lifespan {
-            self.transient_slots
-                .set_root(&state.transient_data.unwrap().transient_data_state.unwrap())
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "transient_state not in blockstore")?;
+        if let Some(transient_data) = state.transient_data {
+            let transient_data_lifespan = transient_data.transient_data_lifespan;
+            let current_lifespan = Self::get_current_transient_data_lifespan(self.rt);
+
+            if current_lifespan == Some(transient_data_lifespan) {
+                self.transient_slots.set_root(&transient_data.transient_data_state).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "transient_state not in blockstore",
+                )?;
+            } else {
+                self.transient_slots.clear();
+            }
         } else {
             self.transient_slots.clear();
         }
