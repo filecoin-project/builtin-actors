@@ -94,7 +94,7 @@ pub struct System<'r, RT: Runtime> {
 
     /// The contract's EVM transient storage slots.
     transient_slots: StateKamt<RT::Blockstore>,
-    current_transient_data_lifespan: Option<TransientDataLifespan>,
+    current_transient_data_lifespan: TransientDataLifespan,
 
     /// The contracts "nonce" (incremented when creating new actors).
     pub(crate) nonce: u64,
