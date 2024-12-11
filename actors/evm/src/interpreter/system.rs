@@ -111,14 +111,14 @@ pub struct System<'r, RT: Runtime> {
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
-    pub(crate) fn new(rt: &'r RT, readonly: bool) -> Self
+    pub(crate) fn new(rt: &'r RT, readonly: bool) -> Result<Self, ActorError>
     where
         RT::Blockstore: Clone,
     {
         let store = rt.store().clone();
         let transient_store = rt.store().clone();
-        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
-        Self {
+        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt)?;
+        Ok(Self {
             rt,
             slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
             transient_slots: StateKamt::new_with_config(transient_store, KAMT_CONFIG.clone()),
@@ -129,7 +129,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             readonly,
             randomness: None,
             tombstone: None,
-        }
+        })
     }
 
     /// Resurrect the contract. This will return a new empty contract if, and only if, the contract
@@ -150,7 +150,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             return Err(actor_error!(forbidden, "can only resurrect a dead contract"));
         }
 
-        return Ok(Self::new(rt, read_only));
+        return Self::new(rt, read_only);
     }
 
     /// Create the contract. This will return a new empty contract if, and only if, the contract
@@ -164,7 +164,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         if state_root != EMPTY_ARR_CID {
             return Err(actor_error!(illegal_state, "can't create over an existing actor"));
         }
-        return Ok(Self::new(rt, read_only));
+        return Self::new(rt, read_only);
     }
 
     /// Load the actor from state.
@@ -183,16 +183,17 @@ impl<'r, RT: Runtime> System<'r, RT> {
         if crate::is_dead(rt, &state) {
             // If we're "dead", return an empty read-only contract. The code will be empty, so
             // nothing can happen anyways.
-            return Ok(Self::new(rt, true));
+            return Self::new(rt, true);
         }
 
         let read_only = rt.read_only();
-        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
+        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt)?;
 
         // Handle transient storage based on the presence and lifespan of `transient_data`
-        let transient_slots = match (current_transient_data_lifespan, state.transient_data) {
-            (Some(current_lifespan), Some(transient_data))
-                if current_lifespan == transient_data.transient_data_lifespan =>
+        // Handle transient storage based on the presence and lifespan of `transient_data`
+        let transient_slots = match state.transient_data {
+            Some(transient_data)
+                if current_transient_data_lifespan == transient_data.transient_data_lifespan =>
             {
                 // Lifespans match, load the transient storage
                 StateKamt::load_with_config(
@@ -303,18 +304,16 @@ impl<'r, RT: Runtime> System<'r, RT> {
             None => self.set_bytecode(&[])?,
         };
 
-        let transient_data = match self.transient_slots.is_empty() {
-            true => None,
-            false => match self.current_transient_data_lifespan {
-                Some(lifespan_value) => Some(TransientData {
-                    transient_data_state: self.transient_slots.flush().context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to flush transient storage state",
-                    )?,
-                    transient_data_lifespan: lifespan_value,
-                }),
-                None => None,
-            },
+        let transient_data = if self.transient_slots.is_empty() {
+            None
+        } else {
+            Some(TransientData {
+                transient_data_state: self.transient_slots.flush().context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to flush transient storage state",
+                )?,
+                transient_data_lifespan: self.current_transient_data_lifespan,
+            })
         };
 
         let new_root = self
@@ -361,9 +360,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
         if let Some(transient_data) = state.transient_data {
             let state_transient_data_lifespan = transient_data.transient_data_lifespan;
-            let current_transient_data_lifespan = get_current_transient_data_lifespan(self.rt);
+            let current_transient_data_lifespan = get_current_transient_data_lifespan(self.rt)?;
 
-            if current_transient_data_lifespan == Some(state_transient_data_lifespan) {
+            if current_transient_data_lifespan == state_transient_data_lifespan {
                 self.transient_slots.set_root(&transient_data.transient_data_state).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
                     "transient_state not in blockstore",
@@ -545,11 +544,13 @@ impl<'r, RT: Runtime> System<'r, RT> {
 }
 
 /// Returns the current transient data lifespan based on the execution environment.
-pub fn get_current_transient_data_lifespan<RT: Runtime>(rt: &RT) -> Option<TransientDataLifespan> {
+pub fn get_current_transient_data_lifespan<RT: Runtime>(
+    rt: &RT,
+) -> Result<TransientDataLifespan, ActorError> {
     match rt.message().origin().id() {
         Ok(origin_id) => {
-            Some(TransientDataLifespan { origin: origin_id, nonce: rt.message().nonce() })
+            Ok(TransientDataLifespan { origin: origin_id, nonce: rt.message().nonce() })
         }
-        Err(_) => None,
+        Err(_) => Err(actor_error!(illegal_state, "failed to get current transient data lifespan")),
     }
 }
