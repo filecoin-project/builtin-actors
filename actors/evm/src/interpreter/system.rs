@@ -117,7 +117,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
     {
         let store = rt.store().clone();
         let transient_store = rt.store().clone();
-        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt)?;
+        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
         Ok(Self {
             rt,
             slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
@@ -187,7 +187,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         }
 
         let read_only = rt.read_only();
-        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt)?;
+        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
 
         // Handle transient storage based on the presence and lifespan of `transient_data`
         // Handle transient storage based on the presence and lifespan of `transient_data`
@@ -360,7 +360,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
         if let Some(transient_data) = state.transient_data {
             let state_transient_data_lifespan = transient_data.transient_data_lifespan;
-            let current_transient_data_lifespan = get_current_transient_data_lifespan(self.rt)?;
+            let current_transient_data_lifespan = get_current_transient_data_lifespan(self.rt);
 
             if current_transient_data_lifespan == state_transient_data_lifespan {
                 self.transient_slots.set_root(&transient_data.transient_data_state).context_code(
@@ -544,13 +544,6 @@ impl<'r, RT: Runtime> System<'r, RT> {
 }
 
 /// Returns the current transient data lifespan based on the execution environment.
-pub fn get_current_transient_data_lifespan<RT: Runtime>(
-    rt: &RT,
-) -> Result<TransientDataLifespan, ActorError> {
-    match rt.message().origin().id() {
-        Ok(origin_id) => {
-            Ok(TransientDataLifespan { origin: origin_id, nonce: rt.message().nonce() })
-        }
-        Err(_) => Err(actor_error!(illegal_state, "failed to get current transient data lifespan")),
-    }
+pub fn get_current_transient_data_lifespan<RT: Runtime>(rt: &RT) -> TransientDataLifespan {
+    TransientDataLifespan { origin: rt.message().origin(), nonce: rt.message().nonce() }
 }
