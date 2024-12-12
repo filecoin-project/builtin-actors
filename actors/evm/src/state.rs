@@ -1,7 +1,6 @@
 use std::array::TryFromSliceError;
 
 use fil_actors_evm_shared::uints::U256;
-use fvm_shared::address::Address;
 use fvm_shared::ActorID;
 
 use cid::Cid;
@@ -33,7 +32,7 @@ pub struct TransientData {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct TransientDataLifespan {
     /// The origin actor ID associated with the transient data.
-    pub origin: Address,
+    pub origin: ActorID,
     /// A unique nonce identifying the transaction.
     pub nonce: u64,
 }
