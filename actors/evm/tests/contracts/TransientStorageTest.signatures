@@ -1,0 +1,11 @@
+Function signatures:
+18e1813f: isStorageCleared(uint256)
+02a5e064: readTransientData(uint256)
+dec9f688: reentryCallback()
+23d74628: runTests()
+cf83c71c: testBasicFunctionality()
+e90bf998: testLifecycleValidation()
+54e84d1b: testLifecycleValidationSubsequentTransaction()
+06c0f8b9: testNestedContracts(address)
+ad5963ca: testReentry(address)
+b279888b: writeTransientData(uint256,uint256)

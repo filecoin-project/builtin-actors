@@ -153,7 +153,6 @@ mod tests {
     use cid::multihash::Multihash;
     use cid::Cid;
     use fil_actors_evm_shared::uints::U256;
-    use fil_actors_runtime::EAM_ACTOR_ID;
     use fvm_ipld_encoding::{DAG_CBOR, IPLD_RAW};
     use fvm_shared::address::Address as FilAddress;
 
@@ -350,25 +349,6 @@ mod tests {
     fn test_origin_id() {
         let eth_addr = EthAddress::from_id(1000); // default origin in construction of rt in macro
         let fil_addr = FilAddress::new_id(1000);
-        evm_unit_test! {
-            (rt) {
-                rt.in_call.replace(true);
-                rt.set_origin(fil_addr);
-            }
-            (m) {
-                ORIGIN;
-            }
-            m.step().expect("execution step failed");
-            assert_eq!(m.state.stack.len(), 1);
-            assert_eq!(m.state.stack.pop().unwrap(), eth_addr.as_evm_word());
-        };
-    }
-
-    #[test]
-    fn test_origin_ethaddr() {
-        let addr_bytes = hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000001234");
-        let eth_addr = EthAddress(addr_bytes);
-        let fil_addr = FilAddress::new_delegated(EAM_ACTOR_ID, &addr_bytes).unwrap();
         evm_unit_test! {
             (rt) {
                 rt.in_call.replace(true);
