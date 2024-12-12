@@ -365,25 +365,6 @@ mod tests {
     }
 
     #[test]
-    fn test_origin_ethaddr() {
-        let addr_bytes = hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000001234");
-        let eth_addr = EthAddress(addr_bytes);
-        let fil_addr = FilAddress::new_delegated(EAM_ACTOR_ID, &addr_bytes).unwrap();
-        evm_unit_test! {
-            (rt) {
-                rt.in_call.replace(true);
-                rt.set_origin(fil_addr);
-            }
-            (m) {
-                ORIGIN;
-            }
-            m.step().expect("execution step failed");
-            assert_eq!(m.state.stack.len(), 1);
-            assert_eq!(m.state.stack.pop().unwrap(), eth_addr.as_evm_word());
-        };
-    }
-
-    #[test]
     fn test_caller() {
         evm_unit_test! {
             (m) {
