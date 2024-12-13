@@ -79,7 +79,6 @@ contract TransientStorageTest {
 
     // Test 2.2: Verify nested contract independence
     function testNestedContracts(address other) public returns (bool) {
-
         uint256 slot = 4;
         uint256 value = 88;
 
