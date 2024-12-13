@@ -228,8 +228,8 @@ fn transient_storage_test(transient_storage_bytecode: Vec<u8>) {
                                                                                        // We expect this to fail because no changes are made
     util::invoke_contract_expect_fail(&rt, &solidity_params_test_cleared);
 
-    //use a new address for our calling context
-    //This will cause the transient storage data to reset because the transient storage lifecycle value has changed
+    // use a new address for our calling context; this will cause the transient storage
+    // data to reset because the transient storage lifecycle value has changed
     let new_context = Address::new_id(200);
     rt.set_origin(new_context);
 
