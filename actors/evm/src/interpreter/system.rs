@@ -117,7 +117,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
     {
         let store = rt.store().clone();
         let transient_store = rt.store().clone();
-        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt)?;
+        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
         Ok(Self {
             rt,
             slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
@@ -187,7 +187,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         }
 
         let read_only = rt.read_only();
-        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt)?;
+        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
 
         // Handle transient storage based on the presence and lifespan of `transient_data`
         let transient_slots = match state.transient_data {
@@ -543,11 +543,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
 /// Returns the current transient data lifespan based on the execution environment.
 fn get_current_transient_data_lifespan<RT: Runtime>(
     rt: &RT,
-) -> Result<TransientDataLifespan, ActorError> {
-    match rt.message().origin().id() {
-        Ok(origin_id) => {
-            Ok(TransientDataLifespan { origin: origin_id, nonce: rt.message().nonce() })
-        }
-        Err(_) => Err(actor_error!(illegal_state, "failed to get current transient data lifespan")),
-    }
-}
+) -> TransientDataLifespan {
+    TransientDataLifespan {
+        origin: rt.message().origin().id().unwrap(),
+        nonce: rt.message().nonce(),
+    }}
