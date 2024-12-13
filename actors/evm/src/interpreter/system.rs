@@ -111,14 +111,14 @@ pub struct System<'r, RT: Runtime> {
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
-    pub(crate) fn new(rt: &'r RT, readonly: bool) -> Result<Self, ActorError>
+    pub(crate) fn new(rt: &'r RT, readonly: bool) -> Self
     where
         RT::Blockstore: Clone,
     {
         let store = rt.store().clone();
         let transient_store = rt.store().clone();
         let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
-        Ok(Self {
+        Self {
             rt,
             slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
             transient_slots: StateKamt::new_with_config(transient_store, KAMT_CONFIG.clone()),
@@ -129,7 +129,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             readonly,
             randomness: None,
             tombstone: None,
-        })
+        }
     }
 
     /// Resurrect the contract. This will return a new empty contract if, and only if, the contract
@@ -150,7 +150,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             return Err(actor_error!(forbidden, "can only resurrect a dead contract"));
         }
 
-        return Self::new(rt, read_only);
+        return Ok(Self::new(rt, read_only));
     }
 
     /// Create the contract. This will return a new empty contract if, and only if, the contract
@@ -164,7 +164,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         if state_root != EMPTY_ARR_CID {
             return Err(actor_error!(illegal_state, "can't create over an existing actor"));
         }
-        return Self::new(rt, read_only);
+        return Ok(Self::new(rt, read_only));
     }
 
     /// Load the actor from state.
@@ -183,7 +183,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         if crate::is_dead(rt, &state) {
             // If we're "dead", return an empty read-only contract. The code will be empty, so
             // nothing can happen anyways.
-            return Self::new(rt, true);
+            return Ok(Self::new(rt, true));
         }
 
         let read_only = rt.read_only();
@@ -541,10 +541,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
 }
 
 /// Returns the current transient data lifespan based on the execution environment.
-fn get_current_transient_data_lifespan<RT: Runtime>(
-    rt: &RT,
-) -> TransientDataLifespan {
+fn get_current_transient_data_lifespan<RT: Runtime>(rt: &RT) -> TransientDataLifespan {
     TransientDataLifespan {
         origin: rt.message().origin().id().unwrap(),
         nonce: rt.message().nonce(),
-    }}
+    }
+}

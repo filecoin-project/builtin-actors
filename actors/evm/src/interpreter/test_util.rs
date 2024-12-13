@@ -33,7 +33,7 @@ macro_rules! evm_unit_test {
 
         let code = vec![$($crate::evm_instruction!($inst)),*];
 
-        let mut system = System::new(&$rt, false).expect("Failed to initialize System");
+        let mut system = System::new(&$rt, false);
         let bytecode = Bytecode::new(code);
         #[allow(unused_mut)]
         let mut $machine = Machine {
@@ -64,7 +64,7 @@ macro_rules! evm_unit_test {
 
         let code = vec![$($crate::evm_instruction!($inst)),*];
 
-        let mut system = System::new(&rt, false).expect("Failed to initialize System");
+        let mut system = System::new(&rt, false);
         let bytecode = Bytecode::new(code);
         #[allow(unused_mut)]
         let mut $machine = Machine {
