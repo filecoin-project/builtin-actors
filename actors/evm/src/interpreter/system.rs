@@ -190,7 +190,6 @@ impl<'r, RT: Runtime> System<'r, RT> {
         let current_transient_data_lifespan = get_current_transient_data_lifespan(rt)?;
 
         // Handle transient storage based on the presence and lifespan of `transient_data`
-        // Handle transient storage based on the presence and lifespan of `transient_data`
         let transient_slots = match state.transient_data {
             Some(transient_data)
                 if current_transient_data_lifespan == transient_data.transient_data_lifespan =>
