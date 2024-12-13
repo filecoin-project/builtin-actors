@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 contract TransientStorageTest {
 
     constructor(){
-	    _runTests();
+        _runTests();
     }
 
     function runTests() public returns (bool) {
