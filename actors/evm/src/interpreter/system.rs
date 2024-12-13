@@ -357,18 +357,16 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
 
-        if let Some(transient_data) = state.transient_data {
-            let state_transient_data_lifespan = transient_data.transient_data_lifespan;
-            if self.current_transient_data_lifespan == state_transient_data_lifespan {
-                self.transient_slots.set_root(&transient_data.transient_data_state).context_code(
+        match &state.transient_data {
+            Some(TransientData { transient_data_state, transient_data_lifespan })
+                if transient_data_lifespan == &self.current_transient_data_lifespan =>
+            {
+                self.transient_slots.set_root(transient_data_state).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
                     "transient_state not in blockstore",
-                )?;
-            } else {
-                self.transient_slots.clear();
+                )?
             }
-        } else {
-            self.transient_slots.clear();
+            _ => self.transient_slots.clear(),
         }
 
         self.slots
