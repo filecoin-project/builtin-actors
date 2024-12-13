@@ -755,7 +755,6 @@ pub fn evm_init_revert_data_test(v: &dyn VM) {
     assert_eq!(revert_data, expected);
 }
 
-#[allow(non_snake_case)]
 #[vm_test]
 pub fn evm_transient_nested_test(v: &dyn VM) {
     // Step 1: Create an EthAccount with an initial balance.
@@ -837,7 +836,6 @@ pub fn evm_transient_nested_test(v: &dyn VM) {
     assert!(event_emitted, "testNestedContracts did not succeed as expected");
 }
 
-#[allow(non_snake_case)]
 #[vm_test]
 pub fn evm_transient_reentry_test(v: &dyn VM) {
     // Step 1: Create an EthAccount with an initial balance.
