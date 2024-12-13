@@ -106,7 +106,7 @@ contract TransientStorageTest {
         return true;
     }
 
-        // New function to test reentry scenario
+    // New function to test reentry scenario
     function testReentry(address otherContract) public returns (bool){
         uint256 slot = 5;
         uint256 value = 123;
