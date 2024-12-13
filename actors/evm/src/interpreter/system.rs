@@ -541,7 +541,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
 }
 
 /// Returns the current transient data lifespan based on the execution environment.
-pub fn get_current_transient_data_lifespan<RT: Runtime>(
+fn get_current_transient_data_lifespan<RT: Runtime>(
     rt: &RT,
 ) -> Result<TransientDataLifespan, ActorError> {
     match rt.message().origin().id() {
