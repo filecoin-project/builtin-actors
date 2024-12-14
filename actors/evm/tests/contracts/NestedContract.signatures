@@ -1,3 +1,0 @@
-Function signatures:
-02a5e064: readTransientData(uint256)
-b279888b: writeTransientData(uint256,uint256)
