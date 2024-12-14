@@ -6,6 +6,7 @@ contract TransientStorageTest {
         _runTests();
     }
 
+    // Test 0: Initial Constructor Test
     function runTests() public returns (bool) {
         _runTests();
     }
@@ -61,13 +62,14 @@ contract TransientStorageTest {
         require(retrievedValue == value, "TLOAD did not retrieve stored value within transaction");
     }
 
+    // Test 2.2: Verify transient storage clears in subsequent transactions
     function testLifecycleValidationSubsequentTransaction() public {
-        // Test clearing by re-calling as a new transaction
         uint256 slot = 3;
         bool cleared = isStorageCleared(slot);
         require(cleared, "Transient storage was not cleared after transaction");
     }
 
+    // Utility Function: Check if transient storage is cleared
     function isStorageCleared(uint256 slot) public view returns (bool) {
         uint256 retrievedValue;
         assembly {
@@ -76,7 +78,7 @@ contract TransientStorageTest {
         return retrievedValue == 0; // True if cleared
     }
 
-    // Test 2.2: Verify nested contract independence
+    // Test 3: Verify nested contract independence
     function testNestedContracts(address other) public returns (bool) {
         uint256 slot = 4;
         uint256 value = 88;
@@ -104,7 +106,7 @@ contract TransientStorageTest {
         return true;
     }
 
-    // New function to test reentry scenario
+    // Test 4: Reentry scenario
     function testReentry(address otherContract) public returns (bool) {
         uint256 slot = 5;
         uint256 value = 123;
@@ -127,6 +129,7 @@ contract TransientStorageTest {
         return true;
     }
 
+    // Utility Function for Test 4: Reentry callback
     function reentryCallback() public {
         uint256 slot = 6;
         uint256 value = 456;
@@ -145,12 +148,14 @@ contract TransientStorageTest {
         require(retrievedValue == value, "Reentry callback failed to store correct value");
     }
 
+    // Utility Function for Test 3: Write to transient storage
     function writeTransientData(uint256 slot, uint256 value) external {
         assembly {
             tstore(slot, value)
         }
     }
 
+    // Utility Function for Test 3: Read from transient storage
     function readTransientData(uint256 slot) external view returns (uint256) {
         uint256 value;
         assembly {
