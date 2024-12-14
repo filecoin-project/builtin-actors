@@ -2,8 +2,7 @@
 pragma solidity ^0.8.24;
 
 contract TransientStorageTest {
-
-    constructor(){
+    constructor() {
         _runTests();
     }
 
@@ -106,7 +105,7 @@ contract TransientStorageTest {
     }
 
     // New function to test reentry scenario
-    function testReentry(address otherContract) public returns (bool){
+    function testReentry(address otherContract) public returns (bool) {
         uint256 slot = 5;
         uint256 value = 123;
 
@@ -159,5 +158,4 @@ contract TransientStorageTest {
         }
         return value;
     }
-
 }
