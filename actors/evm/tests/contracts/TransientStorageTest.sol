@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 contract TransientStorageTest {
 
     constructor(){
-	    _runTests();
+        _runTests();
     }
 
     function runTests() public returns (bool) {
@@ -79,7 +79,6 @@ contract TransientStorageTest {
 
     // Test 2.2: Verify nested contract independence
     function testNestedContracts(address other) public returns (bool) {
-
         uint256 slot = 4;
         uint256 value = 88;
 
@@ -106,7 +105,7 @@ contract TransientStorageTest {
         return true;
     }
 
-        // New function to test reentry scenario
+    // New function to test reentry scenario
     function testReentry(address otherContract) public returns (bool){
         uint256 slot = 5;
         uint256 value = 123;
