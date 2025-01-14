@@ -17,6 +17,26 @@ pub struct Tombstone {
     pub nonce: u64,
 }
 
+/// A structure representing Transient Data
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct TransientData {
+    /// The contract transient data state dictionary.
+    /// Transient Data State is a map of U256 -> U256 values.
+    /// KAMT<U256, U256>
+    pub transient_data_state: Cid,
+    /// The data representing the transient data lifespan
+    pub transient_data_lifespan: TransientDataLifespan,
+}
+
+/// A structure representing the transient data lifespan.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct TransientDataLifespan {
+    /// The origin actor ID associated with the transient data.
+    pub origin: ActorID,
+    /// A unique nonce identifying the transaction.
+    pub nonce: u64,
+}
+
 /// A Keccak256 digest of EVM bytecode.
 #[derive(Deserialize, Serialize, Clone, Copy, Eq, PartialEq)]
 #[serde(transparent)]
@@ -105,6 +125,11 @@ pub struct State {
     ///
     /// KAMT<U256, U256>
     pub contract_state: Cid,
+
+    /// The data that containers tranisent state. The struct includes the CID of the KAMT that
+    /// contains the state data and the tuple of nonce and actor id that represents
+    /// the lifespan of the transient storage data
+    pub transient_data: Option<TransientData>,
 
     /// The EVM nonce used to track how many times CREATE or CREATE2 have been called.
     pub nonce: u64,

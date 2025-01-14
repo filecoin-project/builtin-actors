@@ -204,6 +204,39 @@ fn test_push_last_byte() {
 }
 
 #[test]
+fn transient_storage() {
+    let transient_storage_bytecode =
+        hex::decode(include_str!("contracts/TransientStorageTest.bin")).unwrap();
+    transient_storage_test(transient_storage_bytecode);
+}
+
+fn transient_storage_test(transient_storage_bytecode: Vec<u8>) {
+    let contract = Address::new_id(100);
+    let rt = util::init_construct_and_verify(transient_storage_bytecode, |rt| {
+        rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
+        rt.set_origin(contract);
+    });
+
+    let mut solidity_params = vec![];
+    solidity_params.extend_from_slice(&hex::decode("23d74628").unwrap()); // function selector, "runTests()"
+    let _result = util::invoke_contract(&rt, &solidity_params);
+
+    // Setup for testing that the transient storage data clears when a new transaction occurs
+    let mut solidity_params_test_cleared = vec![];
+    solidity_params_test_cleared.extend_from_slice(&hex::decode("54e84d1b").unwrap()); // function selector, "testLifecycleValidationSubsequentTransaction()"
+                                                                                       //
+                                                                                       // We expect this to fail because no changes are made
+    util::invoke_contract_expect_fail(&rt, &solidity_params_test_cleared);
+
+    // use a new address for our calling context; this will cause the transient storage
+    // data to reset because the transient storage lifecycle value has changed
+    let new_context = Address::new_id(200);
+    rt.set_origin(new_context);
+
+    util::invoke_contract(&rt, &solidity_params_test_cleared);
+}
+
+#[test]
 fn mcopy() {
     let bytecode = hex::decode(include_str!("contracts/MCOPYTest.hex")).unwrap();
     mcopy_test(bytecode);
