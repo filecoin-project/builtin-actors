@@ -1586,19 +1586,6 @@ impl Actor {
         let mut fee_to_burn = TokenAmount::zero();
         let mut needs_cron = false;
         rt.transaction(|state: &mut State, rt| {
-            // Aggregate fee applies only when batching.
-            if sectors.len() > 1 {
-                let aggregate_fee = aggregate_pre_commit_network_fee(sectors.len(), &rt.base_fee());
-                // AggregateFee applied to fee debt to consolidate burn with outstanding debts
-                state.apply_penalty(&aggregate_fee)
-                    .map_err(|e| {
-                        actor_error!(
-                        illegal_state,
-                        "failed to apply penalty: {}",
-                        e
-                    )
-                    })?;
-            }
             // available balance already accounts for fee debt so it is correct to call
             // this before RepayDebts. We would have to
             // subtract fee debt explicitly if we called this after.

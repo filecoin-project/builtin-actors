@@ -1,7 +1,7 @@
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::{bigint::Zero, clock::ChainEpoch, econ::TokenAmount, ActorID};
+use fvm_shared::{clock::ChainEpoch, ActorID};
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
@@ -521,7 +521,7 @@ fn precommit_sectors_from(
         sector_expiry,
         piece_sizes,
     );
-    h.pre_commit_sector_batch_v2(rt, &precommits, first_for_miner, &TokenAmount::zero()).unwrap();
+    h.pre_commit_sector_batch_v2(rt, &precommits, first_for_miner).unwrap();
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
     precommits
 }
