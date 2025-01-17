@@ -48,7 +48,7 @@ fil_actor_system = { workspace = true, features = ["fil-actor"] }
 fil_actor_verifreg = { workspace = true, features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = "6.1.0"
+fil_actor_bundler = "7.1.0"
 cid = { workspace = true }
 fil_actors_runtime = { workspace = true }
 num-traits = { workspace = true }
