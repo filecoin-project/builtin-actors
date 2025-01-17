@@ -269,6 +269,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -477,7 +483,7 @@ dependencies = [
  "multihash",
  "serde",
  "serde_bytes",
- "unsigned-varint 0.8.0",
+ "unsigned-varint",
 ]
 
 [[package]]
@@ -712,9 +718,9 @@ dependencies = [
 
 [[package]]
 name = "darling"
-version = "0.12.4"
+version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f2c43f534ea4b0b049015d00269734195e6d3f0f6635cb692251aca6f9f8b3c"
+checksum = "6f63b86c8a8826a49b8c21f08a2d07338eec8d900540f8630dc76284be802989"
 dependencies = [
  "darling_core",
  "darling_macro",
@@ -722,27 +728,27 @@ dependencies = [
 
 [[package]]
 name = "darling_core"
-version = "0.12.4"
+version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e91455b86830a1c21799d94524df0845183fa55bafd9aa137b01c7d1065fa36"
+checksum = "95133861a8032aaea082871032f5815eb9e98cef03fa916ab4500513994df9e5"
 dependencies = [
  "fnv",
  "ident_case",
  "proc-macro2",
  "quote",
  "strsim",
- "syn 1.0.109",
+ "syn 2.0.96",
 ]
 
 [[package]]
 name = "darling_macro"
-version = "0.12.4"
+version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29b5acf0dea37a7f66f7b25d2c5e93fd46f8f6968b1a5d7a3e02e97768afc95a"
+checksum = "d336a2a514f6ccccaa3e09b02d41d35330c07ddf03a62165fcec10bb561c7806"
 dependencies = [
  "darling_core",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.96",
 ]
 
 [[package]]
@@ -768,7 +774,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1145d32e826a7748b69ee8fc62d3e6355ff7f1051df53141e7048162fc90481b"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.96",
 ]
 
 [[package]]
@@ -792,33 +798,33 @@ dependencies = [
 
 [[package]]
 name = "derive_builder"
-version = "0.10.2"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d13202debe11181040ae9063d739fa32cfcaaebe2275fe387703460ae2365b30"
+checksum = "507dfb09ea8b7fa618fcf76e953f4f5e192547945816d5358edffe39f6f94947"
 dependencies = [
  "derive_builder_macro",
 ]
 
 [[package]]
 name = "derive_builder_core"
-version = "0.10.2"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66e616858f6187ed828df7c64a6d71720d83767a7f19740b2d1b6fe6327b36e5"
+checksum = "2d5bcf7b024d6835cfb3d473887cd966994907effbe9227e8c8219824d06c4e8"
 dependencies = [
  "darling",
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.96",
 ]
 
 [[package]]
 name = "derive_builder_macro"
-version = "0.10.2"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58a94ace95092c5acb1e97a7e846b310cfbd499652f72297da7493f618a98d73"
+checksum = "ab63b0e2bf4d5928aff72e83a7dace85d7bba5fe12dcc3c5a572d78caffd3f3c"
 dependencies = [
  "derive_builder_core",
- "syn 1.0.109",
+ "syn 2.0.96",
 ]
 
 [[package]]
@@ -957,7 +963,7 @@ dependencies = [
  "k256",
  "log",
  "rand",
- "rlp",
+ "rlp 0.5.2",
  "serde",
  "sha3",
  "zeroize",
@@ -1177,7 +1183,7 @@ dependencies = [
  "once_cell",
  "open-fastrlp",
  "rand",
- "rlp",
+ "rlp 0.5.2",
  "serde",
  "serde_json",
  "strum",
@@ -1372,7 +1378,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1406,7 +1412,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "log",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1426,7 +1432,7 @@ dependencies = [
  "fvm_shared",
  "lazy_static",
  "log",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1446,9 +1452,9 @@ dependencies = [
  "hex-literal",
  "log",
  "multihash",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
- "rlp",
+ "rlp 0.6.1",
  "serde",
 ]
 
@@ -1462,7 +1468,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "hex-literal",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1487,7 +1493,7 @@ dependencies = [
  "lazy_static",
  "log",
  "multihash-codetable",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "once_cell",
  "rand",
@@ -1509,7 +1515,7 @@ dependencies = [
  "fvm_ipld_hamt",
  "fvm_shared",
  "log",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1532,13 +1538,13 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
- "integer-encoding 3.0.4",
+ "integer-encoding",
  "ipld-core",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "log",
  "multihash-codetable",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "regex",
  "serde",
@@ -1565,13 +1571,13 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "log",
  "multihash",
  "multihash-codetable",
  "multihash-derive",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "rand",
  "serde",
@@ -1591,10 +1597,10 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
- "indexmap 1.9.3",
- "integer-encoding 3.0.4",
+ "indexmap 2.7.0",
+ "integer-encoding",
  "lazy_static",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1613,7 +1619,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "lazy_static",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1636,11 +1642,11 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
- "indexmap 1.9.3",
- "integer-encoding 3.0.4",
+ "indexmap 2.7.0",
+ "integer-encoding",
  "lazy_static",
  "log",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1656,7 +1662,7 @@ dependencies = [
  "lazy_static",
  "log",
  "num",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1672,7 +1678,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "multihash-codetable",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1694,7 +1700,7 @@ dependencies = [
  "fvm_shared",
  "lazy_static",
  "log",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
 ]
@@ -1750,13 +1756,13 @@ dependencies = [
  "fvm_shared",
  "hex",
  "hex-literal",
- "indexmap 1.9.3",
- "integer-encoding 3.0.4",
+ "indexmap 2.7.0",
+ "integer-encoding",
  "lazy_static",
  "libsecp256k1",
  "log",
  "multihash-codetable",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "rand",
  "rand_chacha",
@@ -1772,7 +1778,7 @@ name = "fil_actors_runtime"
 version = "16.0.0-rc1"
 dependencies = [
  "anyhow",
- "base64 0.21.7",
+ "base64 0.22.1",
  "blake2b_simd",
  "byteorder",
  "castaway",
@@ -1788,15 +1794,15 @@ dependencies = [
  "fvm_sdk",
  "fvm_shared",
  "hex",
- "integer-encoding 3.0.4",
- "itertools 0.10.5",
+ "integer-encoding",
+ "itertools",
  "lazy_static",
  "libsecp256k1",
  "log",
  "multihash-codetable",
  "multihash-derive",
  "num",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "paste",
  "pretty_env_logger",
@@ -1806,7 +1812,7 @@ dependencies = [
  "serde_repr",
  "sha2 0.10.8",
  "thiserror 1.0.69",
- "unsigned-varint 0.7.2",
+ "unsigned-varint",
  "vm_api",
 ]
 
@@ -1861,7 +1867,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "serde",
  "vm_api",
@@ -1956,7 +1962,7 @@ dependencies = [
  "fvm_ipld_hamt",
  "fvm_sdk",
  "fvm_shared",
- "integer-encoding 4.0.2",
+ "integer-encoding",
  "multihash-codetable",
  "num-traits",
  "serde",
@@ -2122,7 +2128,7 @@ dependencies = [
  "cid",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "itertools 0.13.0",
+ "itertools",
  "multihash-codetable",
  "once_cell",
  "serde",
@@ -2138,7 +2144,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "serde",
  "thiserror 1.0.69",
- "unsigned-varint 0.8.0",
+ "unsigned-varint",
 ]
 
 [[package]]
@@ -2166,7 +2172,7 @@ dependencies = [
  "multihash-derive",
  "serde",
  "thiserror 1.0.69",
- "unsigned-varint 0.8.0",
+ "unsigned-varint",
 ]
 
 [[package]]
@@ -2254,13 +2260,13 @@ dependencies = [
  "fvm_ipld_encoding",
  "lazy_static",
  "num-bigint",
- "num-derive 0.4.2",
+ "num-derive",
  "num-integer",
  "num-traits",
  "serde",
  "serde_tuple",
  "thiserror 1.0.69",
- "unsigned-varint 0.8.0",
+ "unsigned-varint",
 ]
 
 [[package]]
@@ -2404,9 +2410,9 @@ dependencies = [
 
 [[package]]
 name = "hex-literal"
-version = "0.3.4"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ebdb29d2ea9ed0083cd8cece49bbd968021bd99b0849edb4a9a7ee0fdf6a4e0"
+checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
 
 [[package]]
 name = "hmac"
@@ -2641,7 +2647,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f28220f89297a075ddc7245cd538076ee98b01f2a9c23a53a4f1105d5a322808"
 dependencies = [
- "rlp",
+ "rlp 0.5.2",
 ]
 
 [[package]]
@@ -2711,12 +2717,6 @@ dependencies = [
 
 [[package]]
 name = "integer-encoding"
-version = "3.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bb03732005da905c88227371639bf1ad885cc712789c011c31c5fb3ab3ccf02"
-
-[[package]]
-name = "integer-encoding"
 version = "4.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d762194228a2f1c11063e46e32e5acb96e66e906382b9eb5441f2e0504bbd5a"
@@ -2747,15 +2747,6 @@ dependencies = [
  "hermit-abi",
  "libc",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "itertools"
-version = "0.10.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
 ]
 
 [[package]]
@@ -2962,7 +2953,7 @@ checksum = "6b430e7953c29dd6a09afc29ff0bb69c6e306329ee6794700aee27b76a1aea8d"
 dependencies = [
  "core2",
  "serde",
- "unsigned-varint 0.8.0",
+ "unsigned-varint",
 ]
 
 [[package]]
@@ -3044,17 +3035,6 @@ name = "num-conv"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
-
-[[package]]
-name = "num-derive"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "876a53fff98e03a936a674b29568b0e605f06b29372c2489ff4de23f1949743d"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
 
 [[package]]
 name = "num-derive"
@@ -3618,6 +3598,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlp"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa24e92bb2a83198bb76d661a71df9f7076b8c420b8696e4d3d97d50d94479e3"
+dependencies = [
+ "bytes",
+ "rustc-hex",
+]
+
+[[package]]
 name = "rlp-derive"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4020,9 +4010,9 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strsim"
-version = "0.10.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "strum"
@@ -4217,7 +4207,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
- "integer-encoding 3.0.4",
+ "integer-encoding",
  "multihash-codetable",
  "num-traits",
  "serde",
@@ -4498,12 +4488,6 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "unsigned-varint"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6889a77d49f1f013504cec6bf97a2c730394adedaeb1deb5ea08949a50541105"
-
-[[package]]
-name = "unsigned-varint"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb066959b24b5196ae73cb057f45598450d2c5f71460e98c49b738086eff9c06"
@@ -4575,7 +4559,7 @@ dependencies = [
  "fvm_shared",
  "multihash-codetable",
  "multihash-derive",
- "num-derive 0.3.3",
+ "num-derive",
  "num-traits",
  "rand",
  "rand_chacha",

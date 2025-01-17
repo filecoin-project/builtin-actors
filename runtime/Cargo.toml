@@ -52,7 +52,7 @@ features = ["static-context", "std"]
 optional = true
 
 [dev-dependencies]
-base64 = "0.21.2"
+base64 = "0.22.1"
 derive_builder = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
