@@ -1,7 +1,5 @@
 [advisories]
-ignore = [
-  "RUSTSEC-2024-0384", # instant is unmaintained, required by ethers
-]
+ignore = []
 
 [licenses]
 allow = [

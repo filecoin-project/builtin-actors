@@ -39,7 +39,7 @@ hex = { workspace = true, features = ["serde"] }
 lazy_static = { workspace = true }
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
 etk-asm = { workspace = true }
-ethers = { workspace = true }
+alloy-core = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
 once_cell = { workspace = true }
