@@ -109,7 +109,7 @@ blake2b_simd = "1.0"
 sha2 = "0.10"
 
 # EVM
-alloy-core = { version = "0.8.19", default-features = false, features = ["std", "sol-types"] }
+alloy-core = { version = "0.8.19", default-features = false, features = ["sol-types"] }
 uint = { version = "0.9.3", default-features = false }
 etk-asm = "^0.3.0"
 rlp = { version = "0.5.1", default-features = false }
