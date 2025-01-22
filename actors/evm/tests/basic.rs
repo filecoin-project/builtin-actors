@@ -206,7 +206,7 @@ fn test_push_last_byte() {
 #[test]
 fn transient_storage() {
     let transient_storage_bytecode =
-        hex::decode(include_str!("contracts/TransientStorageTest.bin")).unwrap();
+        hex::decode(include_str!("contracts/TransientStorageTest.hex")).unwrap();
     transient_storage_test(transient_storage_bytecode);
 }
 
