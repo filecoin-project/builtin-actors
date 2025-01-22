@@ -38,14 +38,14 @@ use fil_actor_market::{
     PublishStorageDealsReturn, SectorDeals, State as MarketState, MARKET_NOTIFY_DEAL_METHOD,
 };
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
-    max_prove_commit_duration, ChangeBeneficiaryParams, CompactCommD, DataActivationNotification,
-    DeadlineInfo, DeclareFaultsRecoveredParams, ExpirationExtension2,
-    ExtendSectorExpiration2Params, Method as MinerMethod, PieceActivationManifest, PoStPartition,
-    PowerPair, PreCommitSectorBatchParams2, ProveCommitAggregateParams, ProveCommitSectors3Params,
-    RecoveryDeclaration, SectorActivationManifest, SectorClaim, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
-    VerifiedAllocationKey, WithdrawBalanceParams, WithdrawBalanceReturn,
+    aggregate_prove_commit_network_fee, max_prove_commit_duration, ChangeBeneficiaryParams,
+    CompactCommD, DataActivationNotification, DeadlineInfo, DeclareFaultsRecoveredParams,
+    ExpirationExtension2, ExtendSectorExpiration2Params, Method as MinerMethod,
+    PieceActivationManifest, PoStPartition, PowerPair, PreCommitSectorBatchParams2,
+    ProveCommitAggregateParams, ProveCommitSectors3Params, RecoveryDeclaration,
+    SectorActivationManifest, SectorClaim, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
+    State as MinerState, SubmitWindowedPoStParams, VerifiedAllocationKey, WithdrawBalanceParams,
+    WithdrawBalanceReturn,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
@@ -269,12 +269,6 @@ pub fn precommit_sectors_v2_expect_code(
 
         if !sectors_with_deals.is_empty() {
             invocs.push(Expect::market_verify_deals(miner_id, sectors_with_deals.clone()));
-        }
-        if param_sectors.len() > 1 {
-            invocs.push(Expect::burn(
-                miner_id,
-                Some(aggregate_pre_commit_network_fee(param_sectors.len(), &TokenAmount::zero())),
-            ));
         }
         if expect_cron_enroll && msg_sector_idx_base == 0 {
             invocs.push(Expect::power_enrol_cron(miner_id));

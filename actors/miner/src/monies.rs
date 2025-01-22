@@ -108,7 +108,7 @@ pub mod detail {
     use super::*;
 
     lazy_static! {
-        pub static ref BATCH_BALANCER: TokenAmount = TokenAmount::from_nano(5);
+        pub static ref BATCH_BALANCER: TokenAmount = TokenAmount::from_nano(2);
     }
 
     // BR but zero values are clamped at 1 attofil
@@ -328,7 +328,6 @@ const BATCH_DISCOUNT_DENOM: u32 = 20;
 
 lazy_static! {
     static ref ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE: BigInt = BigInt::from(49299973);
-    static ref ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE: BigInt = BigInt::from(16433324);
 }
 
 pub fn aggregate_prove_commit_network_fee(
@@ -336,13 +335,6 @@ pub fn aggregate_prove_commit_network_fee(
     base_fee: &TokenAmount,
 ) -> TokenAmount {
     aggregate_network_fee(aggregate_size, &ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE, base_fee)
-}
-
-pub fn aggregate_pre_commit_network_fee(
-    aggregate_size: usize,
-    base_fee: &TokenAmount,
-) -> TokenAmount {
-    aggregate_network_fee(aggregate_size, &ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE, base_fee)
 }
 
 pub fn aggregate_network_fee(

@@ -3,7 +3,7 @@ use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::{bigint::Zero, clock::ChainEpoch, econ::TokenAmount, ActorID};
+use fvm_shared::{clock::ChainEpoch, ActorID};
 
 use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
@@ -134,7 +134,7 @@ fn reject_precommit_deals() {
         &[&[piece_size], &[piece_size]],
     );
     precommits[0].deal_ids.push(1);
-    h.pre_commit_sector_batch_v2(&rt, &precommits, true, &TokenAmount::zero()).unwrap();
+    h.pre_commit_sector_batch_v2(&rt, &precommits, true).unwrap();
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
 
     let manifests: Vec<SectorActivationManifest> = precommits
@@ -274,7 +274,7 @@ fn setup_precommits(
         sector_expiry,
         &piece_sizes,
     );
-    h.pre_commit_sector_batch_v2(&rt, &precommits, true, &TokenAmount::zero()).unwrap();
+    h.pre_commit_sector_batch_v2(&rt, &precommits, true).unwrap();
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
 
     let manifests = precommits

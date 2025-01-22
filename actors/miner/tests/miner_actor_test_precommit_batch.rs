@@ -1,7 +1,7 @@
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, max_prove_commit_duration, pre_commit_deposit_for_power,
-    qa_power_max, PreCommitSectorBatchParams, PreCommitSectorParams, State,
+    max_prove_commit_duration, pre_commit_deposit_for_power, qa_power_max,
+    PreCommitSectorBatchParams, PreCommitSectorParams, State,
 };
 use fil_actor_power::Method as PowerMethod;
 use fil_actors_runtime::runtime::Policy;
@@ -36,7 +36,6 @@ struct DealSpec {
 fn assert_simple_batch(
     batch_size: usize,
     balance_surplus: TokenAmount,
-    base_fee: TokenAmount,
     deal_specs: &[DealSpec],
     exit_code: ExitCode,
     error_str: &str,
@@ -81,21 +80,14 @@ fn assert_simple_batch(
             &pwr_estimate,
         );
     }
-    let net_fee = aggregate_pre_commit_network_fee(batch_size, &base_fee);
     let total_deposit: TokenAmount = deposits.iter().sum();
-    let total_balance = net_fee + &total_deposit;
-    rt.set_balance(total_balance + balance_surplus);
+    rt.set_balance(&total_deposit + balance_surplus);
 
     if exit_code != ExitCode::OK {
         expect_abort_contains_message(
             exit_code,
             error_str,
-            h.pre_commit_sector_batch(
-                &rt,
-                PreCommitSectorBatchParams { sectors },
-                &conf,
-                &base_fee,
-            ),
+            h.pre_commit_sector_batch(&rt, PreCommitSectorBatchParams { sectors }, &conf),
         );
         rt.reset();
 
@@ -110,7 +102,6 @@ fn assert_simple_batch(
         &rt,
         PreCommitSectorBatchParams { sectors: sectors.clone() },
         &conf,
-        &base_fee,
     );
 
     // Check precommits
@@ -156,24 +147,23 @@ mod miner_actor_precommit_batch {
 
     #[test]
     fn one_sector() {
-        assert_simple_batch(1, TokenAmount::zero(), TokenAmount::zero(), &[], ExitCode::OK, "");
+        assert_simple_batch(1, TokenAmount::zero(), &[], ExitCode::OK, "");
     }
 
     #[test]
     fn thirty_two_sectors() {
-        assert_simple_batch(32, TokenAmount::zero(), TokenAmount::zero(), &[], ExitCode::OK, "");
+        assert_simple_batch(32, TokenAmount::zero(), &[], ExitCode::OK, "");
     }
 
     #[test]
     fn max_sectors() {
-        assert_simple_batch(256, TokenAmount::zero(), TokenAmount::zero(), &[], ExitCode::OK, "");
+        assert_simple_batch(256, TokenAmount::zero(), &[], ExitCode::OK, "");
     }
 
     #[test]
     fn one_deal() {
         assert_simple_batch(
             3,
-            TokenAmount::zero(),
             TokenAmount::zero(),
             &[DealSpec { ids: vec![1], commd: Some(make_piece_cid("1".as_bytes())) }],
             ExitCode::OK,
@@ -184,7 +174,6 @@ mod miner_actor_precommit_batch {
     fn many_deals() {
         assert_simple_batch(
             3,
-            TokenAmount::zero(),
             TokenAmount::zero(),
             &[
                 DealSpec { ids: vec![1], commd: Some(make_piece_cid("1".as_bytes())) },
@@ -201,7 +190,6 @@ mod miner_actor_precommit_batch {
         assert_simple_batch(
             0,
             TokenAmount::zero(),
-            TokenAmount::zero(),
             &[],
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "batch empty",
@@ -213,7 +201,6 @@ mod miner_actor_precommit_batch {
         assert_simple_batch(
             Policy::default().pre_commit_sector_batch_max_size + 1,
             TokenAmount::zero(),
-            TokenAmount::zero(),
             &[],
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "batch of 257 too large",
@@ -224,7 +211,6 @@ mod miner_actor_precommit_batch {
         assert_simple_batch(
             10,
             TokenAmount::from_atto(-1),
-            TokenAmount::zero(),
             &[],
             ExitCode::USR_INSUFFICIENT_FUNDS,
             "insufficient funds",
@@ -267,7 +253,6 @@ mod miner_actor_precommit_batch {
                 &rt,
                 PreCommitSectorBatchParams { sectors },
                 &PreCommitBatchConfig { sector_unsealed_cid: vec![], first_for_miner: true },
-                &TokenAmount::zero(),
             ),
         );
         rt.reset();
@@ -304,7 +289,6 @@ mod miner_actor_precommit_batch {
                 &rt,
                 PreCommitSectorBatchParams { sectors },
                 &PreCommitBatchConfig { sector_unsealed_cid: vec![], first_for_miner: true },
-                &TokenAmount::zero(),
             ),
         );
         rt.reset();
