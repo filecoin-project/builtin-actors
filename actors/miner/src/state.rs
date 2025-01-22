@@ -86,7 +86,7 @@ pub struct State {
     ///
     /// Sectors are removed from this AMT when the partition to which the
     /// sector belongs is compacted.
-    pub sectors: Cid, // Array, AMT[SectorNumber]SectorOnChainInfo (sparse)
+    pub sectors: Cid, // Array, AMT[SectorNumber]*SectorOnChainInfo (sparse)
 
     /// The first epoch in this miner's current proving period. This is the first epoch in which a PoSt for a
     /// partition at the miner's first deadline may arrive. Alternatively, it is after the last epoch at which
@@ -141,15 +141,11 @@ impl State {
                         "failed to construct empty precommits array",
                     )
                 })?;
-        let empty_sectors_array =
-            Array::<SectorOnChainInfo, BS>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH)
-                .flush()
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to construct sectors array",
-                    )
-                })?;
+        let empty_sectors_array = Array::<Cid, BS>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH)
+            .flush()
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct sectors array")
+            })?;
         let empty_bitfield = store.put_cbor(&BitField::new(), Code::Blake2b256).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct empty bitfield")
         })?;
@@ -422,7 +418,7 @@ impl State {
         F: FnMut(&SectorOnChainInfo) -> anyhow::Result<()>,
     {
         let sectors = Sectors::load(store, &self.sectors)?;
-        sectors.amt.for_each(|_, v| f(v))?;
+        sectors.for_each(|_, v| f(v))?;
         Ok(())
     }
 
