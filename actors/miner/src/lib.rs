@@ -46,7 +46,7 @@ pub use expiration_queue::*;
 use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::reward::{FilterEstimate, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
+use fil_actors_runtime::runtime::policy_constants::{MAX_SECTOR_NUMBER, MINIMUM_CONSENSUS_POWER};
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, util, ActorContext,
@@ -181,6 +181,14 @@ impl Actor {
         check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
         check_valid_post_proof_type(rt.policy(), params.window_post_proof_type)?;
 
+        let balance = rt.current_balance();
+        let deposit = calculate_create_miner_deposit(rt, params.network_qap)?;
+        if balance < deposit {
+            return Err(actor_error!(insufficient_funds;
+                "not enough balance to lock for create miner deposit: \
+                sent balance {} < deposit {}", balance.atto(), deposit.atto()));
+        }
+
         let owner = rt.resolve_address(&params.owner).ok_or_else(|| {
             actor_error!(illegal_argument, "unable to resolve owner address: {}", params.owner)
         })?;
@@ -239,7 +247,10 @@ impl Actor {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
         })?;
 
-        let st = State::new(policy, rt.store(), info_cid, period_start, deadline_idx)?;
+        let store = rt.store();
+        let mut st = State::new(policy, store, info_cid, period_start, deadline_idx)?;
+        st.add_locked_funds(store, rt.curr_epoch(), &deposit, &REWARD_VESTING_SPEC)
+            .map_err(|e| actor_error!(illegal_state, e))?;
         rt.create(&st)?;
         Ok(())
     }
@@ -756,6 +767,7 @@ impl Actor {
 
         Ok(())
     }
+
     /// Checks state of the corresponding sector pre-commitments and verifies aggregate proof of replication
     /// of these sectors. If valid, the sectors' deals are activated, sectors are assigned a deadline and charged pledge
     /// and precommit state is removed.
@@ -5640,6 +5652,53 @@ fn activate_new_sector_infos(
     notify_pledge_changed(rt, &(total_pledge - newly_vested))?;
 
     Ok(())
+}
+
+/// Calculate create miner deposit by MINIMUM_CONSENSUS_POWER x StateMinerInitialPledgeCollateral
+/// See FIP-0077, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0077.md
+pub fn calculate_create_miner_deposit(
+    rt: &impl Runtime,
+    network_qap: FilterEstimate,
+) -> Result<TokenAmount, ActorError> {
+    // set network pledge inputs
+    let rew = request_current_epoch_block_reward(rt)?;
+    let pwr = request_current_total_power(rt)?;
+    let circulating_supply = rt.total_fil_circ_supply();
+    let pledge_inputs = NetworkPledgeInputs {
+        network_qap,
+        network_baseline: rew.this_epoch_baseline_power,
+        circulating_supply,
+        epoch_reward: rew.this_epoch_reward_smoothed,
+        epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
+        ramp_duration_epochs: pwr.ramp_duration_epochs,
+    };
+
+    /// set sector size with min power
+    #[cfg(feature = "min-power-2k")]
+    let sector_size = SectorSize::_2KiB;
+    #[cfg(feature = "min-power-2g")]
+    let sector_size = SectorSize::_8MiB;
+    #[cfg(feature = "min-power-32g")]
+    let sector_size = SectorSize::_512MiB;
+    #[cfg(not(any(
+        feature = "min-power-2k",
+        feature = "min-power-2g",
+        feature = "min-power-32g"
+    )))]
+    let sector_size = SectorSize::_32GiB;
+
+    let sector_number = MINIMUM_CONSENSUS_POWER / sector_size as i64;
+    let power = qa_power_for_weight(sector_size, MIN_SECTOR_EXPIRATION, &BigInt::zero());
+    let sector_initial_pledge = initial_pledge_for_power(
+        &power,
+        &pledge_inputs.network_baseline,
+        &pledge_inputs.epoch_reward,
+        &pledge_inputs.network_qap,
+        &pledge_inputs.circulating_supply,
+        pledge_inputs.epochs_since_ramp_start,
+        pledge_inputs.ramp_duration_epochs,
+    );
+    Ok(sector_initial_pledge * sector_number)
 }
 
 pub struct SectorPiecesActivationInput {
