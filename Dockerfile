@@ -7,6 +7,9 @@ WORKDIR /usr/src/builtin-actors
 COPY ./rust-toolchain.toml .
 RUN rustup show
 
-COPY . .
+# Then checkout a clean copy of the repo.
+RUN --mount=type=bind,rw,target=/tmp/repo \
+    echo "Building $(git -C /tmp/repo rev-parse HEAD)" && \
+    git --git-dir /tmp/repo/.git --work-tree . checkout -f HEAD
 
 ENTRYPOINT ["/bin/bash", "-c"]
