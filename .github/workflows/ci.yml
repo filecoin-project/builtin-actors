@@ -51,4 +51,4 @@ jobs:
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
-        cargo run --locked -- -o output/builtin-actors.car
+        make bundle-repro
