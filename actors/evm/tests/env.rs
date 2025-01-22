@@ -1,8 +1,4 @@
-use ethers::{
-    abi::Detokenize,
-    prelude::{builders::ContractCall, decode_function_data},
-    providers::{MockProvider, Provider},
-};
+use alloy_core::sol_types::SolCall;
 
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
@@ -14,9 +10,6 @@ use fil_actors_runtime::{
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::address::Address;
-
-/// Alias for a call we will never send to the blockchain.
-pub type TestContractCall<R> = ContractCall<Provider<MockProvider>, R>;
 
 pub struct TestEnv {
     evm_address: Address,
@@ -75,11 +68,8 @@ impl TestEnv {
         self.runtime.verify();
     }
 
-    /// Take a function that calls an ABI method to return a `ContractCall`.
-    /// Then, instead of calling the contract on-chain, run it through our
-    /// EVM interpreter in the test runtime. Finally parse the results.
-    pub fn call<R: Detokenize>(&mut self, call: TestContractCall<R>) -> R {
-        let input = call.calldata().expect("Should have calldata.");
+    pub fn call<C: SolCall>(&mut self, call: C) -> C::Return {
+        let input = call.abi_encode();
         let input =
             IpldBlock::serialize_cbor(&BytesSer(&input)).expect("failed to serialize input data");
         self.runtime.expect_validate_caller_any();
@@ -92,6 +82,6 @@ impl TestEnv {
             .deserialize()
             .unwrap();
 
-        decode_function_data(&call.function, result, false).unwrap()
+        C::abi_decode_returns(&result, true).unwrap()
     }
 }
