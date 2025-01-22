@@ -29,7 +29,7 @@ bundle-repro: docker-builder
 # Create all canonical network bundles
 all-bundles-repro: bundle-mainnet-repro bundle-caterpillarnet-repro bundle-butterflynet-repro bundle-calibrationnet-repro bundle-devnet-repro bundle-testing-repro
 
-bundle-mainnet: deps-build
+bundle-mainnet:
 	BUILD_FIL_NETWORK=mainnet cargo run -- -o output/builtin-actors-mainnet.car
 
 bundle-mainnet-repro: docker-builder
