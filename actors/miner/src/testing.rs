@@ -323,51 +323,60 @@ fn check_precommits<BS: Blockstore>(
 
     // invert pre-commit clean up queue into a lookup by sector number
     let mut cleanup_epochs: BTreeMap<u64, ChainEpoch> = BTreeMap::new();
-    match BitFieldQueue::new(store, &state.pre_committed_sectors_cleanup, quant) {
-        Ok(queue) => {
-            let ret = queue.amt.for_each(|epoch, expiration_bitfield| {
-                let epoch = epoch as ChainEpoch;
-                let quantized = quant.quantize_up(epoch);
-                acc.require(
-                    quantized == epoch,
-                    format!("pre-commit expiration {epoch} is not quantized"),
-                );
+    if let Some(cleanup_cid) = &state.pre_committed_sectors_cleanup {
+        match BitFieldQueue::load(store, cleanup_cid, quant) {
+            Ok(queue) => {
+                let ret = queue.amt.for_each(|epoch, expiration_bitfield| {
+                    let epoch = epoch as ChainEpoch;
+                    let quantized = quant.quantize_up(epoch);
+                    acc.require(
+                        quantized == epoch,
+                        format!("pre-commit expiration {epoch} is not quantized"),
+                    );
 
-                expiration_bitfield.iter().for_each(|sector_number| {
-                    cleanup_epochs.insert(sector_number, epoch);
+                    expiration_bitfield.iter().for_each(|sector_number| {
+                        cleanup_epochs.insert(sector_number, epoch);
+                    });
+                    Ok(())
                 });
-                Ok(())
-            });
-            acc.require_no_error(ret, "error iterating pre-commit clean-up queue");
-        }
-        Err(e) => {
-            acc.add(format!("error loading pre-commit clean-up queue: {e}"));
+                acc.require_no_error(ret, "error iterating pre-commit clean-up queue");
+            }
+            Err(e) => {
+                acc.add(format!("error loading pre-commit clean-up queue: {e}"));
+            }
         }
     };
 
     let mut precommit_total = TokenAmount::zero();
 
-    let precommited_sectors =
-        PreCommitMap::load(store, &state.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits");
-    match precommited_sectors {
-        Ok(precommited_sectors) => {
-            let ret = precommited_sectors.for_each(|sector_number, precommit| {
-                acc.require(
-                    allocated_sectors.contains(&sector_number),
-                    format!("pre-commited sector number has not been allocated {sector_number}"),
-                );
+    if let Some(sectors_cid) = &state.pre_committed_sectors {
+        let precommited_sectors =
+            PreCommitMap::load(store, sectors_cid, PRECOMMIT_CONFIG, "precommits");
+        match precommited_sectors {
+            Ok(precommited_sectors) => {
+                let ret = precommited_sectors.for_each(|sector_number, precommit| {
+                    acc.require(
+                        allocated_sectors.contains(&sector_number),
+                        format!(
+                            "pre-commited sector number has not been allocated {sector_number}"
+                        ),
+                    );
 
-                acc.require(
-                    cleanup_epochs.contains_key(&sector_number),
-                    format!("no clean-up epoch for pre-commit at {}", precommit.pre_commit_epoch),
-                );
-                precommit_total += &precommit.pre_commit_deposit;
-                Ok(())
-            });
-            acc.require_no_error(ret, "error iterating pre-commited sectors");
-        }
-        Err(e) => {
-            acc.add(format!("error loading precommited_sectors: {e}"));
+                    acc.require(
+                        cleanup_epochs.contains_key(&sector_number),
+                        format!(
+                            "no clean-up epoch for pre-commit at {}",
+                            precommit.pre_commit_epoch
+                        ),
+                    );
+                    precommit_total += &precommit.pre_commit_deposit;
+                    Ok(())
+                });
+                acc.require_no_error(ret, "error iterating pre-commited sectors");
+            }
+            Err(e) => {
+                acc.add(format!("error loading precommited_sectors: {e}"));
+            }
         }
     };
 
@@ -561,7 +570,7 @@ impl PartitionStateSummary {
 
         // validate the early termination queue
         let early_termination_count =
-            match BitFieldQueue::new(store, &partition.early_terminated, NO_QUANTIZATION) {
+            match BitFieldQueue::load(store, &partition.early_terminated, NO_QUANTIZATION) {
                 Ok(queue) => check_early_termination_queue(queue, &partition.terminated, acc),
                 Err(err) => {
                     acc.add(format!("error loading early termination queue: {err}"));
@@ -959,7 +968,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
 
     // Validate partition expiration queue contains an entry for each partition and epoch with an expiration.
     // The queue may be a superset of the partitions that have expirations because we never remove from it.
-    match BitFieldQueue::new(store, &deadline.expirations_epochs, quant) {
+    match BitFieldQueue::load(store, &deadline.expirations_epochs, quant) {
         Ok(expiration_queue) => {
             for (epoch, expiring_idx) in partitions_with_expirations {
                 match expiration_queue.amt.get(epoch as u64) {

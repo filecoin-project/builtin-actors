@@ -2297,20 +2297,22 @@ impl ActorHarness {
         rt: &MockRuntime,
         st: &State,
     ) -> HashMap<ChainEpoch, Vec<u64>> {
-        let quant = st.quant_spec_every_deadline(&rt.policy);
-        let queue = BitFieldQueue::new(&rt.store, &st.pre_committed_sectors_cleanup, quant)
-            .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))
-            .unwrap();
         let mut expirations: HashMap<ChainEpoch, Vec<u64>> = HashMap::new();
-        queue
-            .amt
-            .for_each(|epoch, bf| {
-                let expanded: Vec<u64> =
-                    bf.bounded_iter(rt.policy.addressed_sectors_max).unwrap().collect();
-                expirations.insert(epoch.try_into().unwrap(), expanded);
-                Ok(())
-            })
-            .unwrap();
+        if let Some(sectors_cid) = &st.pre_committed_sectors_cleanup {
+            let quant = st.quant_spec_every_deadline(&rt.policy);
+            let queue = BitFieldQueue::load(&rt.store, sectors_cid, quant)
+                .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))
+                .unwrap();
+            queue
+                .amt
+                .for_each(|epoch, bf| {
+                    let expanded: Vec<u64> =
+                        bf.bounded_iter(rt.policy.addressed_sectors_max).unwrap().collect();
+                    expirations.insert(epoch.try_into().unwrap(), expanded);
+                    Ok(())
+                })
+                .unwrap();
+        }
         expirations
     }
 
@@ -2419,7 +2421,7 @@ impl ActorHarness {
         deadline: &Deadline,
     ) -> HashMap<ChainEpoch, Vec<u64>> {
         let queue =
-            BitFieldQueue::new(&rt.store, &deadline.expirations_epochs, NO_QUANTIZATION).unwrap();
+            BitFieldQueue::load(&rt.store, &deadline.expirations_epochs, NO_QUANTIZATION).unwrap();
         let mut expirations = HashMap::new();
         queue
             .amt

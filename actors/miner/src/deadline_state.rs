@@ -314,7 +314,7 @@ impl Deadline {
             return Ok(());
         }
 
-        let mut queue = BitFieldQueue::new(store, &self.expirations_epochs, quant)
+        let mut queue = BitFieldQueue::load(store, &self.expirations_epochs, quant)
             .map_err(|e| e.downcast_wrap("failed to load expiration queue"))?;
         queue
             .add_to_queue_values(expiration_epoch, partitions.iter().copied())
@@ -475,9 +475,8 @@ impl Deadline {
         self.partitions = partitions.flush()?;
 
         // Next, update the expiration queue.
-        let mut deadline_expirations =
-            BitFieldQueue::new(store, &self.expirations_epochs, quant)
-                .map_err(|e| e.downcast_wrap("failed to load expiration epochs"))?;
+        let mut deadline_expirations = BitFieldQueue::load(store, &self.expirations_epochs, quant)
+            .map_err(|e| e.downcast_wrap("failed to load expiration epochs"))?;
         deadline_expirations
             .add_many_to_queue_values(partition_deadline_updates.iter().copied())
             .map_err(|e| e.downcast_wrap("failed to add expirations for new deadlines"))?;
@@ -552,7 +551,7 @@ impl Deadline {
         until: ChainEpoch,
         quant: QuantSpec,
     ) -> anyhow::Result<(BitField, bool)> {
-        let mut expirations = BitFieldQueue::new(store, &self.expirations_epochs, quant)?;
+        let mut expirations = BitFieldQueue::load(store, &self.expirations_epochs, quant)?;
         let (popped, modified) = expirations
             .pop_until(until)
             .map_err(|e| e.downcast_wrap("failed to pop expiring partitions"))?;
@@ -741,7 +740,7 @@ impl Deadline {
         self.total_sectors -= removed_live_sectors + removed_dead_sectors;
 
         // Update expiration bitfields.
-        let mut expiration_epochs = BitFieldQueue::new(store, &self.expirations_epochs, quant)
+        let mut expiration_epochs = BitFieldQueue::load(store, &self.expirations_epochs, quant)
             .map_err(|e| e.downcast_wrap("failed to load expiration queue"))?;
 
         expiration_epochs.cut(to_remove).map_err(|e| {
