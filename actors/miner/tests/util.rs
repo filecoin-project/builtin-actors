@@ -2174,7 +2174,6 @@ impl ActorHarness {
                             let skipped_proven = &to_skip - &part.unproven;
                             let mut skipped_proven_sector_infos = Vec::new();
                             sector_arr
-                                .amt
                                 .for_each(|i, sector| {
                                     if skipped_proven.get(i) {
                                         skipped_proven_sector_infos.push(sector.clone());
@@ -2188,7 +2187,6 @@ impl ActorHarness {
                             let new_proven = &part.unproven - &to_skip;
                             let mut new_proven_infos = Vec::new();
                             sector_arr
-                                .amt
                                 .for_each(|i, sector| {
                                     if new_proven.get(i) {
                                         new_proven_infos.push(sector.clone());

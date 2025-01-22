@@ -10,18 +10,21 @@ use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array, AsActorE
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::CborStore;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
+use multihash_codetable::Code;
 
 use super::SectorOnChainInfo;
 
 pub struct Sectors<'db, BS> {
-    pub amt: Array<'db, SectorOnChainInfo, BS>,
+    pub amt: Array<'db, Cid, BS>,
+    store: &'db BS,
 }
 
 impl<'db, BS: Blockstore> Sectors<'db, BS> {
     pub fn load(store: &'db BS, root: &Cid) -> Result<Self, AmtError> {
-        Ok(Self { amt: Array::load(root, store)? })
+        Ok(Self { amt: Array::load(root, store)?, store })
     }
 
     pub fn load_sector(
@@ -30,7 +33,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
     ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
         let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
         for sector_number in sector_numbers.iter() {
-            let sector_on_chain = self
+            let c = self
                 .amt
                 .get(sector_number)
                 .map_err(|e| {
@@ -41,6 +44,16 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
                 })?
                 .cloned()
                 .ok_or_else(|| actor_error!(not_found; "sector not found: {}", sector_number))?;
+            let sector_on_chain = self
+                .store
+                .get_cbor::<SectorOnChainInfo>(&c)
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to load sector {}", sector_number),
+                    )
+                })?
+                .ok_or_else(|| actor_error!(not_found; "sector not found: {}", sector_number))?;
             sector_infos.push(sector_on_chain);
         }
         Ok(sector_infos)
@@ -50,26 +63,50 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         &self,
         sector_number: SectorNumber,
     ) -> Result<Option<SectorOnChainInfo>, ActorError> {
-        Ok(self
-            .amt
-            .get(sector_number)
-            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("failed to get sector {}", sector_number)
-            })?
-            .cloned())
+        match self.amt.get(sector_number).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to get sector {}", sector_number)
+        })? {
+            Some(c) => match self.store.get_cbor::<SectorOnChainInfo>(c) {
+                Ok(Some(sector_info)) => Ok(Some(sector_info)),
+                Ok(None) => Ok(None),
+                Err(e) => Err(e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to load sector {}", sector_number),
+                )),
+            },
+            None => Ok(None),
+        }
+    }
+
+    pub fn for_each<F>(&self, mut f: F) -> anyhow::Result<()>
+    where
+        F: FnMut(SectorNumber, &SectorOnChainInfo) -> anyhow::Result<()>,
+    {
+        self.amt.for_each(|i, c| {
+            let sector_number = i as SectorNumber;
+            let sector_info = self
+                .store
+                .get_cbor::<SectorOnChainInfo>(c)
+                .map_err(|e| anyhow!(e.to_string()))?
+                .ok_or_else(|| anyhow!("sector info not found for sector {}", sector_number))?;
+            f(sector_number, &sector_info)
+        })?;
+        Ok(())
     }
 
     pub fn store(&mut self, infos: Vec<SectorOnChainInfo>) -> anyhow::Result<()> {
         for info in infos {
             let sector_number = info.sector_number;
-
             if sector_number > MAX_SECTOR_NUMBER {
                 return Err(anyhow!("sector number {} out of range", info.sector_number));
             }
 
-            self.amt.set(sector_number, info).map_err(|e| {
-                e.downcast_wrap(format!("failed to store sector {}", sector_number))
-            })?;
+            match self.store.put_cbor(&info, Code::Blake2b256) {
+                Ok(c) => self.amt.set(sector_number, c).map_err(|e| {
+                    e.downcast_wrap(format!("failed to store sector {}", sector_number))
+                })?,
+                Err(e) => return Err(anyhow!("failed to store sector {}: {}", sector_number, e)),
+            }
         }
 
         Ok(())
