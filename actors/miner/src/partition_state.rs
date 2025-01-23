@@ -458,7 +458,7 @@ impl Partition {
         sectors: &BitField,
     ) -> anyhow::Result<()> {
         let mut early_termination_queue =
-            BitFieldQueue::new(store, &self.early_terminated, NO_QUANTIZATION)
+            BitFieldQueue::load(store, &self.early_terminated, NO_QUANTIZATION)
                 .map_err(|e| e.downcast_wrap("failed to load early termination queue"))?;
 
         early_termination_queue
@@ -644,7 +644,7 @@ impl Partition {
     ) -> anyhow::Result<(TerminationResult, /* has more */ bool)> {
         // Load early terminations.
         let mut early_terminated_queue =
-            BitFieldQueue::new(store, &self.early_terminated, NO_QUANTIZATION)?;
+            BitFieldQueue::load(store, &self.early_terminated, NO_QUANTIZATION)?;
 
         let mut processed = Vec::<u64>::new();
         let mut remaining: Option<(BitField, ChainEpoch)> = None;

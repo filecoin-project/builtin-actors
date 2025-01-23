@@ -42,7 +42,7 @@ use super::{
 pub type PreCommitMap<BS> = Map2<BS, SectorNumber, SectorPreCommitOnChainInfo>;
 pub const PRECOMMIT_CONFIG: Config = Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
-const PRECOMMIT_EXPIRY_AMT_BITWIDTH: u32 = 6;
+pub const PRECOMMIT_EXPIRY_AMT_BITWIDTH: u32 = 6;
 pub const SECTORS_AMT_BITWIDTH: u32 = 5;
 
 /// Balance of Miner Actor should be greater than or equal to
@@ -74,10 +74,10 @@ pub struct State {
 
     /// Sectors that have been pre-committed but not yet proven.
     /// Map, HAMT<SectorNumber, SectorPreCommitOnChainInfo>
-    pub pre_committed_sectors: Cid,
+    pub pre_committed_sectors: Option<Cid>,
 
     // PreCommittedSectorsCleanUp maintains the state required to cleanup expired PreCommittedSectors.
-    pub pre_committed_sectors_cleanup: Cid, // BitFieldQueue (AMT[Epoch]*BitField)
+    pub pre_committed_sectors_cleanup: Option<Cid>, // BitFieldQueue (AMT[Epoch]*BitField)
 
     /// Allocated sector IDs. Sector IDs can never be reused once allocated.
     pub allocated_sectors: Cid, // BitField
@@ -129,18 +129,6 @@ impl State {
         period_start: ChainEpoch,
         deadline_idx: u64,
     ) -> Result<Self, ActorError> {
-        let empty_precommit_map =
-            PreCommitMap::empty(store, PRECOMMIT_CONFIG, "precommits").flush()?;
-
-        let empty_precommits_cleanup_array =
-            Array::<BitField, BS>::new_with_bit_width(store, PRECOMMIT_EXPIRY_AMT_BITWIDTH)
-                .flush()
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to construct empty precommits array",
-                    )
-                })?;
         let empty_sectors_array =
             Array::<SectorOnChainInfo, BS>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH)
                 .flush()
@@ -180,7 +168,7 @@ impl State {
             initial_pledge: TokenAmount::default(),
             fee_debt: TokenAmount::default(),
 
-            pre_committed_sectors: empty_precommit_map,
+            pre_committed_sectors: None,
             allocated_sectors: empty_bitfield,
             sectors: empty_sectors_array,
             proving_period_start: period_start,
@@ -188,7 +176,7 @@ impl State {
             deadlines: empty_deadlines,
             early_terminations: BitField::new(),
             deadline_cron_active: false,
-            pre_committed_sectors_cleanup: empty_precommits_cleanup_array,
+            pre_committed_sectors_cleanup: None,
         })
     }
 
@@ -289,19 +277,22 @@ impl State {
         store: &BS,
         precommits: Vec<SectorPreCommitOnChainInfo>,
     ) -> anyhow::Result<()> {
-        let mut precommitted =
-            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
+        let mut precommitted = match self.pre_committed_sectors {
+            Some(cid) => PreCommitMap::load(store, &cid, PRECOMMIT_CONFIG, "precommits")?,
+            None => PreCommitMap::empty(store, PRECOMMIT_CONFIG, "precommits"),
+        };
+
         for precommit in precommits.into_iter() {
             let sector_no = precommit.info.sector_number;
             let modified = precommitted
                 .set_if_absent(&sector_no, precommit)
                 .with_context(|| format!("storing precommit for {}", sector_no))?;
             if !modified {
-                return Err(anyhow!("sector {} already pre-commited", sector_no));
+                return Err(anyhow!("sector {} already pre-committed", sector_no));
             }
         }
 
-        self.pre_committed_sectors = precommitted.flush()?;
+        self.pre_committed_sectors = Some(precommitted.flush()?);
         Ok(())
     }
 
@@ -310,9 +301,13 @@ impl State {
         store: &BS,
         sector_num: SectorNumber,
     ) -> Result<Option<SectorPreCommitOnChainInfo>, ActorError> {
-        let precommitted =
-            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
-        Ok(precommitted.get(&sector_num)?.cloned())
+        match &self.pre_committed_sectors {
+            Some(cid) => {
+                let precommitted = PreCommitMap::load(store, cid, PRECOMMIT_CONFIG, "precommits")?;
+                Ok(precommitted.get(&sector_num)?.cloned())
+            }
+            None => Ok(None),
+        }
     }
 
     /// Gets and returns the requested pre-committed sectors, skipping missing sectors.
@@ -321,23 +316,27 @@ impl State {
         store: &BS,
         sector_numbers: &[SectorNumber],
     ) -> anyhow::Result<Vec<SectorPreCommitOnChainInfo>> {
-        let precommitted =
-            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
-        let mut result = Vec::with_capacity(sector_numbers.len());
+        match &self.pre_committed_sectors {
+            Some(cid) => {
+                let precommitted = PreCommitMap::load(store, cid, PRECOMMIT_CONFIG, "precommits")?;
+                let mut result = Vec::with_capacity(sector_numbers.len());
 
-        for &sector_number in sector_numbers {
-            let info = match precommitted
-                .get(&sector_number)
-                .with_context(|| format!("loading precommit {}", sector_number))?
-            {
-                Some(info) => info.clone(),
-                None => continue,
-            };
+                for &sector_number in sector_numbers {
+                    let info = match precommitted
+                        .get(&sector_number)
+                        .with_context(|| format!("loading precommit {}", sector_number))?
+                    {
+                        Some(info) => info.clone(),
+                        None => continue,
+                    };
 
-            result.push(info);
+                    result.push(info);
+                }
+
+                Ok(result)
+            }
+            None => Ok(Vec::new()),
         }
-
-        Ok(result)
     }
 
     pub fn delete_precommitted_sectors<BS: Blockstore>(
@@ -345,17 +344,28 @@ impl State {
         store: &BS,
         sector_nums: &[SectorNumber],
     ) -> Result<(), ActorError> {
-        let mut precommitted =
-            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
-        for &sector_num in sector_nums {
-            let prev_entry = precommitted.delete(&sector_num)?;
-            if prev_entry.is_none() {
-                return Err(actor_error!(illegal_state, "sector {} not pre-committed", sector_num));
+        match &self.pre_committed_sectors {
+            Some(cid) => {
+                let mut precommitted =
+                    PreCommitMap::load(store, cid, PRECOMMIT_CONFIG, "precommits")?;
+                for &sector_num in sector_nums {
+                    let prev_entry = precommitted.delete(&sector_num)?;
+                    if prev_entry.is_none() {
+                        return Err(actor_error!(
+                            illegal_state,
+                            "sector {} not pre-committed",
+                            sector_num
+                        ));
+                    }
+                }
+                match precommitted.is_empty() {
+                    true => self.pre_committed_sectors = None,
+                    false => self.pre_committed_sectors = Some(precommitted.flush()?),
+                }
+                Ok(())
             }
+            None => Err(actor_error!(illegal_state, "no pre-committed sectors to delete")),
         }
-
-        self.pre_committed_sectors = precommitted.flush()?;
-        Ok(())
     }
 
     pub fn has_sector_number<BS: Blockstore>(
@@ -1059,12 +1069,14 @@ impl State {
     ) -> anyhow::Result<()> {
         // Load BitField Queue for sector expiry
         let quant = self.quant_spec_every_deadline(policy);
-        let mut queue =
-            super::BitFieldQueue::new(store, &self.pre_committed_sectors_cleanup, quant)
-                .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))?;
+        let mut queue = match self.pre_committed_sectors_cleanup {
+            Some(ref cid) => BitFieldQueue::load(store, cid, quant)
+                .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))?,
+            None => BitFieldQueue::new(store, quant),
+        };
 
         queue.add_many_to_queue_values(cleanup_events.into_iter())?;
-        self.pre_committed_sectors_cleanup = queue.amt.flush()?;
+        self.pre_committed_sectors_cleanup = Some(queue.amt.flush()?);
         Ok(())
     }
 
@@ -1076,50 +1088,55 @@ impl State {
     ) -> anyhow::Result<TokenAmount> {
         let mut deposit_to_burn = TokenAmount::zero();
 
-        // cleanup expired pre-committed sectors
-        let mut cleanup_queue = BitFieldQueue::new(
-            store,
-            &self.pre_committed_sectors_cleanup,
-            self.quant_spec_every_deadline(policy),
-        )?;
+        if let Some(ref cleanup_cid) = self.pre_committed_sectors_cleanup {
+            // cleanup expired pre-committed sectors
+            let mut cleanup_queue =
+                BitFieldQueue::load(store, cleanup_cid, self.quant_spec_every_deadline(policy))?;
 
-        let (sectors, modified) = cleanup_queue.pop_until(current_epoch)?;
+            let (sectors, modified) = cleanup_queue.pop_until(current_epoch)?;
 
-        if modified {
-            self.pre_committed_sectors_cleanup = cleanup_queue.amt.flush()?;
-        }
+            if modified {
+                if cleanup_queue.amt.count() == 0 {
+                    self.pre_committed_sectors_cleanup = None;
+                } else {
+                    self.pre_committed_sectors_cleanup = Some(cleanup_queue.amt.flush()?);
+                }
+            }
 
-        let mut precommits_to_delete = Vec::new();
-        let precommitted =
-            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
+            if let Some(ref sectors_cid) = self.pre_committed_sectors {
+                let mut precommits_to_delete = Vec::new();
+                let precommitted =
+                    PreCommitMap::load(store, sectors_cid, PRECOMMIT_CONFIG, "precommits")?;
 
-        for i in sectors.iter() {
-            let sector_number = i as SectorNumber;
-            let sector: SectorPreCommitOnChainInfo =
-                match precommitted.get(&sector_number)?.cloned() {
-                    Some(sector) => sector,
-                    // already committed/deleted
-                    None => continue,
-                };
+                for i in sectors.iter() {
+                    let sector_number = i as SectorNumber;
+                    let sector: SectorPreCommitOnChainInfo =
+                        match precommitted.get(&sector_number)?.cloned() {
+                            Some(sector) => sector,
+                            // already committed/deleted
+                            None => continue,
+                        };
 
-            // mark it for deletion
-            precommits_to_delete.push(sector_number);
+                    // mark it for deletion
+                    precommits_to_delete.push(sector_number);
 
-            // increment deposit to burn
-            deposit_to_burn += sector.pre_commit_deposit;
-        }
+                    // increment deposit to burn
+                    deposit_to_burn += sector.pre_commit_deposit;
+                }
 
-        // Actually delete it.
-        if !precommits_to_delete.is_empty() {
-            self.delete_precommitted_sectors(store, &precommits_to_delete)?;
-        }
+                // Actually delete it.
+                if !precommits_to_delete.is_empty() {
+                    self.delete_precommitted_sectors(store, &precommits_to_delete)?;
+                }
 
-        self.pre_commit_deposits -= &deposit_to_burn;
-        if self.pre_commit_deposits.is_negative() {
-            return Err(anyhow!(
-                "pre-commit clean up caused negative deposits: {}",
-                self.pre_commit_deposits
-            ));
+                self.pre_commit_deposits -= &deposit_to_burn;
+                if self.pre_commit_deposits.is_negative() {
+                    return Err(anyhow!(
+                        "pre-commit clean up caused negative deposits: {}",
+                        self.pre_commit_deposits
+                    ));
+                }
+            }
         }
 
         Ok(deposit_to_burn)
@@ -1216,18 +1233,22 @@ impl State {
         sector_nos: impl IntoIterator<Item = impl Borrow<SectorNumber>>,
     ) -> Result<Vec<SectorPreCommitOnChainInfo>, ActorError> {
         let mut precommits = Vec::new();
-        let precommitted =
-            PreCommitMap::load(store, &self.pre_committed_sectors, PRECOMMIT_CONFIG, "precommits")?;
-        for sector_no in sector_nos.into_iter() {
-            let sector_no = *sector_no.borrow();
-            if sector_no > MAX_SECTOR_NUMBER {
-                return Err(actor_error!(illegal_argument; "sector number greater than maximum"));
+        if let Some(ref sectors_cid) = self.pre_committed_sectors {
+            let precommitted =
+                PreCommitMap::load(store, sectors_cid, PRECOMMIT_CONFIG, "precommits")?;
+            for sector_no in sector_nos.into_iter() {
+                let sector_no = *sector_no.borrow();
+                if sector_no > MAX_SECTOR_NUMBER {
+                    return Err(
+                        actor_error!(illegal_argument; "sector number greater than maximum"),
+                    );
+                }
+                let info: &SectorPreCommitOnChainInfo = precommitted
+                    .get(&sector_no)
+                    .exit_code(ExitCode::USR_ILLEGAL_STATE)?
+                    .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
+                precommits.push(info.clone());
             }
-            let info: &SectorPreCommitOnChainInfo = precommitted
-                .get(&sector_no)
-                .exit_code(ExitCode::USR_ILLEGAL_STATE)?
-                .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
-            precommits.push(info.clone());
         }
         Ok(precommits)
     }

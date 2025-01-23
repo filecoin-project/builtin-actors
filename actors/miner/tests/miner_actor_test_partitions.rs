@@ -642,7 +642,8 @@ mod miner_actor_test_partitions {
         );
 
         // sectors should be added to early termination bitfield queue
-        let queue = BitFieldQueue::new(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
+        let queue =
+            BitFieldQueue::load(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
 
         BitFieldQueueExpectation::default().add(termination_epoch, &[1, 3, 5, 7]).equals(&queue);
     }
@@ -794,7 +795,8 @@ mod miner_actor_test_partitions {
         );
 
         // sectors should be added to early termination bitfield queue
-        let queue = BitFieldQueue::new(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
+        let queue =
+            BitFieldQueue::load(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
 
         // only early termination appears in bitfield queue
         BitFieldQueueExpectation::default().add(expire_epoch, &[4]).equals(&queue);
@@ -944,7 +946,8 @@ mod miner_actor_test_partitions {
         assert!(has_more);
 
         // expect terminations to still contain 3 and 5
-        let queue = BitFieldQueue::new(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
+        let queue =
+            BitFieldQueue::load(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
 
         // only early termination appears in bitfield queue
         BitFieldQueueExpectation::default().add(termination_epoch, &[3, 5]).equals(&queue);
@@ -959,7 +962,8 @@ mod miner_actor_test_partitions {
         assert!(!has_more);
 
         // expect early terminations to be empty
-        let queue = BitFieldQueue::new(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
+        let queue =
+            BitFieldQueue::load(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
         BitFieldQueueExpectation::default().equals(&queue);
     }
 
