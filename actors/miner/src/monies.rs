@@ -40,6 +40,8 @@ pub const TERMINATION_REWARD_FACTOR_DENOM: u32 = 2;
 const LOCKED_REWARD_FACTOR_NUM: u32 = 3;
 const LOCKED_REWARD_FACTOR_DENOM: u32 = 4;
 
+const TERM_PENALTY_PLEDGE_PERCENTAGE: u32 = 8;
+
 lazy_static! {
     /// Cap on initial pledge requirement for sectors during the Space Race network.
     /// The target is 1 FIL (10**18 attoFIL) per 32GiB.
@@ -174,41 +176,8 @@ pub fn pledge_penalty_for_termination_lower_bound(
 }
 
 /// Penalty to locked pledge collateral for the termination of a sector before scheduled expiry.
-/// SectorAge is the time between the sector's activation and termination.
-#[allow(clippy::too_many_arguments)]
-pub fn pledge_penalty_for_termination(
-    day_reward: &TokenAmount,
-    sector_age: ChainEpoch,
-    twenty_day_reward_at_activation: &TokenAmount,
-    network_qa_power_estimate: &FilterEstimate,
-    qa_sector_power: &StoragePower,
-    reward_estimate: &FilterEstimate,
-    replaced_day_reward: &TokenAmount,
-    replaced_sector_age: ChainEpoch,
-) -> TokenAmount {
-    // max(SP(t), BR(StartEpoch, 20d) + BR(StartEpoch, 1d) * terminationRewardFactor * min(SectorAgeInDays, 140))
-    // and sectorAgeInDays = sectorAge / EpochsInDay
-    let lifetime_cap = TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY;
-    let capped_sector_age = std::cmp::min(sector_age, lifetime_cap);
-
-    let mut expected_reward: TokenAmount = day_reward * capped_sector_age;
-
-    let relevant_replaced_age =
-        std::cmp::min(replaced_sector_age, lifetime_cap - capped_sector_age);
-
-    expected_reward += replaced_day_reward * relevant_replaced_age;
-
-    let penalized_reward = expected_reward * TERMINATION_REWARD_FACTOR_NUM;
-    let penalized_reward = penalized_reward.div_floor(TERMINATION_REWARD_FACTOR_DENOM);
-
-    cmp::max(
-        pledge_penalty_for_termination_lower_bound(
-            reward_estimate,
-            network_qa_power_estimate,
-            qa_sector_power,
-        ),
-        twenty_day_reward_at_activation + (penalized_reward.div_floor(EPOCHS_IN_DAY)),
-    )
+pub fn pledge_penalty_for_termination(initial_pledge_for_power: &TokenAmount) -> TokenAmount {
+    initial_pledge_for_power * TERM_PENALTY_PLEDGE_PERCENTAGE
 }
 
 // The penalty for optimistically proving a sector with an invalid window PoSt.

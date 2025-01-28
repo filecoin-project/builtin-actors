@@ -2139,10 +2139,7 @@ impl Actor {
                 deal_weight: DealWeight::zero(),
                 verified_deal_weight: DealWeight::zero(),
                 initial_pledge: sector_initial_pledge.clone(),
-                expected_day_reward: sector_day_reward.clone(),
-                expected_storage_pledge: sector_storage_pledge.clone(),
                 power_base_epoch: curr_epoch,
-                replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
             })
@@ -3899,28 +3896,6 @@ fn extend_simple_qap_sector(
         }
 
         new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space) * new_duration;
-
-        // We only bother updating the expected_day_reward, expected_storage_pledge, and replaced_day_reward
-        //  for verified deals, as it can increase power.
-        let qa_pow =
-            qa_power_for_weight(sector_size, new_duration, &new_sector.verified_deal_weight);
-        new_sector.expected_day_reward = expected_reward_for_power(
-            &reward_stats.this_epoch_reward_smoothed,
-            &power_stats.quality_adj_power_smoothed,
-            &qa_pow,
-            fil_actors_runtime::network::EPOCHS_IN_DAY,
-        );
-        new_sector.expected_storage_pledge = max(
-            sector.expected_storage_pledge.clone(),
-            expected_reward_for_power(
-                &reward_stats.this_epoch_reward_smoothed,
-                &power_stats.quality_adj_power_smoothed,
-                &qa_pow,
-                INITIAL_PLEDGE_PROJECTION_PERIOD,
-            ),
-        );
-        new_sector.replaced_day_reward =
-            max(sector.expected_day_reward.clone(), sector.replaced_day_reward.clone());
     }
 
     Ok(new_sector)
@@ -4293,24 +4268,6 @@ fn update_existing_sector_info(
     // compute initial pledge
     let qa_pow = qa_power_for_weight(sector_size, duration, &new_sector_info.verified_deal_weight);
 
-    new_sector_info.replaced_day_reward =
-        max(&sector_info.expected_day_reward, &sector_info.replaced_day_reward).clone();
-    new_sector_info.expected_day_reward = expected_reward_for_power(
-        &pledge_inputs.epoch_reward,
-        &pledge_inputs.network_qap,
-        &qa_pow,
-        fil_actors_runtime::network::EPOCHS_IN_DAY,
-    );
-    new_sector_info.expected_storage_pledge = max(
-        new_sector_info.expected_storage_pledge,
-        expected_reward_for_power(
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &qa_pow,
-            INITIAL_PLEDGE_PROJECTION_PERIOD,
-        ),
-    );
-
     new_sector_info.initial_pledge = max(
         new_sector_info.initial_pledge,
         initial_pledge_for_power(
@@ -4363,25 +4320,15 @@ fn process_early_terminations(
         let mut total_initial_pledge = TokenAmount::zero();
         let mut total_penalty = TokenAmount::zero();
 
-        for (epoch, sector_numbers) in result.iter() {
+        for (_, sector_numbers) in result.iter() {
             let sectors = sectors
                 .load_sector(sector_numbers)
                 .map_err(|e| e.wrap("failed to load sector infos"))?;
 
             for sector in &sectors {
                 total_initial_pledge += &sector.initial_pledge;
-                let sector_power = qa_power_for_sector(info.sector_size, sector);
                 terminated_sector_nums.push(sector.sector_number);
-                total_penalty += pledge_penalty_for_termination(
-                    &sector.expected_day_reward,
-                    epoch - sector.power_base_epoch,
-                    &sector.expected_storage_pledge,
-                    quality_adj_power_smoothed,
-                    &sector_power,
-                    reward_smoothed,
-                    &sector.replaced_day_reward,
-                    sector.power_base_epoch - sector.activation,
-                );
+                total_penalty += pledge_penalty_for_termination(&sector.initial_pledge);
                 if sector.deal_weight.is_positive() || sector.verified_deal_weight.is_positive() {
                     sectors_with_data.push(sector.sector_number);
                 }
@@ -5577,10 +5524,7 @@ fn activate_new_sector_infos(
                 deal_weight,
                 verified_deal_weight,
                 initial_pledge,
-                expected_day_reward: day_reward,
-                expected_storage_pledge: storage_pledge,
                 power_base_epoch: activation_epoch,
-                replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
             };

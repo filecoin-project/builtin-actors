@@ -755,12 +755,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     // activation not changed
     assert_eq!(initial_sector_info.activation, sector_info_after_update.activation);
 
-    // replaced day reward updated
-    assert_eq!(
-        initial_sector_info.expected_day_reward,
-        sector_info_after_update.replaced_day_reward
-    );
-
     // extend the updated sector
 
     // For clarity in checking power_base_epoch, we increment epoch by 1
@@ -805,8 +799,4 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     assert_eq!(sector_info_after_extension.power_base_epoch, v.epoch());
     assert_eq!(sector_info_after_update.activation, sector_info_after_extension.activation);
-    assert_eq!(
-        sector_info_after_extension.replaced_day_reward,
-        sector_info_after_update.expected_day_reward
-    );
 }

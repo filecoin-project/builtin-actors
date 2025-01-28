@@ -60,7 +60,7 @@ fn removes_sector_with_correct_accounting() {
     let state: State = rt.get_state();
     let initial_locked_funds = state.locked_funds;
 
-    let expected_fee = calc_expected_fee_for_termination(&h, &rt, &sector);
+    let expected_fee = pledge_penalty_for_termination(&sector.initial_pledge);
 
     let sectors = bitfield_from_slice(&[sector.sector_number]);
     h.terminate_sectors(&rt, &sectors, expected_fee.clone());
@@ -128,9 +128,9 @@ fn removes_sector_with_without_deals() {
     h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     // Expectations about the correct call to market actor are in the harness method.
-    let expected_fee: TokenAmount = sectors
-        .iter()
-        .fold(TokenAmount::zero(), |acc, s| acc + calc_expected_fee_for_termination(&h, &rt, s));
+    let expected_fee: TokenAmount = sectors.iter().fold(TokenAmount::zero(), |acc, s| {
+        acc + pledge_penalty_for_termination(&s.initial_pledge)
+    });
     h.terminate_sectors(&rt, &bitfield_from_slice(&snos), expected_fee);
     let state: State = rt.get_state();
     assert!(state.initial_pledge.is_zero());
@@ -213,7 +213,7 @@ fn owner_cannot_terminate_if_market_fails() {
     let (deadline_index, partition_index) =
         state.find_sector(rt.store(), sector.sector_number).unwrap();
 
-    let expected_fee = calc_expected_fee_for_termination(&h, &rt, &sector);
+    let expected_fee = pledge_penalty_for_termination(&sector.initial_pledge);
 
     rt.expect_validate_caller_addr(h.caller_addrs());
 
@@ -307,35 +307,4 @@ fn system_can_terminate_if_market_cron_fails() {
     rt.verify();
 
     h.check_state(&rt);
-}
-
-fn calc_expected_fee_for_termination(
-    h: &ActorHarness,
-    rt: &MockRuntime,
-    sector: &SectorOnChainInfo,
-) -> TokenAmount {
-    let sector_power = qa_power_for_sector(sector.seal_proof.sector_size().unwrap(), sector);
-    let day_reward = expected_reward_for_power(
-        &h.epoch_reward_smooth,
-        &h.epoch_qa_power_smooth,
-        &sector_power,
-        EPOCHS_IN_DAY,
-    );
-    let twenty_day_reward = expected_reward_for_power(
-        &h.epoch_reward_smooth,
-        &h.epoch_qa_power_smooth,
-        &sector_power,
-        INITIAL_PLEDGE_PROJECTION_PERIOD,
-    );
-    let sector_age = *rt.epoch.borrow() - sector.activation;
-    pledge_penalty_for_termination(
-        &day_reward,
-        sector_age,
-        &twenty_day_reward,
-        &h.epoch_qa_power_smooth,
-        &sector_power,
-        &h.epoch_reward_smooth,
-        &TokenAmount::zero(),
-        0,
-    )
 }
