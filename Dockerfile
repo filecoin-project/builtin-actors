@@ -19,9 +19,7 @@ WORKDIR /usr/src/builtin-actors
 # Install the compiler. Unfortunately, the rust docker container doesn't actually contain the rust
 # compiler...
 COPY ./rust-toolchain.toml .
-RUN rustup toolchain install $(cat rust-toolchain.toml | grep channel | cut -d '"' -f 2) && \
-    rustup component add rustfmt clippy && \
-    rustup show
+RUN rustup show
 
 USER root
 
