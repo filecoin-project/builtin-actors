@@ -3,6 +3,7 @@ SHELL=/usr/bin/env bash
 DOCKER := docker
 DOCKER_IMAGE_NAME := builtin-actors-builder
 DOCKER_RUN_OPTS := --rm -u $$(id -u):$$(id -g) -v $(PWD)/output:/usr/src/builtin-actors/output
+DOCKER_PLATFORM := --platform linux/amd64
 
 # Run cargo fmt
 rustfmt:
@@ -21,14 +22,14 @@ test:
 	cargo test --workspace
 
 docker-builder:
-	$(DOCKER) build --build-arg USER_ID=$$(id -u) --build-arg GROUP_ID=$$(id -g) . -t $(DOCKER_IMAGE_NAME); \
+	$(DOCKER) buildx build $(DOCKER_PLATFORM) --build-arg USER_ID=$$(id -u) --build-arg GROUP_ID=$$(id -g) . -t $(DOCKER_IMAGE_NAME); \
 
 # Create a bundle in a deterministic location
 bundle:
 	cargo run -- -o output/builtin-actors.car
 
 bundle-repro: docker-builder
-	$(DOCKER) run -e BUILD_FIL_NETWORK $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle"
+	$(DOCKER) run $(DOCKER_PLATFORM) -e BUILD_FIL_NETWORK $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle"
 
 # Create all canonical network bundles
 all-bundles: bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet bundle-devnet bundle-testing bundle-testing
@@ -39,38 +40,38 @@ bundle-mainnet:
 	BUILD_FIL_NETWORK=mainnet cargo run -- -o output/builtin-actors-mainnet.car
 
 bundle-mainnet-repro: docker-builder
-	$(DOCKER) run $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-mainnet"
+	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-mainnet"
 
 bundle-caterpillarnet:
 	BUILD_FIL_NETWORK=caterpillarnet cargo run -- -o output/builtin-actors-caterpillarnet.car
 
 bundle-caterpillarnet-repro: docker-builder
-	$(DOCKER) run $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-caterpillarnet"
+	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-caterpillarnet"
 
 bundle-butterflynet:
 	BUILD_FIL_NETWORK=butterflynet cargo run -- -o output/builtin-actors-butterflynet.car
 
 bundle-butterflynet-repro: docker-builder
-	$(DOCKER) run $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-butterflynet"
+	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-butterflynet"
 
 bundle-calibrationnet:
 	BUILD_FIL_NETWORK=calibrationnet cargo run -- -o output/builtin-actors-calibrationnet.car
 
 bundle-calibrationnet-repro: docker-builder
-	$(DOCKER) run $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-calibrationnet"
+	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-calibrationnet"
 
 bundle-devnet:
 	BUILD_FIL_NETWORK=devnet cargo run -- -o output/builtin-actors-devnet.car
 
 bundle-devnet-repro: docker-builder
-	$(DOCKER) run $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-devnet"
+	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-devnet"
 
 bundle-testing:
 	BUILD_FIL_NETWORK=testing cargo run -- -o output/builtin-actors-testing.car
 	BUILD_FIL_NETWORK=testing-fake-proofs cargo run -- -o output/builtin-actors-testing-fake-proofs.car
 
 bundle-testing-repro: docker-builder
-	$(DOCKER) run $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-testing"
+	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "make bundle-testing"
 
 # Check if the working tree is clean.
 check-clean:
