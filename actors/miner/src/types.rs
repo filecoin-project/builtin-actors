@@ -17,7 +17,9 @@ use fvm_shared::sector::{
     RegisteredUpdateProof, SectorNumber, SectorSize, StoragePower,
 };
 use fvm_shared::ActorID;
+use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::{BatchReturn, DealWeight};
@@ -423,7 +425,7 @@ pub struct SectorPreCommitOnChainInfo {
 }
 
 /// Information stored on-chain for a proven sector.
-#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple)]
 pub struct SectorOnChainInfo {
     pub sector_number: SectorNumber,
     /// The seal proof type implies the PoSt proofs
@@ -455,6 +457,81 @@ pub struct SectorOnChainInfo {
     pub sector_key_cid: Option<Cid>,
     /// Additional flags, see [`SectorOnChainInfoFlags`]
     pub flags: SectorOnChainInfoFlags,
+    //// The fee to be burned during each PoSt submission, not present for sectors before nv25
+    pub proving_period_fee: Option<TokenAmount>,
+}
+
+// Custom serde deserializer for SectorOnChainInfo to account for the old 15 field variant and the
+// new 16 field variant. New writes only ever serialize the 16 field variant but we need to account
+// for reads of the old format in the meantime.
+// This should eventually be removed when we can migrate all sectors to the new format.
+
+impl<'de> Deserialize<'de> for SectorOnChainInfo {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_tuple(16, SectorOnChainInfoVisitor)
+    }
+}
+
+struct SectorOnChainInfoVisitor;
+
+impl<'de> Visitor<'de> for SectorOnChainInfoVisitor {
+    type Value = SectorOnChainInfo;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a tuple with 15 or 16 elements")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<SectorOnChainInfo, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let sector_number =
+            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
+        let seal_proof = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
+        let sealed_cid = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(2, &self))?;
+        let deprecated_deal_ids =
+            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(3, &self))?;
+        let activation = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(4, &self))?;
+        let expiration = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(5, &self))?;
+        let deal_weight = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(6, &self))?;
+        let verified_deal_weight =
+            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(7, &self))?;
+        let initial_pledge =
+            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(8, &self))?;
+        let expected_day_reward =
+            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(9, &self))?;
+        let expected_storage_pledge =
+            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(10, &self))?;
+        let power_base_epoch =
+            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(11, &self))?;
+        let replaced_day_reward =
+            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(12, &self))?;
+        let sector_key_cid = seq.next_element()?;
+        let flags = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(13, &self))?;
+        let proving_period_fee = seq.next_element()?;
+
+        Ok(SectorOnChainInfo {
+            sector_number,
+            seal_proof,
+            sealed_cid,
+            deprecated_deal_ids,
+            activation,
+            expiration,
+            deal_weight,
+            verified_deal_weight,
+            initial_pledge,
+            expected_day_reward,
+            expected_storage_pledge,
+            power_base_epoch,
+            replaced_day_reward,
+            sector_key_cid,
+            flags,
+            proving_period_fee,
+        })
+    }
 }
 
 bitflags::bitflags! {
