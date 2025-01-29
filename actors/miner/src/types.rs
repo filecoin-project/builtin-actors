@@ -7,6 +7,7 @@ use fvm_ipld_encoding::{strict_bytes, BytesDe};
 use fvm_ipld_encoding::{tuple::*, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
+use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -488,30 +489,67 @@ impl<'de> Visitor<'de> for SectorOnChainInfoVisitor {
     where
         A: SeqAccess<'de>,
     {
+        println!("visit_seq");
         let sector_number =
             seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
+        println!("sector_number: {:?}", sector_number);
+
         let seal_proof = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
+        println!("seal_proof: {:?}", seal_proof);
+
         let sealed_cid = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(2, &self))?;
+        println!("sealed_cid: {:?}", sealed_cid);
+
         let deprecated_deal_ids =
             seq.next_element()?.ok_or_else(|| de::Error::invalid_length(3, &self))?;
+        println!("deprecated_deal_ids: {:?}", deprecated_deal_ids);
+
         let activation = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(4, &self))?;
+        println!("activation: {:?}", activation);
+
         let expiration = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(5, &self))?;
-        let deal_weight = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(6, &self))?;
-        let verified_deal_weight =
+        println!("expiration: {:?}", expiration);
+
+        let deal_weight: BigIntDe =
+            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(6, &self))?;
+        println!("deal_weight: {:?}", deal_weight);
+
+        let verified_deal_weight: BigIntDe =
             seq.next_element()?.ok_or_else(|| de::Error::invalid_length(7, &self))?;
+        println!("verified_deal_weight: {:?}", verified_deal_weight);
+
         let initial_pledge =
             seq.next_element()?.ok_or_else(|| de::Error::invalid_length(8, &self))?;
+        println!("initial_pledge: {:?}", initial_pledge);
+
         let expected_day_reward =
             seq.next_element()?.ok_or_else(|| de::Error::invalid_length(9, &self))?;
+        println!("expected_day_reward: {:?}", expected_day_reward);
+
         let expected_storage_pledge =
             seq.next_element()?.ok_or_else(|| de::Error::invalid_length(10, &self))?;
+        println!("expected_storage_pledge: {:?}", expected_storage_pledge);
+
         let power_base_epoch =
             seq.next_element()?.ok_or_else(|| de::Error::invalid_length(11, &self))?;
+        println!("power_base_epoch: {:?}", power_base_epoch);
+
         let replaced_day_reward =
             seq.next_element()?.ok_or_else(|| de::Error::invalid_length(12, &self))?;
-        let sector_key_cid = seq.next_element()?;
-        let flags = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(13, &self))?;
-        let proving_period_fee = seq.next_element()?;
+        println!("replaced_day_reward: {:?}", replaced_day_reward);
+
+        let sector_key_cid: Option<Cid> =
+            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(13, &self))?;
+        println!("sector_key_cid: {:?}", sector_key_cid);
+
+        let flags = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(14, &self))?;
+        println!("flags: {:?}", flags);
+
+        let proving_period_fee: Option<TokenAmount> = match seq.next_element() {
+            Ok(proving_period_fee) => proving_period_fee,
+            Err(_) => None,
+        };
+        println!("proving_period_fee: {:?}", proving_period_fee);
 
         Ok(SectorOnChainInfo {
             sector_number,
@@ -520,8 +558,8 @@ impl<'de> Visitor<'de> for SectorOnChainInfoVisitor {
             deprecated_deal_ids,
             activation,
             expiration,
-            deal_weight,
-            verified_deal_weight,
+            deal_weight: deal_weight.0,
+            verified_deal_weight: verified_deal_weight.0,
             initial_pledge,
             expected_day_reward,
             expected_storage_pledge,

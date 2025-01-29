@@ -120,32 +120,63 @@ mod serialization {
 
     #[test]
     fn sector_on_chain_info() {
-        let test_cases = vec![(
-            SectorOnChainInfo {
-                sector_number: 1,
-                seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
-                sealed_cid: Cid::from_str("bagboea4seaaqa").unwrap(),
-                deprecated_deal_ids: vec![],
-                activation: 2,
-                expiration: 3,
-                deal_weight: 4.into(),
-                verified_deal_weight: 5.into(),
-                initial_pledge: TokenAmount::from_whole(6),
-                expected_day_reward: TokenAmount::from_whole(7),
-                expected_storage_pledge: TokenAmount::from_whole(8),
-                power_base_epoch: 9,
-                replaced_day_reward: TokenAmount::from_whole(10),
-                sector_key_cid: None,
-                flags: Default::default(),
-                proving_period_fee: None,
-            },
-            "900108d82a49000182e20392200100800203420004420005490053444835ec58000049006124fee993bc000049006f05b59d3b2000000949008ac7230489e80000f600f6",
-        )];
+        let test_cases = vec![
+            (
+                // TODO: same but with some None's in the struct
+                SectorOnChainInfo {
+                    sector_number: 1,
+                    seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
+                    sealed_cid: Cid::from_str("bagboea4seaaqa").unwrap(),
+                    deprecated_deal_ids: vec![],
+                    activation: 2,
+                    expiration: 3,
+                    deal_weight: 4.into(),
+                    verified_deal_weight: 5.into(),
+                    initial_pledge: TokenAmount::from_whole(6),
+                    expected_day_reward: TokenAmount::from_whole(7),
+                    expected_storage_pledge: TokenAmount::from_whole(8),
+                    power_base_epoch: 9,
+                    replaced_day_reward: TokenAmount::from_whole(10),
+                    sector_key_cid: None,
+                    flags: Default::default(),
+                    proving_period_fee: Some(TokenAmount::from_whole(11)),
+                },
+                "new",
+                "900108d82a49000182e20392200100800203420004420005490053444835ec58000049006124fee993bc000049006f05b59d3b2000000949008ac7230489e80000f600490098a7d9b8314c0000",
+            ),
+            (
+                SectorOnChainInfo {
+                    sector_number: 1,
+                    seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
+                    sealed_cid: Cid::from_str("bagboea4seaaqa").unwrap(),
+                    deprecated_deal_ids: vec![],
+                    activation: 2,
+                    expiration: 3,
+                    deal_weight: 4.into(),
+                    verified_deal_weight: 5.into(),
+                    initial_pledge: TokenAmount::from_whole(6),
+                    expected_day_reward: TokenAmount::from_whole(7),
+                    expected_storage_pledge: TokenAmount::from_whole(8),
+                    power_base_epoch: 9,
+                    replaced_day_reward: TokenAmount::from_whole(10),
+                    sector_key_cid: None,
+                    flags: Default::default(),
+                    proving_period_fee: None,
+                },
+                "old",
+                "8f0108d82a49000182e20392200100800203420004420005490053444835ec58000049006124fee993bc000049006f05b59d3b2000000949008ac7230489e80000f600",
+            ),
+        ];
 
-        for (params, expected_hex) in test_cases {
-            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
-            assert_eq!(const_hex::encode(&encoded.data), expected_hex);
-            let decoded: SectorOnChainInfo = IpldBlock::deserialize(&encoded).unwrap();
+        for (params, oldnew, expected_hex) in test_cases {
+            if oldnew == "new" {
+                let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
+                assert_eq!(const_hex::encode(&encoded.data), expected_hex);
+            }
+
+            let byts = const_hex::decode(expected_hex).unwrap();
+            let decoded: SectorOnChainInfo =
+                IpldBlock::deserialize(&IpldBlock { codec: 0x71, data: byts }).unwrap();
             assert_eq!(params, decoded);
         }
     }
