@@ -7,7 +7,6 @@ use fvm_ipld_encoding::{strict_bytes, BytesDe};
 use fvm_ipld_encoding::{tuple::*, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -18,9 +17,7 @@ use fvm_shared::sector::{
     RegisteredUpdateProof, SectorNumber, SectorSize, StoragePower,
 };
 use fvm_shared::ActorID;
-use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::{BatchReturn, DealWeight};
@@ -426,7 +423,7 @@ pub struct SectorPreCommitOnChainInfo {
 }
 
 /// Information stored on-chain for a proven sector.
-#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorOnChainInfo {
     pub sector_number: SectorNumber,
     /// The seal proof type implies the PoSt proofs
@@ -459,117 +456,8 @@ pub struct SectorOnChainInfo {
     /// Additional flags, see [`SectorOnChainInfoFlags`]
     pub flags: SectorOnChainInfoFlags,
     //// The fee to be burned during each PoSt submission, not present for sectors before nv25
-    pub proving_period_fee: Option<TokenAmount>,
-}
-
-// Custom serde deserializer for SectorOnChainInfo to account for the old 15 field variant and the
-// new 16 field variant. New writes only ever serialize the 16 field variant but we need to account
-// for reads of the old format in the meantime.
-// This should eventually be removed when we can migrate all sectors to the new format.
-
-impl<'de> Deserialize<'de> for SectorOnChainInfo {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_tuple(16, SectorOnChainInfoVisitor)
-    }
-}
-
-struct SectorOnChainInfoVisitor;
-
-impl<'de> Visitor<'de> for SectorOnChainInfoVisitor {
-    type Value = SectorOnChainInfo;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a tuple with 15 or 16 elements")
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<SectorOnChainInfo, A::Error>
-    where
-        A: SeqAccess<'de>,
-    {
-        println!("visit_seq");
-        let sector_number =
-            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-        println!("sector_number: {:?}", sector_number);
-
-        let seal_proof = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
-        println!("seal_proof: {:?}", seal_proof);
-
-        let sealed_cid = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(2, &self))?;
-        println!("sealed_cid: {:?}", sealed_cid);
-
-        let deprecated_deal_ids =
-            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(3, &self))?;
-        println!("deprecated_deal_ids: {:?}", deprecated_deal_ids);
-
-        let activation = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(4, &self))?;
-        println!("activation: {:?}", activation);
-
-        let expiration = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(5, &self))?;
-        println!("expiration: {:?}", expiration);
-
-        let deal_weight: BigIntDe =
-            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(6, &self))?;
-        println!("deal_weight: {:?}", deal_weight);
-
-        let verified_deal_weight: BigIntDe =
-            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(7, &self))?;
-        println!("verified_deal_weight: {:?}", verified_deal_weight);
-
-        let initial_pledge =
-            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(8, &self))?;
-        println!("initial_pledge: {:?}", initial_pledge);
-
-        let expected_day_reward =
-            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(9, &self))?;
-        println!("expected_day_reward: {:?}", expected_day_reward);
-
-        let expected_storage_pledge =
-            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(10, &self))?;
-        println!("expected_storage_pledge: {:?}", expected_storage_pledge);
-
-        let power_base_epoch =
-            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(11, &self))?;
-        println!("power_base_epoch: {:?}", power_base_epoch);
-
-        let replaced_day_reward =
-            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(12, &self))?;
-        println!("replaced_day_reward: {:?}", replaced_day_reward);
-
-        let sector_key_cid: Option<Cid> =
-            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(13, &self))?;
-        println!("sector_key_cid: {:?}", sector_key_cid);
-
-        let flags = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(14, &self))?;
-        println!("flags: {:?}", flags);
-
-        let proving_period_fee: Option<TokenAmount> = match seq.next_element() {
-            Ok(proving_period_fee) => proving_period_fee,
-            Err(_) => None,
-        };
-        println!("proving_period_fee: {:?}", proving_period_fee);
-
-        Ok(SectorOnChainInfo {
-            sector_number,
-            seal_proof,
-            sealed_cid,
-            deprecated_deal_ids,
-            activation,
-            expiration,
-            deal_weight: deal_weight.0,
-            verified_deal_weight: verified_deal_weight.0,
-            initial_pledge,
-            expected_day_reward,
-            expected_storage_pledge,
-            power_base_epoch,
-            replaced_day_reward,
-            sector_key_cid,
-            flags,
-            proving_period_fee,
-        })
-    }
+    #[serde(default)]
+    pub proving_period_fee: TokenAmount,
 }
 
 bitflags::bitflags! {

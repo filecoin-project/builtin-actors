@@ -3,10 +3,14 @@ mod serialization {
     use std::str::FromStr;
 
     use cid::Cid;
-    use fil_actor_miner::{ProveCommitSectorsNIParams, SectorNIActivationInfo, SectorOnChainInfo};
+    use fil_actor_miner::{
+        ProveCommitSectorsNIParams, SectorNIActivationInfo, SectorOnChainInfo,
+        SectorOnChainInfoFlags,
+    };
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof};
+    use num_traits::Zero;
 
     #[test]
     fn prove_commit_sectors_ni_params() {
@@ -81,68 +85,16 @@ mod serialization {
         }
     }
 
-    /*
-        pub struct SectorOnChainInfo {
-        pub sector_number: SectorNumber,
-        /// The seal proof type implies the PoSt proofs
-        pub seal_proof: RegisteredSealProof,
-        /// CommR
-        pub sealed_cid: Cid,
-        pub deprecated_deal_ids: Vec<DealID>,
-        /// Epoch during which the sector proof was accepted
-        pub activation: ChainEpoch,
-        /// Epoch during which the sector expires
-        pub expiration: ChainEpoch,
-        /// Integral of active deals over sector lifetime
-        #[serde(with = "bigint_ser")]
-        pub deal_weight: DealWeight,
-        /// Integral of active verified deals over sector lifetime
-        #[serde(with = "bigint_ser")]
-        pub verified_deal_weight: DealWeight,
-        /// Pledge collected to commit this sector
-        pub initial_pledge: TokenAmount,
-        /// Expected one day projection of reward for sector computed at activation / update / extension time
-        pub expected_day_reward: TokenAmount,
-        /// Expected twenty day projection of reward for sector computed at activation / update / extension time
-        pub expected_storage_pledge: TokenAmount,
-        /// Epoch at which this sector's power was most recently updated
-        pub power_base_epoch: ChainEpoch,
-        /// Maximum day reward this sector has had in previous iterations (zero for brand new sectors)
-        pub replaced_day_reward: TokenAmount,
-        /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
-        pub sector_key_cid: Option<Cid>,
-        /// Additional flags, see [`SectorOnChainInfoFlags`]
-        pub flags: SectorOnChainInfoFlags,
-        //// The fee to be burned during each PoSt submission, not present for sectors before nv25
-        pub proving_period_fee: Option<TokenAmount>,
-    }
-     */
-
     #[test]
     fn sector_on_chain_info() {
         let test_cases = vec![
             (
-                // TODO: same but with some None's in the struct
                 SectorOnChainInfo {
-                    sector_number: 1,
-                    seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
-                    sealed_cid: Cid::from_str("bagboea4seaaqa").unwrap(),
-                    deprecated_deal_ids: vec![],
-                    activation: 2,
-                    expiration: 3,
-                    deal_weight: 4.into(),
-                    verified_deal_weight: 5.into(),
-                    initial_pledge: TokenAmount::from_whole(6),
-                    expected_day_reward: TokenAmount::from_whole(7),
-                    expected_storage_pledge: TokenAmount::from_whole(8),
-                    power_base_epoch: 9,
-                    replaced_day_reward: TokenAmount::from_whole(10),
-                    sector_key_cid: None,
-                    flags: Default::default(),
-                    proving_period_fee: Some(TokenAmount::from_whole(11)),
+                    ..Default::default()
                 },
                 "new",
-                "900108d82a49000182e20392200100800203420004420005490053444835ec58000049006124fee993bc000049006f05b59d3b2000000949008ac7230489e80000f600490098a7d9b8314c0000",
+                // [0,-1,{"/":"baeaaaaa"},[],0,0,[],[],[],[],[],0,[],null,0,[]]
+                "900020d82a45000100000080000040404040400040f60040",
             ),
             (
                 SectorOnChainInfo {
@@ -161,10 +113,58 @@ mod serialization {
                     replaced_day_reward: TokenAmount::from_whole(10),
                     sector_key_cid: None,
                     flags: Default::default(),
-                    proving_period_fee: None,
+                    proving_period_fee: TokenAmount::from_whole(11),
+                },
+                "new",
+                // '[1,8,{"/":"bagboea4seaaqa"},[],2,3,[AAQ],[AAU],[AFNESDXsWAAA],[AGEk]TvAAA"}},[AG8FtZ07IAAA],9,[AIrHIwSJ6AAA],null,0,[AJin2bgxTAAA]]'
+                "900108d82a49000182e20392200100800203420004420005490053444835ec58000049006124fee993bc000049006f05b59d3b2000000949008ac7230489e80000f600490098a7d9b8314c0000",
+            ),
+            (
+                SectorOnChainInfo {
+                    sector_number: 1,
+                    seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
+                    sealed_cid: Cid::from_str("bagboea4seaaqa").unwrap(),
+                    deprecated_deal_ids: vec![],
+                    activation: 2,
+                    expiration: 3,
+                    deal_weight: 4.into(),
+                    verified_deal_weight: 5.into(),
+                    initial_pledge: TokenAmount::from_whole(6),
+                    expected_day_reward: TokenAmount::from_whole(7),
+                    expected_storage_pledge: TokenAmount::from_whole(8),
+                    power_base_epoch: 9,
+                    replaced_day_reward: TokenAmount::from_whole(10),
+                    sector_key_cid: Some(Cid::from_str("baga6ea4seaaqc").unwrap()),
+                    flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
+                    proving_period_fee: TokenAmount::from_whole(11),
+                },
+                "new",
+                // [1,8,{"/":"bagboea4seaaqa"},[],2,3,[AAQ],[AAU],[AFNESDXsWAAA],[AGEk]TvAAA"}},[AG8FtZ07IAAA],9,[AIrHIwSJ6AAA],{"/":"baga6ea4seaaqc"},1,[AJin2bgxTAAA]]
+                "900108d82a49000182e20392200100800203420004420005490053444835ec58000049006124fee993bc000049006f05b59d3b2000000949008ac7230489e80000d82a49000181e2039220010101490098a7d9b8314c0000",
+            ),
+            (
+                // old format stored on chain but materialised as the new format with a default value at the end
+                SectorOnChainInfo {
+                    sector_number: 1,
+                    seal_proof: RegisteredSealProof::StackedDRG64GiBV1P1,
+                    sealed_cid: Cid::from_str("bagboea4seaaqa").unwrap(),
+                    deprecated_deal_ids: vec![],
+                    activation: 2,
+                    expiration: 3,
+                    deal_weight: 4.into(),
+                    verified_deal_weight: 5.into(),
+                    initial_pledge: TokenAmount::from_whole(6),
+                    expected_day_reward: TokenAmount::from_whole(7),
+                    expected_storage_pledge: TokenAmount::from_whole(8),
+                    power_base_epoch: 9,
+                    replaced_day_reward: TokenAmount::from_whole(10),
+                    sector_key_cid: None,
+                    flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
+                    proving_period_fee: TokenAmount::zero(), // default, not present in the binary
                 },
                 "old",
-                "8f0108d82a49000182e20392200100800203420004420005490053444835ec58000049006124fee993bc000049006f05b59d3b2000000949008ac7230489e80000f600",
+                // [1,9,{"/":"bagboea4seaaqa"},[],2,3,[AAQ],[AAU],[AFNESDXsWAAA],[AGEk]TvAAA"}},[AG8FtZ07IAAA],9,[AIrHIwSJ6AAA],null,1]
+                "8f0109d82a49000182e20392200100800203420004420005490053444835ec58000049006124fee993bc000049006f05b59d3b2000000949008ac7230489e80000f601",
             ),
         ];
 

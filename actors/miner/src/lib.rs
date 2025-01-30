@@ -2145,7 +2145,7 @@ impl Actor {
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
-                proving_period_fee: Some(TokenAmount::zero()), // TODO
+                proving_period_fee: TokenAmount::zero(), // TODO
             })
             .collect::<Vec<SectorOnChainInfo>>();
 
@@ -5584,7 +5584,7 @@ fn activate_new_sector_infos(
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
-                proving_period_fee: Some(TokenAmount::zero()), // TODO:
+                proving_period_fee: TokenAmount::zero(), // TODO:
             };
 
             new_sector_numbers.push(new_sector_info.sector_number);
