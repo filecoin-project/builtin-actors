@@ -103,3 +103,13 @@ pub struct MinerCountReturn {
 pub struct MinerConsensusCountReturn {
     pub miner_consensus_count: i64,
 }
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct DailyCirculatingSupplyParams {
+    pub epochs: Vec<i64>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct DailyCirculatingSupplyReturn {
+    pub supplies: Vec<(i64, TokenAmount)>,
+}

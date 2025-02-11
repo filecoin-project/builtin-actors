@@ -19,13 +19,16 @@ use fvm_shared::ActorID;
 use integer_encoding::VarInt;
 use lazy_static::lazy_static;
 use num_traits::Signed;
+use fvm_shared::clock::QuantSpec;
+
 
 use fil_actors_runtime::builtin::reward::smooth::{
     AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA,
 };
+
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    actor_error, ActorContext, ActorDowncast, ActorError, AsActorError, Config, Map2, Multimap,
+    actor_error, ActorContext, ActorDowncast, ActorError, AsActorError, Config, Map2, Multimap, Array,
     DEFAULT_HAMT_CONFIG,
 };
 
@@ -89,6 +92,8 @@ pub struct State {
 
     // Deprecated as of FIP 0084
     pub proof_validation_batch: Option<Cid>,
+
+    pub circulating_supply_history: Cid, // AMT[ChainEpoch]TokenAmount
 }
 
 impl State {
@@ -97,6 +102,7 @@ impl State {
         let empty_mmap = Multimap::new(store, CRON_QUEUE_HAMT_BITWIDTH, CRON_QUEUE_AMT_BITWIDTH)
             .root()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to get empty multimap cid")?;
+        let empty_amt = Array::<TokenAmount, BS>::new(store).flush()?;
         Ok(State {
             cron_event_queue: empty_mmap,
             claims: empty_claims,
@@ -104,6 +110,7 @@ impl State {
                 INITIAL_QA_POWER_ESTIMATE_POSITION.clone(),
                 INITIAL_QA_POWER_ESTIMATE_VELOCITY.clone(),
             ),
+            circulating_supply_history: empty_amt,
             ..Default::default()
         })
     }
@@ -342,6 +349,47 @@ impl State {
             .delete(miner)?
             .ok_or_else(|| anyhow!("failed to delete claim for {miner}: doesn't exist"))?;
         Ok(())
+    }
+
+    pub fn record_circulating_supply<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        epoch: ChainEpoch,
+        supply: TokenAmount,
+    ) -> Result<(), ActorError> {
+        let q = QuantSpec { unit: 2880, offset: 0 };
+
+        let day_epoch = q.quantize_down(epoch);
+        
+        let mut history = Array::<TokenAmount, BS>::load(&self.circulating_supply_history, store)
+            .map_err(|e| actor_error!(illegal_state, "failed to load circulating supply history: {}", e))?;
+        history.set(day_epoch as u64, supply.clone())
+            .map_err(|e| actor_error!(illegal_state, "failed to set circulating supply history: {}", e))?;
+        
+        self.circulating_supply_history = history.flush()
+            .map_err(|e| actor_error!(illegal_state, "failed to flush circulating supply history: {}", e))?;
+        
+        Ok(())
+    }
+
+    pub fn get_circulating_supply_history<BS: Blockstore>(
+        &self,
+        store: &BS,
+        epochs: &[ChainEpoch],
+    ) -> Result<<Vec<Option<TokenAmount>>>, ActorError> {
+        let history = Array::<TokenAmount, BS>::load(&self.circulating_supply_history, store)
+            .map_err(|e| actor_error!(illegal_state, "failed to load circulating supply history: {}", e))?;
+        
+        let mut results = Vec::with_capacity(epochs.len());
+        for &epoch in epochs {
+            let q = QuantSpec {unit: 2880, offset: 0};
+            let day_epoch = q.quantize_down(epoch);
+            let supply = history.get(day_epoch as u64).
+                
+            results.push(supply.cloned());
+        }
+        
+        Ok(results)
     }
 }
 

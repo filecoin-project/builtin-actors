@@ -7,6 +7,8 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::clock::QuantSpec;
+
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use log::{debug, error};
 use num_derive::FromPrimitive;
@@ -50,12 +52,14 @@ pub enum Method {
     // OnConsensusFault = 7, // Deprecated v2
     // SubmitPoRepForBulkVerify = 8, // Deprecated
     CurrentTotalPower = 9,
+    DailyCirculatingSupply = 10,
     // Method numbers derived from FRC-0042 standards
     CreateMinerExported = frc42_dispatch::method_hash!("CreateMiner"),
     NetworkRawPowerExported = frc42_dispatch::method_hash!("NetworkRawPower"),
     MinerRawPowerExported = frc42_dispatch::method_hash!("MinerRawPower"),
     MinerCountExported = frc42_dispatch::method_hash!("MinerCount"),
     MinerConsensusCountExported = frc42_dispatch::method_hash!("MinerConsensusCount"),
+    
 }
 
 pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
@@ -232,6 +236,16 @@ impl Actor {
         ))
         .map_err(|e| e.wrap("failed to update network KPI with reward actor"))?;
 
+
+        // Update circulating supply
+        if rt.curr_epoch() % 2880 == 0 {
+            rt.transaction(|st: &mut State, rt| {
+                st.record_circulating_supply(rt.store(), rt.curr_epoch(), rt.total_fil_circ_supply()).map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to record circulating supply")
+                })?;
+                Ok(())
+            })?;
+        }
         Ok(())
     }
 
@@ -419,6 +433,18 @@ impl Actor {
         }
         Ok(())
     }
+
+    fn daily_circulating_supply(rt: &impl Runtime, params: DailyCirculatingSupplyParams) -> Result<DailyCirculatingSupplyReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        let q = QuantSpec { unit: 2880, offset: 0 };
+
+        let supplies: Vec<(i64, TokenAmount)> = st.get_circulating_supply_history(rt.store(), &params.epochs);
+            .collect();
+
+        Ok(DailyCirculatingSupplyReturn { supplies })
+    }
 }
 
 impl ActorCode for Actor {
@@ -440,5 +466,6 @@ impl ActorCode for Actor {
         MinerRawPowerExported => miner_raw_power,
         MinerCountExported => miner_count,
         MinerConsensusCountExported => miner_consensus_count,
+        DailyCirculatingSupply => daily_circulating_supply,
     }
 }
