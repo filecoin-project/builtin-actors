@@ -455,6 +455,11 @@ pub struct SectorOnChainInfo {
     pub sector_key_cid: Option<Cid>,
     /// Additional flags, see [`SectorOnChainInfoFlags`]
     pub flags: SectorOnChainInfoFlags,
+    /// Daily fee payable to the network for the sector as long as it is active.
+    /// Not present in the serialized forms of older sectors, but always written for new and updated
+    /// sectors.
+    #[serde(default)]
+    pub daily_fee: TokenAmount,
 }
 
 bitflags::bitflags! {
