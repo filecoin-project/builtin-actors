@@ -17,6 +17,7 @@ crate-type = ["cdylib", "lib"]
 fil_actors_runtime = { workspace = true }
 fvm_shared = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
+multihash-codetable = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 num-traits = { workspace = true }
 anyhow = { workspace = true }

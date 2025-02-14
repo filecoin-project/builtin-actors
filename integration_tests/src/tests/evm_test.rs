@@ -1,8 +1,5 @@
-use ethers::prelude::abigen;
-use ethers::providers::Provider;
-use ethers::{
-    core::types::Address as EthAddress, prelude::builders::ContractCall, prelude::EthError,
-};
+use alloy_core::sol_types::{decode_revert_reason, SolCall, SolInterface};
+use alloy_core::{primitives::Address as EthAddress, sol};
 
 use export_macro::vm_test;
 use fil_actors_evm_shared::uints::U256;
@@ -18,7 +15,6 @@ use fvm_shared::METHOD_SEND;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use vm_api::util::{apply_ok, serialize_ok};
 use vm_api::VM;
 
@@ -26,9 +22,9 @@ use crate::util::create_accounts;
 use crate::TEST_FAUCET_ADDR;
 
 // Generate a statically typed interface for the contracts.
-abigen!(Recursive, "../actors/evm/tests/contracts/Recursive.abi");
-abigen!(Factory, "../actors/evm/tests/contracts/Factory.abi");
-abigen!(FactoryChild, "../actors/evm/tests/contracts/FactoryChild.abi");
+sol!("../actors/evm/tests/contracts/Recursive.sol");
+sol!("../actors/evm/tests/contracts/Lifecycle.sol");
+sol!("../actors/evm/tests/contracts/TransientStorageTest.sol");
 
 pub fn id_to_eth(id: ActorID) -> EthAddress {
     let mut addr = [0u8; 20];
@@ -101,9 +97,6 @@ pub fn evm_eth_create_external_test(v: &dyn VM) {
 #[vm_test]
 pub fn evm_call_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
-    let address = id_to_eth(account.id().unwrap());
-    let (client, _mock) = Provider::mocked();
-    let contract = Recursive::new(address, Arc::new(client));
 
     let bytecode =
         hex::decode(include_str!("../../../actors/evm/tests/contracts/Recursive.hex")).unwrap();
@@ -127,7 +120,7 @@ pub fn evm_call_test(v: &dyn VM) {
     let create_return: fil_actor_eam::CreateExternalReturn =
         create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
-    let contract_params = contract.enter().calldata().expect("should serialize");
+    let contract_params = Recursive::enterCall::new(()).abi_encode();
     let call_result = v
         .execute_message(
             &account,
@@ -141,21 +134,15 @@ pub fn evm_call_test(v: &dyn VM) {
 
     let BytesDe(return_value) =
         call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-    let evm_ret: u32 = contract
-        .decode_output(&contract.enter().function.name, return_value)
-        .expect("failed to decode return");
+    let (evm_ret,) = Recursive::enterCall::abi_decode_returns(&return_value, true)
+        .expect("failed to decode return")
+        .into();
     assert_eq!(0, evm_ret, "expected contract to return 0 on success");
 }
 
 #[vm_test]
 pub fn evm_create_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
-
-    let address = id_to_eth(account.id().unwrap());
-    let (client, _mock) = Provider::mocked();
-    let client = Arc::new(client);
-    let factory = Factory::new(address, client.clone());
-    let factory_child = FactoryChild::new(address, client);
 
     let bytecode =
         hex::decode(include_str!("../../../actors/evm/tests/contracts/Lifecycle.hex")).unwrap();
@@ -179,9 +166,9 @@ pub fn evm_create_test(v: &dyn VM) {
     let create_return: fil_actor_eam::CreateExternalReturn =
         create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
-    let test_func = |create_func: ContractCall<_, EthAddress>, recursive: bool| {
-        let child_addr_eth: EthAddress = {
-            let call_params = create_func.calldata().expect("should serialize");
+    let test_func = |create_func: Factory::FactoryCalls, recursive: bool| {
+        let (child_addr_eth,) = {
+            let call_params = create_func.abi_encode();
             let call_result = v
                 .execute_message(
                     &account,
@@ -198,17 +185,16 @@ pub fn evm_create_test(v: &dyn VM) {
             );
             let BytesDe(return_value) =
                 call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-            factory
-                .decode_output(&create_func.function.name, return_value)
+            Factory::createCall::abi_decode_returns(&return_value, true)
                 .expect("failed to decode return")
+                .into()
         };
 
         let child_addr = Address::new_delegated(EAM_ACTOR_ID, &child_addr_eth.0[..]).unwrap();
 
         // Verify the child.
         {
-            let func = factory_child.get_value();
-            let call_params = func.calldata().expect("should serialize");
+            let call_params = FactoryChild::get_valueCall::new(()).abi_encode();
             let call_result = v
                 .execute_message(
                     &account,
@@ -225,23 +211,27 @@ pub fn evm_create_test(v: &dyn VM) {
             );
             let BytesDe(return_value) =
                 call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-            let res: u32 = factory_child
-                .decode_output(&func.function.name, return_value)
-                .expect("failed to decode return");
+            let (res,) = FactoryChild::get_valueCall::abi_decode_returns(&return_value, true)
+                .expect("failed to decode return")
+                .into();
             assert_eq!(res, 42);
         }
 
         // Kill it.
         {
-            let func = if recursive { factory_child.die_recursive() } else { factory_child.die() };
-            let call_params = func.calldata().expect("should serialize");
+            let call_params = if recursive {
+                FactoryChild::FactoryChildCalls::dieRecursive(().into())
+            } else {
+                FactoryChild::FactoryChildCalls::die(().into())
+            }
+            .abi_encode();
             let call_result = v
                 .execute_message(
                     &account,
                     &child_addr,
                     &TokenAmount::zero(),
                     fil_actor_evm::Method::InvokeContract as u64,
-                    Some(serialize_ok(&ContractParams(call_params.to_vec()))),
+                    Some(serialize_ok(&ContractParams(call_params))),
                 )
                 .unwrap();
             assert!(
@@ -253,8 +243,7 @@ pub fn evm_create_test(v: &dyn VM) {
 
         // It should now be dead.
         {
-            let func = factory_child.get_value();
-            let call_params = func.calldata().expect("should serialize");
+            let call_params = FactoryChild::get_valueCall::new(()).abi_encode();
             let call_result = v
                 .execute_message(
                     &account,
@@ -277,25 +266,24 @@ pub fn evm_create_test(v: &dyn VM) {
     };
 
     // Test CREATE2 twice because we should be able to deploy over an existing contract.
-    let eth_addr1 = test_func(factory.create_2([0; 32], 42), false);
-    let eth_addr2 = test_func(factory.create_2([0; 32], 42), false);
+    let eth_addr1 = test_func(Factory::FactoryCalls::create2(([0; 32].into(), 42).into()), false);
+    let eth_addr2 = test_func(Factory::FactoryCalls::create2(([0; 32].into(), 42).into()), false);
     assert_eq!(eth_addr1, eth_addr2);
 
     // Recursive self-destruct should work.
-    let eth_addr1 = test_func(factory.create_2([1; 32], 42), true);
-    let eth_addr2 = test_func(factory.create_2([1; 32], 42), false);
+    let eth_addr1 = test_func(Factory::FactoryCalls::create2(([1; 32].into(), 42).into()), true);
+    let eth_addr2 = test_func(Factory::FactoryCalls::create2(([1; 32].into(), 42).into()), false);
     assert_eq!(eth_addr1, eth_addr2);
 
     // Then test create and expect two different addrs.
-    let eth_addr1 = test_func(factory.create(42), false);
-    let eth_addr2 = test_func(factory.create(42), false);
+    let eth_addr1 = test_func(Factory::FactoryCalls::create((42,).into()), false);
+    let eth_addr2 = test_func(Factory::FactoryCalls::create((42,).into()), false);
     assert_ne!(eth_addr1, eth_addr2);
 
     // Then test a failure
 
     {
-        let create_func = factory.create(-1);
-        let call_params = create_func.calldata().expect("should serialize");
+        let call_params = Factory::createCall::new((-1,)).abi_encode();
         let call_result = v
             .execute_message(
                 &account,
@@ -313,9 +301,8 @@ pub fn evm_create_test(v: &dyn VM) {
         );
         let BytesDe(return_value) =
             call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-        let revert_msg: String =
-            EthError::decode_with_selector(&return_value).expect("expected a revert");
-        assert_eq!(revert_msg, "create failed");
+        let revert_msg: String = decode_revert_reason(&return_value).expect("expected a revert");
+        assert_eq!(revert_msg, "revert: create failed");
     }
 }
 
@@ -752,4 +739,146 @@ pub fn evm_init_revert_data_test(v: &dyn VM) {
     let mut expected = [0u8; 32];
     expected[31] = 0x42;
     assert_eq!(revert_data, expected);
+}
+
+#[vm_test]
+pub fn evm_transient_nested_test(v: &dyn VM) {
+    // Step 1: Create an EthAccount with an initial balance.
+    let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
+
+    // Step 2: Deploy the `TransientStorageTest` contract twice.
+    let bytecode =
+        hex::decode(include_str!("../../../actors/evm/tests/contracts/TransientStorageTest.hex"))
+            .unwrap();
+
+    let create_contract = |account: &Address| {
+        let create_result = v
+            .execute_message(
+                account,
+                &EAM_ACTOR_ADDR,
+                &TokenAmount::zero(),
+                fil_actor_eam::Method::CreateExternal as u64,
+                Some(serialize_ok(&fil_actor_eam::CreateExternalParams(bytecode.clone()))),
+            )
+            .unwrap();
+
+        assert!(
+            create_result.code.is_success(),
+            "failed to create the contract {}",
+            create_result.message
+        );
+
+        let create_return: fil_actor_eam::CreateExternalReturn =
+            create_result.ret.unwrap().deserialize().expect("failed to decode results");
+
+        create_return.robust_address.unwrap()
+    };
+
+    // Deploy two instances of the contract.
+    let contract_1_addr = create_contract(&account);
+    let contract_2_addr = create_contract(&account);
+
+    // Step 3: Call `testNestedContracts` on the first contract, passing the address of the second.
+    let nested_contract_id = v.resolve_id_address(&contract_2_addr).unwrap().id().unwrap();
+    let nested_contract_address = id_to_eth(nested_contract_id);
+
+    let call_params =
+        TransientStorageTest::testNestedContractsCall::new((nested_contract_address,)).abi_encode();
+
+    let call_result = v
+        .execute_message(
+            &account,
+            &contract_1_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(serialize_ok(&ContractParams(call_params.to_vec()))),
+        )
+        .unwrap();
+
+    // Step 4: Check if the call was successful.
+    assert!(
+        call_result.code.is_success(),
+        "testNestedContracts call failed: {}",
+        call_result.message
+    );
+
+    // Step 5: Deserialize and verify the event emitted by the contract.
+    let BytesDe(return_value) =
+        call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+
+    let (event_emitted,) =
+        TransientStorageTest::testNestedContractsCall::abi_decode_returns(&return_value, true)
+            .expect("failed to decode return")
+            .into();
+
+    assert!(event_emitted, "testNestedContracts did not succeed as expected");
+}
+
+#[vm_test]
+pub fn evm_transient_reentry_test(v: &dyn VM) {
+    // Step 1: Create an EthAccount with an initial balance.
+    let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
+
+    // Step 2: Deploy the `TransientStorageTest` contract twice.
+    let bytecode =
+        hex::decode(include_str!("../../../actors/evm/tests/contracts/TransientStorageTest.hex"))
+            .unwrap();
+
+    let create_contract = |account: &Address| {
+        let create_result = v
+            .execute_message(
+                account,
+                &EAM_ACTOR_ADDR,
+                &TokenAmount::zero(),
+                fil_actor_eam::Method::CreateExternal as u64,
+                Some(serialize_ok(&fil_actor_eam::CreateExternalParams(bytecode.clone()))),
+            )
+            .unwrap();
+
+        assert!(
+            create_result.code.is_success(),
+            "failed to create the contract {}",
+            create_result.message
+        );
+
+        let create_return: fil_actor_eam::CreateExternalReturn =
+            create_result.ret.unwrap().deserialize().expect("failed to decode results");
+
+        create_return.robust_address.unwrap()
+    };
+
+    // Deploy two instances of the contract.
+    let contract_1_addr = create_contract(&account);
+    let contract_2_addr = create_contract(&account);
+
+    // Step 3: Call `testReentry` on the first contract, passing the address of the second contract.
+    let nested_contract_id = v.resolve_id_address(&contract_2_addr).unwrap().id().unwrap();
+    let nested_contract_address = id_to_eth(nested_contract_id);
+
+    let call_params =
+        TransientStorageTest::testReentryCall::new((nested_contract_address,)).abi_encode();
+
+    let call_result = v
+        .execute_message(
+            &account,
+            &contract_1_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(serialize_ok(&ContractParams(call_params.to_vec()))),
+        )
+        .unwrap();
+
+    // Step 4: Check if the call was successful.
+    assert!(call_result.code.is_success(), "testReentry call failed: {}", call_result.message);
+
+    // Step 5: Deserialize and verify the return value.
+    let BytesDe(return_value) =
+        call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+
+    let (event_emitted,) =
+        TransientStorageTest::testReentryCall::abi_decode_returns(&return_value, true)
+            .expect("failed to decode return")
+            .into();
+
+    assert!(event_emitted, "testReentry did not succeed as expected");
 }

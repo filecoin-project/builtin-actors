@@ -1,10 +1,8 @@
 use fil_actor_account::State as AccountState;
 use fil_actors_integration_tests::util::{assert_invariants, check_invariants};
-use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::runtime::{Policy, EMPTY_ARR_CID};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
-use fil_actors_runtime::test_utils::{
-    make_identity_cid, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID,
-};
+use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -22,25 +20,14 @@ fn state_control() {
     let addr2 = Address::new_id(2222);
 
     // set actor
-    let a1 = new_actor(
-        *ACCOUNT_ACTOR_CODE_ID,
-        make_identity_cid(b"a1-head"),
-        42,
-        TokenAmount::from_atto(10u8),
-        None,
-    );
+    let a1 =
+        new_actor(*ACCOUNT_ACTOR_CODE_ID, EMPTY_ARR_CID, 42, TokenAmount::from_atto(10u8), None);
     v.set_actor(&addr1, a1.clone());
     let out = v.actor(&addr1).unwrap();
     assert_eq!(out, a1);
     let check = v.checkpoint();
 
-    let a2 = new_actor(
-        *PAYCH_ACTOR_CODE_ID,
-        make_identity_cid(b"a2-head"),
-        88,
-        TokenAmount::from_atto(1u8),
-        None,
-    );
+    let a2 = new_actor(*PAYCH_ACTOR_CODE_ID, EMPTY_ARR_CID, 88, TokenAmount::from_atto(1u8), None);
     v.set_actor(&addr2, a2.clone());
     assert_eq!(v.actor(&addr2).unwrap(), a2);
     // rollback removes a2 but not a1
@@ -51,8 +38,8 @@ fn state_control() {
     assert_eq!(v.actor(&addr1).unwrap(), a1);
 
     let invariants_check = check_invariants(&v, &Policy::default(), Some(TokenAmount::zero()));
-    assert!(invariants_check.is_err());
-    assert!(invariants_check.unwrap_err().to_string().contains("AccountState is empty"));
+    let err = invariants_check.unwrap_err();
+    assert!(err.to_string().contains("AccountState is empty"), "unexpected error: {err}");
 }
 
 fn assert_account_actor(

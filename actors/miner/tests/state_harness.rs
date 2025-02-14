@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-use cid::multihash::Code::Blake2b256;
 use fil_actor_miner::{
     BitFieldQueue, CollisionPolicy, MinerInfo, QuantSpec, SectorOnChainInfo,
     SectorPreCommitOnChainInfo, State, VestSpec, VestingFunds,
@@ -12,6 +11,7 @@ use fvm_ipld_encoding::CborStore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
 use fvm_shared::{clock::ChainEpoch, sector::RegisteredPoStProof};
+use multihash_codetable::Code::Blake2b256;
 
 use fil_actors_runtime::test_utils::*;
 

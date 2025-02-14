@@ -89,7 +89,7 @@ mod sector_number_allocation {
         // Allocate widely-spaced numbers to consume the run-length encoded bytes quickly,
         // until the limit is reached.
         let mut limit_reached = false;
-        for i in 0..std::u64::MAX {
+        for i in 0..u64::MAX {
             let (number, _) = (i + 1).overflowing_shl(50);
             let res = h.allocate_sector_numbers(&[number]);
             if res.is_err() {

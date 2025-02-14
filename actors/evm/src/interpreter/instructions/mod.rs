@@ -187,7 +187,7 @@ macro_rules! def_exit {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         def_op!{ $op (m) => {
             let &rev![$($arg),*] = m.state.stack.pop_many()?;
-            m.output = $impl(&mut m.state, &mut m.system, $($arg),*)?;
+            m.output = $impl(&mut m.state, &mut m.system, m.pc, $($arg),*)?;
             m.pc = m.bytecode.len(); // stop execution
             Ok(())
         }}
@@ -338,6 +338,8 @@ def_stdproc! { MSTORE(a, b) => memory::mstore }
 def_stdproc! { MSTORE8(a, b) => memory::mstore8 }
 def_stdfun! { SLOAD(a) => storage::sload }
 def_stdproc! { SSTORE(a, b) => storage::sstore }
+def_stdfun! { TLOAD(a) => storage::tload }
+def_stdproc! { TSTORE(a, b) => storage::tstore }
 def_stdfun! { MSIZE() => memory::msize }
 def_stdfun! { GAS() => context::gas }
 def_stdlog! { LOG0(0, ()) }

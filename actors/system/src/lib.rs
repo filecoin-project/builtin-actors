@@ -1,6 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
-use cid::{multihash, Cid};
+use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
@@ -33,7 +33,7 @@ pub struct State {
 impl State {
     pub fn new<BS: Blockstore>(store: &BS) -> Result<Self, ActorError> {
         let c = store
-            .put_cbor(&Vec::<(String, Cid)>::new(), multihash::Code::Blake2b256)
+            .put_cbor(&Vec::<(String, Cid)>::new(), multihash_codetable::Code::Blake2b256)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store system state")?;
         Ok(Self { builtin_actors: c })
     }

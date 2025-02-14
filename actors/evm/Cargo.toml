@@ -26,19 +26,20 @@ anyhow = { workspace = true }
 log = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
-multihash = { workspace = true }
+multihash-codetable = { workspace = true }
 frc42_dispatch = { workspace = true }
 fil_actors_evm_shared = { workspace = true }
 hex = { workspace = true }
 hex-literal = { workspace = true }
 substrate-bn = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 hex = { workspace = true, features = ["serde"] }
 lazy_static = { workspace = true }
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
 etk-asm = { workspace = true }
-ethers = { workspace = true }
+alloy-core = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
 once_cell = { workspace = true }

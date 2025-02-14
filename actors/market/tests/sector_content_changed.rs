@@ -5,8 +5,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use multihash::Code::Sha2_256;
-use multihash::MultihashDigest;
+use multihash_codetable::{Code::Sha2_256, MultihashDigest};
 use num_traits::Zero;
 
 use fil_actor_market::ext::miner::{

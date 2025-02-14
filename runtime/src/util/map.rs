@@ -1,6 +1,5 @@
 use crate::builtin::HAMT_BIT_WIDTH;
 use crate::{ActorError, AsActorError, Hasher};
-use anyhow::anyhow;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt as hamt;
@@ -153,29 +152,18 @@ where
     /// Iterates over all key-value pairs in the map.
     pub fn for_each<F>(&self, mut f: F) -> Result<(), ActorError>
     where
-        // Note the result type of F uses ActorError.
-        // The implementation will extract and propagate any ActorError
-        // wrapped in a hamt::Error::Dynamic.
         F: FnMut(K, &V) -> Result<(), ActorError>,
     {
-        self.hamt
-            .for_each(|k, v| {
-                let key =
-                    K::from_bytes(k).context_code(ExitCode::USR_ILLEGAL_STATE, "invalid key")?;
-                f(key, v).map_err(|e| anyhow!(e))
-            })
-            .map_err(|hamt_err| match hamt_err {
-                hamt::Error::Dynamic(e) => match e.downcast::<ActorError>() {
-                    Ok(ae) => ae,
-                    Err(e) => ActorError::illegal_state(format!(
-                        "error in callback traversing HAMT {}: {}",
-                        self.name, e
-                    )),
-                },
-                e => {
-                    ActorError::illegal_state(format!("error traversing HAMT {}: {}", self.name, e))
-                }
-            })
+        for kv in &self.hamt {
+            let (k, v) = kv.with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("error traversing HAMT {}", self.name)
+            })?;
+            let k = K::from_bytes(k).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("invalid key in HAMT {}", self.name)
+            })?;
+            f(k, v)?;
+        }
+        Ok(())
     }
 }
 

@@ -150,9 +150,9 @@ pub fn base_fee(
 #[cfg(test)]
 mod tests {
     use crate::evm_unit_test;
+    use cid::multihash::Multihash;
     use cid::Cid;
     use fil_actors_evm_shared::uints::U256;
-    use fil_actors_runtime::EAM_ACTOR_ID;
     use fvm_ipld_encoding::{DAG_CBOR, IPLD_RAW};
     use fvm_shared::address::Address as FilAddress;
 
@@ -160,12 +160,10 @@ mod tests {
     fn test_blockhash() {
         // truncate to 32 bytes
         let counting_byte_hash: Vec<u8> = (0..40u8).collect();
-        let long_unknown =
-            Cid::new_v1(IPLD_RAW, multihash::Multihash::wrap(0, &counting_byte_hash).unwrap());
+        let long_unknown = Cid::new_v1(IPLD_RAW, Multihash::wrap(0, &counting_byte_hash).unwrap());
         let long_expect = counting_byte_hash[..32].try_into().unwrap();
         // multihash code ignored
-        let cbor_odd_hash =
-            Cid::new_v1(DAG_CBOR, multihash::Multihash::wrap(123, &[0xfe; 32]).unwrap());
+        let cbor_odd_hash = Cid::new_v1(DAG_CBOR, Multihash::wrap(123, &[0xfe; 32]).unwrap());
         let cbor_odd_expect = [0xfe; 32];
 
         let nothing = [0; 32];
@@ -351,25 +349,6 @@ mod tests {
     fn test_origin_id() {
         let eth_addr = EthAddress::from_id(1000); // default origin in construction of rt in macro
         let fil_addr = FilAddress::new_id(1000);
-        evm_unit_test! {
-            (rt) {
-                rt.in_call.replace(true);
-                rt.set_origin(fil_addr);
-            }
-            (m) {
-                ORIGIN;
-            }
-            m.step().expect("execution step failed");
-            assert_eq!(m.state.stack.len(), 1);
-            assert_eq!(m.state.stack.pop().unwrap(), eth_addr.as_evm_word());
-        };
-    }
-
-    #[test]
-    fn test_origin_ethaddr() {
-        let addr_bytes = hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000001234");
-        let eth_addr = EthAddress(addr_bytes);
-        let fil_addr = FilAddress::new_delegated(EAM_ACTOR_ID, &addr_bytes).unwrap();
         evm_unit_test! {
             (rt) {
                 rt.in_call.replace(true);

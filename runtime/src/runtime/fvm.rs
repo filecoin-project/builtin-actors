@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Error};
-use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -28,6 +27,7 @@ use fvm_shared::sector::{
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
+use multihash_codetable::Code;
 use num_traits::FromPrimitive;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -573,8 +573,8 @@ where
 /// 2.  Obtains the method number for the invocation.
 /// 3.  Creates an FVM runtime shim.
 /// 4.  Invokes the target method.
-/// 5a. In case of error, aborts the execution with the emitted exit code, or
-/// 5b. In case of success, stores the return data as a block and returns the latter.
+/// 5. (a) In case of error, aborts the execution with the emitted exit code, or
+/// 5. (b) In case of success, stores the return data as a block and returns the latter.
 pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     init_logging(C::name());
 

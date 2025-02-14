@@ -8,7 +8,6 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::{Error, Result};
-use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::CborStore;
@@ -31,9 +30,8 @@ use fvm_shared::sector::{
 };
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
-
-use cid::multihash::MultihashDigest;
-use multihash::derive::Multihash;
+use multihash_codetable::Code;
+use multihash_derive::MultihashDigest;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{
@@ -128,7 +126,7 @@ const IPLD_RAW: u64 = 0x55;
 
 /// Returns an identity CID for bz.
 pub fn make_identity_cid(bz: &[u8]) -> Cid {
-    Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
+    Cid::new_v1(IPLD_RAW, Multihash::wrap(0, bz).expect("name too long"))
 }
 
 /// Enable logging to enviornment. Returns error if already init.
@@ -1612,12 +1610,12 @@ pub fn recover_secp_public_key(
 }
 
 // multihash library doesn't support poseidon hashing, so we fake it
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Multihash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, MultihashDigest)]
 #[mh(alloc_size = 64)]
 enum MhCode {
-    #[mh(code = 0xb401, hasher = multihash::Sha2_256)]
+    #[mh(code = 0xb401, hasher = multihash_codetable::Sha2_256)]
     PoseidonFake,
-    #[mh(code = 0x1012, hasher = multihash::Sha2_256)]
+    #[mh(code = 0x1012, hasher = multihash_codetable::Sha2_256)]
     Sha256TruncPaddedFake,
 }
 

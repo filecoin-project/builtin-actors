@@ -1,13 +1,10 @@
 mod asm;
 
 use std::fmt::Debug;
-use std::sync::Arc;
 
-use ethers::abi::Detokenize;
-use ethers::prelude::builders::ContractCall;
-use ethers::prelude::*;
-use ethers::providers::{MockProvider, Provider};
-use ethers::types::Bytes;
+use alloy_core::primitives::{Bytes, Uint};
+use alloy_core::sol;
+use alloy_core::sol_types::SolCall;
 use evm::{Method, EVM_CONTRACT_REVERTED};
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
@@ -21,8 +18,7 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{ActorID, MethodNum};
-use once_cell::sync::Lazy;
+use fvm_shared::MethodNum;
 
 mod util;
 
@@ -432,21 +428,7 @@ fn test_callactor_revert() {
 }
 
 // Much taken from tests/env.rs
-abigen!(CallActorPrecompile, "./tests/contracts/CallActorPrecompile.abi");
-
-const OWNER_ID: ActorID = 1001;
-const _OWNER: Address = Address::new_id(OWNER_ID);
-static CONTRACT: Lazy<CallActorPrecompile<Provider<MockProvider>>> = Lazy::new(|| {
-    // The owner of the contract is expected to be the 160 bit hash used on Ethereum.
-    // We're not going to use it during the tests.
-    let address = EthAddress::from_id(OWNER_ID);
-    let address = ethers::core::types::Address::from_slice(address.as_ref());
-    // A dummy client that we don't intend to use to call the contract or send transactions.
-    let (client, _mock) = Provider::mocked();
-    CallActorPrecompile::new(address, Arc::new(client))
-});
-
-pub type TestContractCall<R> = ContractCall<Provider<MockProvider>, R>;
+sol!("./tests/contracts/CallActorPrecompile.sol");
 
 #[test]
 fn test_callactor_restrict() {
@@ -1031,18 +1013,24 @@ fn make_raw_params(bytes: Vec<u8>) -> Option<IpldBlock> {
     Some(IpldBlock { codec: IPLD_RAW, data: bytes })
 }
 
+const CALL_ACTOR_PRECOMPILE_HEX: &str = include_str!("contracts/CallActorPrecompile.hex");
+
 #[test]
 fn call_actor_solidity() {
-    // solidity
-    let contract_hex = include_str!("contracts/CallActorPrecompile.hex");
     // let mut contract_rt = new_call_actor_contract();
     let contract_address = EthAddress(util::CONTRACT_ADDRESS);
-    let mut tester = ContractTester::new(contract_address, 111, contract_hex);
+    let mut tester = ContractTester::new(contract_address, 111, CALL_ACTOR_PRECOMPILE_HEX);
 
     // call_actor_id
     {
-        let params =
-            CONTRACT.call_actor_id(0, ethers::types::U256::zero(), 0, 0, Bytes::default(), 101);
+        let params = CallActorPrecompile::call_actor_idCall {
+            method: 0,
+            value: Uint::from(0),
+            flags: 0,
+            codec: 0,
+            params: Bytes::default(),
+            id: 101,
+        };
 
         let expected_return = vec![0xff, 0xfe];
         tester.rt.expect_send(
@@ -1057,35 +1045,26 @@ fn call_actor_solidity() {
             None,
         );
 
-        let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =
-            tester.call(params);
+        let (success, exit, codec, ret_val) = tester.call(params).into();
 
         assert!(success);
-        assert_eq!(exit, I256::from(0));
+        assert!(exit.is_zero());
         assert_eq!(codec, 0);
         assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
-    }
-    tester.rt.reset();
-    // call_actor
-    {
-        log::warn!("new test");
-        // EVM actor
-        let evm_target = 10101;
-        let evm_del = EthAddress(util::CONTRACT_ADDRESS).into();
-        tester.rt.set_delegated_address(evm_target, evm_del);
 
         let to_address = {
             let subaddr = hex_literal::hex!("b0ba000000000000000000000000000000000000");
             Address::new_delegated(EAM_ACTOR_ID, &subaddr).unwrap()
         };
-        let params = CONTRACT.call_actor_address(
-            0,
-            ethers::types::U256::zero(),
-            0,
-            0,
-            Bytes::default(),
-            to_address.to_bytes().into(),
-        );
+
+        let params = CallActorPrecompile::call_actor_addressCall {
+            method: 0,
+            value: Uint::from(0),
+            flags: 0,
+            codec: 0,
+            params: Bytes::default(),
+            filAddress: to_address.to_bytes().into(),
+        };
 
         let expected_return = vec![0xff, 0xfe];
         tester.rt.expect_send(
@@ -1100,11 +1079,10 @@ fn call_actor_solidity() {
             None,
         );
 
-        let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =
-            tester.call(params);
+        let (success, exit, codec, ret_val) = tester.call(params).into();
 
         assert!(success);
-        assert_eq!(exit, I256::from(0));
+        assert!(exit.is_zero());
         assert_eq!(codec, 0);
         assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
     }
@@ -1112,16 +1090,20 @@ fn call_actor_solidity() {
 
 #[test]
 fn call_actor_send_solidity() {
-    // solidity
-    let contract_hex = include_str!("contracts/CallActorPrecompile.hex");
     // let mut contract_rt = new_call_actor_contract();
     let contract_address = EthAddress(util::CONTRACT_ADDRESS);
-    let mut tester = ContractTester::new(contract_address, 111, contract_hex);
+    let mut tester = ContractTester::new(contract_address, 111, CALL_ACTOR_PRECOMPILE_HEX);
 
     // send 1 atto Fil (this should be a full integration tests rly)
     {
-        let params =
-            CONTRACT.call_actor_id(0, ethers::types::U256::from(1), 0, 0, Bytes::default(), 101);
+        let params = CallActorPrecompile::call_actor_idCall {
+            method: 0,
+            value: Uint::from(1),
+            flags: 0,
+            codec: 0,
+            params: Bytes::default(),
+            id: 101,
+        };
 
         tester.rt.add_id_address(
             Address::new_delegated(12345, b"foobarboxy").unwrap(),
@@ -1143,11 +1125,10 @@ fn call_actor_send_solidity() {
             None,
         );
 
-        let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =
-            tester.call(params);
+        let (success, exit, codec, ret_val) = tester.call(params).into();
 
         assert!(success);
-        assert_eq!(exit, I256::from(0));
+        assert!(exit.is_zero());
         assert_eq!(codec, 0);
         assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
         assert_eq!(tester.rt.get_balance(), TokenAmount::from_atto(99));
@@ -1191,8 +1172,8 @@ impl ContractTester {
         Self { rt, _address: addr }
     }
 
-    fn call<Returns: Detokenize>(&mut self, call: TestContractCall<Returns>) -> Returns {
-        let input = call.calldata().expect("Should have calldata.").to_vec();
+    pub fn call<C: SolCall>(&mut self, call: C) -> C::Return {
+        let input = call.abi_encode();
         let input =
             IpldBlock::serialize_cbor(&BytesSer(&input)).expect("failed to serialize input data");
 
@@ -1208,6 +1189,6 @@ impl ContractTester {
             .deserialize()
             .unwrap();
 
-        decode_function_data(&call.function, result, false).unwrap()
+        C::abi_decode_returns(&result, true).unwrap()
     }
 }

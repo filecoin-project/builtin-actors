@@ -19,10 +19,7 @@ test-contracts: $(TEST_CONTRACTS_HEX)
 
 # Compile a Solidity test contract
 $(TEST_CONTRACTS_DIR)/%.hex: $(TEST_CONTRACTS_DIR)/%.sol | solc
-	@# Generate the .hex file which is the same as the .bin, but .bin would be renamed by solc to use CamelCase.
-	@# We could use just the .bin files in the test, but this is a way to stick to the existing pattern.
 	solc --bin $< | sed '4q;d' | tr -d '\n' > $@
-	solc --bin --abi --storage-layout --hashes --overwrite $< -o $(TEST_CONTRACTS_DIR)
 
 $(TEST_CONTRACTS_DIR)/callvariants.hex: $(TEST_CONTRACTS_DIR)/callvariants.eas $(TEST_CONTRACTS_DIR)/callvariants_body.eas
 	eas $(TEST_CONTRACTS_DIR)/callvariants.eas | tr -d '\n' > $(TEST_CONTRACTS_DIR)/callvariants.hex

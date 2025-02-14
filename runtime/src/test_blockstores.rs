@@ -68,7 +68,7 @@ impl Blockstore for MemoryBlockstore {
 mod tests {
     use super::*;
     use fvm_ipld_blockstore::Block;
-    use multihash::Code;
+    use multihash_codetable::Code;
 
     #[test]
     fn basic_tracking_store() {

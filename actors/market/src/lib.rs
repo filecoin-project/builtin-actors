@@ -4,7 +4,7 @@
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use cid::multihash::{Code, MultihashGeneric};
+use cid::multihash::Multihash;
 use cid::Cid;
 use fil_actors_runtime::reward::ThisEpochRewardReturn;
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
@@ -16,6 +16,7 @@ use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -794,6 +795,10 @@ impl Actor {
         let miner_addr = rt.message().caller();
 
         let burn_amount = rt.transaction(|st: &mut State, rt| {
+            // Load the deal proposals and deal states once
+            let proposals = st.load_proposals(rt.store())?;
+            let states = st.load_deal_states(rt.store())?;
+
             // The sector deals mapping is removed all at once.
             // Note there may be some deal states that are not removed here,
             // despite deletion of this mapping, e.g. for expired but not-yet-settled deals.
@@ -806,7 +811,12 @@ impl Actor {
 
             let mut total_slashed = TokenAmount::zero();
             for id in all_deal_ids {
-                let deal = st.find_proposal(rt.store(), id)?;
+                let deal = proposals
+                    .get(id)
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to load deal proposal {}", id)
+                    })?
+                    .cloned();
                 // The deal may have expired and been deleted before the sector is terminated.
                 // Nothing to do, but continue execution for the other deals.
                 if deal.is_none() {
@@ -831,10 +841,12 @@ impl Actor {
                     continue;
                 }
 
-                let mut state: DealState = st
-                    .find_deal_state(rt.store(), id)?
-                    // A deal with a proposal but no state is not activated, but then it should not be
-                    // part of a sector that is terminating.
+                let mut state: DealState = states
+                    .get(id)
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to load deal state {}", id)
+                    })?
+                    .cloned()
                     .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
 
                 // If a deal is already slashed, there should be no existing state for it
@@ -1712,7 +1724,7 @@ pub fn deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, Actor
 /// Compute a deal CID from serialized proposal using the runtime
 pub(crate) fn serialized_deal_cid(rt: &impl Runtime, data: &[u8]) -> Result<Cid, ActorError> {
     const DIGEST_SIZE: u32 = 32;
-    let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
+    let hash = Multihash::wrap(SupportedHashes::Blake2b256.into(), &rt.hash_blake2b(data))
         .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
     debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
     Ok(Cid::new_v1(DAG_CBOR, hash))

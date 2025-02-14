@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 MIT
-pragma solidity >=0.4.25 <=0.8.17;
+pragma solidity >=0.4.25 <=0.8.26;
 
 contract CallActorPrecompile {
     address constant CALL_ACTOR_ADDRESS = 0xfe00000000000000000000000000000000000003;

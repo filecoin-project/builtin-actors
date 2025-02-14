@@ -41,8 +41,8 @@ integer-encoding = { workspace = true }
 num-traits = { workspace = true }
 serde = { workspace = true }
 vm_api = { workspace = true }
+multihash-codetable = { workspace = true }
 
 [dev-dependencies]
-multihash = { workspace = true }
 test-case = { workspace = true }
 fil_actors_integration_tests = { workspace = true }

@@ -1,5 +1,4 @@
 use anyhow::anyhow;
-use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::Actor as AccountActor;
 use fil_actor_cron::Actor as CronActor;
@@ -16,6 +15,7 @@ use fil_actor_power::Actor as PowerActor;
 use fil_actor_reward::Actor as RewardActor;
 use fil_actor_system::Actor as SystemActor;
 use fil_actor_verifreg::Actor as VerifregActor;
+use multihash_codetable::Code;
 
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
