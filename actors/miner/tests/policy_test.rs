@@ -1,11 +1,13 @@
-use fil_actor_miner::{qa_power_for_weight, quality_for_weight};
+use fil_actor_miner::{daily_proof_fee, qa_power_for_weight, quality_for_weight};
 use fil_actor_miner::{
     QUALITY_BASE_MULTIPLIER, SECTOR_QUALITY_PRECISION, VERIFIED_DEAL_WEIGHT_MULTIPLIER,
 };
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::{EPOCHS_IN_DAY, SECONDS_IN_DAY};
 use fvm_shared::bigint::{BigInt, Integer, Zero};
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::SectorSize;
 
 #[test]
@@ -290,4 +292,15 @@ fn original_quality_for_weight(
     scaled_up_weighted_sum_space_time
         .div_floor(&sector_space_time)
         .div_floor(&QUALITY_BASE_MULTIPLIER)
+}
+
+#[test]
+fn daily_proof_fee_calc() {
+    let policy = Policy::default();
+    // Given a CS of 680M FIL and a fee multiplier of 7.4e-15, the daily proof fee should be 5032 nanoFIL.
+    //   680M * 7.4e-15 = 0.000005032 FIL
+    //   0.000005032 * 1e9 = 5032 nanoFIL
+    let circulating_supply = TokenAmount::from_whole(680_000_000);
+    let fee = daily_proof_fee(&policy, &circulating_supply);
+    assert_eq!(fee, TokenAmount::from_nano(5032));
 }
