@@ -107,7 +107,7 @@ impl Deadlines {
 }
 
 /// Deadline holds the state for all sectors due at a specific deadline.
-#[derive(Debug, Default, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, Serialize_tuple, Deserialize_tuple, PartialEq)]
 pub struct Deadline {
     /// Partitions in this deadline, in order.
     /// The keys of this AMT are always sequential integers beginning with zero.
@@ -163,6 +163,14 @@ pub struct Deadline {
     // These proofs may be disputed via DisputeWindowedPoSt. Successfully
     // disputed window PoSts are removed from the snapshot.
     pub optimistic_post_submissions_snapshot: Cid,
+
+    /// Memoized sum of active power in partitions, including faulty. Used to
+    /// cap the daily fee as a proportion of expected block reward.
+    pub total_power: PowerPair,
+
+    /// Memoized sum of daily fee payable to the network for the active sectors
+    /// in this deadline.
+    pub daily_fee: TokenAmount,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
@@ -233,6 +241,8 @@ impl Deadline {
             partitions_snapshot: empty_partitions_array,
             sectors_snapshot: empty_sectors_array,
             optimistic_post_submissions_snapshot: empty_post_submissions_array,
+            total_power: PowerPair::zero(),
+            daily_fee: TokenAmount::zero(),
         })
     }
 
@@ -401,6 +411,7 @@ impl Deadline {
             on_time_pledge: all_on_time_pledge,
             active_power: all_active_power,
             faulty_power: all_faulty_power,
+            fee_deduction: TokenAmount::zero(),
         })
     }
 
