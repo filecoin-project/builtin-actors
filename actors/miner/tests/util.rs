@@ -3682,6 +3682,7 @@ pub fn test_sector(
     deal_weight: u64,
     verified_deal_weight: u64,
     pledge: u64,
+    daily_fee: u64,
 ) -> SectorOnChainInfo {
     SectorOnChainInfo {
         expiration,
@@ -3690,6 +3691,7 @@ pub fn test_sector(
         verified_deal_weight: DealWeight::from(verified_deal_weight),
         initial_pledge: TokenAmount::from_atto(pledge),
         sealed_cid: make_sector_commr(sector_number),
+        daily_fee: TokenAmount::from_atto(daily_fee),
         ..Default::default()
     }
 }

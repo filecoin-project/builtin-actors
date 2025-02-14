@@ -433,6 +433,8 @@ impl Deadline {
             return Ok(total_power);
         }
 
+        let mut total_daily_fee = TokenAmount::zero();
+
         // First update partitions, consuming the sectors
         let mut partition_deadline_updates = Vec::<(ChainEpoch, u64)>::with_capacity(sectors.len());
         self.live_sectors += sectors.len() as u64;
@@ -466,9 +468,10 @@ impl Deadline {
             sectors = &sectors[size..];
 
             // Add sectors to partition.
-            let partition_power =
+            let (partition_power, partition_daily_fee) =
                 partition.add_sectors(store, proven, partition_new_sectors, sector_size, quant)?;
             total_power += &partition_power;
+            total_daily_fee += &partition_daily_fee;
 
             // Save partition back.
             partitions.set(partition_idx, partition)?;
@@ -493,6 +496,7 @@ impl Deadline {
             .add_many_to_queue_values(partition_deadline_updates.iter().copied())
             .map_err(|e| e.downcast_wrap("failed to add expirations for new deadlines"))?;
         self.expirations_epochs = deadline_expirations.amt.flush()?;
+        self.daily_fee += &total_daily_fee;
 
         Ok(total_power)
     }

@@ -62,12 +62,14 @@ impl ExpirationSet {
         on_time_pledge: &TokenAmount,
         active_power: &PowerPair,
         faulty_power: &PowerPair,
+        fee_deduction: &TokenAmount,
     ) -> anyhow::Result<()> {
         self.on_time_sectors |= on_time_sectors;
         self.early_sectors |= early_sectors;
         self.on_time_pledge += on_time_pledge;
         self.active_power += active_power;
         self.faulty_power += faulty_power;
+        self.fee_deduction += fee_deduction;
 
         self.validate_state()?;
         Ok(())
@@ -81,6 +83,7 @@ impl ExpirationSet {
         on_time_pledge: &TokenAmount,
         active_power: &PowerPair,
         faulty_power: &PowerPair,
+        fee_deduction: &TokenAmount,
     ) -> anyhow::Result<()> {
         // Check for sector intersection. This could be cheaper with a combined intersection/difference method used below.
         if !self.on_time_sectors.contains_all(on_time_sectors) {
@@ -103,6 +106,7 @@ impl ExpirationSet {
         self.on_time_pledge -= on_time_pledge;
         self.active_power -= active_power;
         self.faulty_power -= faulty_power;
+        self.fee_deduction -= fee_deduction;
 
         // Check underflow.
         if self.on_time_pledge.is_negative() {
@@ -110,6 +114,9 @@ impl ExpirationSet {
         }
         if self.active_power.qa.is_negative() || self.faulty_power.qa.is_negative() {
             return Err(anyhow!("expiration set power underflow: {:?}", self));
+        }
+        if self.fee_deduction.is_negative() {
+            return Err(anyhow!("expiration set fee deduction underflow: {:?}", self));
         }
         self.validate_state()?;
         Ok(())
@@ -148,6 +155,10 @@ impl ExpirationSet {
             return Err(anyhow!("ExpirationSet left with negative qa faulty power"));
         }
 
+        if self.fee_deduction.is_negative() {
+            return Err(anyhow!("ExpirationSet left with negative fee deduction"));
+        }
+
         Ok(())
     }
 }
@@ -171,14 +182,15 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
     /// Adds a collection of sectors to their on-time target expiration entries (quantized).
     /// The sectors are assumed to be active (non-faulty).
-    /// Returns the sector numbers, power, and pledge added.
+    /// Returns the sector numbers, power, pledge added and daily fee for the sectors.
     pub fn add_active_sectors<'a>(
         &mut self,
         sectors: impl IntoIterator<Item = &'a SectorOnChainInfo>,
         sector_size: SectorSize,
-    ) -> anyhow::Result<(BitField, PowerPair, TokenAmount)> {
+    ) -> anyhow::Result<(BitField, PowerPair, TokenAmount, TokenAmount)> {
         let mut total_power = PowerPair::zero();
         let mut total_pledge = TokenAmount::zero();
+        let mut total_daily_fee = TokenAmount::zero();
         let mut total_sectors = Vec::<BitField>::new();
 
         for group in group_new_sectors_by_declared_expiration(sector_size, sectors, self.quant) {
@@ -191,16 +203,18 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 &group.power,
                 &PowerPair::zero(),
                 &group.pledge,
+                &group.daily_fee,
             )
             .map_err(|e| e.downcast_wrap("failed to record new sector expirations"))?;
 
             total_sectors.push(sector_numbers);
             total_power += &group.power;
             total_pledge += &group.pledge;
+            total_daily_fee += &group.daily_fee;
         }
 
         let sector_numbers = BitField::union(total_sectors.iter());
-        Ok((sector_numbers, total_power, total_pledge))
+        Ok((sector_numbers, total_power, total_pledge, total_daily_fee))
     }
 
     /// Reschedules some sectors to a new (quantized) expiration epoch.
@@ -217,7 +231,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             return Ok(());
         }
 
-        let (sector_numbers, power, pledge) = self
+        let (sector_numbers, power, pledge, daily_fee) = self
             .remove_active_sectors(sectors, sector_size)
             .map_err(|e| e.downcast_wrap("failed to remove sector expirations"))?;
 
@@ -228,6 +242,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             &power,
             &PowerPair::zero(),
             &pledge,
+            &daily_fee,
         )
         .map_err(|e| e.downcast_wrap("failed to record new sector expirations"))?;
 
@@ -288,6 +303,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 &PowerPair::zero(),
                 &rescheduled_power,
                 &TokenAmount::zero(),
+                &TokenAmount::zero(),
             )?;
         }
 
@@ -299,6 +315,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut rescheduled_epochs = Vec::<u64>::new();
         let mut rescheduled_sectors = BitField::new();
         let mut rescheduled_power = PowerPair::zero();
+        let mut rescheduled_daily_fee = TokenAmount::zero();
 
         let mut mutated_expiration_sets = Vec::<(ChainEpoch, ExpirationSet)>::new();
 
@@ -314,6 +331,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 expiration_set.faulty_power += &expiration_set.active_power;
                 expiration_set.active_power = PowerPair::zero();
                 mutated_expiration_sets.push((epoch, expiration_set));
+                // TODO: adjust fee here?
             } else {
                 rescheduled_epochs.push(e);
                 // sanity check to make sure we're not trying to re-schedule already faulty sectors.
@@ -325,6 +343,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 rescheduled_sectors |= &expiration_set.on_time_sectors;
                 rescheduled_power += &expiration_set.active_power;
                 rescheduled_power += &expiration_set.faulty_power;
+                rescheduled_daily_fee += &expiration_set.fee_deduction;
             }
 
             Ok(())
@@ -349,6 +368,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             &PowerPair::zero(),
             &rescheduled_power,
             &TokenAmount::zero(),
+            &rescheduled_daily_fee,
         )?;
 
         // Trim the rescheduled epochs from the queue.
@@ -447,12 +467,12 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         old_sectors: &[SectorOnChainInfo],
         new_sectors: &[SectorOnChainInfo],
         sector_size: SectorSize,
-    ) -> anyhow::Result<(BitField, BitField, PowerPair, TokenAmount)> {
-        let (old_sector_numbers, old_power, old_pledge) = self
+    ) -> anyhow::Result<(BitField, BitField, PowerPair, TokenAmount, TokenAmount)> {
+        let (old_sector_numbers, old_power, old_pledge, old_daily_fee) = self
             .remove_active_sectors(old_sectors, sector_size)
             .map_err(|e| e.downcast_wrap("failed to remove replaced sectors"))?;
 
-        let (new_sector_numbers, new_power, new_pledge) = self
+        let (new_sector_numbers, new_power, new_pledge, new_daily_fee) = self
             .add_active_sectors(new_sectors, sector_size)
             .map_err(|e| e.downcast_wrap("failed to add replacement sectors"))?;
 
@@ -461,6 +481,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             new_sector_numbers,
             &new_power - &old_power,
             new_pledge - old_pledge,
+            new_daily_fee - old_daily_fee,
         ))
     }
 
@@ -515,12 +536,13 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         }
 
         // Remove non-faulty sectors.
-        let (removed_sector_numbers, removed_power, removed_pledge) = self
+        let (removed_sector_numbers, removed_power, removed_pledge, removed_daily_fee) = self
             .remove_active_sectors(&non_faulty_sectors, sector_size)
             .map_err(|e| e.downcast_wrap("failed to remove on-time recoveries"))?;
         removed.on_time_sectors = removed_sector_numbers;
         removed.active_power = removed_power;
         removed.on_time_pledge = removed_pledge;
+        removed.fee_deduction = removed_daily_fee;
 
         // Finally, remove faulty sectors (on time and not). These sectors can
         // only appear within the first 14 days (fault max age). Given that this
@@ -636,12 +658,13 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         active_power: &PowerPair,
         faulty_power: &PowerPair,
         pledge: &TokenAmount,
+        daily_fee: &TokenAmount,
     ) -> anyhow::Result<()> {
         let epoch = self.quant.quantize_up(raw_epoch);
         let mut expiration_set = self.may_get(epoch)?;
 
         expiration_set
-            .add(on_time_sectors, early_sectors, pledge, active_power, faulty_power)
+            .add(on_time_sectors, early_sectors, pledge, active_power, faulty_power, daily_fee)
             .map_err(|e| anyhow!("failed to add expiration values for epoch {}: {}", epoch, e))?;
 
         self.must_update(epoch, expiration_set)?;
@@ -655,6 +678,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         early_sectors: &BitField,
         active_power: &PowerPair,
         faulty_power: &PowerPair,
+        fee_deduction: &TokenAmount,
         pledge: &TokenAmount,
     ) -> anyhow::Result<()> {
         let epoch = self.quant.quantize_up(raw_epoch);
@@ -665,10 +689,17 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             .ok_or_else(|| anyhow!("missing expected expiration set at epoch {}", epoch))?
             .clone();
         expiration_set
-            .remove(on_time_sectors, early_sectors, pledge, active_power, faulty_power)
+            .remove(
+                on_time_sectors,
+                early_sectors,
+                pledge,
+                active_power,
+                faulty_power,
+                fee_deduction,
+            )
             .map_err(|e| {
-            anyhow!("failed to remove expiration values for queue epoch {}: {}", epoch, e)
-        })?;
+                anyhow!("failed to remove expiration values for queue epoch {}: {}", epoch, e)
+            })?;
 
         self.must_update_or_delete(epoch, expiration_set)?;
         Ok(())
@@ -678,10 +709,11 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         &mut self,
         sectors: &[SectorOnChainInfo],
         sector_size: SectorSize,
-    ) -> anyhow::Result<(BitField, PowerPair, TokenAmount)> {
+    ) -> anyhow::Result<(BitField, PowerPair, TokenAmount, TokenAmount)> {
         let mut removed_sector_numbers = Vec::<u64>::new();
         let mut removed_power = PowerPair::zero();
         let mut removed_pledge = TokenAmount::zero();
+        let mut removed_daily_fee = TokenAmount::zero();
 
         // Group sectors by their expiration, then remove from existing queue entries according to those groups.
         let groups = self.find_sectors_by_expiration(sector_size, sectors)?;
@@ -695,15 +727,22 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 &group.sector_epoch_set.power,
                 &PowerPair::zero(),
                 &group.sector_epoch_set.pledge,
+                &group.sector_epoch_set.daily_fee,
             )?;
 
             removed_sector_numbers.extend(&group.sector_epoch_set.sectors);
 
             removed_power += &group.sector_epoch_set.power;
             removed_pledge += &group.sector_epoch_set.pledge;
+            removed_daily_fee += &group.sector_epoch_set.daily_fee;
         }
 
-        Ok((BitField::try_from_bits(removed_sector_numbers)?, removed_power, removed_pledge))
+        Ok((
+            BitField::try_from_bits(removed_sector_numbers)?,
+            removed_power,
+            removed_pledge,
+            removed_daily_fee,
+        ))
     }
 
     /// Traverses the entire queue with a callback function that may mutate entries.
@@ -870,6 +909,7 @@ struct SectorEpochSet {
     sectors: Vec<u64>,
     power: PowerPair,
     pledge: TokenAmount,
+    daily_fee: TokenAmount,
 }
 
 /// Takes a slice of sector infos and returns sector info sets grouped and
@@ -895,11 +935,13 @@ fn group_new_sectors_by_declared_expiration<'a>(
             let mut sector_numbers = Vec::<u64>::with_capacity(epoch_sectors.len());
             let mut total_power = PowerPair::zero();
             let mut total_pledge = TokenAmount::zero();
+            let mut total_daily_fee = TokenAmount::zero();
 
             for sector in epoch_sectors {
                 sector_numbers.push(sector.sector_number);
                 total_power += &power_for_sector(sector_size, sector);
                 total_pledge += &sector.initial_pledge;
+                total_daily_fee += &sector.daily_fee;
             }
 
             SectorEpochSet {
@@ -907,6 +949,7 @@ fn group_new_sectors_by_declared_expiration<'a>(
                 sectors: sector_numbers,
                 power: total_power,
                 pledge: total_pledge,
+                daily_fee: total_daily_fee,
             }
         })
         .collect()
@@ -922,6 +965,7 @@ fn group_expiration_set(
     let mut sector_numbers = Vec::new();
     let mut total_power = PowerPair::zero();
     let mut total_pledge = TokenAmount::default();
+    let mut total_daily_fee = TokenAmount::default();
 
     for u in es.on_time_sectors.iter() {
         if include_set.remove(&u) {
@@ -929,6 +973,7 @@ fn group_expiration_set(
             sector_numbers.push(u);
             total_power += &power_for_sector(sector_size, sector);
             total_pledge += &sector.initial_pledge;
+            total_daily_fee += &sector.daily_fee;
         }
     }
 
@@ -938,6 +983,7 @@ fn group_expiration_set(
             sectors: sector_numbers,
             power: total_power,
             pledge: total_pledge,
+            daily_fee: total_daily_fee,
         },
         expiration_set: es,
     }

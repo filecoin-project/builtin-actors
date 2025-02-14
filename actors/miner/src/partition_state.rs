@@ -110,6 +110,7 @@ impl Partition {
     /// AddSectors adds new sectors to the partition.
     /// The sectors are "live", neither faulty, recovering, nor terminated.
     /// Each new sector's expiration is scheduled shortly after its target expiration epoch.
+    /// Returns the power of the new sectors as well as the daily fee total for these new sectors.
     pub fn add_sectors<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -117,11 +118,11 @@ impl Partition {
         sectors: &[SectorOnChainInfo],
         sector_size: SectorSize,
         quant: QuantSpec,
-    ) -> anyhow::Result<PowerPair> {
+    ) -> anyhow::Result<(PowerPair, TokenAmount)> {
         let mut expirations = ExpirationQueue::new(store, &self.expirations_epochs, quant)
             .map_err(|e| e.downcast_wrap("failed to load sector expirations"))?;
 
-        let (sector_numbers, power, _) = expirations
+        let (sector_numbers, power, _, daily_fee) = expirations
             .add_active_sectors(sectors, sector_size)
             .map_err(|e| e.downcast_wrap("failed to record new sector expirations"))?;
 
@@ -148,7 +149,7 @@ impl Partition {
 
         // No change to faults, recoveries, or terminations.
         // No change to faulty or recovering power.
-        Ok(power)
+        Ok((power, daily_fee))
     }
 
     /// marks a set of sectors faulty
@@ -412,13 +413,14 @@ impl Partition {
         new_sectors: &[SectorOnChainInfo],
         sector_size: SectorSize,
         quant: QuantSpec,
-    ) -> anyhow::Result<(PowerPair, TokenAmount)> {
+    ) -> anyhow::Result<(PowerPair, TokenAmount, TokenAmount)> {
         let mut expirations = ExpirationQueue::new(store, &self.expirations_epochs, quant)
             .map_err(|e| e.downcast_wrap("failed to load sector expirations"))?;
 
-        let (old_sector_numbers, new_sector_numbers, power_delta, pledge_delta) = expirations
-            .replace_sectors(old_sectors, new_sectors, sector_size)
-            .map_err(|e| e.downcast_wrap("failed to replace sector expirations"))?;
+        let (old_sector_numbers, new_sector_numbers, power_delta, pledge_delta, fee_delta) =
+            expirations
+                .replace_sectors(old_sectors, new_sectors, sector_size)
+                .map_err(|e| e.downcast_wrap("failed to replace sector expirations"))?;
 
         self.expirations_epochs = expirations
             .amt
@@ -447,7 +449,7 @@ impl Partition {
 
         // No change to faults, recoveries, or terminations.
         // No change to faulty or recovering power.
-        Ok((power_delta, pledge_delta))
+        Ok((power_delta, pledge_delta, fee_delta))
     }
 
     /// Record the epoch of any sectors expiring early, for termination fee calculation later.
