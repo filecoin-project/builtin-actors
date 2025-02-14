@@ -621,6 +621,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut active_power = PowerPair::zero();
         let mut faulty_power = PowerPair::zero();
         let mut on_time_pledge = TokenAmount::zero();
+        let mut fee_deduction = TokenAmount::zero();
         let mut popped_keys = Vec::<u64>::new();
 
         self.amt.for_each_while(|i, this_value| {
@@ -634,6 +635,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             active_power += &this_value.active_power;
             faulty_power += &this_value.faulty_power;
             on_time_pledge += &this_value.on_time_pledge;
+            fee_deduction += &this_value.fee_deduction;
 
             Ok(true)
         })?;
@@ -646,7 +648,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             on_time_pledge,
             active_power,
             faulty_power,
-            fee_deduction: TokenAmount::zero(),
+            fee_deduction,
         })
     }
 

@@ -357,6 +357,7 @@ impl Deadline {
         let mut all_on_time_pledge = TokenAmount::zero();
         let mut all_active_power = PowerPair::zero();
         let mut all_faulty_power = PowerPair::zero();
+        let mut all_fee_deductions = TokenAmount::zero();
         let mut partitions_with_early_terminations = Vec::<u64>::new();
 
         // For each partition with an expiry, remove and collect expirations from the partition queue.
@@ -384,6 +385,7 @@ impl Deadline {
             all_active_power += &partition_expiration.active_power;
             all_faulty_power += &partition_expiration.faulty_power;
             all_on_time_pledge += &partition_expiration.on_time_pledge;
+            all_fee_deductions += &partition_expiration.fee_deduction;
 
             partitions.set(partition_idx, partition)?;
         }
@@ -404,6 +406,10 @@ impl Deadline {
         self.live_sectors -= on_time_count + early_count;
 
         self.faulty_power -= &all_faulty_power;
+        self.total_power -= &all_faulty_power;
+        self.total_power -= &all_active_power;
+
+        self.daily_fee -= &all_fee_deductions;
 
         Ok(ExpirationSet {
             on_time_sectors: all_on_time_sectors,
@@ -411,7 +417,7 @@ impl Deadline {
             on_time_pledge: all_on_time_pledge,
             active_power: all_active_power,
             faulty_power: all_faulty_power,
-            fee_deduction: TokenAmount::zero(),
+            fee_deduction: all_fee_deductions,
         })
     }
 
@@ -634,6 +640,9 @@ impl Deadline {
             } // note: we should _always_ have early terminations, unless the early termination bitfield is empty.
 
             self.faulty_power -= &removed.faulty_power;
+            self.total_power -= &removed.active_power;
+            self.total_power -= &removed.faulty_power;
+            self.daily_fee -= &removed.fee_deduction;
 
             // Aggregate power lost from active sectors
             power_lost += &removed.active_power;
