@@ -9,7 +9,6 @@ use std::ops::Neg;
 
 use anyhow::{anyhow, Error};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
-use cid::multihash::Code::Blake2b256;
 use cid::Cid;
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
@@ -32,6 +31,7 @@ use fvm_shared::sector::{
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use itertools::Itertools;
 use log::{error, info, warn};
+use multihash_codetable::Code::Blake2b256;
 use num_derive::FromPrimitive;
 use num_traits::{Signed, Zero};
 

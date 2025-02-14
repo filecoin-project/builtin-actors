@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use cid::multihash::Code;
 use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{
     actor_error, extract_send_result, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID,
@@ -15,8 +14,9 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{MethodNum, Response, IPLD_RAW, METHOD_SEND};
+use multihash_codetable::Code;
 
-use crate::state::{State, Tombstone};
+use crate::state::{State, Tombstone, TransientData, TransientDataLifespan};
 use crate::BytecodeHash;
 
 use cid::Cid;
@@ -91,6 +91,11 @@ pub struct System<'r, RT: Runtime> {
     bytecode: Option<EvmBytecode>,
     /// The contract's EVM storage slots.
     slots: StateKamt<RT::Blockstore>,
+
+    /// The contract's EVM transient storage slots.
+    transient_slots: StateKamt<RT::Blockstore>,
+    current_transient_data_lifespan: TransientDataLifespan,
+
     /// The contracts "nonce" (incremented when creating new actors).
     pub(crate) nonce: u64,
     /// The last saved state root. None if the current state hasn't been saved yet.
@@ -111,9 +116,13 @@ impl<'r, RT: Runtime> System<'r, RT> {
         RT::Blockstore: Clone,
     {
         let store = rt.store().clone();
+        let transient_store = rt.store().clone();
+        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
         Self {
             rt,
             slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
+            transient_slots: StateKamt::new_with_config(transient_store, KAMT_CONFIG.clone()),
+            current_transient_data_lifespan,
             nonce: 1,
             saved_state_root: None,
             bytecode: None,
@@ -164,6 +173,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         RT::Blockstore: Clone,
     {
         let store = rt.store().clone();
+        let transient_store = rt.store().clone();
         let state_root = rt.get_state_root()?;
         let state: State = store
             .get_cbor(&state_root)
@@ -177,11 +187,33 @@ impl<'r, RT: Runtime> System<'r, RT> {
         }
 
         let read_only = rt.read_only();
+        let current_transient_data_lifespan = get_current_transient_data_lifespan(rt);
+
+        // Handle transient storage based on the presence and lifespan of `transient_data`
+        let transient_slots = match state.transient_data {
+            Some(transient_data)
+                if current_transient_data_lifespan == transient_data.transient_data_lifespan =>
+            {
+                // Lifespans match, load the transient storage
+                StateKamt::load_with_config(
+                    &transient_data.transient_data_state,
+                    transient_store,
+                    KAMT_CONFIG.clone(),
+                )
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "transient_state not in blockstore")?
+            }
+            _ => {
+                // Lifespan mismatch or `transient_data` is `None`, initialize an empty transient storage KAMT
+                StateKamt::new_with_config(transient_store, KAMT_CONFIG.clone())
+            }
+        };
 
         Ok(Self {
             rt,
             slots: StateKamt::load_with_config(&state.contract_state, store, KAMT_CONFIG.clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
+            transient_slots,
+            current_transient_data_lifespan,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
             bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
@@ -255,7 +287,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         Ok(result.map_err(|e| e.0))
     }
 
-    /// Flush the actor state (bytecode, nonce, and slots).
+    /// Flush the actor state (bytecode, nonce, transient data and slots).
     pub fn flush(&mut self) -> Result<(), ActorError> {
         if self.saved_state_root.is_some() {
             return Ok(());
@@ -270,6 +302,19 @@ impl<'r, RT: Runtime> System<'r, RT> {
             // set empty bytecode hashes
             None => self.set_bytecode(&[])?,
         };
+
+        let transient_data = if self.transient_slots.is_empty() {
+            None
+        } else {
+            Some(TransientData {
+                transient_data_state: self.transient_slots.flush().context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to flush transient storage state",
+                )?,
+                transient_data_lifespan: self.current_transient_data_lifespan,
+            })
+        };
+
         let new_root = self
             .rt
             .store()
@@ -281,6 +326,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to flush contract state",
                     )?,
+                    transient_data,
                     nonce: self.nonce,
                     tombstone: self.tombstone,
                 },
@@ -310,6 +356,18 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .get_cbor(&root)
             .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
+
+        match &state.transient_data {
+            Some(TransientData { transient_data_state, transient_data_lifespan })
+                if transient_data_lifespan == &self.current_transient_data_lifespan =>
+            {
+                self.transient_slots.set_root(transient_data_state).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "transient_state not in blockstore",
+                )?
+            }
+            _ => self.transient_slots.clear(),
+        }
 
         self.slots
             .set_root(&state.contract_state)
@@ -385,6 +443,39 @@ impl<'r, RT: Runtime> System<'r, RT> {
         Ok(())
     }
 
+    /// Get value of a transient storage key.
+    pub fn get_transient_storage(&mut self, key: U256) -> Result<U256, ActorError> {
+        // Lifespan matches, retrieve value
+        Ok(self
+            .transient_slots
+            .get(&key)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to access transient storage slot")?
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    /// Set value of a transient storage key.
+    pub fn set_transient_storage(&mut self, key: U256, value: U256) -> Result<(), ActorError> {
+        // Lifespan matches, proceed to set value
+        let changed = if value.is_zero() {
+            self.transient_slots.delete(&key).map(|v| v.is_some()).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to clear transient storage slot",
+            )?
+        } else {
+            self.transient_slots.set(key, value).map(|v| v != Some(value)).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to update transient storage slot",
+            )?
+        };
+
+        if changed {
+            self.saved_state_root = None; // Mark state as dirty
+        }
+
+        Ok(())
+    }
+
     /// Resolve the address to the ethereum equivalent, if possible.
     ///
     /// - Eth f4 maps directly to an Eth address.
@@ -444,5 +535,13 @@ impl<'r, RT: Runtime> System<'r, RT> {
     pub fn mark_selfdestructed(&mut self) {
         self.saved_state_root = None;
         self.tombstone = Some(crate::current_tombstone(self.rt));
+    }
+}
+
+/// Returns the current transient data lifespan based on the execution environment.
+fn get_current_transient_data_lifespan<RT: Runtime>(rt: &RT) -> TransientDataLifespan {
+    TransientDataLifespan {
+        origin: rt.message().origin().id().unwrap(),
+        nonce: rt.message().nonce(),
     }
 }

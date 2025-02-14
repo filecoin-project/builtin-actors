@@ -435,11 +435,7 @@ fn construct_and_verify(rt: &MockRuntime) {
     check_state(rt);
 }
 
-fn exec_and_verify<S: Serialize>(
-    rt: &MockRuntime,
-    code_id: Cid,
-    params: &S,
-) -> Result<ExecReturn, ActorError>
+fn exec_and_verify<S>(rt: &MockRuntime, code_id: Cid, params: &S) -> Result<ExecReturn, ActorError>
 where
     S: Serialize,
 {
@@ -455,7 +451,7 @@ where
     ret.and_then(|v| v.unwrap().deserialize().map_err(|e| e.into()))
 }
 
-fn exec4_and_verify<S: Serialize>(
+fn exec4_and_verify<S>(
     rt: &MockRuntime,
     namespace: ActorID,
     subaddr: &[u8],

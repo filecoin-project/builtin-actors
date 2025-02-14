@@ -4,4 +4,4 @@ target
 .idea/
 .vscode/
 **/.DS_Store
-output/*.car
+output/*
