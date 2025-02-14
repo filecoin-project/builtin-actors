@@ -206,3 +206,12 @@ pub fn reward_for_disputed_window_post(
     // This is currently just the base. In the future, the fee may scale based on the disputed power.
     BASE_REWARD_FOR_DISPUTED_WINDOW_POST.clone()
 }
+
+// The daily fee payable per sector.
+pub fn daily_proof_fee(policy: &Policy, circulating_supply: &TokenAmount) -> TokenAmount {
+    let num = BigInt::from(policy.daily_fee_circulating_supply_multiplier_num);
+    let denom = BigInt::from(policy.daily_fee_circulating_supply_multiplier_denom);
+
+    let fee = (num * circulating_supply.atto()).div_floor(&denom);
+    TokenAmount::from_atto(fee)
+}
