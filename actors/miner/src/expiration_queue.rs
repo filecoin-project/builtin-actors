@@ -282,6 +282,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 group.expiration_set.on_time_sectors -= &sectors_bitfield;
                 group.expiration_set.on_time_pledge -= &group.sector_epoch_set.pledge;
                 group.expiration_set.active_power -= &group.sector_epoch_set.power;
+                group.expiration_set.fee_deduction -= &group.sector_epoch_set.daily_fee;
 
                 // Accumulate the sectors and power removed.
                 sectors_total.extend_from_slice(&group.sector_epoch_set.sectors);
@@ -399,6 +400,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         self.iter_while_mut(|_epoch, expiration_set| {
             let mut faulty_power_delta = PowerPair::zero();
             let mut active_power_delta = PowerPair::zero();
+            let mut daily_fee_delta = TokenAmount::zero();
 
             for sector_number in expiration_set.on_time_sectors.iter() {
                 let sector = match remaining.remove(&sector_number) {
@@ -425,6 +427,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 early_unset.push(sector_number);
                 let power = power_for_sector(sector_size, sector);
                 faulty_power_delta -= &power;
+                daily_fee_delta -= &sector.daily_fee;
                 sectors_rescheduled.push(sector);
 
                 recovered_power += &power;
@@ -438,6 +441,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             {
                 expiration_set.active_power += &active_power_delta;
                 expiration_set.faulty_power += &faulty_power_delta;
+                expiration_set.fee_deduction += &daily_fee_delta;
 
                 expiration_set.early_sectors -= BitField::try_from_bits(early_unset)?;
             }
