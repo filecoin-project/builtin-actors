@@ -503,6 +503,7 @@ impl Deadline {
             .map_err(|e| e.downcast_wrap("failed to add expirations for new deadlines"))?;
         self.expirations_epochs = deadline_expirations.amt.flush()?;
         self.daily_fee += &total_daily_fee;
+        self.total_power += &total_power;
 
         Ok(total_power)
     }
@@ -763,6 +764,15 @@ impl Deadline {
 
         self.live_sectors -= removed_live_sectors;
         self.total_sectors -= removed_live_sectors + removed_dead_sectors;
+        // we can leave faulty power alone because there can be no faults here.
+        self.total_power -= &removed_power;
+        // TODO: we need to either:
+        //
+        // 1. Update the daily fee here (which means we need to add this information to the partitions).
+        // 2. Add a flag to `Deadline::add_sectors` indicating that we don't want the fee updated
+        //    (because it has already been accounted for.
+        //
+        //  The first option is nice and symmetric. The second saves us some state.
 
         // Update expiration bitfields.
         let mut expiration_epochs = BitFieldQueue::new(store, &self.expirations_epochs, quant)
