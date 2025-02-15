@@ -602,6 +602,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                     }
 
                     remaining.remove(&sector_number);
+
+                    removed.fee_deduction += &sector.daily_fee;
+                    expiration_set.fee_deduction -= &sector.daily_fee;
                 }
             }
 
