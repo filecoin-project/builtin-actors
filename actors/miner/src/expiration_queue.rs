@@ -659,6 +659,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn add(
         &mut self,
         raw_epoch: ChainEpoch,
@@ -680,6 +681,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn remove(
         &mut self,
         raw_epoch: ChainEpoch,
@@ -687,8 +689,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         early_sectors: &BitField,
         active_power: &PowerPair,
         faulty_power: &PowerPair,
-        fee_deduction: &TokenAmount,
         pledge: &TokenAmount,
+        fee_deduction: &TokenAmount,
     ) -> anyhow::Result<()> {
         let epoch = self.quant.quantize_up(raw_epoch);
         let mut expiration_set = self
