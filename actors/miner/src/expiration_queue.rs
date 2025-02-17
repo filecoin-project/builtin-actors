@@ -187,7 +187,12 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         &mut self,
         sectors: impl IntoIterator<Item = &'a SectorOnChainInfo>,
         sector_size: SectorSize,
-    ) -> anyhow::Result<(BitField, PowerPair, TokenAmount, TokenAmount)> {
+    ) -> anyhow::Result<(
+        BitField,    // sector numbers
+        PowerPair,   // power
+        TokenAmount, // pledge
+        TokenAmount, // daily fee
+    )> {
         let mut total_power = PowerPair::zero();
         let mut total_pledge = TokenAmount::zero();
         let mut total_daily_fee = TokenAmount::zero();
@@ -473,7 +478,13 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         old_sectors: &[SectorOnChainInfo],
         new_sectors: &[SectorOnChainInfo],
         sector_size: SectorSize,
-    ) -> anyhow::Result<(BitField, BitField, PowerPair, TokenAmount, TokenAmount)> {
+    ) -> anyhow::Result<(
+        BitField,    // old sector numbers
+        BitField,    // new sector numbers
+        PowerPair,   // power delta
+        TokenAmount, // pledge delta
+        TokenAmount, // daily fee delta
+    )> {
         let (old_sector_numbers, old_power, old_pledge, old_daily_fee) = self
             .remove_active_sectors(old_sectors, sector_size)
             .map_err(|e| e.downcast_wrap("failed to remove replaced sectors"))?;
@@ -722,7 +733,12 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         &mut self,
         sectors: &[SectorOnChainInfo],
         sector_size: SectorSize,
-    ) -> anyhow::Result<(BitField, PowerPair, TokenAmount, TokenAmount)> {
+    ) -> anyhow::Result<(
+        BitField,    // sector numbers
+        PowerPair,   // power
+        TokenAmount, // pledge
+        TokenAmount, // daily fee
+    )> {
         let mut removed_sector_numbers = Vec::<u64>::new();
         let mut removed_power = PowerPair::zero();
         let mut removed_pledge = TokenAmount::zero();
