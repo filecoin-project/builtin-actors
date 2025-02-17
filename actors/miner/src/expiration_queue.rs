@@ -262,6 +262,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut sectors_total = Vec::new();
         let mut expiring_power = PowerPair::zero();
         let mut rescheduled_power = PowerPair::zero();
+        let mut rescheduled_daily_fee = TokenAmount::zero();
 
         let groups = self.find_sectors_by_expiration(sector_size, sectors)?;
 
@@ -287,6 +288,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 // Accumulate the sectors and power removed.
                 sectors_total.extend_from_slice(&group.sector_epoch_set.sectors);
                 rescheduled_power += &group.sector_epoch_set.power;
+                rescheduled_daily_fee += &group.sector_epoch_set.daily_fee;
             }
 
             self.must_update_or_delete(group.sector_epoch_set.epoch, group.expiration_set.clone())?;
@@ -304,7 +306,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 &PowerPair::zero(),
                 &rescheduled_power,
                 &TokenAmount::zero(),
-                &TokenAmount::zero(),
+                &rescheduled_daily_fee,
             )?;
         }
 
@@ -329,10 +331,10 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
                 // Regardless of whether the sectors were expiring on-time or early, all the power is now faulty.
                 // Pledge is still on-time.
+                // Fees are not adjusted because the expiration set is not being removed.
                 expiration_set.faulty_power += &expiration_set.active_power;
                 expiration_set.active_power = PowerPair::zero();
                 mutated_expiration_sets.push((epoch, expiration_set));
-                // TODO: adjust fee here?
             } else {
                 rescheduled_epochs.push(e);
                 // sanity check to make sure we're not trying to re-schedule already faulty sectors.
