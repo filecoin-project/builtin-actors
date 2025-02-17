@@ -3012,7 +3012,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load moved sectors")
             })?;
             let proven = true;
-            let added_power = deadline
+            let (added_power, added_fee) = deadline
                 .add_sectors(
                     store,
                     info.window_post_partition_sectors,
@@ -3036,6 +3036,13 @@ impl Actor {
                     added_power
                 ));
             }
+
+            // Rebalance the fee:
+            //   * The deadline's total daily_fee already reflected the total daily_fee of all live sectors.
+            //   * remove_partitions() doesn't perform a subtraction of the fee value
+            //   * add_sector() does perform an addition of the fee value
+            // So we've now added the fee for all live sectors in the removed partitions twice.
+            deadline.daily_fee -= added_fee;
 
             deadlines.update_deadline(policy, store, params_deadline, &deadline).map_err(|e| {
                 e.downcast_default(

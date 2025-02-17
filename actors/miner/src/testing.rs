@@ -564,8 +564,8 @@ impl PartitionStateSummary {
                 require_equal(&live, &queue_sectors, acc, "live does not equal all expirations");
                 // TODO: removeme
                 eprintln!(
-                    "Testing fee deductions: expected={:?}, actual={:?}",
-                    queue_summary.fee_deduction, daily_fee
+                    "Testing fee deductions in partition: expected={:?}, actual={:?}",
+                    daily_fee, queue_summary.fee_deduction
                 );
                 acc.require(
                     queue_summary.fee_deduction == daily_fee,
@@ -651,6 +651,7 @@ impl ExpirationQueueStateSummary {
             expiration_epochs.push(epoch);
 
             let mut on_time_sectors_pledge = TokenAmount::zero();
+            let mut total_daily_fee = TokenAmount::zero();
             for sector_number in expiration_set.on_time_sectors.iter() {
                 // check sectors are present only once
                 if !seen_sectors.insert(sector_number) {
@@ -662,6 +663,7 @@ impl ExpirationQueueStateSummary {
                     let target = quant.quantize_up(sector.expiration);
                     acc.require(epoch == target, format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
                     on_time_sectors_pledge += sector.initial_pledge.clone();
+                    total_daily_fee += sector.daily_fee.clone();
                 } else {
                     acc.add(format!("on time expiration sector {sector_number} isn't live"));
                 }
@@ -680,6 +682,7 @@ impl ExpirationQueueStateSummary {
                 if let Some(sector) = live_sectors.get(&sector_number) {
                     let target = quant.quantize_up(sector.expiration);
                     acc.require(epoch < target, format!("invalid early expiration {epoch} for sector {sector_number}, expected < {target}"));
+                    total_daily_fee += sector.daily_fee.clone();
                 } else {
                     acc.add(format!("on time expiration sector {sector_number} isn't live"));
                 }
@@ -703,6 +706,13 @@ impl ExpirationQueueStateSummary {
             acc.require(expiration_set.faulty_power == faulty_sectors_power, format!("faulty power recorded {:?} doesn't match computed {faulty_sectors_power:?}", expiration_set.faulty_power));
 
             acc.require(expiration_set.on_time_pledge == on_time_sectors_pledge, format!("on time pledge recorded {} doesn't match computed: {on_time_sectors_pledge}", expiration_set.on_time_pledge));
+
+            // TODO: removeme
+            eprintln!(
+                "Testing fee deductions in expiration queue: expected={:?}, actual={:?}",
+                total_daily_fee, expiration_set.fee_deduction
+            );
+            acc.require(expiration_set.fee_deduction == total_daily_fee, format!("fee deduction recorded {} doesn't match computed: {total_daily_fee}", expiration_set.fee_deduction));
 
             all_on_time.push(expiration_set.on_time_sectors.clone());
             all_early.push(expiration_set.early_sectors.clone());
@@ -1012,6 +1022,23 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
         &deadline.early_terminations,
         acc,
         "deadline early terminations doesn't match expected partitions",
+    );
+
+    let live_sectors_daily_fee =
+        live_sectors.iter().fold(TokenAmount::zero(), |acc, sector_number| {
+            acc + sectors.get(&sector_number).unwrap().daily_fee.clone()
+        });
+    // TODO: removeme
+    eprintln!(
+        "Testing fee deductions in deadline: expected={:?}, actual={:?}",
+        live_sectors_daily_fee, deadline.daily_fee
+    );
+    acc.require(
+        deadline.daily_fee == live_sectors_daily_fee,
+        format!(
+            "deadline daily fee {:?} != sum of live sectors daily fees {:?}",
+            deadline.daily_fee, live_sectors_daily_fee,
+        ),
     );
 
     DeadlineStateSummary {

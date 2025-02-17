@@ -433,13 +433,15 @@ impl Deadline {
         mut sectors: &[SectorOnChainInfo],
         sector_size: SectorSize,
         quant: QuantSpec,
-    ) -> anyhow::Result<PowerPair> {
+    ) -> anyhow::Result<(
+        PowerPair,   // power
+        TokenAmount, // daily fee
+    )> {
         let mut total_power = PowerPair::zero();
+        let mut total_daily_fee: TokenAmount = TokenAmount::zero();
         if sectors.is_empty() {
-            return Ok(total_power);
+            return Ok((total_power, total_daily_fee));
         }
-
-        let mut total_daily_fee = TokenAmount::zero();
 
         // First update partitions, consuming the sectors
         let mut partition_deadline_updates = Vec::<(ChainEpoch, u64)>::with_capacity(sectors.len());
@@ -505,7 +507,7 @@ impl Deadline {
         self.daily_fee += &total_daily_fee;
         self.total_power += &total_power;
 
-        Ok(total_power)
+        Ok((total_power, total_daily_fee))
     }
 
     pub fn pop_early_terminations<BS: Blockstore>(
