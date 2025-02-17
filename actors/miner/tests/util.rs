@@ -278,6 +278,8 @@ impl ActorHarness {
             IpldBlock::serialize_cbor(&self.worker_key).unwrap(),
             ExitCode::OK,
         );
+        // set circulating supply non-zero so we get non-zero fees
+        rt.set_circulating_supply(TokenAmount::from_whole(500_000_000));
 
         let result = rt
             .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())

@@ -131,6 +131,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                 miner_summary.live_power += &deadline_summary.live_power;
                 miner_summary.active_power += &deadline_summary.active_power;
                 miner_summary.faulty_power += &deadline_summary.faulty_power;
+                miner_summary.daily_fee += &deadline_summary.daily_fee;
                 Ok(())
             });
 
@@ -160,6 +161,7 @@ pub struct StateSummary {
     pub deadline_cron_active: bool,
     // sectors with non zero (verified) deal weight that may carry deals
     pub live_data_sectors: BTreeMap<SectorNumber, DataSummary>,
+    pub daily_fee: TokenAmount,
 }
 
 impl Default for StateSummary {
@@ -171,6 +173,7 @@ impl Default for StateSummary {
             window_post_proof_type: RegisteredPoStProof::Invalid(0),
             deadline_cron_active: false,
             live_data_sectors: BTreeMap::new(),
+            daily_fee: TokenAmount::zero(),
         }
     }
 }
@@ -385,6 +388,7 @@ pub struct DeadlineStateSummary {
     pub live_power: PowerPair,
     pub active_power: PowerPair,
     pub faulty_power: PowerPair,
+    pub daily_fee: TokenAmount,
 }
 
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
@@ -404,6 +408,7 @@ pub struct PartitionStateSummary {
     // Epochs at which some sector is scheduled to expire.
     pub expiration_epochs: Vec<ChainEpoch>,
     pub early_termination_count: usize,
+    pub daily_fee: TokenAmount,
 }
 
 impl PartitionStateSummary {
@@ -464,6 +469,7 @@ impl PartitionStateSummary {
         let mut live_power = PowerPair::zero();
         let mut faulty_power = PowerPair::zero();
         let mut unproven_power = PowerPair::zero();
+        let mut daily_fee = TokenAmount::zero();
 
         let (live_sectors, missing) = select_sectors_map(sectors_map, &live);
         if missing.is_empty() {
@@ -473,6 +479,9 @@ impl PartitionStateSummary {
                 partition.live_power == live_power,
                 format!("live power was {:?}, expected {:?}", partition.live_power, live_power),
             );
+            daily_fee = live_sectors
+                .iter()
+                .fold(TokenAmount::zero(), |acc, (_, sector)| acc + sector.daily_fee.clone());
         } else {
             acc.add(format!("live sectors missing from all sectors: {missing:?}"));
         }
@@ -553,6 +562,18 @@ impl PartitionStateSummary {
                 let queue_sectors =
                     BitField::union([&queue_summary.on_time_sectors, &queue_summary.early_sectors]);
                 require_equal(&live, &queue_sectors, acc, "live does not equal all expirations");
+                // TODO: removeme
+                eprintln!(
+                    "Testing fee deductions: expected={:?}, actual={:?}",
+                    queue_summary.fee_deduction, daily_fee
+                );
+                acc.require(
+                    queue_summary.fee_deduction == daily_fee,
+                    format!(
+                        "total fee deductions {:?} does not equal daily fee {:?}",
+                        queue_summary.fee_deduction, daily_fee
+                    ),
+                );
             }
             Err(err) => {
                 acc.add(format!("error loading expiration_queue: {err}"));
@@ -583,6 +604,7 @@ impl PartitionStateSummary {
             recovering_power: partition.recovering_power,
             expiration_epochs,
             early_termination_count,
+            daily_fee,
         }
     }
 }
@@ -598,6 +620,7 @@ struct ExpirationQueueStateSummary {
     #[allow(dead_code)]
     pub on_time_pledge: TokenAmount,
     pub expiration_epochs: Vec<ChainEpoch>,
+    pub fee_deduction: TokenAmount,
 }
 
 impl ExpirationQueueStateSummary {
@@ -617,6 +640,7 @@ impl ExpirationQueueStateSummary {
         let mut all_active_power = PowerPair::zero();
         let mut all_faulty_power = PowerPair::zero();
         let mut all_on_time_pledge = TokenAmount::zero();
+        let mut all_fee_deductions = TokenAmount::zero();
 
         let ret = expiration_queue.amt.for_each(|epoch, expiration_set| {
             let epoch = epoch as i64;
@@ -685,6 +709,7 @@ impl ExpirationQueueStateSummary {
             all_active_power += &expiration_set.active_power;
             all_faulty_power += &expiration_set.faulty_power;
             all_on_time_pledge += &expiration_set.on_time_pledge;
+            all_fee_deductions += &expiration_set.fee_deduction;
 
             Ok(())
         });
@@ -700,6 +725,7 @@ impl ExpirationQueueStateSummary {
             faulty_power: all_faulty_power,
             on_time_pledge: all_on_time_pledge,
             expiration_epochs,
+            fee_deduction: all_fee_deductions,
         }
     }
 }
@@ -806,6 +832,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     let mut all_live_power = PowerPair::zero();
     let mut all_active_power = PowerPair::zero();
     let mut all_faulty_power = PowerPair::zero();
+    let mut all_daily_fees = TokenAmount::zero();
 
     let mut partition_count = 0;
 
@@ -855,6 +882,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
             all_live_power += &summary.live_power;
             all_active_power += &summary.active_power;
             all_faulty_power += &summary.faulty_power;
+            all_daily_fees += &summary.daily_fee;
 
             Ok(())
         })
@@ -996,5 +1024,6 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
         live_power: all_live_power,
         active_power: all_active_power,
         faulty_power: all_faulty_power,
+        daily_fee: all_daily_fees,
     }
 }
