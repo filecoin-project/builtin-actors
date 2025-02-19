@@ -1,6 +1,6 @@
 use fil_actor_miner::{
-    power_for_sectors, testing::PartitionStateSummary, BitFieldQueue, ExpirationQueue, Partition,
-    PowerPair, QuantSpec, SectorOnChainInfo,
+    daily_fee_for_sectors, power_for_sectors, testing::PartitionStateSummary, BitFieldQueue,
+    ExpirationQueue, Partition, PowerPair, QuantSpec, SectorOnChainInfo,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
@@ -13,7 +13,6 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredSealProof, SectorSize};
 
 mod util;
-use num_traits::Zero;
 use util::*;
 
 const SECTOR_SIZE: SectorSize = SectorSize::_32GiB;
@@ -69,9 +68,8 @@ fn setup_unproven() -> (MockRuntime, Partition) {
 
     let expected_power = power_for_sectors(SECTOR_SIZE, &sectors());
     assert_eq!(expected_power, power);
-    let expected_daily_fee =
-        &sectors().iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
-    assert_eq!(*expected_daily_fee, daily_fee);
+    let expected_daily_fee = daily_fee_for_sectors(&sectors());
+    assert_eq!(expected_daily_fee, daily_fee);
 
     (rt, partition)
 }
@@ -470,8 +468,7 @@ mod miner_actor_test_partitions {
         let old_sectors = sectors()[1..4].to_vec();
         let old_sector_power = power_for_sectors(SECTOR_SIZE, &old_sectors);
         let old_sector_pledge = TokenAmount::from_atto(1001 + 1002 + 1003);
-        let old_daily_fee =
-            old_sectors.iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
+        let old_daily_fee = daily_fee_for_sectors(&old_sectors);
 
         // replace 1 and add 2 new sectors
         let new_sectors = vec![
@@ -481,8 +478,7 @@ mod miner_actor_test_partitions {
         ];
         let new_sector_power = power_for_sectors(SECTOR_SIZE, &new_sectors);
         let new_sector_pledge = TokenAmount::from_atto(3000u64 + 3001 + 3002);
-        let new_daily_fee =
-            new_sectors.iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
+        let new_daily_fee = daily_fee_for_sectors(&new_sectors);
 
         let (power_delta, pledge_delta, daily_fee_delta) = partition
             .replace_sectors(&rt.store, &old_sectors, &new_sectors, SECTOR_SIZE, QUANT_SPEC)
@@ -999,8 +995,7 @@ mod miner_actor_test_partitions {
             .add_sectors(&rt.store, false, &many_sectors, SECTOR_SIZE, QUANT_SPEC)
             .unwrap();
         let expected_power = power_for_sectors(SECTOR_SIZE, &many_sectors);
-        let expected_daily_fee =
-            many_sectors.iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
+        let expected_daily_fee = daily_fee_for_sectors(&many_sectors);
         assert_eq!(expected_power, power);
         assert_eq!(expected_daily_fee, daily_fee);
 

@@ -1,7 +1,7 @@
 use crate::{
-    power_for_sectors, BitFieldQueue, Deadline, ExpirationQueue, MinerInfo, Partition, PowerPair,
-    PreCommitMap, QuantSpec, SectorOnChainInfo, SectorOnChainInfoFlags, Sectors, State,
-    NO_QUANTIZATION, PRECOMMIT_CONFIG,
+    daily_fee_for_sectors, power_for_sectors, BitFieldQueue, Deadline, ExpirationQueue, MinerInfo,
+    Partition, PowerPair, PreCommitMap, QuantSpec, SectorOnChainInfo, SectorOnChainInfoFlags,
+    Sectors, State, NO_QUANTIZATION, PRECOMMIT_CONFIG,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{DealWeight, MessageAccumulator};
@@ -479,9 +479,7 @@ impl PartitionStateSummary {
                 partition.live_power == live_power,
                 format!("live power was {:?}, expected {:?}", partition.live_power, live_power),
             );
-            daily_fee = live_sectors
-                .iter()
-                .fold(TokenAmount::zero(), |acc, (_, sector)| acc + sector.daily_fee.clone());
+            daily_fee = daily_fee_for_sectors(&live_sectors.values().cloned().collect::<Vec<_>>());
         } else {
             acc.add(format!("live sectors missing from all sectors: {missing:?}"));
         }
@@ -1022,10 +1020,9 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
         "deadline early terminations doesn't match expected partitions",
     );
 
-    let live_sectors_daily_fee =
-        live_sectors.iter().fold(TokenAmount::zero(), |acc, sector_number| {
-            acc + sectors.get(&sector_number).unwrap().daily_fee.clone()
-        });
+    let live_sectors_daily_fee = daily_fee_for_sectors(
+        &live_sectors.iter().map(|n| sectors.get(&n).unwrap().clone()).collect::<Vec<_>>(),
+    );
     acc.require(
         deadline.daily_fee == live_sectors_daily_fee,
         format!(
