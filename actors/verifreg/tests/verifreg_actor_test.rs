@@ -1602,6 +1602,8 @@ mod serialization {
     use std::str::FromStr;
 
     use cid::Cid;
+    use hex_literal::hex;
+
     use fil_actor_verifreg::{AllocationClaim, ClaimAllocationsParams, SectorAllocationClaims};
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::piece::PaddedPieceSize;
@@ -1612,7 +1614,7 @@ mod serialization {
             (
                 ClaimAllocationsParams { sectors: vec![], all_or_nothing: false },
                 // [[],false]
-                "8280f4",
+                &hex!("8280f4")[..],
             ),
             (
                 ClaimAllocationsParams {
@@ -1624,7 +1626,7 @@ mod serialization {
                     all_or_nothing: true,
                 },
                 // [[[101,202,[]]],true]
-                "828183186518ca80f5",
+                &hex!("828183186518ca80f5"),
             ),
             (
                 ClaimAllocationsParams {
@@ -1652,13 +1654,13 @@ mod serialization {
                     all_or_nothing: true,
                 },
                 // [[[101,202,[[303,404,baga6ea4seaaqa,505],[606,707,baga6ea4seaaqc,808]]],[303,404,[]]],true]
-                "828283186518ca828419012f190194d82a49000181e203922001001901f98419025e1902c3d82a49000181e203922001011903288319012f19019480f5",
+                &hex!("828283186518ca828419012f190194d82a49000181e203922001001901f98419025e1902c3d82a49000181e203922001011903288319012f19019480f5"),
             ),
         ];
 
         for (params, expected_hex) in test_cases {
             let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
-            assert_eq!(const_hex::encode(&encoded.data), expected_hex);
+            assert_eq!(encoded.data, expected_hex);
             let decoded: ClaimAllocationsParams = IpldBlock::deserialize(&encoded).unwrap();
             assert_eq!(params, decoded);
         }

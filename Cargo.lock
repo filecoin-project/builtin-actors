@@ -968,7 +968,6 @@ dependencies = [
  "bitflags",
  "byteorder",
  "cid",
- "const-hex",
  "fil_actor_account",
  "fil_actor_market",
  "fil_actor_power",
@@ -981,6 +980,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
+ "hex-literal",
  "itertools",
  "lazy_static",
  "log",
@@ -1044,7 +1044,6 @@ version = "16.0.0-dev1"
 dependencies = [
  "anyhow",
  "cid",
- "const-hex",
  "fil_actor_reward",
  "fil_actors_runtime",
  "frc42_dispatch",
@@ -1052,6 +1051,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
+ "hex-literal",
  "indexmap 2.7.0",
  "integer-encoding",
  "lazy_static",
@@ -1099,7 +1099,6 @@ version = "16.0.0-dev1"
 dependencies = [
  "anyhow",
  "cid",
- "const-hex",
  "fil_actors_runtime",
  "frc42_dispatch",
  "frc46_token",
@@ -1108,6 +1107,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
+ "hex-literal",
  "lazy_static",
  "log",
  "num-derive",
@@ -1193,7 +1193,6 @@ dependencies = [
  "byteorder",
  "castaway",
  "cid",
- "const-hex",
  "derive_builder",
  "fil_actors_runtime",
  "fvm_ipld_amt",
@@ -1204,6 +1203,7 @@ dependencies = [
  "fvm_sdk",
  "fvm_shared",
  "hex",
+ "hex-literal",
  "integer-encoding",
  "itertools",
  "lazy_static",
@@ -2217,12 +2217,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14cae93065090804185d3b75f0bf93b8eeda30c7a9b4a33d3bdb3988d6229e50"
 dependencies = [
  "bitflags",
- "lazy_static",
  "num-traits",
  "rand",
  "rand_chacha",
  "rand_xorshift",
- "regex-syntax",
  "unarray",
 ]
 

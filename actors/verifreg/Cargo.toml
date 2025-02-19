@@ -32,7 +32,7 @@ num-traits = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
-const-hex = { workspace = true }
+hex-literal = { workspace = true }
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
 
 [features]
