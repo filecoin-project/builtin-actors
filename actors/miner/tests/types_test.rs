@@ -3,6 +3,8 @@ mod serialization {
     use std::str::FromStr;
 
     use cid::Cid;
+    use hex_literal::hex;
+
     use fil_actor_miner::{ProveCommitSectorsNIParams, SectorNIActivationInfo};
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof};
@@ -20,7 +22,7 @@ mod serialization {
                     require_activation_success: false,
                 },
                 // [[],byte[],8,1,2,false]
-                 "868040080102f4",
+                &hex!("868040080102f4")[..],
             ),
             (
                 ProveCommitSectorsNIParams {
@@ -39,7 +41,7 @@ mod serialization {
                     require_activation_success: true,
                 },
                 // [[[1,2,bagboea4seaaqa,3,4,5]],byte[deadbeef],18,1,6,true]
-                "8681860102d82a49000182e2039220010003040544deadbeef120106f5",
+                &hex!("8681860102d82a49000182e2039220010003040544deadbeef120106f5"),
             ),
             (
                 ProveCommitSectorsNIParams {
@@ -68,13 +70,13 @@ mod serialization {
                     require_activation_success: false,
                 },
                 // [[[1,2,bagboea4seaaqa,3,4,5],[6,7,bagboea4seaaqc,8,9,10]],byte[deadbeef],18,1,11,false]
-                "8682860102d82a49000182e20392200100030405860607d82a49000182e2039220010108090a44deadbeef12010bf4",
+                &hex!("8682860102d82a49000182e20392200100030405860607d82a49000182e2039220010108090a44deadbeef12010bf4"),
             ),
         ];
 
         for (params, expected_hex) in test_cases {
             let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
-            assert_eq!(const_hex::encode(&encoded.data), expected_hex);
+            assert_eq!(encoded.data, expected_hex);
             let decoded: ProveCommitSectorsNIParams = IpldBlock::deserialize(&encoded).unwrap();
             assert_eq!(params, decoded);
         }
