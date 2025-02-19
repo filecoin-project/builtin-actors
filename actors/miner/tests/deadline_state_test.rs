@@ -63,7 +63,7 @@ fn add_sectors(
     let store = rt.store();
 
     let (activated_power, daily_fee) = deadline
-        .add_sectors(store, PARTITION_SIZE, false, &sectors, SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(store, PARTITION_SIZE, false, true, &sectors, SECTOR_SIZE, QUANT_SPEC)
         .expect("Couldn't add sectors");
     let expected_power = power_for_sectors(SECTOR_SIZE, &sectors);
     let expected_daily_fee =
@@ -707,7 +707,15 @@ fn post_all_the_things() {
 
     // add an inactive sector
     let (power, daily_fee) = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(
+            rt.store(),
+            PARTITION_SIZE,
+            false,
+            true,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     let expected_daily_fee =
@@ -809,7 +817,15 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
 
     // add an inactive sector
     let (power, daily_fee) = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(
+            rt.store(),
+            PARTITION_SIZE,
+            false,
+            true,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     let expected_daily_fee =
@@ -924,7 +940,15 @@ fn post_with_skipped_unproven() {
 
     // add an inactive sector
     let (power, daily_fee) = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(
+            rt.store(),
+            PARTITION_SIZE,
+            false,
+            true,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     let expected_daily_fee =
@@ -997,7 +1021,15 @@ fn post_missing_partition() {
 
     // add an inactive sector
     let (power, daily_fee) = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(
+            rt.store(),
+            PARTITION_SIZE,
+            false,
+            true,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     let expected_daily_fee =
@@ -1037,7 +1069,15 @@ fn post_partition_twice() {
 
     // add an inactive sector
     let (power, daily_fee) = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(
+            rt.store(),
+            PARTITION_SIZE,
+            false,
+            true,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     let expected_daily_fee =

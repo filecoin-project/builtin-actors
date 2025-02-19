@@ -511,10 +511,13 @@ impl State {
 
             // The power returned from AddSectors is ignored because it's not activated (proven) yet.
             let proven = false;
+            // New sectors, so the deadline has new fees.
+            let new_fees = true;
             deadline.add_sectors(
                 store,
                 partition_size,
                 proven,
+                new_fees,
                 &deadline_sectors,
                 sector_size,
                 quant,
@@ -560,8 +563,9 @@ impl State {
 
         let quant = self.quant_spec_for_deadline(policy, deadline_idx);
         let proven = false;
+        let new_fees = true; // New sectors, so the deadline has new fees.
         deadline
-            .add_sectors(store, partition_size, proven, &sectors, sector_size, quant)
+            .add_sectors(store, partition_size, proven, new_fees, &sectors, sector_size, quant)
             .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                 format!("failed to add sectors to deadline {}", deadline_idx)
             })?;
