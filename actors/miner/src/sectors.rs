@@ -24,7 +24,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         Ok(Self { amt: Array::load(root, store)? })
     }
 
-    pub fn load_sector(
+    pub fn load_sectors(
         &self,
         sector_numbers: &BitField,
     ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
@@ -44,6 +44,21 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
             sector_infos.push(sector_on_chain);
         }
         Ok(sector_infos)
+    }
+
+    pub fn delete_sectors(&mut self, sector_numbers: &BitField) -> Result<(), ActorError> {
+        for sector_num in sector_numbers.iter() {
+            let deleted_sector = self.amt.delete(sector_num).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to delete sector {}", sector_num),
+                )
+            })?;
+            if deleted_sector.is_none() {
+                return Err(actor_error!(not_found; "sector not found: {}", sector_num));
+            }
+        }
+        Ok(())
     }
 
     pub fn get(
