@@ -4341,7 +4341,10 @@ fn process_early_terminations(
     rt: &impl Runtime,
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
-) -> Result</* more */ bool, ActorError> {
+) -> Result<
+    bool, // has more
+    ActorError,
+> {
     let mut terminated_sector_nums = vec![];
     let mut sectors_with_data = vec![];
     let (result, more, penalty, pledge_delta) = rt.transaction(|state: &mut State, rt| {
@@ -5397,6 +5400,10 @@ pub fn power_for_sectors(sector_size: SectorSize, sectors: &[SectorOnChainInfo])
     let qa = sectors.iter().map(|s| qa_power_for_sector(sector_size, s)).sum();
 
     PowerPair { raw: BigInt::from(sector_size as u64) * BigInt::from(sectors.len()), qa }
+}
+
+pub fn daily_fee_for_sectors(sectors: &[SectorOnChainInfo]) -> TokenAmount {
+    sectors.iter().map(|s| &s.daily_fee).sum()
 }
 
 fn get_miner_info<BS>(store: &BS, state: &State) -> Result<MinerInfo, ActorError>
