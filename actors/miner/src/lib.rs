@@ -2363,6 +2363,9 @@ impl Actor {
 
                 let quant = state.quant_spec_for_deadline(policy, deadline_idx);
 
+                let mut deadline_power_delta = PowerPair::zero();
+                let mut deadline_pledge_delta = TokenAmount::zero();
+
                 // Group modified partitions by epoch to which they are extended. Duplicates are ok.
                 let mut partitions_by_new_epoch = BTreeMap::<ChainEpoch, Vec<u64>>::new();
                 let mut epochs_to_reschedule = Vec::<ChainEpoch>::new();
@@ -2436,8 +2439,8 @@ impl Actor {
                                 )
                             })?;
 
-                    power_delta += &partition_power_delta;
-                    pledge_delta += partition_pledge_delta; // expected to be zero, see note below.
+                    deadline_power_delta += &partition_power_delta;
+                    deadline_pledge_delta += &partition_pledge_delta; // expected to be zero, see note below.
 
                     // daily_fee should not change when replacing sectors with updated versions of themselves
                     if partition_daily_fee_delta != TokenAmount::zero() {
@@ -2468,7 +2471,11 @@ impl Actor {
                     }
                 }
 
-                deadline.live_power += &power_delta;
+                deadline.live_power += &deadline_power_delta;
+
+                power_delta += &deadline_power_delta;
+                pledge_delta += &deadline_pledge_delta;
+
                 deadline.partitions = partitions.flush().map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -4146,6 +4153,9 @@ where
 
             let quant = state.quant_spec_for_deadline(rt.policy(), dl_idx);
 
+            let mut deadline_power_delta = PowerPair::zero();
+            let mut deadline_pledge_delta = TokenAmount::zero();
+
             for update in updates {
                 // Compute updated sector info.
                 let new_sector_info = update_existing_sector_info(
@@ -4191,8 +4201,8 @@ where
                             )
                         })?;
 
-                power_delta += &partition_power_delta;
-                pledge_delta += &partition_pledge_delta;
+                deadline_power_delta += &partition_power_delta;
+                deadline_pledge_delta += &partition_pledge_delta;
 
                 // daily_fee should not change when updating sectors with new replicas
                 if partition_daily_fee_delta != TokenAmount::zero() {
@@ -4216,7 +4226,11 @@ where
                 new_sectors.push(new_sector_info);
             } // End loop over declarations in one deadline.
 
-            deadline.live_power += &power_delta;
+            deadline.live_power += &deadline_power_delta;
+
+            power_delta += &deadline_power_delta;
+            pledge_delta += &deadline_pledge_delta;
+
             deadline.partitions =
                 partitions.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                     format!("failed to save partitions for deadline {}", dl_idx)
