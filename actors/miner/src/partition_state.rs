@@ -488,7 +488,7 @@ impl Partition {
         sector_numbers: &BitField,
         sector_size: SectorSize,
         quant: QuantSpec,
-    ) -> anyhow::Result<ExpirationSet> {
+    ) -> anyhow::Result<(ExpirationSet, PowerPair)> {
         let live_sectors = self.live_sectors();
 
         if !live_sectors.contains_all(sector_numbers) {
@@ -533,7 +533,7 @@ impl Partition {
         // check invariants
         self.validate_state()?;
 
-        Ok(removed)
+        Ok((removed, removed_unproven_power))
     }
 
     /// PopExpiredSectors traverses the expiration queue up to and including some epoch, and marks all expiring

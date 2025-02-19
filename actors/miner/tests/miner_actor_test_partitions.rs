@@ -609,7 +609,7 @@ mod miner_actor_test_partitions {
         // now terminate 1, 3, 5, and 7
         let terminations = make_bitfield(&[1, 3, 5, 7]);
         let termination_epoch = 3;
-        let removed = partition
+        let (removed, removed_unproven) = partition
             .terminate_sectors(
                 &Policy::default(),
                 &rt.store,
@@ -627,6 +627,8 @@ mod miner_actor_test_partitions {
         let expected_faulty_power =
             power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors(), &make_bitfield(&[3, 5])));
         assert_eq!(expected_faulty_power, removed.faulty_power);
+        let expected_unproven_power = power_for_sectors(SECTOR_SIZE, &unproven_sector);
+        assert_eq!(expected_unproven_power, removed_unproven);
 
         // expect partition state to no longer reflect power and pledge from terminated sectors and terminations to contain new sectors
         assert_partition_state(
@@ -690,7 +692,7 @@ mod miner_actor_test_partitions {
         let termination_epoch = 3;
 
         // First termination works.
-        let removed = partition
+        let (removed, unproven_power) = partition
             .terminate_sectors(
                 &Policy::default(),
                 &rt.store,
@@ -705,6 +707,7 @@ mod miner_actor_test_partitions {
             power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors(), &make_bitfield(&[1])));
         assert_eq!(expected_active_power, removed.active_power);
         assert_eq!(removed.faulty_power, PowerPair::zero());
+        assert_eq!(unproven_power, PowerPair::zero());
         let count = removed.len();
         assert_eq!(1, count);
 

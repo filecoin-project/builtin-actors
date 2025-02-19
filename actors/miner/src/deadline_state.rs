@@ -613,7 +613,7 @@ impl Deadline {
                 )?
                 .clone();
 
-            let removed = partition
+            let (removed, removed_unproven) = partition
                 .terminate_sectors(
                     policy,
                     store,
@@ -645,6 +645,7 @@ impl Deadline {
             self.faulty_power -= &removed.faulty_power;
             self.total_power -= &removed.active_power;
             self.total_power -= &removed.faulty_power;
+            self.total_power -= &removed_unproven;
             self.daily_fee -= &removed.fee_deduction;
 
             // Aggregate power lost from active sectors
