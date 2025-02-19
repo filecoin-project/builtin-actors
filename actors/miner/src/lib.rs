@@ -2127,6 +2127,9 @@ impl Actor {
             pledge_inputs.ramp_duration_epochs,
         );
 
+        let circulating_supply = rt.total_fil_circ_supply();
+        let daily_fee = daily_proof_fee(policy, &circulating_supply);
+
         let sectors_to_add = valid_sectors
             .iter()
             .map(|sector| SectorOnChainInfo {
@@ -2145,7 +2148,7 @@ impl Actor {
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
-                daily_fee: TokenAmount::zero(),
+                daily_fee: daily_fee.clone(),
             })
             .collect::<Vec<SectorOnChainInfo>>();
 
@@ -2402,23 +2405,33 @@ impl Actor {
                     })?;
 
                     // Remove old sectors from partition and assign new sectors.
-                    let (partition_power_delta, partition_pledge_delta) = partition
-                        .replace_sectors(
-                            rt.store(),
-                            &old_sectors,
-                            &new_sectors,
-                            info.sector_size,
-                            quant,
-                        )
-                        .map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to replace sector expirations at {:?}", key),
+                    let (partition_power_delta, partition_pledge_delta, partition_daily_fee_delta) =
+                        partition
+                            .replace_sectors(
+                                rt.store(),
+                                &old_sectors,
+                                &new_sectors,
+                                info.sector_size,
+                                quant,
                             )
-                        })?;
+                            .map_err(|e| {
+                                e.downcast_default(
+                                    ExitCode::USR_ILLEGAL_STATE,
+                                    format!("failed to replace sector expirations at {:?}", key),
+                                )
+                            })?;
 
                     power_delta += &partition_power_delta;
                     pledge_delta += partition_pledge_delta; // expected to be zero, see note below.
+
+                    // daily_fee should not change when replacing sectors with updated versions of themselves
+                    if partition_daily_fee_delta != TokenAmount::zero() {
+                        return Err(actor_error!(
+                            illegal_state,
+                            "unexpected daily fee change when extenting sectors at {:?}",
+                            key
+                        ));
+                    }
 
                     partitions.set(decl.partition, partition).map_err(|e| {
                         e.downcast_default(
@@ -2440,6 +2453,7 @@ impl Actor {
                     }
                 }
 
+                deadline.live_power += &power_delta;
                 deadline.partitions = partitions.flush().map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -2998,7 +3012,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load moved sectors")
             })?;
             let proven = true;
-            let added_power = deadline
+            let (added_power, added_fee) = deadline
                 .add_sectors(
                     store,
                     info.window_post_partition_sectors,
@@ -3022,6 +3036,13 @@ impl Actor {
                     added_power
                 ));
             }
+
+            // Rebalance the fee:
+            //   * The deadline's total daily_fee already reflected the total daily_fee of all live sectors.
+            //   * remove_partitions() doesn't perform a subtraction of the fee value
+            //   * add_sector() does perform an addition of the fee value
+            // So we've now added the fee for all live sectors in the removed partitions twice.
+            deadline.daily_fee -= added_fee;
 
             deadlines.update_deadline(policy, store, params_deadline, &deadline).map_err(|e| {
                 e.downcast_default(
@@ -4177,23 +4198,33 @@ where
                     })?;
 
                 // Note: replacing sectors one at a time in each partition is inefficient.
-                let (partition_power_delta, partition_pledge_delta) = partition
-                    .replace_sectors(
-                        rt.store(),
-                        std::slice::from_ref(update.sector_info),
-                        std::slice::from_ref(&new_sector_info),
-                        sector_size,
-                        quant,
-                    )
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!(
-                            "failed to replace sector at deadline {} partition {}",
-                            update.deadline, update.partition
+                let (partition_power_delta, partition_pledge_delta, partition_daily_fee_delta) =
+                    partition
+                        .replace_sectors(
+                            rt.store(),
+                            std::slice::from_ref(update.sector_info),
+                            std::slice::from_ref(&new_sector_info),
+                            sector_size,
+                            quant,
                         )
-                    })?;
+                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                            format!(
+                                "failed to replace sector at deadline {} partition {}",
+                                update.deadline, update.partition
+                            )
+                        })?;
 
                 power_delta += &partition_power_delta;
                 pledge_delta += &partition_pledge_delta;
+
+                // daily_fee should not change when updating sectors with new replicas
+                if partition_daily_fee_delta != TokenAmount::zero() {
+                    return Err(actor_error!(
+                        illegal_state,
+                        "unexpected daily fee delta {} when updating sectors with new replicas",
+                        partition_daily_fee_delta
+                    ));
+                }
 
                 partitions.set(update.partition, partition).with_context_code(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -4208,6 +4239,7 @@ where
                 new_sectors.push(new_sector_info);
             } // End loop over declarations in one deadline.
 
+            deadline.live_power += &power_delta;
             deadline.partitions =
                 partitions.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                     format!("failed to save partitions for deadline {}", dl_idx)
@@ -5514,6 +5546,8 @@ fn activate_new_sector_infos(
         let policy = rt.policy();
         let store = rt.store();
 
+        let daily_fee = daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply);
+
         let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(data_activations.len());
         let mut deposit_to_unlock = TokenAmount::zero();
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
@@ -5584,7 +5618,7 @@ fn activate_new_sector_infos(
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
-                daily_fee: TokenAmount::zero(),
+                daily_fee: daily_fee.clone(),
             };
 
             new_sector_numbers.push(new_sector_info.sector_number);

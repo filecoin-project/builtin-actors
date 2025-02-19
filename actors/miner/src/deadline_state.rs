@@ -164,9 +164,9 @@ pub struct Deadline {
     // disputed window PoSts are removed from the snapshot.
     pub optimistic_post_submissions_snapshot: Cid,
 
-    /// Memoized sum of active power in partitions, including faulty. Used to
-    /// cap the daily fee as a proportion of expected block reward.
-    pub total_power: PowerPair,
+    /// Memoized sum of all non-terminated power in partitions, including active, faulty, and
+    /// unproven. Used to cap the daily fee as a proportion of expected block reward.
+    pub live_power: PowerPair,
 
     /// Memoized sum of daily fee payable to the network for the active sectors
     /// in this deadline.
@@ -241,7 +241,7 @@ impl Deadline {
             partitions_snapshot: empty_partitions_array,
             sectors_snapshot: empty_sectors_array,
             optimistic_post_submissions_snapshot: empty_post_submissions_array,
-            total_power: PowerPair::zero(),
+            live_power: PowerPair::zero(),
             daily_fee: TokenAmount::zero(),
         })
     }
@@ -357,6 +357,7 @@ impl Deadline {
         let mut all_on_time_pledge = TokenAmount::zero();
         let mut all_active_power = PowerPair::zero();
         let mut all_faulty_power = PowerPair::zero();
+        let mut all_fee_deductions = TokenAmount::zero();
         let mut partitions_with_early_terminations = Vec::<u64>::new();
 
         // For each partition with an expiry, remove and collect expirations from the partition queue.
@@ -384,6 +385,7 @@ impl Deadline {
             all_active_power += &partition_expiration.active_power;
             all_faulty_power += &partition_expiration.faulty_power;
             all_on_time_pledge += &partition_expiration.on_time_pledge;
+            all_fee_deductions += &partition_expiration.fee_deduction;
 
             partitions.set(partition_idx, partition)?;
         }
@@ -404,6 +406,10 @@ impl Deadline {
         self.live_sectors -= on_time_count + early_count;
 
         self.faulty_power -= &all_faulty_power;
+        self.live_power -= &all_faulty_power;
+        self.live_power -= &all_active_power;
+
+        self.daily_fee -= &all_fee_deductions;
 
         Ok(ExpirationSet {
             on_time_sectors: all_on_time_sectors,
@@ -411,7 +417,7 @@ impl Deadline {
             on_time_pledge: all_on_time_pledge,
             active_power: all_active_power,
             faulty_power: all_faulty_power,
-            fee_deduction: TokenAmount::zero(),
+            fee_deduction: all_fee_deductions,
         })
     }
 
@@ -427,10 +433,14 @@ impl Deadline {
         mut sectors: &[SectorOnChainInfo],
         sector_size: SectorSize,
         quant: QuantSpec,
-    ) -> anyhow::Result<PowerPair> {
+    ) -> anyhow::Result<(
+        PowerPair,   // power
+        TokenAmount, // daily fee
+    )> {
         let mut total_power = PowerPair::zero();
+        let mut total_daily_fee: TokenAmount = TokenAmount::zero();
         if sectors.is_empty() {
-            return Ok(total_power);
+            return Ok((total_power, total_daily_fee));
         }
 
         // First update partitions, consuming the sectors
@@ -466,9 +476,10 @@ impl Deadline {
             sectors = &sectors[size..];
 
             // Add sectors to partition.
-            let partition_power =
+            let (partition_power, partition_daily_fee) =
                 partition.add_sectors(store, proven, partition_new_sectors, sector_size, quant)?;
             total_power += &partition_power;
+            total_daily_fee += &partition_daily_fee;
 
             // Save partition back.
             partitions.set(partition_idx, partition)?;
@@ -493,8 +504,10 @@ impl Deadline {
             .add_many_to_queue_values(partition_deadline_updates.iter().copied())
             .map_err(|e| e.downcast_wrap("failed to add expirations for new deadlines"))?;
         self.expirations_epochs = deadline_expirations.amt.flush()?;
+        self.daily_fee += &total_daily_fee;
+        self.live_power += &total_power;
 
-        Ok(total_power)
+        Ok((total_power, total_daily_fee))
     }
 
     pub fn pop_early_terminations<BS: Blockstore>(
@@ -600,7 +613,7 @@ impl Deadline {
                 )?
                 .clone();
 
-            let removed = partition
+            let (removed, removed_unproven) = partition
                 .terminate_sectors(
                     policy,
                     store,
@@ -630,6 +643,10 @@ impl Deadline {
             } // note: we should _always_ have early terminations, unless the early termination bitfield is empty.
 
             self.faulty_power -= &removed.faulty_power;
+            self.live_power -= &removed.active_power;
+            self.live_power -= &removed.faulty_power;
+            self.live_power -= &removed_unproven;
+            self.daily_fee -= &removed.fee_deduction;
 
             // Aggregate power lost from active sectors
             power_lost += &removed.active_power;
@@ -750,6 +767,10 @@ impl Deadline {
 
         self.live_sectors -= removed_live_sectors;
         self.total_sectors -= removed_live_sectors + removed_dead_sectors;
+        // we can leave faulty power alone because there can be no faults here.
+        self.live_power -= &removed_power;
+        // NOTE: We don't update the fees here, we fix them up in the compact_partition logic (the
+        // only caller). This will be fixed in a future commit.
 
         // Update expiration bitfields.
         let mut expiration_epochs = BitFieldQueue::new(store, &self.expirations_epochs, quant)
