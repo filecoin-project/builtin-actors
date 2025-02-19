@@ -986,10 +986,10 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     );
 
     acc.require(
-        deadline.total_power == all_live_power,
+        deadline.live_power == all_live_power,
         format!(
             "deadline live power {:?} != partitions total {all_live_power:?}",
-            deadline.total_power
+            deadline.live_power
         ),
     );
 
