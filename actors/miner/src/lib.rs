@@ -2429,8 +2429,11 @@ impl Actor {
                             })?;
 
                     deadline_power_delta += &partition_power_delta;
-                    deadline_pledge_delta += &partition_pledge_delta; // expected to be zero, see note below.
-                    deadline_daily_fee_delta += &partition_daily_fee_delta; // non-zero when extending legacy sectors
+                    // expected to be zero, see note below.
+                    deadline_pledge_delta += &partition_pledge_delta;
+                    // non-zero when extending sectors that previously paid no fees (e.g., because
+                    // they were sealed before we started charging fees).
+                    deadline_daily_fee_delta += &partition_daily_fee_delta;
 
                     partitions.set(decl.partition, partition).map_err(|e| {
                         e.downcast_default(
