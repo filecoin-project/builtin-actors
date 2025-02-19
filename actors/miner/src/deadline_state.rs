@@ -794,7 +794,7 @@ impl Deadline {
 
         let live_sectors = sectors.load_sectors(&live)?;
         let proven = true; // these are already proven sectors
-        let new_feess = false; // these are not new sectors, so don't adjust the deadline's daily_fee
+        let new_fees = false; // these are not new sectors, so don't adjust the deadline's daily_fee
         let (added_power, added_fee) = self
             .add_sectors(
                 store,
