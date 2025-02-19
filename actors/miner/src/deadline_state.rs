@@ -785,7 +785,7 @@ impl Deadline {
             .flush()
             .map_err(|e| e.downcast_wrap("failed persist deadline expiration queue"))?;
 
-        let live_sectors = sectors.load_sector(&live)?;
+        let live_sectors = sectors.load_sectors(&live)?;
         let proven = true;
         let (added_power, added_fee) = self
             .add_sectors(

@@ -2365,7 +2365,7 @@ impl Actor {
                         .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
                     let old_sectors = sectors
-                        .load_sector(&decl.sectors)
+                        .load_sectors(&decl.sectors)
                         .map_err(|e| e.wrap("failed to load sectors"))?;
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
@@ -3018,9 +3018,13 @@ impl Actor {
                     )
                 })?;
 
-            state.delete_sectors(store, &dead).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete dead sectors")
+            sectors.delete_sectors(&dead).map_err(|e| {
+                e.wrap("failed to delete sectors removed during partition compaction")
             })?;
+            state.sectors =
+                sectors.amt.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    "failed to save sectors after compaction"
+                })?;
 
             deadlines.update_deadline(policy, store, params_deadline, &deadline).map_err(|e| {
                 e.downcast_default(
@@ -4383,7 +4387,7 @@ fn process_early_terminations(
 
         for (epoch, sector_numbers) in result.iter() {
             let sectors = sectors
-                .load_sector(sector_numbers)
+                .load_sectors(sector_numbers)
                 .map_err(|e| e.wrap("failed to load sector infos"))?;
 
             for sector in &sectors {
