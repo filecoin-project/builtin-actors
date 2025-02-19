@@ -769,13 +769,8 @@ impl Deadline {
         self.total_sectors -= removed_live_sectors + removed_dead_sectors;
         // we can leave faulty power alone because there can be no faults here.
         self.total_power -= &removed_power;
-        // TODO: we need to either:
-        //
-        // 1. Update the daily fee here (which means we need to add this information to the partitions).
-        // 2. Add a flag to `Deadline::add_sectors` indicating that we don't want the fee updated
-        //    (because it has already been accounted for.
-        //
-        //  The first option is nice and symmetric. The second saves us some state.
+        // NOTE: We don't update the fees here, we fix them up in the compact_partition logic (the
+        // only caller). This will be fixed in a future commit.
 
         // Update expiration bitfields.
         let mut expiration_epochs = BitFieldQueue::new(store, &self.expirations_epochs, quant)

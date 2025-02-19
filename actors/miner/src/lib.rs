@@ -1988,7 +1988,6 @@ impl Actor {
             epochs_since_ramp_start: 0,
             ramp_duration_epochs: 0,
         };
-        // TODO: signal no fee for this?
         activate_new_sector_infos(
             rt,
             successful_activations.clone(),
