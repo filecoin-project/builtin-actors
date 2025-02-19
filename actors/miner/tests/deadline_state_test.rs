@@ -85,13 +85,13 @@ fn add_sectors(
         return (deadline_state, sectors);
     }
 
-    let mut sector_array = sectors_arr(store, sectors.to_owned());
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
 
     //prove everything
     let result = deadline
         .record_proven_sectors(
             store,
-            &sector_array,
+            &sectors_array,
             SECTOR_SIZE,
             QUANT_SPEC,
             0,
@@ -105,7 +105,7 @@ fn add_sectors(
 
     assert_eq!(result.power_delta, expected_power);
 
-    let sectors_root = sector_array.amt.flush().unwrap();
+    let sectors_root = sectors_array.amt.flush().unwrap();
 
     let (faulty_power, recovery_power) =
         deadline.process_deadline_end(store, QUANT_SPEC, 0, sectors_root).unwrap();
@@ -204,27 +204,24 @@ fn add_then_terminate_then_remove_partition(
 ) -> (ExpectedDeadlineState, Vec<SectorOnChainInfo>) {
     let (deadline_state, sectors) = add_then_terminate_then_pop_early(rt, deadline);
     let store = rt.store();
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
 
-    let (live, dead, removed_power) = deadline
-        .remove_partitions(store, &bitfield_from_slice(&[0]), QUANT_SPEC)
+    let dead = deadline
+        .compact_partitions(
+            store,
+            &mut sectors_array,
+            SECTOR_SIZE,
+            PARTITION_SIZE,
+            &bitfield_from_slice(&[0]),
+            QUANT_SPEC,
+        )
         .expect("should have removed partitions");
 
-    assert_bitfield_equals(&live, &[2, 4]);
     assert_bitfield_equals(&dead, &[1, 3]);
 
-    // Subtract the fee from removing the partition to satisfy the invariant for this.
-    // This should be taken care of in the deadline when we remove a partition, but we don't
-    // expect remove_partitions to do it because it doesn't have the full sector info.
-    let removed_daily_fee = &select_sectors(&sectors, &live)
-        .iter()
-        .fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
-    deadline.daily_fee -= removed_daily_fee;
-
-    let live_power = power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors, &live));
-    assert_eq!(live_power, removed_power);
     let deadline_state = deadline_state
         .with_terminations(&[6])
-        .with_partitions(vec![bitfield_from_slice(&[5, 6, 7, 8]), bitfield_from_slice(&[9])])
+        .with_partitions(vec![bitfield_from_slice(&[5, 6, 7, 8]), bitfield_from_slice(&[2, 4, 9])])
         .assert(store, &sectors, deadline);
 
     (deadline_state, sectors)
@@ -341,10 +338,21 @@ fn cannot_remove_partitions_with_early_terminations() {
     let (_, rt) = setup();
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
-    add_then_terminate(&rt, &mut deadline, false);
+    let (_, sectors) = add_then_terminate(&rt, &mut deadline, false);
 
     let store = rt.store();
-    assert!(deadline.remove_partitions(store, &bitfield_from_slice(&[0]), QUANT_SPEC).is_err());
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
+
+    assert!(deadline
+        .compact_partitions(
+            store,
+            &mut sectors_array,
+            SECTOR_SIZE,
+            PARTITION_SIZE,
+            &bitfield_from_slice(&[0]),
+            QUANT_SPEC,
+        )
+        .is_err());
 }
 
 #[test]
@@ -394,9 +402,19 @@ fn cannot_remove_missing_partition() {
     let (_, rt) = setup();
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
-    add_then_terminate_then_remove_partition(&rt, &mut deadline);
+    let (_, sectors) = add_then_terminate_then_remove_partition(&rt, &mut deadline);
+    let store = rt.store();
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
+
     assert!(deadline
-        .remove_partitions(rt.store(), &bitfield_from_slice(&[2]), QUANT_SPEC)
+        .compact_partitions(
+            store,
+            &mut sectors_array,
+            SECTOR_SIZE,
+            PARTITION_SIZE,
+            &bitfield_from_slice(&[2]),
+            QUANT_SPEC,
+        )
         .is_err());
 }
 
@@ -406,12 +424,20 @@ fn removing_no_partitions_does_nothing() {
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
     let (deadline_state, sectors) = add_then_terminate_then_pop_early(&rt, &mut deadline);
-    let (live, dead, removed_power) = deadline
-        .remove_partitions(rt.store(), &bitfield_from_slice(&[]), QUANT_SPEC)
+    let store = rt.store();
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
+
+    let dead = deadline
+        .compact_partitions(
+            store,
+            &mut sectors_array,
+            SECTOR_SIZE,
+            PARTITION_SIZE,
+            &bitfield_from_slice(&[]),
+            QUANT_SPEC,
+        )
         .expect("should not have failed to remove partitions");
 
-    assert!(removed_power.is_zero());
-    assert!(live.is_empty());
     assert!(dead.is_empty());
 
     // Popping early terminations doesn't affect the terminations bitfield.
@@ -430,11 +456,19 @@ fn fails_to_remove_partitions_with_faulty_sectors() {
     let (_, rt) = setup();
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
-    add_then_mark_faulty(&rt, &mut deadline, false);
+    let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, false);
+    let store = rt.store();
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
 
-    // Try to remove a partition with faulty sectors.
     assert!(deadline
-        .remove_partitions(rt.store(), &bitfield_from_slice(&[1]), QUANT_SPEC)
+        .compact_partitions(
+            store,
+            &mut sectors_array,
+            SECTOR_SIZE,
+            PARTITION_SIZE,
+            &bitfield_from_slice(&[1]),
+            QUANT_SPEC,
+        )
         .is_err());
 }
 
@@ -1315,7 +1349,11 @@ impl ExpectedDeadlineState {
 
         for (i, partition_sectors) in self.partition_sectors.iter().enumerate() {
             let partitions = partitions.get(i as u64).unwrap().unwrap();
-            assert_eq!(partition_sectors, &partitions.sectors);
+            assert_eq!(
+                partition_sectors, &partitions.sectors,
+                "Partition {} sectors do not match. Expected: {:?}, Found: {:?}",
+                i, partition_sectors, partitions.sectors
+            );
         }
 
         self

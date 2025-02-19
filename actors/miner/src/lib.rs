@@ -2996,8 +2996,22 @@ impl Actor {
 
             let mut deadline = deadlines.load_deadline(store, params_deadline)?;
 
-            let (live, dead, removed_power) =
-                deadline.remove_partitions(store, partitions, quant).map_err(|e| {
+            let daily_fee_before = deadline.daily_fee.clone();
+
+            let mut sectors = Sectors::load(store, &state.sectors).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")
+            })?;
+
+            let dead = deadline
+                .compact_partitions(
+                    store,
+                    &mut sectors,
+                    info.sector_size,
+                    info.window_post_partition_sectors,
+                    partitions,
+                    quant,
+                )
+                .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to remove partitions from deadline {}", params_deadline),
@@ -3007,42 +3021,6 @@ impl Actor {
             state.delete_sectors(store, &dead).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete dead sectors")
             })?;
-
-            let sectors = state.load_sector_infos(store, &live).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load moved sectors")
-            })?;
-            let proven = true;
-            let (added_power, added_fee) = deadline
-                .add_sectors(
-                    store,
-                    info.window_post_partition_sectors,
-                    proven,
-                    &sectors,
-                    info.sector_size,
-                    quant,
-                )
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to add back moved sectors",
-                    )
-                })?;
-
-            if removed_power != added_power {
-                return Err(actor_error!(
-                    illegal_state,
-                    "power changed when compacting partitions: was {:?}, is now {:?}",
-                    removed_power,
-                    added_power
-                ));
-            }
-
-            // Rebalance the fee:
-            //   * The deadline's total daily_fee already reflected the total daily_fee of all live sectors.
-            //   * remove_partitions() doesn't perform a subtraction of the fee value
-            //   * add_sector() does perform an addition of the fee value
-            // So we've now added the fee for all live sectors in the removed partitions twice.
-            deadline.daily_fee -= added_fee;
 
             deadlines.update_deadline(policy, store, params_deadline, &deadline).map_err(|e| {
                 e.downcast_default(
@@ -3057,6 +3035,14 @@ impl Actor {
                     format!("failed to save deadline {}", params_deadline),
                 )
             })?;
+
+            let daily_fee_after = deadline.daily_fee;
+            if daily_fee_before != daily_fee_after {
+                return Err(actor_error!(
+                    illegal_state,
+                    "unexpected daily fee change during partition compaction"
+                ));
+            }
 
             Ok(())
         })?;

@@ -659,23 +659,19 @@ impl Deadline {
     }
 
     /// RemovePartitions removes the specified partitions, shifting the remaining
-    /// ones to the left, and returning the live and dead sectors they contained.
+    /// ones to the left, and returning the dead sectors they contained.
     ///
     /// Returns an error if any of the partitions contained faulty sectors or early
     /// terminations.
-    pub fn remove_partitions<BS: Blockstore>(
+    pub fn compact_partitions<BS: Blockstore>(
         &mut self,
         store: &BS,
+        sectors: &mut Sectors<BS>,
+        sector_size: SectorSize,
+        window_post_partition_sectors: u64,
         to_remove: &BitField,
         quant: QuantSpec,
-    ) -> Result<
-        (
-            BitField,  // live
-            BitField,  // dead
-            PowerPair, // removed power
-        ),
-        anyhow::Error,
-    > {
+    ) -> Result<BitField, anyhow::Error> {
         let old_partitions =
             self.partitions_amt(store).map_err(|e| e.downcast_wrap("failed to load partitions"))?;
 
@@ -693,7 +689,7 @@ impl Deadline {
             }
         } else {
             // Nothing to do.
-            return Ok((BitField::new(), BitField::new(), PowerPair::zero()));
+            return Ok(BitField::new());
         }
 
         // Should already be checked earlier, but we might as well check again.
@@ -789,7 +785,37 @@ impl Deadline {
             .flush()
             .map_err(|e| e.downcast_wrap("failed persist deadline expiration queue"))?;
 
-        Ok((live, dead, removed_power))
+        let live_sectors = sectors.load_sector(&live)?;
+        let proven = true;
+        let (added_power, added_fee) = self
+            .add_sectors(
+                store,
+                window_post_partition_sectors,
+                proven,
+                &live_sectors,
+                sector_size,
+                quant,
+            )
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add back moved sectors")
+            })?;
+
+        if removed_power != added_power {
+            return Err(anyhow!(
+                "power changed when compacting partitions: was {:?}, is now {:?}",
+                removed_power,
+                added_power
+            ));
+        }
+
+        // Rebalance the fee:
+        //   * The deadline's total daily_fee already reflected the total daily_fee of all live sectors.
+        //   * We didn't remove the fee when we removed the partitions
+        //   * add_sector() does perform an addition of the fee value
+        // So we've now added the fee for all live sectors in the removed partitions twice.
+        self.daily_fee -= added_fee;
+
+        Ok(dead)
     }
 
     pub fn record_faults<BS: Blockstore>(
