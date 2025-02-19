@@ -275,7 +275,7 @@ mod serialization {
                 sectors_snapshot: Cid::from_str("bagboea4seaaqg").unwrap(),
                 partitions_snapshot: Cid::from_str("bagboea4seaaqi").unwrap(),
                 optimistic_post_submissions_snapshot: Cid::from_str("bagboea4seaaqk").unwrap(),
-                total_power: PowerPair::new(BigInt::from(6), BigInt::from(7)),
+                live_power: PowerPair::new(BigInt::from(6), BigInt::from(7)),
                 daily_fee: TokenAmount::from_whole(8),
             },
             // [bagboea4seaaqa,bagboea4seaaqc,[DA],[GA],2,3,[[AAQ],[AAU]],bagboea4seaaqe,bagboea4seaaqg,bagboea4seaaqi,bagboea4seaaqk,[[AAY],[AAc]],[AG8FtZ07IAAA]]
