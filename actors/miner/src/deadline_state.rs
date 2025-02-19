@@ -800,7 +800,7 @@ impl Deadline {
                 store,
                 window_post_partition_sectors,
                 proven,
-                new_feess,
+                new_fees,
                 &live_sectors,
                 sector_size,
                 quant,
