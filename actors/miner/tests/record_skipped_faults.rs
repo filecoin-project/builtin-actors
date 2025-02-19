@@ -1,9 +1,8 @@
-use fil_actor_miner::power_for_sectors;
-use fil_actor_miner::select_sectors;
 use fil_actor_miner::testing::PartitionStateSummary;
 use fil_actor_miner::Partition;
 use fil_actor_miner::QuantSpec;
 use fil_actor_miner::SectorOnChainInfo;
+use fil_actor_miner::{daily_fee_for_sectors, power_for_sectors, select_sectors};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
@@ -11,10 +10,8 @@ use fvm_ipld_bitfield::BitField;
 
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorSize;
-use num_traits::Zero;
 use std::ops::Neg;
 
 mod util;
@@ -42,8 +39,7 @@ fn setup() -> (MemoryBlockstore, Partition) {
     let (power, daily_fee) =
         partition.add_sectors(&store, true, &sectors(), SECTOR_SIZE, QUANT_SPEC).unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &sectors());
-    let expected_daily_fee =
-        sectors().iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
+    let expected_daily_fee = daily_fee_for_sectors(&sectors());
     assert_eq!(expected_power, power);
     assert_eq!(expected_daily_fee, daily_fee);
     (store, partition)
