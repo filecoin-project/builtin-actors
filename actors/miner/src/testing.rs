@@ -995,6 +995,14 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
         ),
     );
 
+    acc.require(
+        deadline.total_power == all_live_power,
+        format!(
+            "deadline live power {:?} != partitions total {all_live_power:?}",
+            deadline.total_power
+        ),
+    );
+
     // Validate partition expiration queue contains an entry for each partition and epoch with an expiration.
     // The queue may be a superset of the partitions that have expirations because we never remove from it.
     match BitFieldQueue::new(store, &deadline.expirations_epochs, quant) {
