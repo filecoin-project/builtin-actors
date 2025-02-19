@@ -2454,6 +2454,7 @@ impl Actor {
                     }
                 }
 
+                deadline.total_power += &power_delta;
                 deadline.partitions = partitions.flush().map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -4239,6 +4240,7 @@ where
                 new_sectors.push(new_sector_info);
             } // End loop over declarations in one deadline.
 
+            deadline.total_power += &power_delta;
             deadline.partitions =
                 partitions.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                     format!("failed to save partitions for deadline {}", dl_idx)
