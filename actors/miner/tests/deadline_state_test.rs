@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
-    power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, QuantSpec,
-    SectorOnChainInfo, TerminationResult,
+    daily_fee_for_sectors, power_for_sectors, Deadline, PartitionSectorMap, PoStPartition,
+    PowerPair, QuantSpec, SectorOnChainInfo, TerminationResult,
 };
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::MockRuntime;
@@ -12,9 +12,7 @@ use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::{error::ExitCode, sector::SectorSize};
-use num_traits::Zero;
 
 mod util;
 use crate::util::*;
@@ -66,8 +64,7 @@ fn add_sectors(
         .add_sectors(store, PARTITION_SIZE, false, true, &sectors, SECTOR_SIZE, QUANT_SPEC)
         .expect("Couldn't add sectors");
     let expected_power = power_for_sectors(SECTOR_SIZE, &sectors);
-    let expected_daily_fee =
-        sectors.iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
+    let expected_daily_fee = daily_fee_for_sectors(&sectors);
 
     assert_eq!(activated_power, expected_power);
     assert_eq!(daily_fee, expected_daily_fee);
@@ -718,8 +715,7 @@ fn post_all_the_things() {
         )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
-    let expected_daily_fee =
-        extra_sectors().iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
+    let expected_daily_fee = daily_fee_for_sectors(&extra_sectors());
     assert_eq!(expected_power, power);
     assert_eq!(expected_daily_fee, daily_fee);
 
@@ -828,8 +824,7 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
         )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
-    let expected_daily_fee =
-        extra_sectors().iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
+    let expected_daily_fee = daily_fee_for_sectors(&extra_sectors());
     assert_eq!(power, expected_power);
     assert_eq!(daily_fee, expected_daily_fee);
 
@@ -951,8 +946,7 @@ fn post_with_skipped_unproven() {
         )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
-    let expected_daily_fee =
-        extra_sectors().iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
+    let expected_daily_fee = daily_fee_for_sectors(&extra_sectors());
     assert_eq!(power, expected_power);
     assert_eq!(daily_fee, expected_daily_fee);
 
@@ -1032,8 +1026,7 @@ fn post_missing_partition() {
         )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
-    let expected_daily_fee =
-        extra_sectors().iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
+    let expected_daily_fee = daily_fee_for_sectors(&extra_sectors());
     assert_eq!(power, expected_power);
     assert_eq!(daily_fee, expected_daily_fee);
 
@@ -1080,8 +1073,7 @@ fn post_partition_twice() {
         )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
-    let expected_daily_fee =
-        extra_sectors().iter().fold(TokenAmount::zero(), |acc, s| acc + s.daily_fee.clone());
+    let expected_daily_fee = daily_fee_for_sectors(&extra_sectors());
     assert_eq!(power, expected_power);
     assert_eq!(daily_fee, expected_daily_fee);
 
