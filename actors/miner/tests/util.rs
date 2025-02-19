@@ -278,6 +278,8 @@ impl ActorHarness {
             IpldBlock::serialize_cbor(&self.worker_key).unwrap(),
             ExitCode::OK,
         );
+        // set circulating supply non-zero so we get non-zero fees
+        rt.set_circulating_supply(TokenAmount::from_whole(500_000_000));
 
         let result = rt
             .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
@@ -3682,6 +3684,7 @@ pub fn test_sector(
     deal_weight: u64,
     verified_deal_weight: u64,
     pledge: u64,
+    daily_fee: u64,
 ) -> SectorOnChainInfo {
     SectorOnChainInfo {
         expiration,
@@ -3690,6 +3693,7 @@ pub fn test_sector(
         verified_deal_weight: DealWeight::from(verified_deal_weight),
         initial_pledge: TokenAmount::from_atto(pledge),
         sealed_cid: make_sector_commr(sector_number),
+        daily_fee: TokenAmount::from_atto(daily_fee),
         ..Default::default()
     }
 }

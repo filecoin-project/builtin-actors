@@ -140,15 +140,6 @@ impl StateHarness {
         self.st.get_sector(&self.store, sector_number).unwrap().unwrap()
     }
 
-    // makes a bit field from the passed sector numbers
-    pub fn delete_sectors(&mut self, sector_numbers: Vec<u64>) {
-        let mut bf = BitField::new();
-        for b in sector_numbers.iter() {
-            bf.set(*b);
-        }
-        self.st.delete_sectors(&self.store, &bf).unwrap();
-    }
-
     #[allow(dead_code)]
     pub fn vesting_funds_store_empty(&self) -> bool {
         let vesting = self.store.get_cbor::<VestingFunds>(&self.st.vesting_funds).unwrap().unwrap();

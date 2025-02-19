@@ -35,13 +35,13 @@ fn loads_sectors() {
     let sectors = setup_sectors(&store);
 
     let mut bf = bf_from_vec(vec![0, 5]);
-    let vec_sectors = sectors.load_sector(&bf).unwrap();
+    let vec_sectors = sectors.load_sectors(&bf).unwrap();
     assert_eq!(vec_sectors.len(), 2);
     assert_eq!(make_sector(0), vec_sectors[0]);
     assert_eq!(make_sector(5), vec_sectors[1]);
 
     bf = bf_from_vec(vec![0, 3]);
-    let res = sectors.load_sector(&bf);
+    let res = sectors.load_sectors(&bf);
     assert!(res.is_err());
 }
 
@@ -60,7 +60,7 @@ fn stores_sectors() {
     sectors.store(vec![s3.clone(), s1.clone()]).unwrap();
 
     let bf = bf_from_vec(vec![0, 1, 3, 5]);
-    let vec_sectors = sectors.load_sector(&bf).unwrap();
+    let vec_sectors = sectors.load_sectors(&bf).unwrap();
     assert_eq!(vec_sectors.len(), 4);
     assert_eq!(&s0, &vec_sectors[0]);
     assert_eq!(&s1, &vec_sectors[1]);
@@ -75,7 +75,7 @@ fn loads_and_stores_no_sectors() {
     let mut sectors = setup_sectors(&store);
 
     let bf = bf_from_vec(vec![]);
-    let vec_sectors = sectors.load_sector(&bf).unwrap();
+    let vec_sectors = sectors.load_sectors(&bf).unwrap();
     assert_eq!(vec_sectors.len(), 0);
     sectors.store(vec![]).unwrap();
 }
@@ -147,4 +147,17 @@ fn no_non_faulty_sectors() {
 
     let vec_sectors = sectors.load_for_proof(&bf_from_vec(vec![1]), &bf_from_vec(vec![1])).unwrap();
     assert_eq!(vec_sectors.len(), 0);
+}
+
+#[test]
+fn delete_nonexistent_value_returns_an_error() {
+    let store = MemoryBlockstore::default();
+    let mut sectors = setup_sectors(&store);
+    let mut bf = BitField::new();
+
+    bf.set(100); // doesn't exist
+    assert!(sectors.delete_sectors(&bf).is_err());
+
+    bf.set(0); // does exist but 100 still doesn't
+    assert!(sectors.delete_sectors(&bf).is_err());
 }
