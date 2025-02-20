@@ -4574,6 +4574,10 @@ fn handle_proving_deadline(
             penalty_target
         );
 
+        state
+            .apply_penalty(&result.daily_fee)
+            .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
+
         let (penalty_from_vesting, penalty_from_balance) = state
             .repay_partial_debt_in_priority_order(
                 rt.store(),

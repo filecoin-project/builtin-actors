@@ -151,12 +151,59 @@ pub fn submit_post_succeeds_test(v: &dyn VM) {
         sector_info.partition_index,
         Some(sector_power.clone()),
     );
+
+    // move to proving period end
+    v.set_epoch(sector_info.deadline_info.last());
+
+    cron_tick(v);
+
+    ExpectInvocation {
+        to: CRON_ACTOR_ADDR,
+        method: CronMethod::EpochTick as u64,
+        params: None,
+        subinvocs: Some(vec![
+            ExpectInvocation {
+                from: CRON_ACTOR_ID,
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::OnEpochTickEnd as u64,
+                subinvocs: Some(vec![
+                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ID),
+                    ExpectInvocation {
+                        from: STORAGE_POWER_ACTOR_ID,
+                        to: miner_info.miner_id,
+                        method: MinerMethod::OnDeferredCronEvent as u64,
+                        subinvocs: Some(vec![
+                            Expect::burn(miner_info.miner_id.id().unwrap(), Some(sector.daily_fee)),
+                            Expect::power_enrol_cron(miner_info.miner_id.id().unwrap()),
+                        ]),
+                        ..Default::default()
+                    },
+                    Expect::reward_update_kpi(),
+                ]),
+                ..Default::default()
+            },
+            ExpectInvocation {
+                from: CRON_ACTOR_ID,
+                to: STORAGE_MARKET_ACTOR_ADDR,
+                method: MarketMethod::CronTick as u64,
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+
     let balances = miner_balance(v, &miner_info.miner_id);
     assert!(balances.initial_pledge.is_positive());
     let p_st: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(sector_power.raw, p_st.total_bytes_committed);
 
-    assert_invariants(v, &Policy::default(), None);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
+    );
 }
 
 #[vm_test]
@@ -208,6 +255,10 @@ pub fn missed_first_post_deadline_test(v: &dyn VM) {
     // Run cron to detect missing PoSt
     cron_tick(v);
 
+    let st: MinerState = get_state(v, &miner_info.miner_id).unwrap();
+    let sector =
+        st.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_info.number).unwrap().unwrap();
+
     ExpectInvocation {
         to: CRON_ACTOR_ADDR,
         method: CronMethod::EpochTick as u64,
@@ -223,9 +274,10 @@ pub fn missed_first_post_deadline_test(v: &dyn VM) {
                         from: STORAGE_POWER_ACTOR_ID,
                         to: miner_info.miner_id,
                         method: MinerMethod::OnDeferredCronEvent as u64,
-                        subinvocs: Some(vec![Expect::power_enrol_cron(
-                            miner_info.miner_id.id().unwrap(),
-                        )]),
+                        subinvocs: Some(vec![
+                            Expect::burn(miner_info.miner_id.id().unwrap(), Some(sector.daily_fee)),
+                            Expect::power_enrol_cron(miner_info.miner_id.id().unwrap()),
+                        ]),
                         ..Default::default()
                     },
                     Expect::reward_update_kpi(),
