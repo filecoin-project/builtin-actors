@@ -4372,16 +4372,14 @@ fn process_early_terminations(
                 total_initial_pledge += &sector.initial_pledge;
                 let sector_power = qa_power_for_sector(info.sector_size, sector);
                 terminated_sector_nums.push(sector.sector_number);
-                total_penalty += pledge_penalty_for_termination(
-                    &sector.expected_day_reward,
-                    epoch - sector.power_base_epoch,
-                    &sector.expected_storage_pledge,
+                let sector_age = epoch - sector.power_base_epoch;
+                let fault_fee = pledge_penalty_for_continued_fault(
+                    reward_smoothed,
                     quality_adj_power_smoothed,
                     &sector_power,
-                    reward_smoothed,
-                    &sector.replaced_day_reward,
-                    sector.power_base_epoch - sector.activation,
                 );
+                total_penalty +=
+                    pledge_penalty_for_termination(&sector.initial_pledge, sector_age, &fault_fee);
                 if sector.deal_weight.is_positive() || sector.verified_deal_weight.is_positive() {
                     sectors_with_data.push(sector.sector_number);
                 }
