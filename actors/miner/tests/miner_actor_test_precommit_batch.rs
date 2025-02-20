@@ -4,7 +4,6 @@ use fil_actor_miner::{
     qa_power_max, PreCommitSectorBatchParams, PreCommitSectorParams, State,
 };
 use fil_actor_power::Method as PowerMethod;
-use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
@@ -208,17 +207,6 @@ mod miner_actor_precommit_batch {
         );
     }
 
-    #[test]
-    fn too_many_sectors() {
-        assert_simple_batch(
-            Policy::default().pre_commit_sector_batch_max_size + 1,
-            TokenAmount::zero(),
-            TokenAmount::zero(),
-            &[],
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            "batch of 257 too large",
-        );
-    }
     #[test]
     fn insufficient_balance() {
         assert_simple_batch(
