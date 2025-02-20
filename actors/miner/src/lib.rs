@@ -4574,6 +4574,10 @@ fn handle_proving_deadline(
             penalty_target
         );
 
+        state
+            .apply_penalty(&result.daily_fee)
+            .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
+
         let (penalty_from_vesting, penalty_from_balance) = state
             .repay_partial_debt_in_priority_order(
                 rt.store(),
@@ -4598,6 +4602,7 @@ fn handle_proving_deadline(
     // Remove power for new faults, and burn penalties.
     request_update_power(rt, power_delta_total)?;
     burn_funds(rt, penalty_total)?;
+    // Update the total locked funds in the network.
     notify_pledge_changed(rt, &pledge_delta_total)?;
 
     // Schedule cron callback for next deadline's last epoch.

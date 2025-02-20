@@ -1,7 +1,7 @@
 use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
-    pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair, QuantSpec,
-    SectorOnChainInfo, REWARD_VESTING_SPEC,
+    daily_fee_for_sectors, pledge_penalty_for_continued_fault, power_for_sectors, Deadline,
+    PowerPair, QuantSpec, SectorOnChainInfo, REWARD_VESTING_SPEC,
 };
 use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::MockRuntime;
@@ -229,6 +229,7 @@ fn detects_and_penalizes_faults() {
 
     let total_power = &unproven_power + &active_power;
     let all_sectors = [active_sectors.clone(), unproven_sectors].concat();
+    let daily_fee = daily_fee_for_sectors(&all_sectors);
 
     // add lots of funds so penalties come from vesting funds
     h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
@@ -246,7 +247,11 @@ fn detects_and_penalizes_faults() {
     let active_power_delta = active_power.neg();
     h.advance_deadline(
         &rt,
-        CronConfig { detected_faults_power_delta: Some(active_power_delta), ..Default::default() },
+        CronConfig {
+            daily_fee: daily_fee.clone(),
+            detected_faults_power_delta: Some(active_power_delta),
+            ..Default::default()
+        },
     );
 
     // expect faulty power to be added to state
@@ -282,7 +287,7 @@ fn detects_and_penalizes_faults() {
 
     h.advance_deadline(
         &rt,
-        CronConfig { continued_faults_penalty: ongoing_penalty, ..Default::default() },
+        CronConfig { daily_fee, continued_faults_penalty: ongoing_penalty, ..Default::default() },
     );
 
     // recorded faulty power is unchanged
@@ -329,7 +334,7 @@ fn test_cron_run_trigger_faults() {
 
     // run cron and expect all sectors to be detected as faults (no penalty)
     let pwr = power_for_sectors(h.sector_size, &all_sectors);
-
+    let daily_fee = daily_fee_for_sectors(&all_sectors);
     // power for sectors is removed
     let power_delta_claim = PowerPair { raw: pwr.raw.neg(), qa: pwr.qa.neg() };
 
@@ -339,6 +344,7 @@ fn test_cron_run_trigger_faults() {
     h.on_deadline_cron(
         &rt,
         CronConfig {
+            daily_fee,
             expected_enrollment: next_cron,
             detected_faults_power_delta: Some(power_delta_claim),
             ..CronConfig::default()
