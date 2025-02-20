@@ -1761,15 +1761,14 @@ impl ActorHarness {
         penalty_total += cfg.continued_faults_penalty.clone();
         penalty_total += cfg.repaid_fee_debt.clone();
         penalty_total += cfg.expired_precommit_penalty.clone();
+        penalty_total += cfg.daily_fee.clone();
 
-        let burnable_fee = &penalty_total + cfg.daily_fee;
-
-        if burnable_fee.is_positive() {
+        if penalty_total.is_positive() {
             rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 None,
-                burnable_fee,
+                penalty_total.clone(),
                 None,
                 ExitCode::OK,
             );
@@ -1783,6 +1782,9 @@ impl ActorHarness {
             penalty_from_vesting -= cfg.penalty_from_unlocked.clone();
 
             pledge_delta -= penalty_from_vesting;
+            // if we have no unvested rewards, we can't unlock them so there's no locked/pledge delta,
+            // we take what we can from unvested and then the rest remains as fee_debt
+            pledge_delta = std::cmp::max(pledge_delta, -unvested_vesting_funds(rt, &state));
         }
 
         pledge_delta += cfg.expired_sectors_pledge_delta;
@@ -3315,6 +3317,18 @@ enum MhCode {
     Sha256TruncPaddedFake,
 }
 
+fn vesting_funds(rt: &MockRuntime, state: &State, vested: bool) -> TokenAmount {
+    let curr_epoch = *rt.epoch.borrow();
+    let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
+    let mut sum = TokenAmount::zero();
+    for vf in vesting.funds {
+        if (vested && vf.epoch < curr_epoch) || (!vested && vf.epoch >= curr_epoch) {
+            sum += vf.amount;
+        }
+    }
+    sum
+}
+
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let curr_epoch = *rt.epoch.borrow();
 
@@ -3324,16 +3338,11 @@ fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
         return TokenAmount::zero();
     }
 
-    let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
-    let mut sum = TokenAmount::zero();
-    for vf in vesting.funds {
-        if vf.epoch < curr_epoch {
-            sum += vf.amount;
-        } else {
-            break;
-        }
-    }
-    sum
+    vesting_funds(rt, state, true)
+}
+
+fn unvested_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
+    vesting_funds(rt, state, false)
 }
 
 pub fn make_post_proofs(proof_type: RegisteredPoStProof) -> Vec<PoStProof> {

@@ -753,9 +753,10 @@ fn successful_recoveries_recover_power() {
 
     // Next deadline cron does not charge for the fault
     let daily_fee = miner::daily_fee_for_sectors(&infos);
-    h.advance_deadline(&rt, CronConfig { daily_fee, ..Default::default() });
+    h.advance_deadline(&rt, CronConfig { daily_fee: daily_fee.clone(), ..Default::default() });
 
-    assert_eq!(initial_locked, h.get_locked_funds(&rt));
+    // the daily_fee was charged out of our locked rewards, so we expect a reduction by one for each day / PoST
+    assert_eq!(initial_locked - daily_fee * 2, h.get_locked_funds(&rt));
 
     h.check_state(&rt);
 }
