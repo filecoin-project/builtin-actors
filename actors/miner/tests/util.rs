@@ -1761,8 +1761,10 @@ impl ActorHarness {
         penalty_total += cfg.continued_faults_penalty.clone();
         penalty_total += cfg.repaid_fee_debt.clone();
         penalty_total += cfg.expired_precommit_penalty.clone();
+        penalty_total += cfg.daily_fee.clone();
 
-        if !penalty_total.is_zero() {
+        assert!(!penalty_total.is_negative());
+        if penalty_total.is_positive() {
             rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -1781,6 +1783,9 @@ impl ActorHarness {
             penalty_from_vesting -= cfg.penalty_from_unlocked.clone();
 
             pledge_delta -= penalty_from_vesting;
+            // if we have no unvested rewards, we can't unlock them so there's no locked/pledge delta,
+            // we take what we can from unlocked balance and then the rest remains as fee_debt
+            pledge_delta = std::cmp::max(pledge_delta, -unvested_vesting_funds(rt, &state));
         }
 
         pledge_delta += cfg.expired_sectors_pledge_delta;
@@ -2144,12 +2149,14 @@ impl ActorHarness {
 
         let mut dlinfo = self.current_deadline(rt);
         while deadlines.len() > 0 {
+            let mut daily_fee = TokenAmount::zero();
             match deadlines.get(&dlinfo.index) {
                 None => {}
                 Some(dl_sectors) => {
                     let mut sector_nos = BitField::new();
                     for sector in dl_sectors {
                         sector_nos.set(sector.sector_number);
+                        daily_fee += &sector.daily_fee;
                     }
 
                     let dl_arr = state.load_deadlines(&rt.store).unwrap();
@@ -2220,7 +2227,13 @@ impl ActorHarness {
                 }
             }
 
-            self.advance_deadline(rt, CronConfig::empty());
+            // we can't pay the full daily fee if we don't have enough unlocked balance, expect only
+            // the amount we can pay and the rest goes into fee_debt.
+            let unlocked_balance = state.get_unlocked_balance(&rt.get_balance()).unwrap();
+            daily_fee = std::cmp::min(unlocked_balance, daily_fee);
+            let cfg = CronConfig { daily_fee, ..Default::default() };
+            self.advance_deadline(rt, cfg);
+
             dlinfo = self.current_deadline(rt);
         }
     }
@@ -3173,19 +3186,16 @@ pub struct ProveCommitSectors3Config {
 
 #[derive(Default)]
 pub struct CronConfig {
-    pub no_enrollment: bool,
-    // true if expect not to continue enrollment false otherwise
+    pub no_enrollment: bool, // true if expect not to continue enrollment false otherwise
     pub expected_enrollment: ChainEpoch,
     pub detected_faults_power_delta: Option<PowerPair>,
     pub expired_sectors_power_delta: Option<PowerPair>,
     pub expired_sectors_pledge_delta: TokenAmount,
-    pub continued_faults_penalty: TokenAmount,
-    // Expected amount burnt to pay continued fault penalties.
-    pub expired_precommit_penalty: TokenAmount,
-    // Expected amount burnt to pay for expired precommits
-    pub repaid_fee_debt: TokenAmount,
-    // Expected amount burnt to repay fee debt.
-    pub penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds.
+    pub continued_faults_penalty: TokenAmount, // Expected amount burnt to pay continued fault penalties.
+    pub expired_precommit_penalty: TokenAmount, // Expected amount burnt to pay for expired precommits
+    pub repaid_fee_debt: TokenAmount,           // Expected amount burnt to repay fee debt
+    pub penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds
+    pub daily_fee: TokenAmount, // Expected daily fee payable for the miner in] this deadline
 }
 
 #[allow(dead_code)]
@@ -3201,6 +3211,7 @@ impl CronConfig {
             expired_precommit_penalty: TokenAmount::zero(),
             repaid_fee_debt: TokenAmount::zero(),
             penalty_from_unlocked: TokenAmount::zero(),
+            daily_fee: TokenAmount::zero(),
         }
     }
 
@@ -3307,6 +3318,18 @@ enum MhCode {
     Sha256TruncPaddedFake,
 }
 
+fn vesting_funds(rt: &MockRuntime, state: &State, vested: bool) -> TokenAmount {
+    let curr_epoch = *rt.epoch.borrow();
+    let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
+    let mut sum = TokenAmount::zero();
+    for vf in vesting.funds {
+        if (vested && vf.epoch < curr_epoch) || (!vested && vf.epoch >= curr_epoch) {
+            sum += vf.amount;
+        }
+    }
+    sum
+}
+
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let curr_epoch = *rt.epoch.borrow();
 
@@ -3316,16 +3339,11 @@ fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
         return TokenAmount::zero();
     }
 
-    let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
-    let mut sum = TokenAmount::zero();
-    for vf in vesting.funds {
-        if vf.epoch < curr_epoch {
-            sum += vf.amount;
-        } else {
-            break;
-        }
-    }
-    sum
+    vesting_funds(rt, state, true)
+}
+
+fn unvested_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
+    vesting_funds(rt, state, false)
 }
 
 pub fn make_post_proofs(proof_type: RegisteredPoStProof) -> Vec<PoStProof> {
