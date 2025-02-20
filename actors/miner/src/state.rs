@@ -1019,7 +1019,7 @@ impl State {
 
         let min_balance = &self.pre_commit_deposits + &self.locked_funds + &self.initial_pledge;
         if balance < &min_balance {
-            return Err(anyhow!("fee debt is negative: {}", self.fee_debt));
+            return Err(anyhow!("balance {} below minimum {}", balance, min_balance));
         }
 
         Ok(())
@@ -1121,6 +1121,7 @@ impl State {
                 previously_faulty_power: PowerPair::zero(),
                 detected_faulty_power: PowerPair::zero(),
                 total_faulty_power: PowerPair::zero(),
+                daily_fee: TokenAmount::zero(),
             });
         }
 
@@ -1142,6 +1143,7 @@ impl State {
                 previously_faulty_power,
                 detected_faulty_power: PowerPair::zero(),
                 total_faulty_power: deadline.faulty_power,
+                daily_fee: TokenAmount::zero(),
             });
         }
 
@@ -1185,6 +1187,7 @@ impl State {
             previously_faulty_power,
             detected_faulty_power,
             total_faulty_power,
+            daily_fee: deadline.daily_fee,
         })
     }
 
@@ -1223,6 +1226,8 @@ pub struct AdvanceDeadlineResult {
     /// Note that failed recovery power is included in both PreviouslyFaultyPower and
     /// DetectedFaultyPower, so TotalFaultyPower is not simply their sum.
     pub total_faulty_power: PowerPair,
+    /// Fee payable for the sectors in the deadline being advanced
+    pub daily_fee: TokenAmount,
 }
 
 /// Static information about miner
