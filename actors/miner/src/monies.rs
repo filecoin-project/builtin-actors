@@ -44,9 +44,11 @@ pub const TERM_PENALTY_PLEDGE_NUM: u32 = 85;
 pub const TERM_PENALTY_PLEDGE_DENOM: u32 = 1000;
 
 // TODO: what is a good value? should it be per network?
-pub const MIN_TERMINATION_FEE: u64 = 0;
+pub const MIN_TERMINATION_FEE_PLEDGE_NUM: u32 = 1;
+pub const MIN_TERMINATION_FEE_PLEDGE_DENOM: u32 = 100;
 // TODO: what is a good value? should it be per network?
-pub const FAULT_FEE_MULTIPLE: u64 = 1;
+pub const FAULT_FEE_MULTIPLE_NUM: u32 = 5;
+pub const FAULT_FEE_MULTIPLE_DENOM: u32 = 100;
 
 lazy_static! {
     /// Cap on initial pledge requirement for sectors during the Space Race network.
@@ -187,18 +189,31 @@ pub fn pledge_penalty_for_termination(
     sector_age: ChainEpoch,
     fault_fee: &TokenAmount,
 ) -> TokenAmount {
+    // Use the _percentage of the initial pledge_ strategy to determine the termination fee.
     let termination_fee =
         (initial_pledge * TERM_PENALTY_PLEDGE_NUM).div_floor(TERM_PENALTY_PLEDGE_DENOM);
-    let fault_fee = fault_fee * FAULT_FEE_MULTIPLE;
-    let sector_age_in_days = sector_age / EPOCHS_IN_DAY;
+
+    // There are a few special cases to consider where the termination fee must be tweaked to
+    // maintain the current network conditions.
+
+    // 1. We need to ensure that the final termination fee is always greater than the fault fee for
+    //    the same sector.
+    let fault_fee = (fault_fee * FAULT_FEE_MULTIPLE_NUM).div_floor(FAULT_FEE_MULTIPLE_DENOM);
     let termination_fault_max = cmp::max(termination_fee, fault_fee);
 
+    // 2. We need to ensure linear growth of the termination fee over time, up to a cap. The
+    //    details of this growth are defined in FIP-0098 design rationale.
+    let sector_age_in_days = sector_age / EPOCHS_IN_DAY;
+    let penalty_ramped = cmp::min(
+        (&termination_fault_max * sector_age_in_days).div_floor(TERMINATION_LIFETIME_CAP),
+        termination_fault_max,
+    );
+
+    // Ensure the termination fee is no less than the minimum termination fee pledge.
     cmp::max(
-        TokenAmount::from_atto(MIN_TERMINATION_FEE),
-        cmp::min(
-            (&termination_fault_max * sector_age_in_days).div_floor(TERMINATION_LIFETIME_CAP),
-            termination_fault_max,
-        ),
+        penalty_ramped,
+        (MIN_TERMINATION_FEE_PLEDGE_NUM * initial_pledge)
+            .div_floor(MIN_TERMINATION_FEE_PLEDGE_DENOM),
     )
 }
 
@@ -355,12 +370,13 @@ mod tests {
     #[test]
     fn pledge_penalty_for_termination_test() {
         let cases = [
-            // first epoch, min fee
+            // very young sector - the minimum termination fee pledge
             (
                 TokenAmount::from_atto(1000),
                 1,
                 TokenAmount::from_atto(5),
-                TokenAmount::from_atto(MIN_TERMINATION_FEE),
+                (TokenAmount::from_atto(1000) * MIN_TERMINATION_FEE_PLEDGE_NUM)
+                    .div_floor(MIN_TERMINATION_FEE_PLEDGE_DENOM),
             ),
             // middle of lifetime cap, 1/2 fee from pledge
             (
@@ -385,10 +401,11 @@ mod tests {
             ),
             // high fault fee takes over
             (
-                TokenAmount::from_atto(1000),
+                TokenAmount::from_atto(10),
                 TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY,
                 TokenAmount::from_atto(100),
-                TokenAmount::from_atto(100) * FAULT_FEE_MULTIPLE,
+                (TokenAmount::from_atto(100) * FAULT_FEE_MULTIPLE_NUM)
+                    .div_floor(FAULT_FEE_MULTIPLE_DENOM),
             ),
         ];
 
