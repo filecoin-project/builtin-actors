@@ -15,7 +15,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::ser::Serialize;
-use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
+use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Zero;
@@ -76,8 +76,8 @@ use fil_actor_miner::{
     SectorActivationManifest, SectorChanges, SectorContentChangedParams,
     SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
     SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
-    TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, VestingFunds,
-    WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
+    TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, WindowedPoSt,
+    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
     NI_AGGREGATE_FEE_BASE_SECTOR_COUNT, NO_QUANTIZATION, SECTORS_AMT_BITWIDTH,
     SECTOR_CONTENT_CHANGED,
 };
@@ -3307,16 +3307,13 @@ enum MhCode {
 
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let curr_epoch = *rt.epoch.borrow();
-    let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
-    let mut sum = TokenAmount::zero();
-    for vf in vesting.funds {
-        if vf.epoch < curr_epoch {
-            sum += vf.amount;
-        } else {
-            break;
-        }
-    }
-    sum
+    state
+        .vesting_funds
+        .load(&rt.store)
+        .unwrap()
+        .take_while(|vf| vf.epoch < curr_epoch)
+        .map(|vf| vf.amount)
+        .sum()
 }
 
 pub fn make_post_proofs(proof_type: RegisteredPoStProof) -> Vec<PoStProof> {
