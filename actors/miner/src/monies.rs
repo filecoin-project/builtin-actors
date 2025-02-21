@@ -44,7 +44,7 @@ pub const TERM_PENALTY_PLEDGE_NUM: u32 = 85;
 pub const TERM_PENALTY_PLEDGE_DENOM: u32 = 1000;
 
 // TODO: what is a good value? should it be per network?
-pub const MIN_TERMINATION_FEE_PLEDGE_NUM: u32 = 1;
+pub const MIN_TERMINATION_FEE_PLEDGE_NUM: u32 = 2;
 pub const MIN_TERMINATION_FEE_PLEDGE_DENOM: u32 = 100;
 // TODO: what is a good value? should it be per network?
 pub const FAULT_FEE_MULTIPLE_NUM: u32 = 5;
