@@ -78,7 +78,7 @@ use fil_actor_miner::{
     SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
     TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, VestingFunds,
     WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
-    NI_AGGREGATE_FEE_BASE_SECTOR_COUNT, NO_QUANTIZATION, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH,
+    NI_AGGREGATE_FEE_BASE_SECTOR_COUNT, NO_QUANTIZATION, SECTORS_AMT_BITWIDTH,
     SECTOR_CONTENT_CHANGED,
 };
 use fil_actor_miner::{
@@ -3307,13 +3307,6 @@ enum MhCode {
 
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let curr_epoch = *rt.epoch.borrow();
-
-    let q =
-        QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: state.proving_period_start };
-    if q.quantize_up(curr_epoch) != curr_epoch {
-        return TokenAmount::zero();
-    }
-
     let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
     let mut sum = TokenAmount::zero();
     for vf in vesting.funds {
