@@ -5,7 +5,7 @@ use fil_actor_miner::{
 };
 use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::MockRuntime;
-use fil_actors_runtime::{MessageAccumulator, EPOCHS_IN_DAY};
+use fil_actors_runtime::{MessageAccumulator, EPOCHS_IN_DAY, EPOCHS_IN_HOUR};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -98,16 +98,17 @@ fn test_vesting_on_cron() {
         }
     };
 
-    // move current epoch by a day so funds get vested
-    let new_epoch = q.quantize_up(current_epoch + EPOCHS_IN_DAY + 10);
+    // move current epoch by a day so funds get vested. +1 because rewards are vested at the end of
+    // an epoch.
+    let new_epoch = q.quantize_up(current_epoch + 12 * EPOCHS_IN_HOUR) + 1;
     assert_locked_fn(new_epoch, true);
 
     // no funds get vested if epoch moves by <12 hours
-    let new_epoch = new_epoch + (EPOCHS_IN_DAY / 2) - 100;
+    let new_epoch = new_epoch + (12 * EPOCHS_IN_HOUR) - 100;
     assert_locked_fn(new_epoch, false);
 
     // funds get vested again if epoch is quantised
-    let new_epoch = q.quantize_up(new_epoch);
+    let new_epoch = q.quantize_up(new_epoch) + 1;
     assert_locked_fn(new_epoch, true);
 
     h.check_state(&rt);
