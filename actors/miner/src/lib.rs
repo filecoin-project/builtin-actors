@@ -309,10 +309,12 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         let vesting_funds = state
-            .load_vesting_funds(rt.store())
-            .map_err(|e| actor_error!(illegal_state, "failed to load vesting funds: {}", e))?;
-        let ret = vesting_funds.funds.into_iter().map(|v| (v.epoch, v.amount)).collect_vec();
-        Ok(GetVestingFundsReturn { vesting_funds: ret })
+            .vesting_funds
+            .load(rt.store())?
+            .into_iter()
+            .map(|v| (v.epoch, v.amount))
+            .collect_vec();
+        Ok(GetVestingFundsReturn { vesting_funds })
     }
 
     /// Will ALWAYS overwrite the existing control addresses with the control addresses passed in the params.
@@ -1407,7 +1409,7 @@ impl Actor {
                 let penalty_target = &penalty_base + &reward_target;
                 st.apply_penalty(&penalty_target)
                     .map_err(|e| actor_error!(illegal_state, "failed to apply penalty {}", e))?;
-                let (penalty_from_vesting, penalty_from_balance) = st
+                let (to_burn, total_unlocked) = st
                     .repay_partial_debt_in_priority_order(
                         rt.store(),
                         current_epoch,
@@ -1417,13 +1419,11 @@ impl Actor {
                         e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to pay debt")
                     })?;
 
-                let to_burn = &penalty_from_vesting + &penalty_from_balance;
-
                 // Now, move as much of the target reward as
                 // we can from the burn to the reward.
                 let to_reward = std::cmp::min(&to_burn, &reward_target);
                 let to_burn = &to_burn - to_reward;
-                let pledge_delta = penalty_from_vesting.neg();
+                let pledge_delta = total_unlocked.neg();
 
                 Ok((pledge_delta, to_burn, power_delta, to_reward.clone()))
             })?;
@@ -3166,7 +3166,7 @@ impl Actor {
             // Attempt to repay all fee debt in this call. In most cases the miner will have enough
             // funds in the *reward alone* to cover the penalty. In the rare case a miner incurs more
             // penalty than it can pay for with reward and existing funds, it will go into fee debt.
-            let (penalty_from_vesting, penalty_from_balance) = st
+            let (to_burn, total_unlocked) = st
                 .repay_partial_debt_in_priority_order(
                     rt.store(),
                     rt.curr_epoch(),
@@ -3175,8 +3175,7 @@ impl Actor {
                 .map_err(|e| {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to repay penalty")
                 })?;
-            pledge_delta_total -= &penalty_from_vesting;
-            let to_burn = penalty_from_vesting + penalty_from_balance;
+            pledge_delta_total -= &total_unlocked;
             Ok((pledge_delta_total, to_burn))
         })?;
 
@@ -3251,7 +3250,7 @@ impl Actor {
             })?;
 
             // Pay penalty
-            let (penalty_from_vesting, penalty_from_balance) = st
+            let (mut burn_amount, total_unlocked) = st
                 .repay_partial_debt_in_priority_order(
                     rt.store(),
                     rt.curr_epoch(),
@@ -3261,8 +3260,7 @@ impl Actor {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to pay fees")
                 })?;
 
-            let mut burn_amount = &penalty_from_vesting + &penalty_from_balance;
-            pledge_delta -= penalty_from_vesting;
+            pledge_delta -= total_unlocked;
 
             // clamp reward at funds burnt
             let reward_amount = std::cmp::min(&burn_amount, &slasher_reward).clone();
@@ -3543,14 +3541,14 @@ impl Actor {
     }
 
     fn repay_debt(rt: &impl Runtime) -> Result<(), ActorError> {
-        let (from_vesting, from_balance, state) = rt.transaction(|state: &mut State, rt| {
+        let (burn_amount, total_unlocked, state) = rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
 
             // Repay as much fee debt as possible.
-            let (from_vesting, from_balance) = state
+            let (burn_amount, total_unlocked) = state
                 .repay_partial_debt_in_priority_order(
                     rt.store(),
                     rt.curr_epoch(),
@@ -3560,11 +3558,10 @@ impl Actor {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to unlock fee debt")
                 })?;
 
-            Ok((from_vesting, from_balance, state.clone()))
+            Ok((burn_amount, total_unlocked, state.clone()))
         })?;
 
-        let burn_amount = from_balance + &from_vesting;
-        notify_pledge_changed(rt, &from_vesting.neg())?;
+        notify_pledge_changed(rt, &total_unlocked.neg())?;
         burn_funds(rt, burn_amount)?;
 
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
@@ -4450,7 +4447,7 @@ fn process_early_terminations(
         })?;
 
         // Use unlocked pledge to pay down outstanding fee debt
-        let (penalty_from_vesting, penalty_from_balance) = state
+        let (penalty, total_unlocked) = state
             .repay_partial_debt_in_priority_order(
                 rt.store(),
                 rt.curr_epoch(),
@@ -4460,8 +4457,7 @@ fn process_early_terminations(
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to repay penalty")
             })?;
 
-        let penalty = &penalty_from_vesting + penalty_from_balance;
-        pledge_delta -= penalty_from_vesting;
+        pledge_delta -= total_unlocked;
 
         Ok((result, more, penalty, pledge_delta))
     })?;
@@ -4513,25 +4509,6 @@ fn handle_proving_deadline(
 
     let state: State = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
-
-        // Vesting rewards for a miner are quantized to every 12 hours and we can determine what those "vesting epochs" are.
-        // So, only do the vesting here if the current epoch is a "vesting epoch"
-        let q = QuantSpec {
-            unit: REWARD_VESTING_SPEC.quantization,
-            offset: state.proving_period_start,
-        };
-
-        if q.quantize_up(curr_epoch) == curr_epoch {
-            // Vest locked funds.
-            // This happens first so that any subsequent penalties are taken
-            // from locked vesting funds before funds free this epoch.
-            let newly_vested =
-                state.unlock_vested_funds(rt.store(), rt.curr_epoch()).map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to vest funds")
-                })?;
-
-            pledge_delta_total -= newly_vested;
-        }
 
         // Process pending worker change if any
         let mut info = get_miner_info(rt.store(), state)?;
@@ -4602,7 +4579,7 @@ fn handle_proving_deadline(
                 .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
         }
 
-        let (penalty_from_vesting, penalty_from_balance) = state
+        let (penalty, total_unlocked) = state
             .repay_partial_debt_in_priority_order(
                 rt.store(),
                 rt.curr_epoch(),
@@ -4612,8 +4589,19 @@ fn handle_proving_deadline(
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to unlock penalty")
             })?;
 
-        penalty_total = &penalty_from_vesting + penalty_from_balance;
-        pledge_delta_total -= penalty_from_vesting;
+        penalty_total = penalty;
+        pledge_delta_total -= total_unlocked;
+
+        // Vest locked funds. Locked funds will already have been vested automatically if we paid
+        // any fees/penalties, but we try to vest one more time just in case.
+        //
+        // If there's nothing to vest, this is an inexpensive operation as it'll just look at the
+        // "head" of the vesting queue, which is inlined into the root state object.
+        let newly_vested = state
+            .unlock_vested_funds(rt.store(), rt.curr_epoch())
+            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to vest funds"))?;
+
+        pledge_delta_total -= newly_vested;
 
         continue_cron = state.continue_deadline_cron();
         if !continue_cron {

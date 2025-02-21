@@ -69,8 +69,8 @@ fn test_vesting_on_cron() {
 
     // --- ASSERT FUNDS TO BE VESTED
     let st = h.get_state(&rt);
-    let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
-    assert_eq!(360, vesting_funds.funds.len());
+    let vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
+    assert_eq!(360, vesting_funds.len());
 
     let q = QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: st.proving_period_start };
 

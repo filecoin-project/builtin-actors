@@ -15,7 +15,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::ser::Serialize;
-use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
+use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Zero;
@@ -76,8 +76,8 @@ use fil_actor_miner::{
     SectorActivationManifest, SectorChanges, SectorContentChangedParams,
     SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
     SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
-    TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, VestingFunds,
-    WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
+    TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, WindowedPoSt,
+    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
     NI_AGGREGATE_FEE_BASE_SECTOR_COUNT, NO_QUANTIZATION, SECTORS_AMT_BITWIDTH,
     SECTOR_CONTENT_CHANGED,
 };
@@ -1707,6 +1707,7 @@ impl ActorHarness {
 
         if state.deadline_cron_active {
             rt.epoch.replace(deadline.last());
+            cfg.pledge_delta -= immediately_vesting_funds(rt, &state);
             cfg.expected_enrollment = deadline.last() + rt.policy.wpost_challenge_window;
             self.on_deadline_cron(rt, cfg);
         }
@@ -2140,15 +2141,32 @@ impl ActorHarness {
                 }
             }
 
+            let state = self.get_state(&rt);
+
+            // Advance to the end of the deadline. We do this manually because we need to be at the
+            // end of the deadline to figure out whether or not we take the fees from vested or
+            // unvested funds.
+            assert!(state.deadline_cron_active, "deadline is active");
+            let deadline = new_deadline_info_from_offset_and_epoch(
+                &rt.policy,
+                state.proving_period_start,
+                *rt.epoch.borrow(),
+            );
+            rt.set_epoch(deadline.last());
+
+            let expected_enrollment = deadline.last() + rt.policy.wpost_challenge_window;
             let unvested = unvested_vesting_funds(rt, &state);
-            let available = rt.get_balance() + unvested.clone() - &state.initial_pledge;
-            let burnt_funds =
-                std::cmp::max(&TokenAmount::zero(), std::cmp::min(&available, &daily_fee)).clone();
-            let pledge_delta = std::cmp::min(&unvested, &daily_fee).neg().clone();
-            let cfg = CronConfig { burnt_funds, pledge_delta, ..Default::default() };
+            let immediately_vesting = immediately_vesting_funds(rt, &state);
+            let available_to_burn = rt.get_balance() - &state.initial_pledge;
+            let burnt_funds = daily_fee.clone().clamp(TokenAmount::zero(), available_to_burn);
+            let pledge_delta = -(std::cmp::min(unvested, daily_fee) + &immediately_vesting);
 
-            self.advance_deadline(rt, cfg);
+            let cfg =
+                CronConfig { burnt_funds, pledge_delta, expected_enrollment, ..Default::default() };
+            self.on_deadline_cron(rt, cfg);
 
+            // Advance to the next deadline.
+            rt.set_epoch(deadline.next_open());
             dlinfo = self.current_deadline(rt);
         }
     }
@@ -3065,7 +3083,7 @@ pub struct ProveCommitSectors3Config {
     pub notification_rejected: bool,    // Whether to reject the notification
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct CronConfig {
     pub no_enrollment: bool, // true if expect not to continue enrollment false otherwise
     pub expected_enrollment: ChainEpoch,
@@ -3175,17 +3193,16 @@ enum MhCode {
 
 fn vesting_funds(rt: &MockRuntime, state: &State, vested: bool) -> TokenAmount {
     let curr_epoch = *rt.epoch.borrow();
-    let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
-    let mut sum = TokenAmount::zero();
-    for vf in vesting.funds {
-        if (vested && vf.epoch < curr_epoch) || (!vested && vf.epoch >= curr_epoch) {
-            sum += vf.amount;
-        }
-    }
-    sum
+    state
+        .vesting_funds
+        .load(&rt.store)
+        .unwrap()
+        .into_iter()
+        .filter(|vf| vested == (vf.epoch < curr_epoch))
+        .map(|vf| vf.amount)
+        .sum()
 }
 
-#[allow(dead_code)]
 pub fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     vesting_funds(rt, state, true)
 }
