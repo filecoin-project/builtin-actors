@@ -75,14 +75,7 @@ fn recovery_must_pay_back_fee_debt() {
         &h.epoch_qa_power_smooth,
         &ongoing_pwr.qa,
     );
-    h.advance_deadline(
-        &rt,
-        CronConfig {
-            daily_fee,
-            continued_faults_penalty: TokenAmount::zero(), // fee is instead added to debt
-            ..Default::default()
-        },
-    );
+    h.advance_deadline(&rt, CronConfig { burnt_funds: daily_fee, ..Default::default() });
 
     st = h.get_state(&rt);
     assert_eq!(ff, st.fee_debt);
