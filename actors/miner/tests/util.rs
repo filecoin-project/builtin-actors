@@ -648,15 +648,7 @@ impl ActorHarness {
         }
         // burn networkFee
         if state.fee_debt.is_positive() || expected_network_fee.is_positive() {
-            let expected_burn = expected_network_fee + state.fee_debt;
-            rt.expect_send_simple(
-                BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                expected_burn,
-                None,
-                ExitCode::OK,
-            );
+            expect_burn(rt, expected_network_fee + state.fee_debt);
         }
 
         if first_for_miner {
@@ -918,14 +910,7 @@ impl ActorHarness {
                 params.sectors.len() - fail_count - NI_AGGREGATE_FEE_BASE_SECTOR_COUNT,
                 &rt.base_fee.borrow(),
             );
-            rt.expect_send_simple(
-                BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                aggregate_fee,
-                None,
-                ExitCode::OK,
-            );
+            expect_burn(rt, aggregate_fee);
         }
 
         let qa_sector_power = raw_power_for_sector(self.sector_size);
@@ -1036,14 +1021,7 @@ impl ActorHarness {
         // burn network fee
         let expected_fee = aggregate_prove_commit_network_fee(precommits.len(), base_fee);
         assert!(expected_fee.is_positive());
-        rt.expect_send_simple(
-            BURNT_FUNDS_ACTOR_ADDR,
-            METHOD_SEND,
-            None,
-            expected_fee,
-            None,
-            ExitCode::OK,
-        );
+        expect_burn(rt, expected_fee);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let addrs = self.caller_addrs().clone();
@@ -1425,14 +1403,7 @@ impl ActorHarness {
                 sector_activations.len() - (cfg.validation_failure.len() + cfg.proof_failure.len());
             let expected_fee = aggregate_prove_commit_network_fee(proven_count, &self.base_fee);
             assert!(expected_fee.is_positive());
-            rt.expect_send_simple(
-                BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                expected_fee,
-                None,
-                ExitCode::OK,
-            );
+            expect_burn(rt, expected_fee);
         }
 
         // Expect SectorContentChanged notification to market.
@@ -1746,52 +1717,10 @@ impl ActorHarness {
     }
 
     pub fn on_deadline_cron(&self, rt: &MockRuntime, cfg: CronConfig) {
-        let state = self.get_state(rt);
         rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
-
-        // preamble
-        let mut power_delta = PowerPair::zero();
-        power_delta += &cfg.detected_faults_power_delta.unwrap_or_else(PowerPair::zero);
-        power_delta += &cfg.expired_sectors_power_delta.unwrap_or_else(PowerPair::zero);
-        expect_update_power(rt, power_delta);
-
-        let mut penalty_total = TokenAmount::zero();
-        let mut pledge_delta = TokenAmount::zero();
-
-        penalty_total += cfg.continued_faults_penalty.clone();
-        penalty_total += cfg.repaid_fee_debt.clone();
-        penalty_total += cfg.expired_precommit_penalty.clone();
-        penalty_total += cfg.daily_fee.clone();
-
-        assert!(!penalty_total.is_negative());
-        if penalty_total.is_positive() {
-            rt.expect_send_simple(
-                BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                penalty_total.clone(),
-                None,
-                ExitCode::OK,
-            );
-
-            let mut penalty_from_vesting = penalty_total.clone();
-            // Outstanding fee debt is only repaid from unlocked balance, not vesting funds.
-            penalty_from_vesting -= cfg.repaid_fee_debt.clone();
-            // Precommit deposit burns are repaid from PCD account
-            penalty_from_vesting -= cfg.expired_precommit_penalty.clone();
-            // New penalties are paid first from vesting funds but, if exhausted, overflow to unlocked balance.
-            penalty_from_vesting -= cfg.penalty_from_unlocked.clone();
-
-            pledge_delta -= penalty_from_vesting;
-            // if we have no unvested rewards, we can't unlock them so there's no locked/pledge delta,
-            // we take what we can from unlocked balance and then the rest remains as fee_debt
-            pledge_delta = std::cmp::max(pledge_delta, -unvested_vesting_funds(rt, &state));
-        }
-
-        pledge_delta += cfg.expired_sectors_pledge_delta;
-        pledge_delta -= immediately_vesting_funds(rt, &state);
-
-        expect_update_pledge(rt, &pledge_delta);
+        expect_update_power(rt, cfg.power_delta.unwrap_or_else(PowerPair::zero));
+        expect_burn(rt, cfg.burnt_funds);
+        expect_update_pledge(rt, &cfg.pledge_delta);
 
         // Re-enrollment for next period.
         if !cfg.no_enrollment {
@@ -2026,15 +1955,7 @@ impl ActorHarness {
             }
 
             if dispute_result.expected_penalty.is_some() {
-                let expected_penalty = dispute_result.expected_penalty.unwrap();
-                rt.expect_send_simple(
-                    BURNT_FUNDS_ACTOR_ADDR,
-                    METHOD_SEND,
-                    None,
-                    expected_penalty,
-                    None,
-                    ExitCode::OK,
-                );
+                expect_burn(rt, dispute_result.expected_penalty.unwrap());
             }
 
             if dispute_result.expected_pledge_delta.is_some() {
@@ -2101,16 +2022,8 @@ impl ActorHarness {
         rt.set_caller(*REWARD_ACTOR_CODE_ID, REWARD_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![REWARD_ACTOR_ADDR]);
         expect_update_pledge(rt, &pledge_delta);
-
         if penalty.is_positive() {
-            rt.expect_send_simple(
-                BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                penalty.clone(),
-                None,
-                ExitCode::OK,
-            );
+            expect_burn(rt, penalty.clone());
         }
 
         let params = ApplyRewardParams { reward: amt, penalty: penalty };
@@ -2227,11 +2140,12 @@ impl ActorHarness {
                 }
             }
 
-            // we can't pay the full daily fee if we don't have enough unlocked balance, expect only
-            // the amount we can pay and the rest goes into fee_debt.
-            let unlocked_balance = state.get_unlocked_balance(&rt.get_balance()).unwrap();
-            daily_fee = std::cmp::min(unlocked_balance, daily_fee);
-            let cfg = CronConfig { daily_fee, ..Default::default() };
+            let unvested = unvested_vesting_funds(rt, &state);
+            let available = rt.get_balance() + unvested.clone() - &state.initial_pledge;
+            let burnt_funds = TokenAmount::zero().max(available.min(daily_fee.clone()));
+            let pledge_delta = unvested.min(daily_fee).neg();
+            let cfg = CronConfig { burnt_funds, pledge_delta, ..Default::default() };
+
             self.advance_deadline(rt, cfg);
 
             dlinfo = self.current_deadline(rt);
@@ -2272,14 +2186,7 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
 
         if expected_debt_repaid.is_positive() {
-            rt.expect_send_simple(
-                BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                expected_debt_repaid,
-                None,
-                ExitCode::OK,
-            );
+            expect_burn(rt, expected_debt_repaid.clone());
         }
 
         // Calculate params from faulted sector infos
@@ -2409,15 +2316,7 @@ impl ActorHarness {
         rt.expect_send_simple(from, METHOD_SEND, None, reward_total.clone(), None, ExitCode::OK);
 
         // pay fault fee
-        let to_burn = &penalty_total - &reward_total;
-        rt.expect_send_simple(
-            BURNT_FUNDS_ACTOR_ADDR,
-            METHOD_SEND,
-            None,
-            to_burn,
-            None,
-            ExitCode::OK,
-        );
+        expect_burn(rt, &penalty_total - &reward_total);
 
         let result = rt.call::<Actor>(
             Method::ReportConsensusFault as u64,
@@ -2486,18 +2385,12 @@ impl ActorHarness {
             }
             sector_infos.push(self.get_sector(rt, sector));
         }
+
         self.expect_query_network_info(rt);
 
         let mut pledge_delta = TokenAmount::zero();
         if expected_fee.is_positive() {
-            rt.expect_send_simple(
-                BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                expected_fee.clone(),
-                None,
-                ExitCode::OK,
-            );
+            expect_burn(rt, expected_fee.clone());
             pledge_delta = expected_fee.neg();
         }
 
@@ -2608,14 +2501,7 @@ impl ActorHarness {
 
         let total_repaid = expected_repaid_from_vest + expected_repaid_from_balance;
         if total_repaid.is_positive() {
-            rt.expect_send_simple(
-                BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                total_repaid.clone(),
-                None,
-                ExitCode::OK,
-            );
+            expect_burn(rt, total_repaid.clone());
         }
         let result = rt.call::<Actor>(Method::RepayDebt as u64, None)?;
         expect_empty(result);
@@ -2646,15 +2532,9 @@ impl ActorHarness {
         }
 
         if expected_debt_repaid.is_positive() {
-            rt.expect_send_simple(
-                BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                expected_debt_repaid.clone(),
-                None,
-                ExitCode::OK,
-            );
+            expect_burn(rt, expected_debt_repaid.clone());
         }
+
         let ret = rt
             .call::<Actor>(
                 Method::WithdrawBalance as u64,
@@ -3188,14 +3068,9 @@ pub struct ProveCommitSectors3Config {
 pub struct CronConfig {
     pub no_enrollment: bool, // true if expect not to continue enrollment false otherwise
     pub expected_enrollment: ChainEpoch,
-    pub detected_faults_power_delta: Option<PowerPair>,
-    pub expired_sectors_power_delta: Option<PowerPair>,
-    pub expired_sectors_pledge_delta: TokenAmount,
-    pub continued_faults_penalty: TokenAmount, // Expected amount burnt to pay continued fault penalties.
-    pub expired_precommit_penalty: TokenAmount, // Expected amount burnt to pay for expired precommits
-    pub repaid_fee_debt: TokenAmount,           // Expected amount burnt to repay fee debt
-    pub penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds
-    pub daily_fee: TokenAmount, // Expected daily fee payable for the miner in] this deadline
+    pub power_delta: Option<PowerPair>,
+    pub pledge_delta: TokenAmount, // Expected change in miner's pledge
+    pub burnt_funds: TokenAmount, // Expected burnt funds, through penalties, fee debt repayments and daily fees
 }
 
 #[allow(dead_code)]
@@ -3204,31 +3079,10 @@ impl CronConfig {
         CronConfig {
             no_enrollment: false,
             expected_enrollment: 0,
-            detected_faults_power_delta: None,
-            expired_sectors_power_delta: None,
-            expired_sectors_pledge_delta: TokenAmount::zero(),
-            continued_faults_penalty: TokenAmount::zero(),
-            expired_precommit_penalty: TokenAmount::zero(),
-            repaid_fee_debt: TokenAmount::zero(),
-            penalty_from_unlocked: TokenAmount::zero(),
-            daily_fee: TokenAmount::zero(),
+            power_delta: None,
+            pledge_delta: TokenAmount::zero(),
+            burnt_funds: TokenAmount::zero(),
         }
-    }
-
-    pub fn with_continued_faults_penalty(fault_fee: TokenAmount) -> CronConfig {
-        let mut cfg = CronConfig::empty();
-        cfg.continued_faults_penalty = fault_fee;
-        cfg
-    }
-
-    pub fn with_detected_faults_power_delta_and_continued_faults_penalty(
-        pwr_delta: &PowerPair,
-        fault_fee: TokenAmount,
-    ) -> CronConfig {
-        let mut cfg = CronConfig::empty();
-        cfg.detected_faults_power_delta = Some(pwr_delta.clone());
-        cfg.continued_faults_penalty = fault_fee;
-        cfg
     }
 }
 
@@ -3330,7 +3184,8 @@ fn vesting_funds(rt: &MockRuntime, state: &State, vested: bool) -> TokenAmount {
     sum
 }
 
-fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
+#[allow(dead_code)]
+pub fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let curr_epoch = *rt.epoch.borrow();
 
     let q =
@@ -3813,6 +3668,19 @@ fn expect_update_pledge(rt: &MockRuntime, pledge_delta: &TokenAmount) {
     }
 }
 
+fn expect_burn(rt: &MockRuntime, burn_amount: TokenAmount) {
+    if !burn_amount.is_zero() {
+        rt.expect_send_simple(
+            BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            None,
+            burn_amount,
+            None,
+            ExitCode::OK,
+        );
+    }
+}
+
 fn expect_update_power(rt: &MockRuntime, delta: PowerPair) {
     if !(delta.is_zero()) {
         rt.expect_send_simple(
@@ -4080,7 +3948,7 @@ impl CronControl {
             rt,
             CronConfig {
                 no_enrollment: true,
-                expired_precommit_penalty: st.pre_commit_deposits,
+                burnt_funds: st.pre_commit_deposits,
                 ..CronConfig::empty()
             },
         );

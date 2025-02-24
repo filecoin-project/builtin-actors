@@ -32,7 +32,7 @@ use itertools::Itertools;
 use test_case::test_case;
 use util::*;
 
-// an expriration ~10 days greater than effective min expiration taking into account 30 days max between pre and prove commit
+// an expiration ~10 days greater than effective min expiration taking into account 30 days max between pre and prove commit
 const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
 fn setup() -> (ActorHarness, MockRuntime) {
@@ -420,8 +420,8 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
     let power = -power_for_sector(h.sector_size, &new_sector);
     let mut cron_config = CronConfig::empty();
     cron_config.no_enrollment = true;
-    cron_config.expired_sectors_power_delta = Some(power);
-    cron_config.expired_sectors_pledge_delta = -new_sector.initial_pledge;
+    cron_config.power_delta = Some(power);
+    cron_config.pledge_delta = -new_sector.initial_pledge;
 
     h.advance_deadline(&rt, cron_config);
 

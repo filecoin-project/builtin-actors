@@ -66,8 +66,8 @@ fn basic_post_and_dispute() {
     assert_bitfield_equals(&posts[0].partitions, &deadline_bits);
 
     // Advance to end-of-deadline cron to verify no penalties.
-    let daily_fee = miner::daily_fee_for_sectors(&sectors);
-    h.advance_deadline(&rt, CronConfig { daily_fee, ..Default::default() });
+    let burnt_funds = miner::daily_fee_for_sectors(&sectors);
+    h.advance_deadline(&rt, CronConfig { burnt_funds, ..Default::default() });
     h.check_state(&rt);
 
     // Proofs should exist in snapshot.
@@ -573,8 +573,8 @@ fn duplicate_proof_rejected() {
     rt.reset();
 
     // Advance to end-of-deadline cron to verify no penalties.
-    let daily_fee = miner::daily_fee_for_sectors(&sectors);
-    h.advance_deadline(&rt, CronConfig { daily_fee, ..Default::default() });
+    let burnt_funds = miner::daily_fee_for_sectors(&sectors);
+    h.advance_deadline(&rt, CronConfig { burnt_funds, ..Default::default() });
     h.check_state(&rt);
 }
 
@@ -683,7 +683,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
     }
 
     // Advance to end-of-deadline cron to verify no penalties.
-    h.advance_deadline(&rt, CronConfig { daily_fee, ..Default::default() });
+    h.advance_deadline(&rt, CronConfig { burnt_funds: daily_fee, ..Default::default() });
     h.check_state(&rt);
 }
 
@@ -753,7 +753,14 @@ fn successful_recoveries_recover_power() {
 
     // Next deadline cron does not charge for the fault
     let daily_fee = miner::daily_fee_for_sectors(&infos);
-    h.advance_deadline(&rt, CronConfig { daily_fee: daily_fee.clone(), ..Default::default() });
+    h.advance_deadline(
+        &rt,
+        CronConfig {
+            pledge_delta: -daily_fee.clone(),
+            burnt_funds: daily_fee.clone(),
+            ..Default::default()
+        },
+    );
 
     // the daily_fee was charged out of our locked rewards, so we expect a reduction by one for each day / PoST
     assert_eq!(initial_locked - daily_fee * 2, h.get_locked_funds(&rt));
@@ -805,10 +812,14 @@ fn skipped_faults_adjust_power() {
 
     // expect continued fault fee to be charged during cron
     let continued_faults_penalty = h.continued_fault_penalty(&infos1);
-    let daily_fee = miner::daily_fee_for_sectors(&infos);
+    let burnt_funds = miner::daily_fee_for_sectors(&infos) + continued_faults_penalty;
     dlinfo = h.advance_deadline(
         &rt,
-        CronConfig { daily_fee: daily_fee.clone(), continued_faults_penalty, ..Default::default() },
+        CronConfig {
+            pledge_delta: -burnt_funds.clone(),
+            burnt_funds: burnt_funds.clone(),
+            ..Default::default()
+        },
     );
 
     // advance to next proving period, expect no fees other than the daily_fee
@@ -841,14 +852,14 @@ fn skipped_faults_adjust_power() {
 
     // The second sector is detected faulty but pays nothing yet.
     // Expect ongoing fault penalty for only the first, continuing-faulty sector.
+    // burnt_funds remains the same.
     let pwr_delta = -miner::power_for_sectors(h.sector_size, &infos2);
-    let continued_faults_penalty = h.continued_fault_penalty(&infos1);
     h.advance_deadline(
         &rt,
         CronConfig {
-            daily_fee,
-            detected_faults_power_delta: Some(pwr_delta),
-            continued_faults_penalty,
+            pledge_delta: -burnt_funds.clone(),
+            burnt_funds: burnt_funds.clone(),
+            power_delta: Some(pwr_delta),
             ..Default::default()
         },
     );
@@ -900,8 +911,11 @@ fn skipping_all_sectors_in_a_partition_rejected() {
     rt.reset();
 
     // These sectors are detected faulty and pay no penalty this time.
-    let daily_fee = miner::daily_fee_for_sectors(&infos);
-    h.advance_deadline(&rt, CronConfig { daily_fee, ..Default::default() });
+    let burnt_funds = miner::daily_fee_for_sectors(&infos);
+    h.advance_deadline(
+        &rt,
+        CronConfig { pledge_delta: -burnt_funds.clone(), burnt_funds, ..Default::default() },
+    );
     h.check_state(&rt);
 }
 
@@ -953,10 +967,10 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
 
     // sector will be charged ongoing fee at proving period cron
     let continued_faults_penalty = h.continued_fault_penalty(&infos1);
-    let daily_fee = miner::daily_fee_for_sectors(&infos);
+    let burnt_funds = miner::daily_fee_for_sectors(&infos) + continued_faults_penalty;
     h.advance_deadline(
         &rt,
-        CronConfig { daily_fee, continued_faults_penalty, ..Default::default() },
+        CronConfig { pledge_delta: -burnt_funds.clone(), burnt_funds, ..Default::default() },
     );
 
     h.check_state(&rt);
@@ -1269,14 +1283,22 @@ fn bad_post_fails_when_verified() {
 
     h.advance_to_deadline(&rt, dlidx);
     let daily_fee = miner::daily_fee_for_sectors(&infos);
-    h.advance_deadline(&rt, CronConfig { daily_fee: daily_fee.clone(), ..Default::default() });
+    h.advance_deadline(
+        &rt,
+        CronConfig {
+            pledge_delta: -daily_fee.clone(),
+            burnt_funds: daily_fee.clone(),
+            ..Default::default()
+        },
+    );
     h.advance_to_deadline(&rt, dlidx);
 
     let continued_faults_penalty =
         h.continued_fault_penalty(&vec![infos[0].clone(), infos[1].clone()]);
+    let burnt_funds = daily_fee + continued_faults_penalty;
     h.advance_deadline(
         &rt,
-        CronConfig { daily_fee, continued_faults_penalty, ..Default::default() },
+        CronConfig { pledge_delta: -burnt_funds.clone(), burnt_funds, ..Default::default() },
     );
 
     // Promise to recover
