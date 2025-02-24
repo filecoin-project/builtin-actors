@@ -215,3 +215,15 @@ pub fn daily_proof_fee(policy: &Policy, circulating_supply: &TokenAmount) -> Tok
     let fee = (num * circulating_supply.atto()).div_floor(&denom);
     TokenAmount::from_atto(fee)
 }
+
+// Given a daily fee payable and an estimated BR for the sector(s) the fee is being paid for,
+// calculate the fee payable for the sector(s) by applying the appropriate BR cap.
+pub fn daily_proof_fee_payable(
+    policy: &Policy,
+    daily_fee: &TokenAmount,
+    estimated_day_reward: &TokenAmount,
+) -> TokenAmount {
+    let cap_denom = BigInt::from(policy.daily_fee_block_reward_cap_denom);
+    let cap = estimated_day_reward.div_floor(cap_denom);
+    std::cmp::min(&cap, daily_fee).clone()
+}
