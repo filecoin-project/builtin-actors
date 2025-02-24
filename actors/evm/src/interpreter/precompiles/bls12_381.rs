@@ -5,15 +5,52 @@ use fil_actors_runtime::runtime::Runtime;
 use crate::interpreter::System;
 
 use blst::{
-    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine,
+    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine, blst_fp, blst_p1_affine_on_curve
 };
 
 const G1_INPUT_LENGTH: usize = 128;
 const G1_ADD_INPUT_LENGTH: usize = G1_INPUT_LENGTH * 2;
+const G1_OUTPUT_LENGTH: usize = 128;
+pub const PADDED_FP_LENGTH: usize = 64;
+
+/// Encodes a single finite field element into byte slice with padding.
+fn fp_to_bytes(out: &mut [u8], x: &blst_fp) {
+    unsafe {
+        let x_bytes: [u8; 48] = std::mem::transmute(*x);
+        out.copy_from_slice(&x_bytes);
+    }
+}
+
+/// Checks whether or not the input represents a canonical field element, returning the field
+/// element if successful.
+fn fp_from_bendian(bytes: &[u8; 48]) -> Result<blst_fp, PrecompileError> {
+    let mut fp = blst_fp::default();
+    unsafe {
+        let fp_bytes: &mut [u8; 48] = std::mem::transmute(&mut fp);
+        fp_bytes.copy_from_slice(bytes);
+    }
+    Ok(fp)
+}
+
+/// Returns a `blst_p1_affine` from the provided byte slices, which represent the x and y
+/// affine coordinates of the point.
+///
+/// If the x or y coordinate do not represent a canonical field element, an error is returned.
+///
+/// See [fp_from_bendian] for more information.
+fn decode_and_check_g1(
+    x_bytes: &[u8; 48],
+    y_bytes: &[u8; 48],
+) -> Result<blst_p1_affine, PrecompileError> {
+    Ok(blst_p1_affine {
+        x: fp_from_bendian(x_bytes)?,
+        y: fp_from_bendian(y_bytes)?,
+    })
+}
 
 /// BLS12_G1ADD precompile
 /// Implements G1 point addition according to EIP-2537
-#[allow(dead_code, unused_variables)]
+#[allow(dead_code,unused_variables)]
 pub(super) fn bls12_g1_add<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
@@ -46,33 +83,37 @@ pub(super) fn bls12_g1_add<RT: Runtime>(
     // Encode the result
     Ok(encode_g1_point(&p_aff))
 }
-
+/// Extracts a G1 point in Affine format from a 128 byte slice representation.
 fn extract_g1_point(input: &[u8]) -> Result<blst_p1_affine, PrecompileError> {
     if input.len() != G1_INPUT_LENGTH {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
     // Split input into x and y coordinates
-    let _x_bytes = &input[0..64];
-    let _y_bytes = &input[64..128];
+    let x_bytes: &[u8; 48] = input[..48].try_into()
+        .map_err(|_| PrecompileError::IncorrectInputSize)?;
+    let y_bytes: &[u8; 48] = input[48..96].try_into()
+        .map_err(|_| PrecompileError::IncorrectInputSize)?;
 
-    // TODO: Implement point deserialization from bytes to blst_p1_affine
-    // This would involve:
-    // 1. Converting bytes to Fp field elements
-    // 2. Constructing the affine point
-    // 3. Validating the point is on the curve
-    
-    unimplemented!("Point deserialization needs to be implemented")
+    let point = decode_and_check_g1(x_bytes, y_bytes)?;
+
+    // Check if point is on curve (no subgroup check needed for addition)
+    unsafe {
+        if !blst_p1_affine_on_curve(&point) {
+            return Err(PrecompileError::InvalidInput);
+        }
+    }
+
+    Ok(point)
 }
 
-fn encode_g1_point(point: &blst_p1_affine) -> Vec<u8> {
-    // let mut output = Vec::with_capacity(G1_INPUT_LENGTH);
-    
-    // TODO: Implement point serialization from blst_p1_affine to bytes
-    // This would involve:
-    // 1. Extracting x and y coordinates
-    // 2. Converting field elements to bytes
-    // 3. Concatenating the results
-    
-    unimplemented!("Point serialization needs to be implemented")
+/// Encodes a G1 point in affine format into byte slice with padded elements.
+fn encode_g1_point(input: *const blst_p1_affine) -> Vec<u8> {
+    let mut out = vec![0u8; G1_OUTPUT_LENGTH];
+    // SAFETY: Out comes from fixed length array, input is a blst value.
+    unsafe {
+        fp_to_bytes(&mut out[..PADDED_FP_LENGTH], &(*input).x);
+        fp_to_bytes(&mut out[PADDED_FP_LENGTH..], &(*input).y);
+    }
+    out.into()
 }
