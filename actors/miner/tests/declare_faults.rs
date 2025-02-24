@@ -59,10 +59,10 @@ fn declare_fault_pays_fee_at_window_post() {
         &h.epoch_qa_power_smooth,
         &ongoing_pwr.qa,
     );
-    let daily_fee = daily_fee_for_sectors(&all_sectors);
+    let burnt_funds = daily_fee_for_sectors(&all_sectors) + ongoing_penalty;
     h.advance_deadline(
         &rt,
-        CronConfig { daily_fee, continued_faults_penalty: ongoing_penalty, ..Default::default() },
+        CronConfig { pledge_delta: -burnt_funds.clone(), burnt_funds, ..Default::default() },
     );
     h.check_state(&rt);
 }
