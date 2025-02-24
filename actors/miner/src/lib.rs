@@ -4584,9 +4584,23 @@ fn handle_proving_deadline(
             penalty_target
         );
 
-        state
-            .apply_penalty(&result.daily_fee)
-            .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
+        if result.daily_fee.is_positive() {
+            // Apply daily fee for sectors in this deadline, applied through the penalty/fee_debt
+            // mechanism.
+            // The daily fee payable is capped at a fraction of estimated daily block reward for the
+            // sectors being charged.
+            let day_reward = expected_reward_for_power(
+                reward_smoothed,
+                quality_adj_power_smoothed,
+                &result.live_power.qa,
+                fil_actors_runtime::EPOCHS_IN_DAY,
+            );
+            let daily_fee = daily_proof_fee_payable(policy, &result.daily_fee, &day_reward);
+
+            state
+                .apply_penalty(&daily_fee)
+                .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
+        }
 
         let (penalty_from_vesting, penalty_from_balance) = state
             .repay_partial_debt_in_priority_order(
@@ -5238,7 +5252,7 @@ fn request_current_epoch_block_reward(
             Default::default(),
             TokenAmount::zero(),
         ))
-        .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
+        .map_err(|e| e.wrap("failed to check epoch reward"))?,
     )
 }
 
