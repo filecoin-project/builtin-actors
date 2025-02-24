@@ -1122,6 +1122,7 @@ impl State {
                 detected_faulty_power: PowerPair::zero(),
                 total_faulty_power: PowerPair::zero(),
                 daily_fee: TokenAmount::zero(),
+                live_power: PowerPair::zero(),
             });
         }
 
@@ -1144,6 +1145,7 @@ impl State {
                 detected_faulty_power: PowerPair::zero(),
                 total_faulty_power: deadline.faulty_power,
                 daily_fee: TokenAmount::zero(),
+                live_power: PowerPair::zero(),
             });
         }
 
@@ -1188,6 +1190,7 @@ impl State {
             detected_faulty_power,
             total_faulty_power,
             daily_fee: deadline.daily_fee,
+            live_power: deadline.live_power,
         })
     }
 
@@ -1228,6 +1231,8 @@ pub struct AdvanceDeadlineResult {
     pub total_faulty_power: PowerPair,
     /// Fee payable for the sectors in the deadline being advanced
     pub daily_fee: TokenAmount,
+    /// Total power for the deadline, including active, faulty, and unproven
+    pub live_power: PowerPair,
 }
 
 /// Static information about miner
