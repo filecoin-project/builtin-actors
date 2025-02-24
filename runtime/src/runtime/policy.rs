@@ -144,6 +144,12 @@ pub struct Policy {
     /// the daily fee for new sectors.
     pub daily_fee_circulating_supply_multiplier_denom: i64,
 
+    /// Denominator for the fraction of estimated daily block reward for the sector(s)
+    /// attracting a fee, to be used as a cap for the fees when payable.
+    /// No numerator is provided as the fee is calculated as a fraction of the estimated
+    /// daily block reward.
+    pub daily_fee_block_reward_cap_denom: i64,
+
     //
     // --- verifreg policy ---
     //
@@ -230,6 +236,7 @@ impl Default for Policy {
                 policy_constants::DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_NUM,
             daily_fee_circulating_supply_multiplier_denom:
                 policy_constants::DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_DENOM,
+            daily_fee_block_reward_cap_denom: policy_constants::DAILY_FEE_BLOCK_REWARD_CAP_DENOM,
 
             valid_post_proof_type: ProofSet::default_post_proofs(),
             valid_pre_commit_proof_type: ProofSet::default_precommit_seal_proofs(),
@@ -374,6 +381,9 @@ pub mod policy_constants {
     /// A multiplier of k=7.4e-15, represented as 74/10^16
     pub const DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_NUM: i64 = 74;
     pub const DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_DENOM: i64 = 10_000_000_000_000_000; // 10^16
+
+    // 50% of estimated daily block rewards
+    pub const DAILY_FEE_BLOCK_REWARD_CAP_DENOM: i64 = 2;
 
     //
     // --- verifreg policy ---

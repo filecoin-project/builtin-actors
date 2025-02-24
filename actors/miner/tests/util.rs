@@ -279,7 +279,7 @@ impl ActorHarness {
             ExitCode::OK,
         );
         // set circulating supply non-zero so we get non-zero fees
-        rt.set_circulating_supply(TokenAmount::from_whole(500_000_000));
+        rt.set_circulating_supply(TokenAmount::from_whole(500_000));
 
         let result = rt
             .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
@@ -2142,8 +2142,9 @@ impl ActorHarness {
 
             let unvested = unvested_vesting_funds(rt, &state);
             let available = rt.get_balance() + unvested.clone() - &state.initial_pledge;
-            let burnt_funds = TokenAmount::zero().max(available.min(daily_fee.clone()));
-            let pledge_delta = unvested.min(daily_fee).neg();
+            let burnt_funds =
+                std::cmp::max(&TokenAmount::zero(), std::cmp::min(&available, &daily_fee)).clone();
+            let pledge_delta = std::cmp::min(&unvested, &daily_fee).neg().clone();
             let cfg = CronConfig { burnt_funds, pledge_delta, ..Default::default() };
 
             self.advance_deadline(rt, cfg);
@@ -3197,7 +3198,7 @@ pub fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount
     vesting_funds(rt, state, true)
 }
 
-fn unvested_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
+pub fn unvested_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     vesting_funds(rt, state, false)
 }
 
