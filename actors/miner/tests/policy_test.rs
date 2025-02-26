@@ -10,6 +10,8 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::SectorSize;
 
+use num_traits::Signed;
+
 #[test]
 fn quality_is_independent_of_size_and_duration() {
     // Quality of space with no deals. This doesn't depend on either the sector size or duration.
@@ -297,10 +299,33 @@ fn original_quality_for_weight(
 #[test]
 fn daily_proof_fee_calc() {
     let policy = Policy::default();
-    // Given a CS of 680M FIL and a fee multiplier of 7.4e-15, the daily proof fee should be 5032 nanoFIL.
+    // Given a CS of 680M FIL, 32GiB QAP, a fee multiplier of 7.4e-15 per 32GiB QAP, the daily proof
+    // fee should be 5032 nanoFIL.
     //   680M * 7.4e-15 = 0.000005032 FIL
     //   0.000005032 * 1e9 = 5032 nanoFIL
+    //   0.000005032 * 1e18 = 5032000000000 attoFIL
+    // As a per-byte multiplier we use 2.1536e-25, a close approximation of 7.4e-15 / 32GiB.
+    //   680M * 32GiB * 2.1536e-25 = 0.000005031805013354 FIL
+    //   0.000005031805013354 * 1e18 = 5031805013354 attoFIL
     let circulating_supply = TokenAmount::from_whole(680_000_000);
-    let fee = daily_proof_fee(&policy, &circulating_supply);
-    assert_eq!(fee, TokenAmount::from_nano(5032));
+
+    let ref_32gib_fee = 5031805013354_u64;
+    [
+        (32_u64, ref_32gib_fee),
+        (64, ref_32gib_fee * 2),
+        (32 * 10, ref_32gib_fee * 10),
+        (32 * 5, ref_32gib_fee * 5),
+        (64 * 10, ref_32gib_fee * 20),
+    ]
+    .iter()
+    .for_each(|(size, expected_fee)| {
+        let power = BigInt::from(*size) << 30; // 32GiB raw QAP
+        let fee = daily_proof_fee(&policy, &circulating_supply, &power);
+        assert!(
+            (fee.atto() - BigInt::from(*expected_fee)).abs() <= BigInt::from(1),
+            "fee: {}, expected_fee: {}",
+            fee.atto(),
+            expected_fee
+        );
+    });
 }

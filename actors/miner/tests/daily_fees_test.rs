@@ -48,7 +48,7 @@ fn fee_paid_at_deadline() {
     assert_eq!(st.fee_debt, daily_fee); // now in debt
 
     // set balance to pay back debt and half of the next fee
-    let extra = &daily_fee.div_floor(2);
+    let extra = &daily_fee.div_ceil(2);
     let available_balance = &daily_fee + extra;
     rt.set_balance(&st.initial_pledge + &available_balance);
     {
@@ -78,7 +78,7 @@ fn fee_paid_at_deadline() {
     let miner_balance_after = rt.get_balance();
     assert_eq!(st.initial_pledge, miner_balance_after); // back to locked balance
     st = h.get_state(&rt);
-    assert_eq!(st.fee_debt, *extra); // paid back debt, but added half back
+    assert_eq!(st.fee_debt, daily_fee - extra); // paid back debt, but added half back
 
     h.check_state(&rt);
 }

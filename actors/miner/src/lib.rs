@@ -2128,7 +2128,8 @@ impl Actor {
         );
 
         let circulating_supply = rt.total_fil_circ_supply();
-        let daily_fee = daily_proof_fee(policy, &circulating_supply);
+        // Same fee for all sectors: same size, all raw
+        let daily_fee = daily_proof_fee(policy, &circulating_supply, &qa_sector_power);
 
         let sectors_to_add = valid_sectors
             .iter()
@@ -5576,8 +5577,6 @@ fn activate_new_sector_infos(
         let policy = rt.policy();
         let store = rt.store();
 
-        let daily_fee = daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply);
-
         let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(data_activations.len());
         let mut deposit_to_unlock = TokenAmount::zero();
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
@@ -5601,6 +5600,7 @@ fn activate_new_sector_infos(
             let verified_deal_weight = &deal_spaces.verified_space * duration;
 
             let power = qa_power_for_weight(info.sector_size, duration, &verified_deal_weight);
+            let daily_fee = daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply, &power);
 
             let day_reward = expected_reward_for_power(
                 &pledge_inputs.epoch_reward,
@@ -5648,7 +5648,7 @@ fn activate_new_sector_infos(
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
-                daily_fee: daily_fee.clone(),
+                daily_fee,
             };
 
             new_sector_numbers.push(new_sector_info.sector_number);
