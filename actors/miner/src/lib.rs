@@ -2317,6 +2317,7 @@ impl Actor {
         kind: ExtensionKind,
     ) -> Result<(), ActorError> {
         let curr_epoch = rt.curr_epoch();
+        let circulating_supply = rt.total_fil_circ_supply();
 
         /* Loop over sectors and do extension */
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
@@ -2365,6 +2366,7 @@ impl Actor {
 
                 let mut deadline_power_delta = PowerPair::zero();
                 let mut deadline_pledge_delta = TokenAmount::zero();
+                let mut deadline_daily_fee_delta = TokenAmount::zero();
 
                 // Group modified partitions by epoch to which they are extended. Duplicates are ok.
                 let mut partitions_by_new_epoch = BTreeMap::<ChainEpoch, Vec<u64>>::new();
@@ -2394,6 +2396,7 @@ impl Actor {
                                 extend_sector_committment_legacy(
                                     rt.policy(),
                                     curr_epoch,
+                                    &circulating_supply,
                                     decl.new_expiration,
                                     sector,
                                 )
@@ -2406,6 +2409,7 @@ impl Actor {
                                 Some(claim_space_by_sector) => extend_sector_committment(
                                     rt.policy(),
                                     curr_epoch,
+                                    &circulating_supply,
                                     decl.new_expiration,
                                     sector,
                                     claim_space_by_sector,
@@ -2440,16 +2444,11 @@ impl Actor {
                             })?;
 
                     deadline_power_delta += &partition_power_delta;
-                    deadline_pledge_delta += &partition_pledge_delta; // expected to be zero, see note below.
-
-                    // daily_fee should not change when replacing sectors with updated versions of themselves
-                    if partition_daily_fee_delta != TokenAmount::zero() {
-                        return Err(actor_error!(
-                            illegal_state,
-                            "unexpected daily fee change when extenting sectors at {:?}",
-                            key
-                        ));
-                    }
+                    // expected to be zero, see note below.
+                    deadline_pledge_delta += &partition_pledge_delta;
+                    // non-zero when extending sectors that previously paid no fees (e.g., because
+                    // they were sealed before we started charging fees).
+                    deadline_daily_fee_delta += &partition_daily_fee_delta;
 
                     partitions.set(decl.partition, partition).map_err(|e| {
                         e.downcast_default(
@@ -2472,6 +2471,7 @@ impl Actor {
                 }
 
                 deadline.live_power += &deadline_power_delta;
+                deadline.daily_fee += &deadline_daily_fee_delta;
 
                 power_delta += &deadline_power_delta;
                 pledge_delta += &deadline_pledge_delta;
@@ -3785,6 +3785,7 @@ fn validate_extension_declarations(
 fn extend_sector_committment(
     policy: &Policy,
     curr_epoch: ChainEpoch,
+    circulating_supply: &TokenAmount,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
     claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
@@ -3792,16 +3793,21 @@ fn extend_sector_committment(
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
-    if sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER) {
+    let mut sector = if sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER) {
         extend_simple_qap_sector(policy, new_expiration, curr_epoch, sector, claim_space_by_sector)
     } else {
         extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+    }?;
+    if sector.daily_fee.is_zero() {
+        sector.daily_fee = daily_proof_fee(policy, circulating_supply)
     }
+    Ok(sector)
 }
 
 fn extend_sector_committment_legacy(
     policy: &Policy,
     curr_epoch: ChainEpoch,
+    circulating_supply: &TokenAmount,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
 ) -> Result<SectorOnChainInfo, ActorError> {
@@ -3817,7 +3823,11 @@ fn extend_sector_committment_legacy(
             sector.sector_number
         ));
     }
-    extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+    let mut sector = extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)?;
+    if sector.daily_fee.is_zero() {
+        sector.daily_fee = daily_proof_fee(policy, circulating_supply)
+    }
+    Ok(sector)
 }
 
 fn validate_extended_expiration(
