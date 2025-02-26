@@ -40,14 +40,16 @@ pub const TERMINATION_REWARD_FACTOR_DENOM: u32 = 2;
 const LOCKED_REWARD_FACTOR_NUM: u32 = 3;
 const LOCKED_REWARD_FACTOR_DENOM: u32 = 4;
 
+/// Used to compute termination fees in the base case by multiplying against initial pledge.
 pub const TERM_PENALTY_PLEDGE_NUM: u32 = 85;
 pub const TERM_PENALTY_PLEDGE_DENOM: u32 = 1000;
 
-// TODO: what is a good value? should it be per network?
+/// Used to ensure the termination fee for young sectors is not arbitrarily low.
 pub const MIN_TERMINATION_FEE_PLEDGE_NUM: u32 = 2;
 pub const MIN_TERMINATION_FEE_PLEDGE_DENOM: u32 = 100;
-// TODO: what is a good value? should it be per network?
-pub const FAULT_FEE_MULTIPLE_NUM: u32 = 5;
+
+/// Used to compute termination fees when the termination fee of a sector is less than the fault fee for the same sector.
+pub const FAULT_FEE_MULTIPLE_NUM: u32 = 105;
 pub const FAULT_FEE_MULTIPLE_DENOM: u32 = 100;
 
 lazy_static! {
