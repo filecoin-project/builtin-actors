@@ -5,9 +5,8 @@ use std::borrow::Borrow;
 use std::cmp;
 use std::ops::Neg;
 
-use anyhow::{anyhow, Error};
+use anyhow::anyhow;
 use cid::Cid;
-use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -393,30 +392,6 @@ impl State {
         sectors.get(sector_num)
     }
 
-    pub fn delete_sectors<BS: Blockstore>(
-        &mut self,
-        store: &BS,
-        sector_nos: &BitField,
-    ) -> Result<(), AmtError> {
-        let mut sectors = Sectors::load(store, &self.sectors)?;
-
-        for sector_num in sector_nos.iter() {
-            let deleted_sector = sectors
-                .amt
-                .delete(sector_num)
-                .map_err(|e| e.downcast_wrap("could not delete sector number"))?;
-            if deleted_sector.is_none() {
-                return Err(AmtError::Dynamic(Error::msg(format!(
-                    "sector {} doesn't exist, failed to delete",
-                    sector_num
-                ))));
-            }
-        }
-
-        self.sectors = sectors.amt.flush()?;
-        Ok(())
-    }
-
     pub fn for_each_sector<BS: Blockstore, F>(&self, store: &BS, mut f: F) -> anyhow::Result<()>
     where
         F: FnMut(&SectorOnChainInfo) -> anyhow::Result<()>,
@@ -536,10 +511,13 @@ impl State {
 
             // The power returned from AddSectors is ignored because it's not activated (proven) yet.
             let proven = false;
+            // New sectors, so the deadline has new fees.
+            let new_fees = true;
             deadline.add_sectors(
                 store,
                 partition_size,
                 proven,
+                new_fees,
                 &deadline_sectors,
                 sector_size,
                 quant,
@@ -585,8 +563,9 @@ impl State {
 
         let quant = self.quant_spec_for_deadline(policy, deadline_idx);
         let proven = false;
+        let new_fees = true; // New sectors, so the deadline has new fees.
         deadline
-            .add_sectors(store, partition_size, proven, &sectors, sector_size, quant)
+            .add_sectors(store, partition_size, proven, new_fees, &sectors, sector_size, quant)
             .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                 format!("failed to add sectors to deadline {}", deadline_idx)
             })?;
@@ -760,7 +739,7 @@ impl State {
         store: &BS,
         sectors: &BitField,
     ) -> anyhow::Result<Vec<SectorOnChainInfo>> {
-        Ok(Sectors::load(store, &self.sectors)?.load_sector(sectors)?)
+        Ok(Sectors::load(store, &self.sectors)?.load_sectors(sectors)?)
     }
 
     pub fn load_deadlines<BS: Blockstore>(&self, store: &BS) -> Result<Deadlines, ActorError> {
@@ -1040,7 +1019,7 @@ impl State {
 
         let min_balance = &self.pre_commit_deposits + &self.locked_funds + &self.initial_pledge;
         if balance < &min_balance {
-            return Err(anyhow!("fee debt is negative: {}", self.fee_debt));
+            return Err(anyhow!("balance {} below minimum {}", balance, min_balance));
         }
 
         Ok(())
@@ -1142,6 +1121,8 @@ impl State {
                 previously_faulty_power: PowerPair::zero(),
                 detected_faulty_power: PowerPair::zero(),
                 total_faulty_power: PowerPair::zero(),
+                daily_fee: TokenAmount::zero(),
+                live_power: PowerPair::zero(),
             });
         }
 
@@ -1163,6 +1144,8 @@ impl State {
                 previously_faulty_power,
                 detected_faulty_power: PowerPair::zero(),
                 total_faulty_power: deadline.faulty_power,
+                daily_fee: TokenAmount::zero(),
+                live_power: PowerPair::zero(),
             });
         }
 
@@ -1206,6 +1189,8 @@ impl State {
             previously_faulty_power,
             detected_faulty_power,
             total_faulty_power,
+            daily_fee: deadline.daily_fee,
+            live_power: deadline.live_power,
         })
     }
 
@@ -1244,6 +1229,10 @@ pub struct AdvanceDeadlineResult {
     /// Note that failed recovery power is included in both PreviouslyFaultyPower and
     /// DetectedFaultyPower, so TotalFaultyPower is not simply their sum.
     pub total_faulty_power: PowerPair,
+    /// Fee payable for the sectors in the deadline being advanced
+    pub daily_fee: TokenAmount,
+    /// Total power for the deadline, including active, faulty, and unproven
+    pub live_power: PowerPair,
 }
 
 /// Static information about miner

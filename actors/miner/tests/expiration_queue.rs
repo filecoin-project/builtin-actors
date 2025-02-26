@@ -3,16 +3,12 @@ use fil_actor_miner::{
     NO_QUANTIZATION,
 };
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
-use fil_actors_runtime::{
-    test_utils::{make_sealed_cid, MockRuntime},
-    DealWeight,
-};
+use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::{BitField, MaybeBitField};
 use fvm_shared::bigint::Zero;
-use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::{SectorNumber, SectorSize, StoragePower};
+use fvm_shared::sector::{SectorSize, StoragePower};
 use std::convert::TryInto;
 use std::iter::FromIterator;
 
@@ -40,6 +36,9 @@ fn active_power() -> PowerPair {
 fn faulty_power() -> PowerPair {
     PowerPair { raw: StoragePower::from(1 << 11), qa: StoragePower::from(1 << 12) }
 }
+fn fee_deduction() -> TokenAmount {
+    TokenAmount::from_atto(2_000)
+}
 fn default_set() -> ExpirationSet {
     let mut set = ExpirationSet::empty();
     set.add(
@@ -48,6 +47,7 @@ fn default_set() -> ExpirationSet {
         &on_time_pledge(),
         &active_power(),
         &faulty_power(),
+        &fee_deduction(),
     )
     .unwrap();
     set
@@ -68,6 +68,7 @@ fn adds_sectors_and_power_to_empty_set() {
     assert_eq!(set.on_time_pledge, on_time_pledge());
     assert_eq!(set.active_power, active_power());
     assert_eq!(set.faulty_power, faulty_power());
+    assert_eq!(set.fee_deduction, fee_deduction());
 
     assert_eq!(set.len(), 5);
 }
@@ -82,6 +83,7 @@ fn adds_sectors_and_power_to_non_empty_set() {
         &TokenAmount::from_atto(300),
         &power_pair(3, 13),
         &power_pair(3, 11),
+        &TokenAmount::from_atto(500),
     )
     .unwrap();
 
@@ -104,6 +106,7 @@ fn removes_sectors_and_power_set() {
         &TokenAmount::from_atto(800),
         &power_pair(3, 11),
         &power_pair(3, 9),
+        &TokenAmount::from_atto(1200),
     )
     .unwrap();
 
@@ -114,6 +117,7 @@ fn removes_sectors_and_power_set() {
     assert_eq!(set.active_power, active);
     let faulty = power_pair(1, 9);
     assert_eq!(set.faulty_power, faulty);
+    assert_eq!(set.fee_deduction, TokenAmount::from_atto(800));
 }
 
 #[test]
@@ -127,12 +131,33 @@ fn remove_fails_when_pledge_underflows() {
             &TokenAmount::from_atto(1200),
             &power_pair(3, 11),
             &power_pair(3, 9),
+            &TokenAmount::from_atto(800),
         )
         .err()
         .unwrap();
     // XXX: This is not a good way to check for specific errors.
     //      See: https://github.com/filecoin-project/builtin-actors/issues/338
     assert!(err.to_string().contains("pledge underflow"));
+}
+
+#[test]
+fn remove_fails_when_fee_underflows() {
+    let mut set = default_set();
+
+    let err = set
+        .remove(
+            &mk_bitfield([9]),
+            &mk_bitfield([2]),
+            &TokenAmount::from_atto(800),
+            &power_pair(3, 11),
+            &power_pair(3, 9),
+            &TokenAmount::from_atto(2200),
+        )
+        .err()
+        .unwrap();
+    // XXX: This is not a good way to check for specific errors.
+    //      See: https://github.com/filecoin-project/builtin-actors/issues/338
+    assert!(err.to_string().contains("fee deduction underflow"));
 }
 
 #[test]
@@ -147,6 +172,7 @@ fn remove_fails_to_remove_sectors_it_does_not_contain() {
             &TokenAmount::zero(),
             &power_pair(3, 11),
             &power_pair(3, 9),
+            &TokenAmount::zero(),
         )
         .err()
         .unwrap();
@@ -162,6 +188,7 @@ fn remove_fails_to_remove_sectors_it_does_not_contain() {
             &TokenAmount::zero(),
             &power_pair(3, 11),
             &power_pair(3, 9),
+            &TokenAmount::zero(),
         )
         .err()
         .unwrap();
@@ -182,6 +209,7 @@ fn remove_fails_when_active_or_fault_qa_power_underflows() {
             &TokenAmount::from_atto(200),
             &power_pair(3, 12),
             &power_pair(3, 9),
+            &TokenAmount::from_atto(600),
         )
         .err()
         .unwrap();
@@ -199,6 +227,7 @@ fn remove_fails_when_active_or_fault_qa_power_underflows() {
             &TokenAmount::from_atto(200),
             &power_pair(3, 11),
             &power_pair(3, 10),
+            &TokenAmount::from_atto(700),
         )
         .err()
         .unwrap();
@@ -220,6 +249,7 @@ fn set_is_empty_when_all_sectors_removed() {
         &on_time_pledge(),
         &active_power(),
         &faulty_power(),
+        &fee_deduction(),
     )
     .unwrap();
 
@@ -231,6 +261,7 @@ fn set_is_empty_when_all_sectors_removed() {
         &on_time_pledge(),
         &active_power(),
         &faulty_power(),
+        &fee_deduction(),
     )
     .unwrap();
 
@@ -240,12 +271,12 @@ fn set_is_empty_when_all_sectors_removed() {
 
 fn sectors() -> [SectorOnChainInfo; 6] {
     [
-        test_sector(2, 1, 50, 60, 1000),
-        test_sector(3, 2, 51, 61, 1001),
-        test_sector(7, 3, 52, 62, 1002),
-        test_sector(8, 4, 53, 63, 1003),
-        test_sector(11, 5, 54, 64, 1004),
-        test_sector(13, 6, 55, 65, 1005),
+        test_sector(2, 1, 50, 60, 1000, 3000),
+        test_sector(3, 2, 51, 61, 1001, 4000),
+        test_sector(7, 3, 52, 62, 1002, 5000),
+        test_sector(8, 4, 53, 63, 1003, 6000),
+        test_sector(11, 5, 54, 64, 1004, 7000),
+        test_sector(13, 6, 55, 65, 1005, 8000),
     ]
 }
 
@@ -257,10 +288,12 @@ fn added_sectors_can_be_popped_off_queue() {
     let rt = h.new_runtime();
 
     let mut queue = empty_expiration_queue(&rt);
-    let (sec_nums, power, pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+    let (sec_nums, power, pledge, daily_fee) =
+        queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
     assert_eq!(sec_nums, mk_bitfield([1, 2, 3, 4, 5, 6]));
     assert_eq!(power, power_for_sectors(SECTOR_SIZE, &sectors()));
     assert_eq!(pledge, TokenAmount::from_atto(6015));
+    assert_eq!(daily_fee, TokenAmount::from_atto(3000 + 4000 + 5000 + 6000 + 7000 + 8000));
 
     // default test quantizing of 1 means every sector is in its own expriation set
     assert_eq!(sectors().len(), queue.amt.count() as usize);
@@ -304,10 +337,12 @@ fn quantizes_added_sectors_by_expiration() {
 
     let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 5, offset: 3 });
 
-    let (sec_nums, power, pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+    let (sec_nums, power, pledge, daily_fee) =
+        queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
     assert_eq!(sec_nums, mk_bitfield([1, 2, 3, 4, 5, 6]));
     assert_eq!(power, power_for_sectors(SECTOR_SIZE, &sectors()));
     assert_eq!(pledge, TokenAmount::from_atto(6015));
+    assert_eq!(daily_fee, TokenAmount::from_atto(3000 + 4000 + 5000 + 6000 + 7000 + 8000));
 
     // quantizing spec means sectors should be grouped into 3 sets expiring at 3, 8 and 13
     assert_eq!(queue.amt.count(), 3);
@@ -354,7 +389,8 @@ fn reschedules_sectors_as_faults() {
 
     // Create 3 expiration sets with 2 sectors apiece
     let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
-    let (_sec_nums, _power, _pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+    let (_sec_nums, _power, _pledge, _daily_fee) =
+        queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
 
     let _ = queue.amt.flush().unwrap();
 
@@ -412,7 +448,8 @@ fn reschedules_all_sectors_as_faults() {
 
     // Create expiration 3 sets with 2 sectors apiece
     let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
-    let (_sec_nums, _power, _pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+    let (_sec_nums, _power, _pledge, _daily_fee) =
+        queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
 
     let _ = queue.amt.flush().unwrap();
 
@@ -470,7 +507,8 @@ fn reschedule_recover_restores_all_sector_stats() {
 
     // Create expiration 3 sets with 2 sectors apiece
     let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
-    let (_sec_nums, _power, _pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+    let (_sec_nums, _power, _pledge, _daily_fee) =
+        queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
 
     let _ = queue.amt.flush().unwrap();
 
@@ -534,7 +572,7 @@ fn replaces_sectors_with_new_sectors() {
 
     // add sectors to each set
     let sectors = sectors();
-    let (_sec_nums, _power, _pledge) = queue
+    let (_sec_nums, _power, _pledge, _daily_fee) = queue
         .add_active_sectors(
             &[sectors[0].clone(), sectors[1].clone(), sectors[3].clone(), sectors[5].clone()],
             SECTOR_SIZE,
@@ -546,7 +584,7 @@ fn replaces_sectors_with_new_sectors() {
     // remove all from first set, replace second set, and append to third
     let to_remove = [sectors[0].clone(), sectors[1].clone(), sectors[3].clone()];
     let to_add = [sectors[2].clone(), sectors[4].clone()];
-    let (removed, added, power_delta, pledge_delta) =
+    let (removed, added, power_delta, pledge_delta, _daily_fee) =
         queue.replace_sectors(&to_remove, &to_add, SECTOR_SIZE).unwrap();
     assert_eq!(removed, mk_bitfield([1, 2, 4]));
     assert_eq!(added, mk_bitfield([3, 5]));
@@ -690,24 +728,6 @@ fn rescheduling_no_sectors_as_recovered_leaves_the_queue_empty() {
     let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
     let _ = queue.reschedule_recovered([].to_vec(), SECTOR_SIZE).unwrap();
     assert!(queue.amt.count().is_zero());
-}
-
-fn test_sector(
-    expiration: ChainEpoch,
-    sector_number: SectorNumber,
-    weight: u64,
-    vweight: u64,
-    pledge: u64,
-) -> SectorOnChainInfo {
-    SectorOnChainInfo {
-        expiration,
-        sector_number,
-        deal_weight: DealWeight::from(weight),
-        verified_deal_weight: DealWeight::from(vweight),
-        initial_pledge: TokenAmount::from_atto(pledge),
-        sealed_cid: make_sealed_cid(format!("commR-{}", sector_number).as_bytes()),
-        ..Default::default()
-    }
 }
 
 fn empty_expiration_queue_with_quantizing(

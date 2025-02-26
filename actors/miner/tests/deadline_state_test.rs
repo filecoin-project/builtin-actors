@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
-    power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, QuantSpec,
-    SectorOnChainInfo, TerminationResult,
+    daily_fee_for_sectors, power_for_sectors, Deadline, PartitionSectorMap, PoStPartition,
+    PowerPair, QuantSpec, SectorOnChainInfo, TerminationResult,
 };
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::MockRuntime;
@@ -22,20 +22,20 @@ const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
 
 fn sectors() -> Vec<SectorOnChainInfo> {
     vec![
-        test_sector(2, 1, 50, 60, 1000),
-        test_sector(3, 2, 51, 61, 1001),
-        test_sector(7, 3, 52, 62, 1002),
-        test_sector(8, 4, 53, 63, 1003),
-        test_sector(8, 5, 54, 64, 1004),
-        test_sector(11, 6, 55, 65, 1005),
-        test_sector(13, 7, 56, 66, 1006),
-        test_sector(8, 8, 57, 67, 1007),
-        test_sector(8, 9, 58, 68, 1008),
+        test_sector(2, 1, 50, 60, 1000, 1000),
+        test_sector(3, 2, 51, 61, 1001, 2000),
+        test_sector(7, 3, 52, 62, 1002, 3000),
+        test_sector(8, 4, 53, 63, 1003, 4000),
+        test_sector(8, 5, 54, 64, 1004, 5000),
+        test_sector(11, 6, 55, 65, 1005, 6000),
+        test_sector(13, 7, 56, 66, 1006, 7000),
+        test_sector(8, 8, 57, 67, 1007, 8000),
+        test_sector(8, 9, 58, 68, 1008, 9000),
     ]
 }
 
 fn extra_sectors() -> Vec<SectorOnChainInfo> {
-    vec![test_sector(8, 10, 58, 68, 1008)]
+    vec![test_sector(8, 10, 58, 68, 1008, 9000)]
 }
 
 fn all_sectors() -> Vec<SectorOnChainInfo> {
@@ -60,12 +60,14 @@ fn add_sectors(
     let sectors = sectors();
     let store = rt.store();
 
-    let power = power_for_sectors(SECTOR_SIZE, &sectors);
-    let activated_power = deadline
-        .add_sectors(store, PARTITION_SIZE, false, &sectors, SECTOR_SIZE, QUANT_SPEC)
+    let (activated_power, daily_fee) = deadline
+        .add_sectors(store, PARTITION_SIZE, false, true, &sectors, SECTOR_SIZE, QUANT_SPEC)
         .expect("Couldn't add sectors");
+    let expected_power = power_for_sectors(SECTOR_SIZE, &sectors);
+    let expected_daily_fee = daily_fee_for_sectors(&sectors);
 
-    assert_eq!(activated_power, power);
+    assert_eq!(activated_power, expected_power);
+    assert_eq!(daily_fee, expected_daily_fee);
 
     let deadline_state = deadline_state()
         .with_unproven(&[1, 2, 3, 4, 5, 6, 7, 8, 9])
@@ -80,13 +82,13 @@ fn add_sectors(
         return (deadline_state, sectors);
     }
 
-    let mut sector_array = sectors_arr(store, sectors.to_owned());
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
 
     //prove everything
     let result = deadline
         .record_proven_sectors(
             store,
-            &sector_array,
+            &sectors_array,
             SECTOR_SIZE,
             QUANT_SPEC,
             0,
@@ -98,9 +100,9 @@ fn add_sectors(
         )
         .unwrap();
 
-    assert_eq!(result.power_delta, power);
+    assert_eq!(result.power_delta, expected_power);
 
-    let sectors_root = sector_array.amt.flush().unwrap();
+    let sectors_root = sectors_array.amt.flush().unwrap();
 
     let (faulty_power, recovery_power) =
         deadline.process_deadline_end(store, QUANT_SPEC, 0, sectors_root).unwrap();
@@ -199,20 +201,24 @@ fn add_then_terminate_then_remove_partition(
 ) -> (ExpectedDeadlineState, Vec<SectorOnChainInfo>) {
     let (deadline_state, sectors) = add_then_terminate_then_pop_early(rt, deadline);
     let store = rt.store();
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
 
-    let (live, dead, removed_power) = deadline
-        .remove_partitions(store, &bitfield_from_slice(&[0]), QUANT_SPEC)
+    let dead = deadline
+        .compact_partitions(
+            store,
+            &mut sectors_array,
+            SECTOR_SIZE,
+            PARTITION_SIZE,
+            &bitfield_from_slice(&[0]),
+            QUANT_SPEC,
+        )
         .expect("should have removed partitions");
 
-    assert_bitfield_equals(&live, &[2, 4]);
     assert_bitfield_equals(&dead, &[1, 3]);
-
-    let live_power = power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors, &live));
-    assert_eq!(live_power, removed_power);
 
     let deadline_state = deadline_state
         .with_terminations(&[6])
-        .with_partitions(vec![bitfield_from_slice(&[5, 6, 7, 8]), bitfield_from_slice(&[9])])
+        .with_partitions(vec![bitfield_from_slice(&[5, 6, 7, 8]), bitfield_from_slice(&[2, 4, 9])])
         .assert(store, &sectors, deadline);
 
     (deadline_state, sectors)
@@ -329,10 +335,21 @@ fn cannot_remove_partitions_with_early_terminations() {
     let (_, rt) = setup();
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
-    add_then_terminate(&rt, &mut deadline, false);
+    let (_, sectors) = add_then_terminate(&rt, &mut deadline, false);
 
     let store = rt.store();
-    assert!(deadline.remove_partitions(store, &bitfield_from_slice(&[0]), QUANT_SPEC).is_err());
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
+
+    assert!(deadline
+        .compact_partitions(
+            store,
+            &mut sectors_array,
+            SECTOR_SIZE,
+            PARTITION_SIZE,
+            &bitfield_from_slice(&[0]),
+            QUANT_SPEC,
+        )
+        .is_err());
 }
 
 #[test]
@@ -382,9 +399,19 @@ fn cannot_remove_missing_partition() {
     let (_, rt) = setup();
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
-    add_then_terminate_then_remove_partition(&rt, &mut deadline);
+    let (_, sectors) = add_then_terminate_then_remove_partition(&rt, &mut deadline);
+    let store = rt.store();
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
+
     assert!(deadline
-        .remove_partitions(rt.store(), &bitfield_from_slice(&[2]), QUANT_SPEC)
+        .compact_partitions(
+            store,
+            &mut sectors_array,
+            SECTOR_SIZE,
+            PARTITION_SIZE,
+            &bitfield_from_slice(&[2]),
+            QUANT_SPEC,
+        )
         .is_err());
 }
 
@@ -394,12 +421,20 @@ fn removing_no_partitions_does_nothing() {
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
     let (deadline_state, sectors) = add_then_terminate_then_pop_early(&rt, &mut deadline);
-    let (live, dead, removed_power) = deadline
-        .remove_partitions(rt.store(), &bitfield_from_slice(&[]), QUANT_SPEC)
+    let store = rt.store();
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
+
+    let dead = deadline
+        .compact_partitions(
+            store,
+            &mut sectors_array,
+            SECTOR_SIZE,
+            PARTITION_SIZE,
+            &bitfield_from_slice(&[]),
+            QUANT_SPEC,
+        )
         .expect("should not have failed to remove partitions");
 
-    assert!(removed_power.is_zero());
-    assert!(live.is_empty());
     assert!(dead.is_empty());
 
     // Popping early terminations doesn't affect the terminations bitfield.
@@ -418,11 +453,19 @@ fn fails_to_remove_partitions_with_faulty_sectors() {
     let (_, rt) = setup();
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
-    add_then_mark_faulty(&rt, &mut deadline, false);
+    let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, false);
+    let store = rt.store();
+    let mut sectors_array = sectors_arr(store, sectors.to_owned());
 
-    // Try to remove a partition with faulty sectors.
     assert!(deadline
-        .remove_partitions(rt.store(), &bitfield_from_slice(&[1]), QUANT_SPEC)
+        .compact_partitions(
+            store,
+            &mut sectors_array,
+            SECTOR_SIZE,
+            PARTITION_SIZE,
+            &bitfield_from_slice(&[1]),
+            QUANT_SPEC,
+        )
         .is_err());
 }
 
@@ -660,11 +703,21 @@ fn post_all_the_things() {
     add_sectors(&rt, &mut deadline, true);
 
     // add an inactive sector
-    let power = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+    let (power, daily_fee) = deadline
+        .add_sectors(
+            rt.store(),
+            PARTITION_SIZE,
+            false,
+            true,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
+    let expected_daily_fee = daily_fee_for_sectors(&extra_sectors());
     assert_eq!(expected_power, power);
+    assert_eq!(expected_daily_fee, daily_fee);
 
     let mut sectors_array = sectors_arr(rt.store(), all_sectors());
 
@@ -759,11 +812,21 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
     add_then_mark_faulty(&rt, &mut deadline, true);
 
     // add an inactive sector
-    let power = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+    let (power, daily_fee) = deadline
+        .add_sectors(
+            rt.store(),
+            PARTITION_SIZE,
+            false,
+            true,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
+    let expected_daily_fee = daily_fee_for_sectors(&extra_sectors());
     assert_eq!(power, expected_power);
+    assert_eq!(daily_fee, expected_daily_fee);
 
     let mut sectors_array = sectors_arr(rt.store(), all_sectors());
 
@@ -871,11 +934,21 @@ fn post_with_skipped_unproven() {
     add_sectors(&rt, &mut deadline, true);
 
     // add an inactive sector
-    let power = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+    let (power, daily_fee) = deadline
+        .add_sectors(
+            rt.store(),
+            PARTITION_SIZE,
+            false,
+            true,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
+    let expected_daily_fee = daily_fee_for_sectors(&extra_sectors());
     assert_eq!(power, expected_power);
+    assert_eq!(daily_fee, expected_daily_fee);
 
     let mut sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
@@ -941,11 +1014,21 @@ fn post_missing_partition() {
     add_sectors(&rt, &mut deadline, true);
 
     // add an inactive sector
-    let power = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+    let (power, daily_fee) = deadline
+        .add_sectors(
+            rt.store(),
+            PARTITION_SIZE,
+            false,
+            true,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
+    let expected_daily_fee = daily_fee_for_sectors(&extra_sectors());
     assert_eq!(power, expected_power);
+    assert_eq!(daily_fee, expected_daily_fee);
 
     let sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
@@ -978,11 +1061,21 @@ fn post_partition_twice() {
     add_sectors(&rt, &mut deadline, true);
 
     // add an inactive sector
-    let power = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+    let (power, daily_fee) = deadline
+        .add_sectors(
+            rt.store(),
+            PARTITION_SIZE,
+            false,
+            true,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
+    let expected_daily_fee = daily_fee_for_sectors(&extra_sectors());
     assert_eq!(power, expected_power);
+    assert_eq!(daily_fee, expected_daily_fee);
 
     let sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
@@ -1288,7 +1381,11 @@ impl ExpectedDeadlineState {
 
         for (i, partition_sectors) in self.partition_sectors.iter().enumerate() {
             let partitions = partitions.get(i as u64).unwrap().unwrap();
-            assert_eq!(partition_sectors, &partitions.sectors);
+            assert_eq!(
+                partition_sectors, &partitions.sectors,
+                "Partition {} sectors do not match. Expected: {:?}, Found: {:?}",
+                i, partition_sectors, partitions.sectors
+            );
         }
 
         self

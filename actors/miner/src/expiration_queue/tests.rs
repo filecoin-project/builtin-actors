@@ -26,12 +26,14 @@ fn test_expirations() {
                 qa: StoragePower::from(2048 * 3),
             },
             pledge: Zero::zero(),
+            daily_fee: Zero::zero(),
         },
         SectorEpochSet {
             epoch: 23,
             sectors: vec![3],
             power: PowerPair { raw: StoragePower::from(2048), qa: StoragePower::from(2048) },
             pledge: Zero::zero(),
+            daily_fee: Zero::zero(),
         },
     ];
     assert_eq!(expected.len(), result.len());

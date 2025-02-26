@@ -1,3 +1,4 @@
+use fil_actor_miner::daily_fee_for_sectors;
 use fil_actor_miner::pledge_penalty_for_continued_fault;
 use fil_actor_miner::power_for_sectors;
 
@@ -58,9 +59,10 @@ fn declare_fault_pays_fee_at_window_post() {
         &h.epoch_qa_power_smooth,
         &ongoing_pwr.qa,
     );
+    let burnt_funds = daily_fee_for_sectors(&all_sectors) + ongoing_penalty;
     h.advance_deadline(
         &rt,
-        CronConfig { continued_faults_penalty: ongoing_penalty, ..Default::default() },
+        CronConfig { pledge_delta: -burnt_funds.clone(), burnt_funds, ..Default::default() },
     );
     h.check_state(&rt);
 }

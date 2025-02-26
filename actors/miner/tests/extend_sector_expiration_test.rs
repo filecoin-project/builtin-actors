@@ -1,7 +1,7 @@
 use fil_actor_market::ActivatedDeal;
 use fil_actor_miner::ext::verifreg::Claim as FILPlusClaim;
 use fil_actor_miner::{
-    power_for_sector, seal_proof_sector_maximum_lifetime, ExpirationExtension,
+    daily_proof_fee, power_for_sector, seal_proof_sector_maximum_lifetime, ExpirationExtension,
     ExpirationExtension2, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
     PoStPartition, SectorClaim, SectorOnChainInfo, State,
 };
@@ -14,6 +14,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::deal::DealID;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::{
     address::Address,
     clock::ChainEpoch,
@@ -21,6 +22,7 @@ use fvm_shared::{
     sector::{RegisteredSealProof, SectorNumber},
     ActorID,
 };
+use num_traits::Zero;
 use std::collections::HashMap;
 
 mod util;
@@ -30,7 +32,7 @@ use itertools::Itertools;
 use test_case::test_case;
 use util::*;
 
-// an expriration ~10 days greater than effective min expiration taking into account 30 days max between pre and prove commit
+// an expiration ~10 days greater than effective min expiration taking into account 30 days max between pre and prove commit
 const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
 fn setup() -> (ActorHarness, MockRuntime) {
@@ -197,11 +199,17 @@ fn updates_expiration_with_valid_params(v2: bool) {
         }],
     };
 
+    // Change the circulating supply so we can detect fee changes (that shouldn't happen).
+    rt.set_circulating_supply(rt.total_fil_circ_supply() * 2);
+
     h.extend_sectors_versioned(&rt, params, v2).unwrap();
 
     // assert sector expiration is set to the new value
     let new_sector = h.get_sector(&rt, old_sector.sector_number);
     assert_eq!(new_expiration, new_sector.expiration);
+
+    // assert that the fee hasn't changed
+    assert_eq!(old_sector.daily_fee, new_sector.daily_fee);
 
     let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
 
@@ -216,6 +224,55 @@ fn updates_expiration_with_valid_params(v2: bool) {
         .unwrap();
     assert_eq!(expiration_set.len(), 1);
     assert!(expiration_set.on_time_sectors.get(old_sector.sector_number));
+
+    h.check_state(&rt);
+}
+
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn updates_expiration_and_daily_fee(v2: bool) {
+    let (mut h, rt) = setup();
+
+    h.construct_and_verify(&rt);
+    rt.set_circulating_supply(TokenAmount::zero());
+    let old_sector =
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, Vec::new(), true)[0]
+            .to_owned();
+    assert_eq!(
+        old_sector.daily_fee,
+        TokenAmount::zero(),
+        "expected sector's daily fee to be zero because the circulating supply is zero"
+    );
+    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
+
+    let state: State = rt.get_state();
+
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.store(), old_sector.sector_number).unwrap();
+
+    let extension = 42 * rt.policy().wpost_proving_period;
+    let new_expiration = old_sector.expiration + extension;
+
+    let params = ExtendSectorExpirationParams {
+        extensions: vec![ExpirationExtension {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[old_sector.sector_number]),
+            new_expiration,
+        }],
+    };
+
+    let new_circulating_supply = TokenAmount::from_whole(500_000_000);
+    rt.set_circulating_supply(new_circulating_supply.clone());
+    h.extend_sectors_versioned(&rt, params, v2).unwrap();
+
+    // assert sector expiration is set to the new value
+    let new_sector = h.get_sector(&rt, old_sector.sector_number);
+    assert_eq!(new_expiration, new_sector.expiration);
+
+    // Assert that we've now applied the expected fee.
+    let expected_fee = daily_proof_fee(rt.policy(), &new_circulating_supply);
+    assert_eq!(expected_fee, new_sector.daily_fee);
 
     h.check_state(&rt);
 }
@@ -363,8 +420,8 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
     let power = -power_for_sector(h.sector_size, &new_sector);
     let mut cron_config = CronConfig::empty();
     cron_config.no_enrollment = true;
-    cron_config.expired_sectors_power_delta = Some(power);
-    cron_config.expired_sectors_pledge_delta = -new_sector.initial_pledge;
+    cron_config.power_delta = Some(power);
+    cron_config.pledge_delta = -new_sector.initial_pledge;
 
     h.advance_deadline(&rt, cron_config);
 

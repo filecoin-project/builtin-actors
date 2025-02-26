@@ -1,3 +1,4 @@
+use fil_actor_miner::daily_fee_for_sectors;
 use fil_actor_miner::pledge_penalty_for_continued_fault;
 use fil_actor_miner::power_for_sectors;
 use fil_actors_runtime::test_utils::expect_abort_contains_message;
@@ -50,13 +51,14 @@ fn recovery_happy_path() {
 fn recovery_must_pay_back_fee_debt() {
     let (mut h, rt) = setup();
     let one_sector = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let daily_fee = daily_fee_for_sectors(&one_sector);
 
     // advance to first proving period and submit so we'll have time to declare the fault next cycle
     h.advance_and_submit_posts(&rt, &one_sector);
 
     // Fault will take miner into fee debt
     let mut st = h.get_state(&rt);
-    rt.set_balance(&st.pre_commit_deposits + &st.initial_pledge + &st.locked_funds);
+    rt.set_balance(&st.pre_commit_deposits + &st.initial_pledge + &st.locked_funds + &daily_fee);
 
     h.declare_faults(&rt, &one_sector);
 
@@ -73,13 +75,7 @@ fn recovery_must_pay_back_fee_debt() {
         &h.epoch_qa_power_smooth,
         &ongoing_pwr.qa,
     );
-    h.advance_deadline(
-        &rt,
-        CronConfig {
-            continued_faults_penalty: TokenAmount::zero(), // fee is instead added to debt
-            ..Default::default()
-        },
-    );
+    h.advance_deadline(&rt, CronConfig { burnt_funds: daily_fee, ..Default::default() });
 
     st = h.get_state(&rt);
     assert_eq!(ff, st.fee_debt);

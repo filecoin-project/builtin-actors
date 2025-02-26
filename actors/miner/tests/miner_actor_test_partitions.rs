@@ -1,6 +1,6 @@
 use fil_actor_miner::{
-    power_for_sectors, testing::PartitionStateSummary, BitFieldQueue, ExpirationQueue, Partition,
-    PowerPair, QuantSpec, SectorOnChainInfo,
+    daily_fee_for_sectors, power_for_sectors, testing::PartitionStateSummary, BitFieldQueue,
+    ExpirationQueue, Partition, PowerPair, QuantSpec, SectorOnChainInfo,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
@@ -20,12 +20,12 @@ const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
 
 fn sectors() -> Vec<SectorOnChainInfo> {
     vec![
-        test_sector(2, 1, 50, 60, 1000),
-        test_sector(3, 2, 51, 61, 1001),
-        test_sector(7, 3, 52, 62, 1002),
-        test_sector(8, 4, 53, 63, 1003),
-        test_sector(11, 5, 54, 64, 1004),
-        test_sector(13, 6, 55, 65, 1005),
+        test_sector(2, 1, 50, 60, 1000, 3000),
+        test_sector(3, 2, 51, 61, 1001, 4000),
+        test_sector(7, 3, 52, 62, 1002, 5000),
+        test_sector(8, 4, 53, 63, 1003, 6000),
+        test_sector(11, 5, 54, 64, 1004, 7000),
+        test_sector(13, 6, 55, 65, 1005, 8000),
     ]
 }
 
@@ -63,11 +63,13 @@ fn setup_unproven() -> (MockRuntime, Partition) {
     let (_, rt) = setup();
     let mut partition = Partition::new(&rt.store).unwrap();
 
-    let power =
+    let (power, daily_fee) =
         partition.add_sectors(&rt.store, false, &sectors(), SECTOR_SIZE, QUANT_SPEC).unwrap();
 
     let expected_power = power_for_sectors(SECTOR_SIZE, &sectors());
     assert_eq!(expected_power, power);
+    let expected_daily_fee = daily_fee_for_sectors(&sectors());
+    assert_eq!(expected_daily_fee, daily_fee);
 
     (rt, partition)
 }
@@ -466,23 +468,26 @@ mod miner_actor_test_partitions {
         let old_sectors = sectors()[1..4].to_vec();
         let old_sector_power = power_for_sectors(SECTOR_SIZE, &old_sectors);
         let old_sector_pledge = TokenAmount::from_atto(1001 + 1002 + 1003);
+        let old_daily_fee = daily_fee_for_sectors(&old_sectors);
 
         // replace 1 and add 2 new sectors
         let new_sectors = vec![
-            test_sector(10, 2, 150, 260, 3000),
-            test_sector(10, 7, 151, 261, 3001),
-            test_sector(18, 8, 152, 262, 3002),
+            test_sector(10, 2, 150, 260, 3000, 4000),
+            test_sector(10, 7, 151, 261, 3001, 5000),
+            test_sector(18, 8, 152, 262, 3002, 6000),
         ];
         let new_sector_power = power_for_sectors(SECTOR_SIZE, &new_sectors);
         let new_sector_pledge = TokenAmount::from_atto(3000u64 + 3001 + 3002);
+        let new_daily_fee = daily_fee_for_sectors(&new_sectors);
 
-        let (power_delta, pledge_delta) = partition
+        let (power_delta, pledge_delta, daily_fee_delta) = partition
             .replace_sectors(&rt.store, &old_sectors, &new_sectors, SECTOR_SIZE, QUANT_SPEC)
             .unwrap();
 
         let expected_power_delta = new_sector_power - old_sector_power;
         assert_eq!(expected_power_delta, power_delta);
         assert_eq!(new_sector_pledge - old_sector_pledge, pledge_delta);
+        assert_eq!(new_daily_fee - old_daily_fee, daily_fee_delta);
 
         // partition state should contain new sectors and not old sectors
         let mut all_sectors = new_sectors.clone();
@@ -530,7 +535,7 @@ mod miner_actor_test_partitions {
         let old_sectors = sectors()[1..4].to_vec();
 
         // replace sector 2
-        let new_sectors = vec![test_sector(10, 2, 150, 260, 3000)];
+        let new_sectors = vec![test_sector(10, 2, 150, 260, 3000, 4000)];
 
         let res = partition.replace_sectors(
             &rt.store,
@@ -554,7 +559,7 @@ mod miner_actor_test_partitions {
         let old_sectors = sectors()[1..4].to_vec();
 
         // replace sector 2
-        let new_sectors = vec![test_sector(10, 2, 150, 260, 3000)];
+        let new_sectors = vec![test_sector(10, 2, 150, 260, 3000, 4000)];
 
         let res = partition.replace_sectors(
             &rt.store,
@@ -574,17 +579,18 @@ mod miner_actor_test_partitions {
     fn terminate_sectors() {
         let (rt, mut partition) = setup_partition();
 
-        let unproven_sector = vec![test_sector(13, 7, 55, 65, 1006)];
+        let unproven_sector = vec![test_sector(13, 7, 55, 65, 1006, 9000)];
         let mut all_sectors = sectors();
         all_sectors.extend(unproven_sector.clone());
         let sector_arr = sectors_arr(&rt.store, all_sectors);
 
         // Add an unproven sector.
-        let power = partition
+        let (power, daily_fee) = partition
             .add_sectors(&rt.store, false, &unproven_sector, SECTOR_SIZE, QUANT_SPEC)
             .unwrap();
         let expected_power = power_for_sectors(SECTOR_SIZE, &unproven_sector);
         assert_eq!(expected_power, power);
+        assert_eq!(TokenAmount::from_atto(9000), daily_fee);
 
         // fault sector 3, 4, 5 and 6
         let fault_set = make_bitfield(&[3, 4, 5, 6]);
@@ -599,7 +605,7 @@ mod miner_actor_test_partitions {
         // now terminate 1, 3, 5, and 7
         let terminations = make_bitfield(&[1, 3, 5, 7]);
         let termination_epoch = 3;
-        let removed = partition
+        let (removed, removed_unproven) = partition
             .terminate_sectors(
                 &Policy::default(),
                 &rt.store,
@@ -617,6 +623,8 @@ mod miner_actor_test_partitions {
         let expected_faulty_power =
             power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors(), &make_bitfield(&[3, 5])));
         assert_eq!(expected_faulty_power, removed.faulty_power);
+        let expected_unproven_power = power_for_sectors(SECTOR_SIZE, &unproven_sector);
+        assert_eq!(expected_unproven_power, removed_unproven);
 
         // expect partition state to no longer reflect power and pledge from terminated sectors and terminations to contain new sectors
         assert_partition_state(
@@ -680,7 +688,7 @@ mod miner_actor_test_partitions {
         let termination_epoch = 3;
 
         // First termination works.
-        let removed = partition
+        let (removed, unproven_power) = partition
             .terminate_sectors(
                 &Policy::default(),
                 &rt.store,
@@ -695,6 +703,7 @@ mod miner_actor_test_partitions {
             power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors(), &make_bitfield(&[1])));
         assert_eq!(expected_active_power, removed.active_power);
         assert_eq!(removed.faulty_power, PowerPair::zero());
+        assert_eq!(unproven_power, PowerPair::zero());
         let count = removed.len();
         assert_eq!(1, count);
 
@@ -842,17 +851,18 @@ mod miner_actor_test_partitions {
     fn records_missing_post() {
         let (rt, mut partition) = setup_partition();
 
-        let unproven_sector = vec![test_sector(13, 7, 55, 65, 1006)];
+        let unproven_sector = vec![test_sector(13, 7, 55, 65, 1006, 5000)];
         let mut all_sectors = sectors();
         all_sectors.extend_from_slice(&unproven_sector);
         let sector_arr = sectors_arr(&rt.store, sectors());
 
         // Add an unproven sector.
-        let power = partition
+        let (power, daily_fee) = partition
             .add_sectors(&rt.store, false, &unproven_sector, SECTOR_SIZE, QUANT_SPEC)
             .unwrap();
         let expected_power = power_for_sectors(SECTOR_SIZE, &unproven_sector);
         assert_eq!(expected_power, power);
+        assert_eq!(TokenAmount::from_atto(5000), daily_fee);
 
         // make 4, 5 and 6 faulty
         let fault_set = make_bitfield(&[4, 5, 6]);
@@ -977,15 +987,17 @@ mod miner_actor_test_partitions {
         for (i, info) in many_sectors.iter_mut().enumerate() {
             let id = (i as u64 + 1) << 50;
             ids[i] = id;
-            *info = test_sector(i as i64 + 1, id, 50, 60, 1000);
+            *info = test_sector(i as i64 + 1, id, 50, 60, 1000, i as u64 * 1000);
         }
         let sector_numbers = bitfield_from_slice(&ids);
 
-        let power = partition
+        let (power, daily_fee) = partition
             .add_sectors(&rt.store, false, &many_sectors, SECTOR_SIZE, QUANT_SPEC)
             .unwrap();
         let expected_power = power_for_sectors(SECTOR_SIZE, &many_sectors);
+        let expected_daily_fee = daily_fee_for_sectors(&many_sectors);
         assert_eq!(expected_power, power);
+        assert_eq!(expected_daily_fee, daily_fee);
 
         assert_partition_state(
             &rt.store,

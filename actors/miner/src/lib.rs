@@ -2127,6 +2127,9 @@ impl Actor {
             pledge_inputs.ramp_duration_epochs,
         );
 
+        let circulating_supply = rt.total_fil_circ_supply();
+        let daily_fee = daily_proof_fee(policy, &circulating_supply);
+
         let sectors_to_add = valid_sectors
             .iter()
             .map(|sector| SectorOnChainInfo {
@@ -2145,6 +2148,7 @@ impl Actor {
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
+                daily_fee: daily_fee.clone(),
             })
             .collect::<Vec<SectorOnChainInfo>>();
 
@@ -2295,6 +2299,7 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
         let reward_stats = &request_current_epoch_block_reward(rt)?;
         let power_stats = &request_current_total_power(rt)?;
+        let circulating_supply = rt.total_fil_circ_supply();
 
         /* Loop over sectors and do extension */
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
@@ -2341,6 +2346,10 @@ impl Actor {
 
                 let quant = state.quant_spec_for_deadline(policy, deadline_idx);
 
+                let mut deadline_power_delta = PowerPair::zero();
+                let mut deadline_pledge_delta = TokenAmount::zero();
+                let mut deadline_daily_fee_delta = TokenAmount::zero();
+
                 // Group modified partitions by epoch to which they are extended. Duplicates are ok.
                 let mut partitions_by_new_epoch = BTreeMap::<ChainEpoch, Vec<u64>>::new();
                 let mut epochs_to_reschedule = Vec::<ChainEpoch>::new();
@@ -2360,7 +2369,7 @@ impl Actor {
                         .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
                     let old_sectors = sectors
-                        .load_sector(&decl.sectors)
+                        .load_sectors(&decl.sectors)
                         .map_err(|e| e.wrap("failed to load sectors"))?;
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
@@ -2369,6 +2378,7 @@ impl Actor {
                                 extend_sector_committment_legacy(
                                     rt.policy(),
                                     curr_epoch,
+                                    &circulating_supply,
                                     decl.new_expiration,
                                     sector,
                                 )
@@ -2383,6 +2393,7 @@ impl Actor {
                                     curr_epoch,
                                     reward_stats,
                                     power_stats,
+                                    &circulating_supply,
                                     decl.new_expiration,
                                     sector,
                                     info.sector_size,
@@ -2401,23 +2412,28 @@ impl Actor {
                     })?;
 
                     // Remove old sectors from partition and assign new sectors.
-                    let (partition_power_delta, partition_pledge_delta) = partition
-                        .replace_sectors(
-                            rt.store(),
-                            &old_sectors,
-                            &new_sectors,
-                            info.sector_size,
-                            quant,
-                        )
-                        .map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to replace sector expirations at {:?}", key),
+                    let (partition_power_delta, partition_pledge_delta, partition_daily_fee_delta) =
+                        partition
+                            .replace_sectors(
+                                rt.store(),
+                                &old_sectors,
+                                &new_sectors,
+                                info.sector_size,
+                                quant,
                             )
-                        })?;
+                            .map_err(|e| {
+                                e.downcast_default(
+                                    ExitCode::USR_ILLEGAL_STATE,
+                                    format!("failed to replace sector expirations at {:?}", key),
+                                )
+                            })?;
 
-                    power_delta += &partition_power_delta;
-                    pledge_delta += partition_pledge_delta; // expected to be zero, see note below.
+                    deadline_power_delta += &partition_power_delta;
+                    // expected to be zero, see note below.
+                    deadline_pledge_delta += &partition_pledge_delta;
+                    // non-zero when extending sectors that previously paid no fees (e.g., because
+                    // they were sealed before we started charging fees).
+                    deadline_daily_fee_delta += &partition_daily_fee_delta;
 
                     partitions.set(decl.partition, partition).map_err(|e| {
                         e.downcast_default(
@@ -2438,6 +2454,12 @@ impl Actor {
                         epochs_to_reschedule.push(decl.new_expiration);
                     }
                 }
+
+                deadline.live_power += &deadline_power_delta;
+                deadline.daily_fee += &deadline_daily_fee_delta;
+
+                power_delta += &deadline_power_delta;
+                pledge_delta += &deadline_pledge_delta;
 
                 deadline.partitions = partitions.flush().map_err(|e| {
                     e.downcast_default(
@@ -2981,46 +3003,35 @@ impl Actor {
 
             let mut deadline = deadlines.load_deadline(store, params_deadline)?;
 
-            let (live, dead, removed_power) =
-                deadline.remove_partitions(store, partitions, quant).map_err(|e| {
+            let daily_fee_before = deadline.daily_fee.clone();
+
+            let mut sectors = Sectors::load(store, &state.sectors).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")
+            })?;
+
+            let dead = deadline
+                .compact_partitions(
+                    store,
+                    &mut sectors,
+                    info.sector_size,
+                    info.window_post_partition_sectors,
+                    partitions,
+                    quant,
+                )
+                .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to remove partitions from deadline {}", params_deadline),
                     )
                 })?;
 
-            state.delete_sectors(store, &dead).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete dead sectors")
+            sectors.delete_sectors(&dead).map_err(|e| {
+                e.wrap("failed to delete sectors removed during partition compaction")
             })?;
-
-            let sectors = state.load_sector_infos(store, &live).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load moved sectors")
-            })?;
-            let proven = true;
-            let added_power = deadline
-                .add_sectors(
-                    store,
-                    info.window_post_partition_sectors,
-                    proven,
-                    &sectors,
-                    info.sector_size,
-                    quant,
-                )
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to add back moved sectors",
-                    )
+            state.sectors =
+                sectors.amt.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    "failed to save sectors after compaction"
                 })?;
-
-            if removed_power != added_power {
-                return Err(actor_error!(
-                    illegal_state,
-                    "power changed when compacting partitions: was {:?}, is now {:?}",
-                    removed_power,
-                    added_power
-                ));
-            }
 
             deadlines.update_deadline(policy, store, params_deadline, &deadline).map_err(|e| {
                 e.downcast_default(
@@ -3035,6 +3046,14 @@ impl Actor {
                     format!("failed to save deadline {}", params_deadline),
                 )
             })?;
+
+            let daily_fee_after = deadline.daily_fee;
+            if daily_fee_before != daily_fee_after {
+                return Err(actor_error!(
+                    illegal_state,
+                    "unexpected daily fee change during partition compaction"
+                ));
+            }
 
             Ok(())
         })?;
@@ -3753,6 +3772,7 @@ fn extend_sector_committment(
     curr_epoch: ChainEpoch,
     reward_stats: &ThisEpochRewardReturn,
     power_stats: &ext::power::CurrentTotalPowerReturn,
+    circulating_supply: &TokenAmount,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
     sector_size: SectorSize,
@@ -3761,7 +3781,7 @@ fn extend_sector_committment(
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
-    if sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER) {
+    let mut sector = if sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER) {
         extend_simple_qap_sector(
             policy,
             new_expiration,
@@ -3774,12 +3794,17 @@ fn extend_sector_committment(
         )
     } else {
         extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+    }?;
+    if sector.daily_fee.is_zero() {
+        sector.daily_fee = daily_proof_fee(policy, circulating_supply)
     }
+    Ok(sector)
 }
 
 fn extend_sector_committment_legacy(
     policy: &Policy,
     curr_epoch: ChainEpoch,
+    circulating_supply: &TokenAmount,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
 ) -> Result<SectorOnChainInfo, ActorError> {
@@ -3795,7 +3820,11 @@ fn extend_sector_committment_legacy(
             sector.sector_number
         ));
     }
-    extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+    let mut sector = extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)?;
+    if sector.daily_fee.is_zero() {
+        sector.daily_fee = daily_proof_fee(policy, circulating_supply)
+    }
+    Ok(sector)
 }
 
 fn validate_extended_expiration(
@@ -4147,6 +4176,9 @@ where
 
             let quant = state.quant_spec_for_deadline(rt.policy(), dl_idx);
 
+            let mut deadline_power_delta = PowerPair::zero();
+            let mut deadline_pledge_delta = TokenAmount::zero();
+
             for update in updates {
                 // Compute updated sector info.
                 let new_sector_info = update_existing_sector_info(
@@ -4176,23 +4208,33 @@ where
                     })?;
 
                 // Note: replacing sectors one at a time in each partition is inefficient.
-                let (partition_power_delta, partition_pledge_delta) = partition
-                    .replace_sectors(
-                        rt.store(),
-                        std::slice::from_ref(update.sector_info),
-                        std::slice::from_ref(&new_sector_info),
-                        sector_size,
-                        quant,
-                    )
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!(
-                            "failed to replace sector at deadline {} partition {}",
-                            update.deadline, update.partition
+                let (partition_power_delta, partition_pledge_delta, partition_daily_fee_delta) =
+                    partition
+                        .replace_sectors(
+                            rt.store(),
+                            std::slice::from_ref(update.sector_info),
+                            std::slice::from_ref(&new_sector_info),
+                            sector_size,
+                            quant,
                         )
-                    })?;
+                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                            format!(
+                                "failed to replace sector at deadline {} partition {}",
+                                update.deadline, update.partition
+                            )
+                        })?;
 
-                power_delta += &partition_power_delta;
-                pledge_delta += &partition_pledge_delta;
+                deadline_power_delta += &partition_power_delta;
+                deadline_pledge_delta += &partition_pledge_delta;
+
+                // daily_fee should not change when updating sectors with new replicas
+                if partition_daily_fee_delta != TokenAmount::zero() {
+                    return Err(actor_error!(
+                        illegal_state,
+                        "unexpected daily fee delta {} when updating sectors with new replicas",
+                        partition_daily_fee_delta
+                    ));
+                }
 
                 partitions.set(update.partition, partition).with_context_code(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -4206,6 +4248,11 @@ where
 
                 new_sectors.push(new_sector_info);
             } // End loop over declarations in one deadline.
+
+            deadline.live_power += &deadline_power_delta;
+
+            power_delta += &deadline_power_delta;
+            pledge_delta += &deadline_pledge_delta;
 
             deadline.partitions =
                 partitions.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
@@ -4331,7 +4378,10 @@ fn process_early_terminations(
     rt: &impl Runtime,
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
-) -> Result</* more */ bool, ActorError> {
+) -> Result<
+    bool, // has more
+    ActorError,
+> {
     let mut terminated_sector_nums = vec![];
     let mut sectors_with_data = vec![];
     let (result, more, penalty, pledge_delta) = rt.transaction(|state: &mut State, rt| {
@@ -4365,7 +4415,7 @@ fn process_early_terminations(
 
         for (epoch, sector_numbers) in result.iter() {
             let sectors = sectors
-                .load_sector(sector_numbers)
+                .load_sectors(sector_numbers)
                 .map_err(|e| e.wrap("failed to load sector infos"))?;
 
             for sector in &sectors {
@@ -4534,6 +4584,24 @@ fn handle_proving_deadline(
             penalty_target
         );
 
+        if result.daily_fee.is_positive() {
+            // Apply daily fee for sectors in this deadline, applied through the penalty/fee_debt
+            // mechanism.
+            // The daily fee payable is capped at a fraction of estimated daily block reward for the
+            // sectors being charged.
+            let day_reward = expected_reward_for_power(
+                reward_smoothed,
+                quality_adj_power_smoothed,
+                &result.live_power.qa,
+                fil_actors_runtime::EPOCHS_IN_DAY,
+            );
+            let daily_fee = daily_proof_fee_payable(policy, &result.daily_fee, &day_reward);
+
+            state
+                .apply_penalty(&daily_fee)
+                .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
+        }
+
         let (penalty_from_vesting, penalty_from_balance) = state
             .repay_partial_debt_in_priority_order(
                 rt.store(),
@@ -4558,6 +4626,7 @@ fn handle_proving_deadline(
     // Remove power for new faults, and burn penalties.
     request_update_power(rt, power_delta_total)?;
     burn_funds(rt, penalty_total)?;
+    // Update the total locked funds in the network.
     notify_pledge_changed(rt, &pledge_delta_total)?;
 
     // Schedule cron callback for next deadline's last epoch.
@@ -5183,7 +5252,7 @@ fn request_current_epoch_block_reward(
             Default::default(),
             TokenAmount::zero(),
         ))
-        .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
+        .map_err(|e| e.wrap("failed to check epoch reward"))?,
     )
 }
 
@@ -5391,6 +5460,10 @@ pub fn power_for_sectors(sector_size: SectorSize, sectors: &[SectorOnChainInfo])
     PowerPair { raw: BigInt::from(sector_size as u64) * BigInt::from(sectors.len()), qa }
 }
 
+pub fn daily_fee_for_sectors(sectors: &[SectorOnChainInfo]) -> TokenAmount {
+    sectors.iter().map(|s| &s.daily_fee).sum()
+}
+
 fn get_miner_info<BS>(store: &BS, state: &State) -> Result<MinerInfo, ActorError>
 where
     BS: Blockstore,
@@ -5513,6 +5586,8 @@ fn activate_new_sector_infos(
         let policy = rt.policy();
         let store = rt.store();
 
+        let daily_fee = daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply);
+
         let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(data_activations.len());
         let mut deposit_to_unlock = TokenAmount::zero();
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
@@ -5583,6 +5658,7 @@ fn activate_new_sector_infos(
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
+                daily_fee: daily_fee.clone(),
             };
 
             new_sector_numbers.push(new_sector_info.sector_number);

@@ -1,7 +1,6 @@
 use cid::Cid;
 use fil_actor_miner::SectorOnChainInfo;
 use fil_actors_runtime::test_utils::*;
-use fvm_ipld_bitfield::BitField;
 use fvm_shared::{
     bigint::BigInt,
     clock::ChainEpoch,
@@ -13,7 +12,7 @@ mod util;
 use state_harness::*;
 
 #[test]
-fn put_get_and_delete() {
+fn put_and_get() {
     let mut h = StateHarness::new(0);
 
     let sector_no = 1u64;
@@ -39,20 +38,6 @@ fn put_get_and_delete() {
     assert!(h.has_sector_number(sector_no));
     let out = h.get_sector(sector_no);
     assert_eq!(sector_info_2, out);
-
-    h.delete_sectors(vec![sector_no]);
-    assert!(!h.has_sector_number(sector_no));
-}
-
-#[test]
-fn delete_nonexistent_value_returns_an_error() {
-    let mut h = StateHarness::new(ChainEpoch::from(0));
-
-    let sector_no = 1u64;
-    let mut bf = BitField::new();
-    bf.set(sector_no);
-
-    assert!(h.st.delete_sectors(&h.store, &bf).is_err());
 }
 
 #[test]
@@ -64,11 +49,11 @@ fn get_nonexistent_value_returns_false() {
 }
 
 #[test]
-fn iterate_and_delete_multiple_sectors() {
+fn iterate_multiple_sectors() {
     let mut h = StateHarness::new(ChainEpoch::from(0));
 
     // set of sectors, the larger numbers here are not significant
-    let sector_nos = vec![100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
+    let sector_nos = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
 
     // put all the sectors in the store
     for (i, s) in sector_nos.iter().enumerate() {
@@ -90,10 +75,6 @@ fn iterate_and_delete_multiple_sectors() {
 
     // ensure we iterated over the expected number of sectors
     assert_eq!(sector_nos.len(), sector_no_idx);
-    h.delete_sectors(sector_nos.clone());
-    for s in sector_nos {
-        assert!(!h.has_sector_number(s));
-    }
 }
 
 // returns a unique SectorOnChainInfo with each invocation with SectorNumber set to `sectorNo`.

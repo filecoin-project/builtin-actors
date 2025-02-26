@@ -11,6 +11,9 @@ pub trait RuntimePolicy {
 // The policy itself
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Policy {
+    //
+    // --- miner policy ---
+    //
     /// Maximum amount of sectors that can be aggregated.
     pub max_aggregated_sectors: u64,
     /// Minimum amount of sectors that can be aggregated.
@@ -134,7 +137,22 @@ pub struct Policy {
     /// Allowed pre commit proof types for new miners
     pub valid_pre_commit_proof_type: ProofSet,
 
-    // --- verifreg policy
+    /// Numerator of the fraction of circulating supply that will be used to calculate
+    /// the daily fee for new sectors.
+    pub daily_fee_circulating_supply_multiplier_num: i64,
+    /// Denominator of the fraction of circulating supply that will be used to calculate
+    /// the daily fee for new sectors.
+    pub daily_fee_circulating_supply_multiplier_denom: i64,
+
+    /// Denominator for the fraction of estimated daily block reward for the sector(s)
+    /// attracting a fee, to be used as a cap for the fees when payable.
+    /// No numerator is provided as the fee is calculated as a fraction of the estimated
+    /// daily block reward.
+    pub daily_fee_block_reward_cap_denom: i64,
+
+    //
+    // --- verifreg policy ---
+    //
     /// Minimum verified deal size
     pub minimum_verified_allocation_size: StoragePower,
     /// Minimum term for a verified data allocation (epochs)
@@ -147,7 +165,9 @@ pub struct Policy {
     // Period of time at the end of a sector's life during which claims can be dropped
     pub end_of_life_claim_drop_period: ChainEpoch,
 
+    //
     //  --- market policy ---
+    //
     /// The number of blocks between payouts for deals
     pub deal_updates_interval: i64,
 
@@ -163,7 +183,9 @@ pub struct Policy {
     /// allocation's maximum term.
     pub market_default_allocation_term_buffer: i64,
 
-    // --- power ---
+    //
+    // --- power policy ---
+    //
     /// Minimum miner consensus power
     pub minimum_consensus_power: StoragePower,
 }
@@ -210,6 +232,11 @@ impl Default for Policy {
                 policy_constants::CONSENSUS_FAULT_INELIGIBILITY_DURATION,
             new_sectors_per_period_max: policy_constants::NEW_SECTORS_PER_PERIOD_MAX,
             chain_finality: policy_constants::CHAIN_FINALITY,
+            daily_fee_circulating_supply_multiplier_num:
+                policy_constants::DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_NUM,
+            daily_fee_circulating_supply_multiplier_denom:
+                policy_constants::DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_DENOM,
+            daily_fee_block_reward_cap_denom: policy_constants::DAILY_FEE_BLOCK_REWARD_CAP_DENOM,
 
             valid_post_proof_type: ProofSet::default_post_proofs(),
             valid_pre_commit_proof_type: ProofSet::default_precommit_seal_proofs(),
@@ -240,6 +267,10 @@ pub mod policy_constants {
     use fvm_shared::sector::SectorNumber;
 
     use crate::builtin::*;
+
+    //
+    // --- miner policy ---
+    //
 
     /// The maximum assignable sector number.
     /// Raising this would require modifying our AMT implementation.
@@ -347,6 +378,17 @@ pub mod policy_constants {
     /// This is a conservative value that is chosen via simulations of all known attacks.
     pub const CHAIN_FINALITY: ChainEpoch = 900;
 
+    /// A multiplier of k=7.4e-15, represented as 74/10^16
+    pub const DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_NUM: i64 = 74;
+    pub const DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_DENOM: i64 = 10_000_000_000_000_000; // 10^16
+
+    // 50% of estimated daily block rewards
+    pub const DAILY_FEE_BLOCK_REWARD_CAP_DENOM: i64 = 2;
+
+    //
+    // --- verifreg policy ---
+    //
+
     #[cfg(not(feature = "small-deals"))]
     pub const MINIMUM_VERIFIED_ALLOCATION_SIZE: i32 = 1 << 20;
     #[cfg(feature = "small-deals")]
@@ -355,6 +397,10 @@ pub mod policy_constants {
     pub const MAXIMUM_VERIFIED_ALLOCATION_TERM: i64 = 5 * EPOCHS_IN_YEAR;
     pub const MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION: i64 = 60 * EPOCHS_IN_DAY;
     pub const END_OF_LIFE_CLAIM_DROP_PERIOD: ChainEpoch = 30 * EPOCHS_IN_DAY;
+
+    //
+    // --- market policy ---
+    //
 
     pub const DEAL_UPDATES_INTERVAL: i64 = 30 * EPOCHS_IN_DAY;
 
@@ -366,6 +412,10 @@ pub mod policy_constants {
     pub const PROV_COLLATERAL_PERCENT_SUPPLY_DENOM: i64 = 100;
 
     pub const MARKET_DEFAULT_ALLOCATION_TERM_BUFFER: i64 = 90 * EPOCHS_IN_DAY;
+
+    //
+    // --- power policy ---
+    //
 
     #[cfg(feature = "min-power-2k")]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 10;
