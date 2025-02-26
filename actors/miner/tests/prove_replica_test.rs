@@ -1,5 +1,5 @@
-use fil_actors_runtime::runtime::RuntimePolicy;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
@@ -224,25 +224,49 @@ fn update_fee() {
         notifications
     );
 
+    // When checking sector daily_fee, for a reference we'll calculate the fee for a fully verified sector and
+    // divide as required
+    let full_verified_fee = daily_proof_fee(
+        &rt.policy,
+        &new_circulating_supply,
+        &BigInt::from(h.sector_size as u64 * 10),
+    );
+
     // Sector 0: Even though there's no "deal", the data weight is set.
     verify_weights(&rt, &h, snos[0], piece_size, 0);
+    assert_eq!(
+        full_verified_fee.div_floor(10),
+        h.get_sector(&rt, snos[0]).daily_fee,
+        "daily fee for sector {} matches expected fee",
+        snos[0]
+    );
+
     // Sector 1: With an allocation, the verified weight is set instead.
     verify_weights(&rt, &h, snos[1], 0, piece_size);
+    assert_eq!(
+        full_verified_fee,
+        h.get_sector(&rt, snos[1]).daily_fee,
+        "daily fee for sector {} matches expected fee",
+        snos[1]
+    );
+
     // Sector 2: Deal weight is set.
     verify_weights(&rt, &h, snos[2], piece_size, 0);
+    assert_eq!(
+        full_verified_fee.div_floor(10),
+        h.get_sector(&rt, snos[2]).daily_fee,
+        "daily fee for sector {} matches expected fee",
+        snos[2]
+    );
+
     // Sector 3: Deal doesn't make a difference to verified weight only set.
     verify_weights(&rt, &h, snos[3], 0, piece_size);
-
-    // Check that the fees have been updated
-    let sectors_after = snos.iter().map(|sno| h.get_sector(&rt, *sno));
-    for sector in sectors_after {
-        let expected_fee = daily_proof_fee(rt.policy(), &new_circulating_supply);
-        assert_eq!(
-            sector.daily_fee, expected_fee,
-            "daily fee for sector {} matches expected fee",
-            sector.sector_number
-        );
-    }
+    assert_eq!(
+        full_verified_fee,
+        h.get_sector(&rt, snos[3]).daily_fee,
+        "daily fee for sector {} matches expected fee",
+        snos[3]
+    );
 
     h.check_state(&rt);
 }
