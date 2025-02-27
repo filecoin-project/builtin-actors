@@ -1,6 +1,4 @@
 use fil_actor_miner::VestSpec;
-use fil_actor_miner::VestingFunds;
-use fvm_ipld_encoding::CborStore;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 
@@ -17,8 +15,10 @@ fn unlock_unvested_funds_leaving_bucket_with_non_zero_tokens() {
 
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
 
-    let amount_unlocked = h.unlock_unvested_funds(vest_start, &TokenAmount::from_atto(39)).unwrap();
-    assert_eq!(TokenAmount::from_atto(39), amount_unlocked);
+    let (vested_unlocked, total_unlocked) =
+        h.unlock_vested_and_unvested_funds(vest_start, &TokenAmount::from_atto(39)).unwrap();
+    assert_eq!(TokenAmount::from_atto(39), vested_unlocked);
+    assert_eq!(TokenAmount::from_atto(39), total_unlocked);
 
     // no vested funds available to unlock until strictly after first vesting epoch
     assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start).unwrap());
@@ -49,7 +49,8 @@ fn unlock_unvested_funds_leaving_bucket_with_zero_tokens() {
 
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
 
-    let amount_unlocked = h.unlock_unvested_funds(vest_start, &TokenAmount::from_atto(40)).unwrap();
+    let amount_unlocked =
+        h.unlock_vested_and_unvested_funds(vest_start, &TokenAmount::from_atto(40)).unwrap().0;
     assert_eq!(TokenAmount::from_atto(40), amount_unlocked);
 
     assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start).unwrap());
@@ -78,7 +79,7 @@ fn unlock_all_unvested_funds() {
     let vest_sum = TokenAmount::from_atto(100);
 
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
-    let unvested_funds = h.unlock_unvested_funds(vest_start, &vest_sum).unwrap();
+    let unvested_funds = h.unlock_vested_and_unvested_funds(vest_start, &vest_sum).unwrap().0;
     assert_eq!(vest_sum, unvested_funds);
 
     assert!(h.st.locked_funds.is_zero());
@@ -93,7 +94,8 @@ fn unlock_unvested_funds_value_greater_than_locked_funds() {
     let vest_start = 10;
     let vest_sum = TokenAmount::from_atto(100);
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
-    let unvested_funds = h.unlock_unvested_funds(vest_start, &TokenAmount::from_atto(200)).unwrap();
+    let unvested_funds =
+        h.unlock_vested_and_unvested_funds(vest_start, &TokenAmount::from_atto(200)).unwrap().0;
     assert_eq!(vest_sum, unvested_funds);
 
     assert!(h.st.locked_funds.is_zero());
@@ -109,25 +111,30 @@ fn unlock_unvested_funds_when_there_are_vested_funds_in_the_table() {
     let vest_sum = TokenAmount::from_atto(100);
 
     // will lock funds from epochs 11 to 60
-    h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
+    let vested = h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
+    assert_eq!(TokenAmount::zero(), vested);
 
-    // unlock funds from epochs 30 to 60
+    // unlock funds from epochs 30 through 59
     let new_epoch = 30;
     let target = TokenAmount::from_atto(60);
-    let remaining = &vest_sum - &target;
-    let unvested_funds = h.unlock_unvested_funds(new_epoch, &target).unwrap();
+    let remaining = TokenAmount::from_atto(2);
+    let (unvested_funds, total_unlocked) =
+        h.unlock_vested_and_unvested_funds(new_epoch, &target).unwrap();
     assert_eq!(target, unvested_funds);
+    assert_eq!(vest_sum - &remaining, total_unlocked);
 
+    // we expect 2 left over, locked for epoch 60
     assert_eq!(remaining, h.st.locked_funds);
 
-    // vesting funds should have all epochs from 11 to 29
-    let vesting = h.store.get_cbor::<VestingFunds>(&h.st.vesting_funds).unwrap().unwrap();
-    let mut epoch = 11;
-    for vf in vesting.funds {
-        assert_eq!(epoch, vf.epoch);
-        epoch += 1;
-        if epoch == 30 {
-            break;
-        }
-    }
+    // vesting funds should have epoch 60 and only epoch 60
+    assert_eq!(
+        &[60][..],
+        &h.st
+            .vesting_funds
+            .load(&h.store)
+            .unwrap()
+            .into_iter()
+            .map(|vf| vf.epoch)
+            .collect::<Vec<_>>(),
+    );
 }

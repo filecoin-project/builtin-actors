@@ -45,25 +45,25 @@ fn funds_vest() {
     h.construct_and_verify(&rt);
     let st = h.get_state(&rt);
 
-    let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
+    let vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
 
     // Nothing vesting to start
-    assert!(vesting_funds.funds.is_empty());
+    assert_eq!(0, vesting_funds.len());
     assert!(st.locked_funds.is_zero());
 
     // Lock some funds with AddLockedFund
     let amt = TokenAmount::from_atto(600_000);
     h.apply_rewards(&rt, amt.clone(), TokenAmount::zero());
     let st = h.get_state(&rt);
-    let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
+    let vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
 
-    assert_eq!(180, vesting_funds.funds.len());
+    assert_eq!(180, vesting_funds.len());
 
     // Vested FIL pays out on epochs with expected offset
     let quant_spec = QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: PERIOD_OFFSET };
 
     let curr_epoch = *rt.epoch.borrow();
-    for (i, vf) in vesting_funds.funds.iter().enumerate() {
+    for (i, vf) in vesting_funds.iter().enumerate() {
         let step =
             REWARD_VESTING_SPEC.initial_delay + (i as i64 + 1) * REWARD_VESTING_SPEC.step_duration;
         let expected_epoch = quant_spec.quantize_up(curr_epoch + step);
@@ -71,7 +71,7 @@ fn funds_vest() {
     }
 
     let expected_offset = PERIOD_OFFSET % REWARD_VESTING_SPEC.quantization;
-    for vf in vesting_funds.funds.iter() {
+    for vf in vesting_funds.iter() {
         assert_eq!(expected_offset, vf.epoch % REWARD_VESTING_SPEC.quantization);
     }
 
