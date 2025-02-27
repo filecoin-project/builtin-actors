@@ -115,7 +115,17 @@ impl VestingFunds {
         proving_period_start: ChainEpoch,
         spec: &VestSpec,
     ) -> Result<TokenAmount, ActorError> {
-        // Quantization is aligned with when regular cron will be invoked, in the last epoch of deadlines.
+        // Quantization is aligned with the beginning of the next 0th or 23rd deadline, whichever
+        // comes first, and funds vest the epoch _after_ the quantized epoch (vesting_epoch <
+        // current_epoch).
+        //
+        // This means that:
+        //
+        // 1. Vesting funds will become available to withdraw the first epoch after the start of the
+        //    0th or 23rd deadline.
+        // 2. Vesting funds won't automatically vest in cron until the next deadline (the 1st or the
+        //    24th).
+
         let vest_begin = current_epoch + spec.initial_delay; // Nothing unlocks here, this is just the start of the clock.
         let quant = QuantSpec { unit: spec.quantization, offset: proving_period_start };
 
