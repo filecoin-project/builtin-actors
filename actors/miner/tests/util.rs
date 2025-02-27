@@ -2142,32 +2142,14 @@ impl ActorHarness {
             }
 
             let state = self.get_state(&rt);
-
-            // Advance to the end of the deadline. We do this manually because we need to be at the
-            // end of the deadline to figure out whether or not we take the fees from vested or
-            // unvested funds.
-            assert!(state.deadline_cron_active, "deadline is active");
-            let deadline = new_deadline_info_from_offset_and_epoch(
-                &rt.policy,
-                state.proving_period_start,
-                *rt.epoch.borrow(),
-            );
-            rt.set_epoch(deadline.last());
-
-            let expected_enrollment = deadline.last() + rt.policy.wpost_challenge_window;
             let unvested = unvested_vesting_funds(rt, &state);
-            let immediately_vesting = immediately_vesting_funds(rt, &state);
             let available_to_burn = rt.get_balance() - &state.initial_pledge;
             let burnt_funds = daily_fee.clone().clamp(TokenAmount::zero(), available_to_burn);
-            let pledge_delta = -(std::cmp::min(unvested, daily_fee) + &immediately_vesting);
-
-            let cfg =
-                CronConfig { burnt_funds, pledge_delta, expected_enrollment, ..Default::default() };
-            self.on_deadline_cron(rt, cfg);
-
-            // Advance to the next deadline.
-            rt.set_epoch(deadline.next_open());
-            dlinfo = self.current_deadline(rt);
+            // advance_deadline() will update our pledge_delta with immediately_vesting
+            // so we don't need to do it here
+            let pledge_delta = -std::cmp::min(unvested, daily_fee);
+            let cfg = CronConfig { burnt_funds, pledge_delta, ..Default::default() };
+            dlinfo = self.advance_deadline(rt, cfg);
         }
     }
 
