@@ -190,7 +190,6 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
     precommit_sectors_v2(
         v,
         meta.len(),
-        meta.len(),
         meta.clone(),
         &worker,
         &maddr,

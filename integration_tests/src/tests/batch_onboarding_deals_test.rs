@@ -74,7 +74,6 @@ pub fn pre_commit_requires_commd_test(v: &dyn VM) {
     precommit_sectors_v2_expect_code(
         v,
         1,
-        1,
         vec![PrecommitMetadata { deals: vec![0], commd: CompactCommD(None) }],
         &worker,
         &miner,
@@ -88,7 +87,6 @@ pub fn pre_commit_requires_commd_test(v: &dyn VM) {
     // precommit specifying the wrong commD fails
     precommit_sectors_v2_expect_code(
         v,
-        1,
         1,
         vec![PrecommitMetadata {
             deals: vec![0],
@@ -150,7 +148,6 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
     // Pre-commit as single batch.
     let precommits = precommit_sectors_v2(
         v,
-        BATCH_SIZE,
         BATCH_SIZE,
         sector_precommit_data,
         &worker,
