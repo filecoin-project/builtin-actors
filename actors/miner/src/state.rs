@@ -63,7 +63,7 @@ pub struct State {
     pub locked_funds: TokenAmount,
 
     /// VestingFunds (Vesting Funds schedule for the miner).
-    pub vesting_funds: Cid,
+    pub vesting_funds: VestingFunds,
 
     /// Absolute value of debt this miner owes from unpaid fees.
     pub fee_debt: TokenAmount,
@@ -163,18 +163,13 @@ impl State {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
             })?;
 
-        let empty_vesting_funds_cid =
-            store.put_cbor(&VestingFunds::new(), Code::Blake2b256).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
-            })?;
-
         Ok(Self {
             info: info_cid,
 
             pre_commit_deposits: TokenAmount::default(),
             locked_funds: TokenAmount::default(),
 
-            vesting_funds: empty_vesting_funds_cid,
+            vesting_funds: VestingFunds::new(),
 
             initial_pledge: TokenAmount::default(),
             fee_debt: TokenAmount::default(),
@@ -762,28 +757,6 @@ impl State {
         Ok(())
     }
 
-    /// Loads the vesting funds table from the store.
-    pub fn load_vesting_funds<BS: Blockstore>(&self, store: &BS) -> anyhow::Result<VestingFunds> {
-        Ok(store
-            .get_cbor(&self.vesting_funds)
-            .map_err(|e| {
-                e.downcast_wrap(format!("failed to load vesting funds {}", self.vesting_funds))
-            })?
-            .ok_or_else(
-                || actor_error!(not_found; "failed to load vesting funds {:?}", self.vesting_funds),
-            )?)
-    }
-
-    /// Saves the vesting table to the store.
-    pub fn save_vesting_funds<BS: Blockstore>(
-        &mut self,
-        store: &BS,
-        funds: &VestingFunds,
-    ) -> anyhow::Result<()> {
-        self.vesting_funds = store.put_cbor(funds, Code::Blake2b256)?;
-        Ok(())
-    }
-
     // Return true when the miner actor needs to continue scheduling deadline crons
     pub fn continue_deadline_cron(&self) -> bool {
         !self.pre_commit_deposits.is_zero()
@@ -843,11 +816,17 @@ impl State {
         if vesting_sum.is_negative() {
             return Err(anyhow!("negative vesting sum {}", vesting_sum));
         }
+        // add new funds and unlock already vested funds.
+        let amount_unlocked = self.vesting_funds.add_locked_funds(
+            store,
+            current_epoch,
+            vesting_sum,
+            self.proving_period_start,
+            spec,
+        )?;
 
-        let mut vesting_funds = self.load_vesting_funds(store)?;
-
-        // unlock vested funds first
-        let amount_unlocked = vesting_funds.unlock_vested_funds(current_epoch);
+        // We shouldn't unlock any of the new funds, so the locked funds should remain non-negative
+        // when we deduct the amount unlocked.
         self.locked_funds -= &amount_unlocked;
         if self.locked_funds.is_negative() {
             return Err(anyhow!(
@@ -856,20 +835,17 @@ impl State {
                 amount_unlocked
             ));
         }
-        // add locked funds now
-        vesting_funds.add_locked_funds(current_epoch, vesting_sum, self.proving_period_start, spec);
-        self.locked_funds += vesting_sum;
 
-        // save the updated vesting table state
-        self.save_vesting_funds(store, &vesting_funds)?;
+        // Finally, record the new locked-funds total.
+        self.locked_funds += vesting_sum;
 
         Ok(amount_unlocked)
     }
 
     /// Draws from vesting table and unlocked funds to repay up to the fee debt.
-    /// Returns the amount unlocked from the vesting table and the amount taken from
-    /// current balance. If the fee debt exceeds the total amount available for repayment
-    /// the fee debt field is updated to track the remaining debt.  Otherwise it is set to zero.
+    /// Returns the amount to burn and the total amount unlocked from the vesting table (both vested
+    /// and unvested) If the fee debt exceeds the total amount available for repayment the fee debt
+    /// field is updated to track the remaining debt. Otherwise it is set to zero.
     pub fn repay_partial_debt_in_priority_order<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -877,25 +853,26 @@ impl State {
         curr_balance: &TokenAmount,
     ) -> Result<
         (
-            TokenAmount, // from vesting
-            TokenAmount, // from balance
+            TokenAmount, // fee to burn
+            TokenAmount, // total unlocked
         ),
         anyhow::Error,
     > {
-        let unlocked_balance = self.get_unlocked_balance(curr_balance)?;
-
         let fee_debt = self.fee_debt.clone();
-        let from_vesting = self.unlock_unvested_funds(store, current_epoch, &fee_debt)?;
+        let (from_vesting, total_unlocked) =
+            self.unlock_vested_and_unvested_funds(store, current_epoch, &fee_debt)?;
 
         if from_vesting > self.fee_debt {
             return Err(anyhow!("should never unlock more than the debt we need to repay"));
         }
-        self.fee_debt -= &from_vesting;
 
-        let from_balance = cmp::min(&unlocked_balance, &self.fee_debt).clone();
-        self.fee_debt -= &from_balance;
+        // locked unvested funds should now have been moved to unlocked balance if
+        // there was enough to cover the fee debt
+        let unlocked_balance = self.get_unlocked_balance(curr_balance)?;
+        let to_burn = cmp::min(&unlocked_balance, &self.fee_debt).clone();
+        self.fee_debt -= &to_burn;
 
-        Ok((from_vesting, from_balance))
+        Ok((to_burn, total_unlocked))
     }
 
     /// Repays the full miner actor fee debt.  Returns the amount that must be
@@ -916,32 +893,37 @@ impl State {
 
         Ok(std::mem::take(&mut self.fee_debt))
     }
-    /// Unlocks an amount of funds that have *not yet vested*, if possible.
-    /// The soonest-vesting entries are unlocked first.
-    /// Returns the amount actually unlocked.
-    pub fn unlock_unvested_funds<BS: Blockstore>(
+
+    /// Unlocks all vested funds and then unlocks an amount of funds that have *not yet vested*, if
+    /// possible. The soonest-vesting entries are unlocked first.
+    ///
+    /// Returns the amount of unvested funds unlocked, along with the total amount of funds unlocked.
+    pub fn unlock_vested_and_unvested_funds<BS: Blockstore>(
         &mut self,
         store: &BS,
         current_epoch: ChainEpoch,
         target: &TokenAmount,
-    ) -> anyhow::Result<TokenAmount> {
+    ) -> anyhow::Result<(
+        TokenAmount, // unlocked_unvested
+        TokenAmount, // total_unlocked
+    )> {
         if target.is_zero() || self.locked_funds.is_zero() {
-            return Ok(TokenAmount::zero());
+            return Ok((TokenAmount::zero(), TokenAmount::zero()));
         }
 
-        let mut vesting_funds = self.load_vesting_funds(store)?;
-        let amount_unlocked = vesting_funds.unlock_unvested_funds(current_epoch, target);
-        self.locked_funds -= &amount_unlocked;
+        let (unlocked_vested, unlocked_unvested) =
+            self.vesting_funds.unlock_vested_and_unvested_funds(store, current_epoch, target)?;
+        let total_unlocked = &unlocked_vested + &unlocked_unvested;
+        self.locked_funds -= &total_unlocked;
         if self.locked_funds.is_negative() {
             return Err(anyhow!(
                 "negative locked funds {} after unlocking {}",
                 self.locked_funds,
-                amount_unlocked
+                total_unlocked,
             ));
         }
 
-        self.save_vesting_funds(store, &vesting_funds)?;
-        Ok(amount_unlocked)
+        Ok((unlocked_unvested, total_unlocked))
     }
 
     /// Unlocks all vesting funds that have vested before the provided epoch.
@@ -955,8 +937,7 @@ impl State {
             return Ok(TokenAmount::zero());
         }
 
-        let mut vesting_funds = self.load_vesting_funds(store)?;
-        let amount_unlocked = vesting_funds.unlock_vested_funds(current_epoch);
+        let amount_unlocked = self.vesting_funds.unlock_vested_funds(store, current_epoch)?;
         self.locked_funds -= &amount_unlocked;
         if self.locked_funds.is_negative() {
             return Err(anyhow!(
@@ -965,22 +946,7 @@ impl State {
             ));
         }
 
-        self.save_vesting_funds(store, &vesting_funds)?;
         Ok(amount_unlocked)
-    }
-
-    /// CheckVestedFunds returns the amount of vested funds that have vested before the provided epoch.
-    pub fn check_vested_funds<BS: Blockstore>(
-        &self,
-        store: &BS,
-        current_epoch: ChainEpoch,
-    ) -> anyhow::Result<TokenAmount> {
-        let vesting_funds = self.load_vesting_funds(store)?;
-        Ok(vesting_funds
-            .funds
-            .iter()
-            .take_while(|fund| fund.epoch < current_epoch)
-            .fold(TokenAmount::zero(), |acc, fund| acc + &fund.amount))
     }
 
     /// Unclaimed funds that are not locked -- includes funds used to cover initial pledge requirement.
