@@ -276,10 +276,10 @@ fn check_miner_balances<BS: Blockstore>(
 
     // locked funds must be sum of vesting table and vesting table payments must be quantized
     let mut vesting_sum = TokenAmount::zero();
-    match state.load_vesting_funds(store) {
+    match state.vesting_funds.load(store) {
         Ok(funds) => {
             let quant = state.quant_spec_every_deadline(policy);
-            funds.funds.iter().for_each(|entry| {
+            funds.into_iter().for_each(|entry| {
                 acc.require(
                     entry.amount.is_positive(),
                     format!("non-positive amount in miner vesting table entry {entry:?}"),

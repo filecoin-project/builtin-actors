@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use fil_actor_miner::{
     BitFieldQueue, CollisionPolicy, MinerInfo, QuantSpec, SectorOnChainInfo,
-    SectorPreCommitOnChainInfo, State, VestSpec, VestingFunds,
+    SectorPreCommitOnChainInfo, State, VestSpec,
 };
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{runtime::Policy, ActorError};
@@ -120,12 +120,12 @@ impl StateHarness {
     }
 
     #[allow(dead_code)]
-    pub fn unlock_unvested_funds(
+    pub fn unlock_vested_and_unvested_funds(
         &mut self,
         current_epoch: ChainEpoch,
         target: &TokenAmount,
-    ) -> anyhow::Result<TokenAmount> {
-        self.st.unlock_unvested_funds(&self.store, current_epoch, target)
+    ) -> anyhow::Result<(TokenAmount, TokenAmount)> {
+        self.st.unlock_vested_and_unvested_funds(&self.store, current_epoch, target)
     }
 
     pub fn has_sector_number(&self, sector_no: SectorNumber) -> bool {
@@ -142,8 +142,7 @@ impl StateHarness {
 
     #[allow(dead_code)]
     pub fn vesting_funds_store_empty(&self) -> bool {
-        let vesting = self.store.get_cbor::<VestingFunds>(&self.st.vesting_funds).unwrap().unwrap();
-        vesting.funds.is_empty()
+        self.st.vesting_funds.load(&self.store).unwrap().is_empty()
     }
 
     pub fn assign_sectors_to_deadlines(
