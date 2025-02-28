@@ -1,14 +1,19 @@
+use fil_actors_runtime::runtime::RuntimePolicy;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{clock::ChainEpoch, ActorID};
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
-use fil_actor_miner::{DataActivationNotification, PieceChange, SectorChanges, State};
+use fil_actor_miner::{
+    daily_proof_fee, DataActivationNotification, PieceChange, SectorChanges, State,
+};
 use fil_actor_miner::{ProveReplicaUpdates3Return, SectorOnChainInfo};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::{expect_abort_contains_message, MockRuntime};
 use fil_actors_runtime::{runtime::Runtime, BatchReturn, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR};
+use num_traits::Zero;
 use util::*;
 
 mod util;
@@ -20,6 +25,11 @@ const FIRST_SECTOR_NUMBER: SectorNumber = 100;
 #[test]
 fn update_batch() {
     let (h, rt, sectors) = setup_empty_sectors(4);
+
+    // Reduce the circulating supply. We expect the fees to stay the same after replica update even
+    // if the circulating supply changes.
+    rt.set_circulating_supply(TokenAmount::from_whole(200_000));
+
     let snos = sectors.iter().map(|s| s.sector_number).collect::<Vec<_>>();
     let st: State = h.get_state(&rt);
     let store = rt.store();
@@ -107,6 +117,133 @@ fn update_batch() {
     verify_weights(&rt, &h, snos[2], piece_size, 0);
     // Sector 3: Deal doesn't make a difference to verified weight only set.
     verify_weights(&rt, &h, snos[3], 0, piece_size);
+
+    // Check that the fees haven't changed.
+    let sectors_after = snos.iter().map(|sno| h.get_sector(&rt, *sno));
+    for (before, after) in std::iter::zip(sectors, sectors_after) {
+        assert_eq!(
+            before.daily_fee, after.daily_fee,
+            "daily fees differ for sector {}",
+            before.sector_number
+        );
+    }
+
+    h.check_state(&rt);
+}
+
+#[test]
+fn update_fee() {
+    let (h, rt) = setup_basic();
+
+    // Set the circulating supply to 0 to get no fees.
+    rt.set_circulating_supply(TokenAmount::zero());
+    let sector_expiry = *rt.epoch.borrow() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
+    let sectors = onboard_empty_sectors(&rt, &h, sector_expiry, FIRST_SECTOR_NUMBER, 4);
+    assert!(sectors.iter().all(|s| s.daily_fee.is_zero()), "sectors have zero daily fees");
+
+    // Now set the circulating supply to a non-zero value. Snapping should change the daily fee.
+    let new_circulating_supply = TokenAmount::from_whole(500_000);
+    rt.set_circulating_supply(new_circulating_supply.clone());
+
+    let snos = sectors.iter().map(|s| s.sector_number).collect::<Vec<_>>();
+    let st: State = h.get_state(&rt);
+    let store = rt.store();
+    let piece_size = h.sector_size as u64;
+    // Update in batch, each with a single piece.
+    let sector_updates = vec![
+        make_update_manifest(&st, store, snos[0], &[(piece_size, 0, 0, 0)]), // No alloc or deal
+        make_update_manifest(&st, store, snos[1], &[(piece_size, CLIENT_ID, 1000, 0)]), // Just an alloc
+        make_update_manifest(&st, store, snos[2], &[(piece_size, 0, 0, 2000)]), // Just a deal
+        make_update_manifest(&st, store, snos[3], &[(piece_size, CLIENT_ID, 1001, 2001)]), // Alloc and deal
+    ];
+
+    let cfg = ProveReplicaUpdatesConfig::default();
+    let (result, claims, notifications) =
+        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg).unwrap();
+    assert_update_result(&vec![ExitCode::OK; sectors.len()], &result);
+
+    // Explicitly verify claims match what we expect.
+    assert_eq!(
+        vec![
+            SectorAllocationClaims {
+                sector: snos[0],
+                expiry: sectors[0].expiration,
+                claims: vec![],
+            },
+            SectorAllocationClaims {
+                sector: snos[1],
+                expiry: sectors[1].expiration,
+                claims: vec![AllocationClaim {
+                    client: CLIENT_ID,
+                    allocation_id: 1000,
+                    data: sector_updates[1].pieces[0].cid,
+                    size: sector_updates[1].pieces[0].size,
+                }],
+            },
+            SectorAllocationClaims {
+                sector: snos[2],
+                expiry: sectors[2].expiration,
+                claims: vec![],
+            },
+            SectorAllocationClaims {
+                sector: snos[3],
+                expiry: sectors[3].expiration,
+                claims: vec![AllocationClaim {
+                    client: CLIENT_ID,
+                    allocation_id: 1001,
+                    data: sector_updates[3].pieces[0].cid,
+                    size: sector_updates[3].pieces[0].size,
+                }],
+            },
+        ],
+        claims
+    );
+
+    // Explicitly verify notifications match what we expect.
+    assert_eq!(
+        vec![
+            SectorChanges {
+                sector: snos[2],
+                minimum_commitment_epoch: sectors[2].expiration,
+                added: vec![PieceChange {
+                    data: sector_updates[2].pieces[0].cid,
+                    size: sector_updates[2].pieces[0].size,
+                    payload: serialize(&2000, "").unwrap(),
+                },],
+            },
+            SectorChanges {
+                sector: snos[3],
+                minimum_commitment_epoch: sectors[3].expiration,
+                added: vec![PieceChange {
+                    data: sector_updates[3].pieces[0].cid,
+                    size: sector_updates[3].pieces[0].size,
+                    payload: serialize(&2001, "").unwrap(),
+                },],
+            },
+        ],
+        notifications
+    );
+
+    // Sector 0: Even though there's no "deal", the data weight is set.
+    verify_weights(&rt, &h, snos[0], piece_size, 0);
+    // Sector 1: With an allocation, the verified weight is set instead.
+    verify_weights(&rt, &h, snos[1], 0, piece_size);
+    // Sector 2: Deal weight is set.
+    verify_weights(&rt, &h, snos[2], piece_size, 0);
+    // Sector 3: Deal doesn't make a difference to verified weight only set.
+    verify_weights(&rt, &h, snos[3], 0, piece_size);
+
+    // Check that the fees have been updated
+    let sectors_after = snos.iter().map(|sno| h.get_sector(&rt, *sno));
+    for sector in sectors_after {
+        let expected_fee = daily_proof_fee(rt.policy(), &new_circulating_supply);
+        assert_eq!(
+            sector.daily_fee, expected_fee,
+            "daily fee for sector {} matches expected fee",
+            sector.sector_number
+        );
+    }
+
     h.check_state(&rt);
 }
 
