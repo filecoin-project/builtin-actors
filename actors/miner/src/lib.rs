@@ -4175,10 +4175,12 @@ where
 
             let mut deadline_power_delta = PowerPair::zero();
             let mut deadline_pledge_delta = TokenAmount::zero();
+            let mut deadline_daily_fee_delta = TokenAmount::zero();
 
             for update in updates {
                 // Compute updated sector info.
                 let new_sector_info = update_existing_sector_info(
+                    rt.policy(),
                     update.sector_info,
                     &update.activated_data,
                     &pledge_inputs,
@@ -4223,15 +4225,7 @@ where
 
                 deadline_power_delta += &partition_power_delta;
                 deadline_pledge_delta += &partition_pledge_delta;
-
-                // daily_fee should not change when updating sectors with new replicas
-                if partition_daily_fee_delta != TokenAmount::zero() {
-                    return Err(actor_error!(
-                        illegal_state,
-                        "unexpected daily fee delta {} when updating sectors with new replicas",
-                        partition_daily_fee_delta
-                    ));
-                }
+                deadline_daily_fee_delta += &partition_daily_fee_delta;
 
                 partitions.set(update.partition, partition).with_context_code(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -4247,6 +4241,7 @@ where
             } // End loop over declarations in one deadline.
 
             deadline.live_power += &deadline_power_delta;
+            deadline.daily_fee += &deadline_daily_fee_delta;
 
             power_delta += &deadline_power_delta;
             pledge_delta += &deadline_pledge_delta;
@@ -4312,6 +4307,7 @@ where
 
 // Builds a new sector info representing newly activated data in an existing sector.
 fn update_existing_sector_info(
+    policy: &Policy,
     sector_info: &SectorOnChainInfo,
     activated_data: &ReplicaUpdateActivatedData,
     pledge_inputs: &NetworkPledgeInputs,
@@ -4367,6 +4363,9 @@ fn update_existing_sector_info(
             pledge_inputs.ramp_duration_epochs,
         ),
     );
+    if new_sector_info.daily_fee.is_zero() {
+        new_sector_info.daily_fee = daily_proof_fee(policy, &pledge_inputs.circulating_supply);
+    }
     new_sector_info
 }
 
