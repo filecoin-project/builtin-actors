@@ -13,6 +13,7 @@ const G1_ADD_INPUT_LENGTH: usize = G1_INPUT_LENGTH * 2;
 const G1_OUTPUT_LENGTH: usize = 128;
 pub const PADDED_FP_LENGTH: usize = 64;
 
+/// https://eips.ethereum.org/EIPS/eip-2537
 /// Encodes a single finite field element into byte slice with padding.
 fn fp_to_bytes(out: &mut [u8], x: &blst_fp) {
     unsafe {
@@ -51,7 +52,7 @@ fn decode_and_check_g1(
 /// BLS12_G1ADD precompile
 /// Implements G1 point addition according to EIP-2537
 #[allow(dead_code,unused_variables)]
-pub(super) fn bls12_g1_add<RT: Runtime>(
+pub(super) fn bls12_g1add<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
@@ -116,4 +117,70 @@ fn encode_g1_point(input: *const blst_p1_affine) -> Vec<u8> {
         fp_to_bytes(&mut out[PADDED_FP_LENGTH..], &(*input).y);
     }
     out.into()
+}
+
+/// BLS12_G1MSM precompile
+/// Implements G1 multi-scalar multiplication according to EIP-2537
+#[allow(dead_code,unused_variables)]
+pub(super) fn bls12_g1msm<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
+    Err(PrecompileError::CallForbidden)
+}
+
+/// BLS12_G2ADD precompile
+/// Implements G2 point addition according to EIP-2537
+#[allow(dead_code,unused_variables)]
+pub(super) fn bls12_g2add<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
+    Err(PrecompileError::CallForbidden)
+}
+
+/// BLS12_G2MSM precompile
+/// Implements G2 multi-scalar multiplication according to EIP-2537
+#[allow(dead_code,unused_variables)]
+pub(super) fn bls12_g2msm<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
+    Err(PrecompileError::CallForbidden)
+}
+
+/// BLS12_PAIRING precompile
+/// Implements BLS12-381 pairing check according to EIP-2537
+#[allow(dead_code,unused_variables)]
+pub(super) fn bls12_pairing<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
+    Err(PrecompileError::CallForbidden)
+}
+
+/// BLS12_MAP_FP_TO_G1 precompile
+/// Implements mapping of field element to G1 point according to EIP-2537
+#[allow(dead_code,unused_variables)]
+pub(super) fn bls12_map_fp_to_g1<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
+    Err(PrecompileError::CallForbidden)
+}
+
+/// BLS12_MAP_FP2_TO_G2 precompile
+/// Implements mapping of field element to G2 point according to EIP-2537
+#[allow(dead_code,unused_variables)]
+pub(super) fn bls12_map_fp2_to_g2<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
+    Err(PrecompileError::CallForbidden)
 }
