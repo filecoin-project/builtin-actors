@@ -15,6 +15,11 @@ const G1_OUTPUT_LENGTH: usize = 128;
 pub const PADDED_FP_LENGTH: usize = 64;
 /// Input elements padding length.
 pub const PADDING_LENGTH: usize = 16;
+const G1_MSM_INPUT_LENGTH: usize = 160;
+const G1_INPUT_ITEM_LENGTH: usize = 128;
+const SCALAR_LENGTH: usize = 32;
+const NBITS: usize = 255; // Number of bits in BLS12-381 scalar field
+
 
 /// https://eips.ethereum.org/EIPS/eip-2537
 /// Encodes a single finite field element into byte slice with padding.
@@ -136,14 +141,49 @@ fn encode_g1_point(input: *const blst_p1_affine) -> Vec<u8> {
 
 /// BLS12_G1MSM precompile
 /// Implements G1 multi-scalar multiplication according to EIP-2537
-#[allow(dead_code,unused_variables)]
 pub(super) fn bls12_g1msm<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    Err(PrecompileError::CallForbidden)
+    let input_len = input.len();
+    if input_len == 0 || input_len % G1_MSM_INPUT_LENGTH != 0 {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+
+    let k = input_len / G1_MSM_INPUT_LENGTH;
+    let mut g1_points: Vec<blst_p1> = Vec::with_capacity(k);
+    
+    // Process each (point, scalar) pair
+    for i in 0..k {
+        let slice = &input[i * G1_MSM_INPUT_LENGTH..i * G1_MSM_INPUT_LENGTH + G1_INPUT_ITEM_LENGTH];
+
+        // Skip points at infinity (all zeros)
+        if slice.iter().all(|i| *i == 0) {
+            continue;
+        }
+
+        // Extract and validate the G1 point
+        let p0_aff = extract_g1_point(slice)?;
+
+        let mut p0 = blst_p1::default();
+        // Convert to projective coordinates
+        unsafe { blst_p1_from_affine(&mut p0, &p0_aff) };
+        g1_points.push(p0);
+    }
+
+    // Return infinity point if all points are infinity
+    if g1_points.is_empty() {
+        return Ok(vec![0u8; G1_OUTPUT_LENGTH]);
+    }
+
+    // Convert result back to affine coordinates
+    let mut result_aff = blst_p1_affine::default();
+    unsafe { blst_p1_to_affine(&mut result_aff, &g1_points[0]) };
+
+    Ok(encode_g1_point(&result_aff))
 }
+
 
 /// BLS12_G2ADD precompile
 /// Implements G2 point addition according to EIP-2537
