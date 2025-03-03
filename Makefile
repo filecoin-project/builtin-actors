@@ -5,27 +5,31 @@ DOCKER_IMAGE_NAME := builtin-actors-builder
 DOCKER_RUN_OPTS := --rm -v $(PWD)/output:/output
 DOCKER_PLATFORM := --platform linux/amd64
 
+toolchain:
+	rustup show active-toolchain || rustup toolchain install
+.PHONY: toolchain
+
 # Run cargo fmt
-rustfmt:
+rustfmt: toolchain
 	cargo fmt --all --check
 
 # NOTE: Check all targets, then check the build target specifically. Otherwise, it might build for
 # testing but not otherwise due to feature resolution shenanigans.
 
 # Run cargo check
-check:
+check: toolchain
 	cargo clippy --all --all-targets -- -D warnings
 	cargo clippy --all -- -D warnings
 
 # Run cargo test
-test:
+test: toolchain
 	cargo test --workspace
 
 docker-builder:
 	$(DOCKER) buildx build $(DOCKER_PLATFORM) . -t $(DOCKER_IMAGE_NAME); \
 
 # Create a bundle in a deterministic location
-bundle:
+bundle: toolchain
 	cargo run -- -o output/builtin-actors.car
 
 bundle-repro: docker-builder
@@ -36,37 +40,37 @@ all-bundles: bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-cal
 
 all-bundles-repro: bundle-mainnet-repro bundle-caterpillarnet-repro bundle-butterflynet-repro bundle-calibrationnet-repro bundle-devnet-repro bundle-testing-repro
 
-bundle-mainnet:
+bundle-mainnet: toolchain
 	BUILD_FIL_NETWORK=mainnet cargo run -- -o output/builtin-actors-mainnet.car
 
 bundle-mainnet-repro: docker-builder
 	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "mainnet"
 
-bundle-caterpillarnet:
+bundle-caterpillarnet: toolchain
 	BUILD_FIL_NETWORK=caterpillarnet cargo run -- -o output/builtin-actors-caterpillarnet.car
 
 bundle-caterpillarnet-repro: docker-builder
 	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "caterpillarnet"
 
-bundle-butterflynet:
+bundle-butterflynet: toolchain
 	BUILD_FIL_NETWORK=butterflynet cargo run -- -o output/builtin-actors-butterflynet.car
 
 bundle-butterflynet-repro: docker-builder
 	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "butterflynet"
 
-bundle-calibrationnet:
+bundle-calibrationnet: toolchain
 	BUILD_FIL_NETWORK=calibrationnet cargo run -- -o output/builtin-actors-calibrationnet.car
 
 bundle-calibrationnet-repro: docker-builder
 	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "calibrationnet"
 
-bundle-devnet:
+bundle-devnet: toolchain
 	BUILD_FIL_NETWORK=devnet cargo run -- -o output/builtin-actors-devnet.car
 
 bundle-devnet-repro: docker-builder
 	$(DOCKER) run $(DOCKER_PLATFORM) $(DOCKER_RUN_OPTS) $(DOCKER_IMAGE_NAME) "devnet"
 
-bundle-testing:
+bundle-testing: toolchain
 	BUILD_FIL_NETWORK=testing cargo run -- -o output/builtin-actors-testing.car
 	BUILD_FIL_NETWORK=testing-fake-proofs cargo run -- -o output/builtin-actors-testing-fake-proofs.car
 
