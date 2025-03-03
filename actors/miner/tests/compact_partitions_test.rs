@@ -1,11 +1,10 @@
 use fil_actor_miner::{
-    expected_reward_for_power, new_deadline_info, pledge_penalty_for_continued_fault,
-    pledge_penalty_for_termination, qa_power_for_sector, State, INITIAL_PLEDGE_PROJECTION_PERIOD,
+    new_deadline_info, pledge_penalty_for_continued_fault, pledge_penalty_for_termination,
+    qa_power_for_sector, State,
 };
 use fil_actors_runtime::{
     runtime::{Runtime, RuntimePolicy},
     test_utils::{expect_abort, expect_abort_contains_message, MockRuntime},
-    EPOCHS_IN_DAY,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, error::ExitCode, sector::SectorNumber};
