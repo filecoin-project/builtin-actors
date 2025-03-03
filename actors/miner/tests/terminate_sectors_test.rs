@@ -1,14 +1,12 @@
 use fil_actor_miner::{
-    expected_reward_for_power, pledge_penalty_for_termination, qa_power_for_sector, Actor,
+    pledge_penalty_for_continued_fault, pledge_penalty_for_termination, qa_power_for_sector, Actor,
     CronEventPayload, DeferredCronEventParams, Method, SectorOnChainInfo, State,
     TerminateSectorsParams, TerminationDeclaration, CRON_EVENT_PROCESS_EARLY_TERMINATIONS,
-    INITIAL_PLEDGE_PROJECTION_PERIOD,
 };
 use fil_actors_runtime::{
     runtime::Runtime,
     test_utils::{expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID},
-    BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{econ::TokenAmount, error::ExitCode, METHOD_SEND};
@@ -315,27 +313,12 @@ fn calc_expected_fee_for_termination(
     sector: &SectorOnChainInfo,
 ) -> TokenAmount {
     let sector_power = qa_power_for_sector(sector.seal_proof.sector_size().unwrap(), sector);
-    let day_reward = expected_reward_for_power(
-        &h.epoch_reward_smooth,
-        &h.epoch_qa_power_smooth,
-        &sector_power,
-        EPOCHS_IN_DAY,
-    );
-    let twenty_day_reward = expected_reward_for_power(
-        &h.epoch_reward_smooth,
-        &h.epoch_qa_power_smooth,
-        &sector_power,
-        INITIAL_PLEDGE_PROJECTION_PERIOD,
-    );
     let sector_age = *rt.epoch.borrow() - sector.activation;
-    pledge_penalty_for_termination(
-        &day_reward,
-        sector_age,
-        &twenty_day_reward,
+    let initial_pledge = &sector.initial_pledge;
+    let fault_fee = pledge_penalty_for_continued_fault(
+        &h.epoch_reward_smooth,
         &h.epoch_qa_power_smooth,
         &sector_power,
-        &h.epoch_reward_smooth,
-        &TokenAmount::zero(),
-        0,
-    )
+    );
+    pledge_penalty_for_termination(initial_pledge, sector_age, &fault_fee)
 }
