@@ -40,6 +40,18 @@ pub const TERMINATION_REWARD_FACTOR_DENOM: u32 = 2;
 const LOCKED_REWARD_FACTOR_NUM: u32 = 3;
 const LOCKED_REWARD_FACTOR_DENOM: u32 = 4;
 
+/// Used to compute termination fees in the base case by multiplying against initial pledge.
+pub const TERM_PENALTY_PLEDGE_NUM: u32 = 85;
+pub const TERM_PENALTY_PLEDGE_DENOM: u32 = 1000;
+
+/// Used to ensure the termination fee for young sectors is not arbitrarily low.
+pub const MIN_TERMINATION_FEE_PLEDGE_NUM: u32 = 2;
+pub const MIN_TERMINATION_FEE_PLEDGE_DENOM: u32 = 100;
+
+/// Used to compute termination fees when the termination fee of a sector is less than the fault fee for the same sector.
+pub const FAULT_FEE_MULTIPLE_NUM: u32 = 105;
+pub const FAULT_FEE_MULTIPLE_DENOM: u32 = 100;
+
 lazy_static! {
     /// Cap on initial pledge requirement for sectors during the Space Race network.
     /// The target is 1 FIL (10**18 attoFIL) per 32GiB.
@@ -173,41 +185,37 @@ pub fn pledge_penalty_for_termination_lower_bound(
     )
 }
 
-/// Penalty to locked pledge collateral for the termination of a sector before scheduled expiry.
-/// SectorAge is the time between the sector's activation and termination.
-#[allow(clippy::too_many_arguments)]
+// TODO: write better description, mention FIP-0098
 pub fn pledge_penalty_for_termination(
-    day_reward: &TokenAmount,
+    initial_pledge: &TokenAmount,
     sector_age: ChainEpoch,
-    twenty_day_reward_at_activation: &TokenAmount,
-    network_qa_power_estimate: &FilterEstimate,
-    qa_sector_power: &StoragePower,
-    reward_estimate: &FilterEstimate,
-    replaced_day_reward: &TokenAmount,
-    replaced_sector_age: ChainEpoch,
+    fault_fee: &TokenAmount,
 ) -> TokenAmount {
-    // max(SP(t), BR(StartEpoch, 20d) + BR(StartEpoch, 1d) * terminationRewardFactor * min(SectorAgeInDays, 140))
-    // and sectorAgeInDays = sectorAge / EpochsInDay
-    let lifetime_cap = TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY;
-    let capped_sector_age = std::cmp::min(sector_age, lifetime_cap);
+    // Use the _percentage of the initial pledge_ strategy to determine the termination fee.
+    let termination_fee =
+        (initial_pledge * TERM_PENALTY_PLEDGE_NUM).div_floor(TERM_PENALTY_PLEDGE_DENOM);
 
-    let mut expected_reward: TokenAmount = day_reward * capped_sector_age;
+    // There are a few special cases to consider where the termination fee must be tweaked to
+    // maintain the current network conditions.
 
-    let relevant_replaced_age =
-        std::cmp::min(replaced_sector_age, lifetime_cap - capped_sector_age);
+    // 1. We need to ensure that the final termination fee is always greater than the fault fee for
+    //    the same sector.
+    let fault_fee = (fault_fee * FAULT_FEE_MULTIPLE_NUM).div_floor(FAULT_FEE_MULTIPLE_DENOM);
+    let termination_fault_max = cmp::max(termination_fee, fault_fee);
 
-    expected_reward += replaced_day_reward * relevant_replaced_age;
+    // 2. We need to ensure linear growth of the termination fee over time, up to a cap. The
+    //    details of this growth are defined in FIP-0098 design rationale.
+    let sector_age_in_days = sector_age / EPOCHS_IN_DAY;
+    let penalty_ramped = cmp::min(
+        (&termination_fault_max * sector_age_in_days).div_floor(TERMINATION_LIFETIME_CAP),
+        termination_fault_max,
+    );
 
-    let penalized_reward = expected_reward * TERMINATION_REWARD_FACTOR_NUM;
-    let penalized_reward = penalized_reward.div_floor(TERMINATION_REWARD_FACTOR_DENOM);
-
+    // Ensure the termination fee is no less than the minimum termination fee pledge.
     cmp::max(
-        pledge_penalty_for_termination_lower_bound(
-            reward_estimate,
-            network_qa_power_estimate,
-            qa_sector_power,
-        ),
-        twenty_day_reward_at_activation + (penalized_reward.div_floor(EPOCHS_IN_DAY)),
+        penalty_ramped,
+        (MIN_TERMINATION_FEE_PLEDGE_NUM * initial_pledge)
+            .div_floor(MIN_TERMINATION_FEE_PLEDGE_DENOM),
     )
 }
 
@@ -353,4 +361,60 @@ pub fn aggregate_network_fee(
     let effective_gas_fee = max(base_fee, &*BATCH_BALANCER);
     let network_fee_num = effective_gas_fee * gas_usage * aggregate_size * BATCH_DISCOUNT_NUM;
     network_fee_num.div_floor(BATCH_DISCOUNT_DENOM)
+}
+
+#[cfg(test)]
+mod tests {
+    use fvm_shared::econ::TokenAmount;
+
+    use super::*;
+
+    #[test]
+    fn pledge_penalty_for_termination_test() {
+        let cases = [
+            // very young sector - the minimum termination fee pledge
+            (
+                TokenAmount::from_atto(1000),
+                1,
+                TokenAmount::from_atto(5),
+                (TokenAmount::from_atto(1000) * MIN_TERMINATION_FEE_PLEDGE_NUM)
+                    .div_floor(MIN_TERMINATION_FEE_PLEDGE_DENOM),
+            ),
+            // middle of lifetime cap, 1/2 fee from pledge
+            (
+                TokenAmount::from_atto(1000),
+                (TERMINATION_LIFETIME_CAP / 2) * EPOCHS_IN_DAY,
+                TokenAmount::from_atto(0),
+                TokenAmount::from_atto(42),
+            ),
+            // max lifetime cap, full fee from pledge
+            (
+                TokenAmount::from_atto(1000),
+                TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY,
+                TokenAmount::from_atto(0),
+                TokenAmount::from_atto(85),
+            ),
+            // over lifetime cap, full fee from pledge
+            (
+                TokenAmount::from_atto(1000),
+                TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY + 1000 * EPOCHS_IN_DAY,
+                TokenAmount::from_atto(0),
+                TokenAmount::from_atto(85),
+            ),
+            // high fault fee takes over
+            (
+                TokenAmount::from_atto(10),
+                TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY,
+                TokenAmount::from_atto(100),
+                (TokenAmount::from_atto(100) * FAULT_FEE_MULTIPLE_NUM)
+                    .div_floor(FAULT_FEE_MULTIPLE_DENOM),
+            ),
+        ];
+
+        for case in cases {
+            let (initial_pledge, sector_age, fault_fee, expected) = case;
+            let result = pledge_penalty_for_termination(&initial_pledge, sector_age, &fault_fee);
+            assert_eq!(result, expected);
+        }
+    }
 }
