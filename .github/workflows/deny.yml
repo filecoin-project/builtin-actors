@@ -13,4 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - name: Install Rust toolchain from rust-toolchain.toml
+      run: rustup show active-toolchain || rustup show 
     - uses: EmbarkStudios/cargo-deny-action@v2
