@@ -57,7 +57,6 @@ fn decode_and_check_g1(
 
 /// BLS12_G1ADD precompile
 /// Implements G1 point addition according to EIP-2537
-#[allow(dead_code,unused_variables)]
 pub(super) fn bls12_g1add<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
@@ -96,12 +95,10 @@ fn extract_g1_point(input: &[u8]) -> Result<blst_p1_affine, PrecompileError> {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    // Split input into x and y coordinates
-    let x_bytes: &[u8; 48] = input[..48].try_into()
-        .map_err(|_| PrecompileError::IncorrectInputSize)?;
-    let y_bytes: &[u8; 48] = input[48..96].try_into()
-        .map_err(|_| PrecompileError::IncorrectInputSize)?;
-
+    // Split input and remove padding for x and y coordinates
+    let x_bytes = remove_padding(&input[..PADDED_FP_LENGTH])?;
+    let y_bytes = remove_padding(&input[PADDED_FP_LENGTH..G1_INPUT_LENGTH])?;
+ 
     let point = decode_and_check_g1(x_bytes, y_bytes)?;
 
     // Check if point is on curve (no subgroup check needed for addition)
@@ -112,6 +109,18 @@ fn extract_g1_point(input: &[u8]) -> Result<blst_p1_affine, PrecompileError> {
     }
 
     Ok(point)
+}
+
+/// Removes zeros with which the precompile inputs are left padded to 64 bytes.
+fn remove_padding(input: &[u8]) -> Result<&[u8; 48], PrecompileError> {
+    if input.len() != PADDED_FP_LENGTH {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+    let (padding, unpadded) = input.split_at(PADDING_LENGTH);
+    if !padding.iter().all(|&x| x == 0) {
+        return Err(PrecompileError::InvalidInput);
+    }
+    unpadded.try_into().map_err(|_| PrecompileError::IncorrectInputSize)
 }
 
 /// Encodes a G1 point in affine format into byte slice with padded elements.
