@@ -493,8 +493,6 @@ pub fn miner_extend_sector_expiration2(
     if !claim_ids.is_empty() {
         subinvocs.push(Expect::verifreg_get_claims(miner_id, miner_id, claim_ids))
     }
-    subinvocs.push(Expect::reward_this_epoch(miner_id));
-    subinvocs.push(Expect::power_current_total(miner_id));
     if !power_delta.is_zero() {
         subinvocs.push(Expect::power_update_claim(miner_id, power_delta));
     }

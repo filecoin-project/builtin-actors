@@ -2103,20 +2103,6 @@ impl Actor {
             ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
 
-        let sector_day_reward = expected_reward_for_power(
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &qa_sector_power,
-            fil_actors_runtime::EPOCHS_IN_DAY,
-        );
-
-        let sector_storage_pledge = expected_reward_for_power(
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &qa_sector_power,
-            INITIAL_PLEDGE_PROJECTION_PERIOD,
-        );
-
         let sector_initial_pledge = initial_pledge_for_power(
             &qa_sector_power,
             &pledge_inputs.network_baseline,
@@ -2139,8 +2125,8 @@ impl Actor {
                 deal_weight: DealWeight::zero(),
                 verified_deal_weight: DealWeight::zero(),
                 initial_pledge: sector_initial_pledge.clone(),
-                expected_day_reward: sector_day_reward.clone(),
-                expected_storage_pledge: sector_storage_pledge.clone(),
+                expected_day_reward: TokenAmount::zero(),
+                expected_storage_pledge: TokenAmount::zero(),
                 power_base_epoch: curr_epoch,
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
@@ -2293,8 +2279,6 @@ impl Actor {
         kind: ExtensionKind,
     ) -> Result<(), ActorError> {
         let curr_epoch = rt.curr_epoch();
-        let reward_stats = &request_current_epoch_block_reward(rt)?;
-        let power_stats = &request_current_total_power(rt)?;
 
         /* Loop over sectors and do extension */
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
@@ -2381,11 +2365,8 @@ impl Actor {
                                 Some(claim_space_by_sector) => extend_sector_committment(
                                     rt.policy(),
                                     curr_epoch,
-                                    reward_stats,
-                                    power_stats,
                                     decl.new_expiration,
                                     sector,
-                                    info.sector_size,
                                     claim_space_by_sector,
                                 ),
                             },
@@ -3751,27 +3732,15 @@ fn validate_extension_declarations(
 fn extend_sector_committment(
     policy: &Policy,
     curr_epoch: ChainEpoch,
-    reward_stats: &ThisEpochRewardReturn,
-    power_stats: &ext::power::CurrentTotalPowerReturn,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
-    sector_size: SectorSize,
     claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
     if sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER) {
-        extend_simple_qap_sector(
-            policy,
-            new_expiration,
-            curr_epoch,
-            reward_stats,
-            power_stats,
-            sector,
-            sector_size,
-            claim_space_by_sector,
-        )
+        extend_simple_qap_sector(policy, new_expiration, curr_epoch, sector, claim_space_by_sector)
     } else {
         extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
     }
@@ -3843,10 +3812,7 @@ fn extend_simple_qap_sector(
     policy: &Policy,
     new_expiration: ChainEpoch,
     curr_epoch: ChainEpoch,
-    reward_stats: &ThisEpochRewardReturn,
-    power_stats: &ext::power::CurrentTotalPowerReturn,
     sector: &SectorOnChainInfo,
-    sector_size: SectorSize,
     claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
     let mut new_sector = sector.clone();
@@ -3900,27 +3866,11 @@ fn extend_simple_qap_sector(
 
         new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space) * new_duration;
 
-        // We only bother updating the expected_day_reward, expected_storage_pledge, and replaced_day_reward
-        //  for verified deals, as it can increase power.
-        let qa_pow =
-            qa_power_for_weight(sector_size, new_duration, &new_sector.verified_deal_weight);
-        new_sector.expected_day_reward = expected_reward_for_power(
-            &reward_stats.this_epoch_reward_smoothed,
-            &power_stats.quality_adj_power_smoothed,
-            &qa_pow,
-            fil_actors_runtime::network::EPOCHS_IN_DAY,
-        );
-        new_sector.expected_storage_pledge = max(
-            sector.expected_storage_pledge.clone(),
-            expected_reward_for_power(
-                &reward_stats.this_epoch_reward_smoothed,
-                &power_stats.quality_adj_power_smoothed,
-                &qa_pow,
-                INITIAL_PLEDGE_PROJECTION_PERIOD,
-            ),
-        );
-        new_sector.replaced_day_reward =
-            max(sector.expected_day_reward.clone(), sector.replaced_day_reward.clone());
+        // As of [FIP-0098](https://github.com/filecoin-project/FIPs/blob/de3c8e2cae9f003dfb52d664d640745d96ca19ac/FIPS/fip-0098.md),
+        // Those fields are not used anymore and should be set to zero.
+        new_sector.expected_day_reward = TokenAmount::zero();
+        new_sector.expected_storage_pledge = TokenAmount::zero();
+        new_sector.replaced_day_reward = TokenAmount::zero();
     }
 
     Ok(new_sector)
@@ -3944,6 +3894,9 @@ fn extend_non_simple_qap_sector(
     new_sector.deal_weight = new_deal_weight;
     new_sector.verified_deal_weight = new_verified_deal_weight;
     new_sector.power_base_epoch = curr_epoch;
+    new_sector.expected_day_reward = TokenAmount::zero();
+    new_sector.replaced_day_reward = TokenAmount::zero();
+    new_sector.expected_storage_pledge = TokenAmount::zero();
 
     Ok(new_sector)
 }
@@ -4293,23 +4246,9 @@ fn update_existing_sector_info(
     // compute initial pledge
     let qa_pow = qa_power_for_weight(sector_size, duration, &new_sector_info.verified_deal_weight);
 
-    new_sector_info.replaced_day_reward =
-        max(&sector_info.expected_day_reward, &sector_info.replaced_day_reward).clone();
-    new_sector_info.expected_day_reward = expected_reward_for_power(
-        &pledge_inputs.epoch_reward,
-        &pledge_inputs.network_qap,
-        &qa_pow,
-        fil_actors_runtime::network::EPOCHS_IN_DAY,
-    );
-    new_sector_info.expected_storage_pledge = max(
-        new_sector_info.expected_storage_pledge,
-        expected_reward_for_power(
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &qa_pow,
-            INITIAL_PLEDGE_PROJECTION_PERIOD,
-        ),
-    );
+    new_sector_info.expected_day_reward = TokenAmount::zero();
+    new_sector_info.replaced_day_reward = TokenAmount::zero();
+    new_sector_info.expected_storage_pledge = TokenAmount::zero();
 
     new_sector_info.initial_pledge = max(
         new_sector_info.initial_pledge,
@@ -5535,23 +5474,6 @@ fn activate_new_sector_infos(
 
             let power = qa_power_for_weight(info.sector_size, duration, &verified_deal_weight);
 
-            let day_reward = expected_reward_for_power(
-                &pledge_inputs.epoch_reward,
-                &pledge_inputs.network_qap,
-                &power,
-                fil_actors_runtime::EPOCHS_IN_DAY,
-            );
-
-            // The storage pledge is recorded for use in computing the penalty if this sector is terminated
-            // before its declared expiration.
-            // It's not capped to 1 FIL, so can exceed the actual initial pledge requirement.
-            let storage_pledge = expected_reward_for_power(
-                &pledge_inputs.epoch_reward,
-                &pledge_inputs.network_qap,
-                &power,
-                INITIAL_PLEDGE_PROJECTION_PERIOD,
-            );
-
             let initial_pledge = initial_pledge_for_power(
                 &power,
                 &pledge_inputs.network_baseline,
@@ -5575,8 +5497,8 @@ fn activate_new_sector_infos(
                 deal_weight,
                 verified_deal_weight,
                 initial_pledge,
-                expected_day_reward: day_reward,
-                expected_storage_pledge: storage_pledge,
+                expected_day_reward: TokenAmount::zero(),
+                expected_storage_pledge: TokenAmount::zero(),
                 power_base_epoch: activation_epoch,
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
