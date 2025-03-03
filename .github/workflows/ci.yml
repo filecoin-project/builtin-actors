@@ -40,8 +40,33 @@ jobs:
     - name: Running tests
       run: cargo test --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
 
+  test-arm:
+    runs-on: ubuntu-24.04-arm
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v3
+    - name: Installing the toolchain
+      run: make toolchain
+    - name: Running tests
+      run: cargo test --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
+
+
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v3
+    - name: Writing bundle
+      env:
+        BUILD_FIL_NETWORK: ${{ matrix.network }}
+      run: |
+        make bundle-repro
+
+  build-arm:
+    runs-on: ubuntu-24.04-arm
     strategy:
       matrix:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
