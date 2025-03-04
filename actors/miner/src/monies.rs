@@ -198,10 +198,10 @@ pub fn pledge_penalty_for_termination(
     // There are a few special cases to consider where the termination fee must be tweaked to
     // maintain the current network conditions.
 
-    // 1. We need to ensure that the final termination fee is always greater than the fault fee for
+    // 1. We need to ensure that the final termination fee is always at least 105% of the fault fee for
     //    the same sector.
-    let fault_fee = (fault_fee * FAULT_FEE_MULTIPLE_NUM).div_floor(FAULT_FEE_MULTIPLE_DENOM);
-    let termination_fault_max = cmp::max(termination_fee, fault_fee);
+    let fault_fee_cap = (fault_fee * FAULT_FEE_MULTIPLE_NUM).div_floor(FAULT_FEE_MULTIPLE_DENOM);
+    let termination_fault_max = cmp::max(termination_fee, fault_fee_cap);
 
     // 2. We need to ensure linear growth of the termination fee over time, up to a cap. The
     //    details of this growth are defined in FIP-0098 design rationale.
