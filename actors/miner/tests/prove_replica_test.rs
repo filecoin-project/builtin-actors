@@ -44,7 +44,7 @@ fn update_batch() {
 
     let cfg = ProveReplicaUpdatesConfig::default();
     let (result, claims, notifications) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, true, cfg).unwrap();
     assert_update_result(&vec![ExitCode::OK; sectors.len()], &result);
 
     // Explicitly verify claims match what we expect.
@@ -109,24 +109,43 @@ fn update_batch() {
         notifications
     );
 
-    // Sector 0: Even though there's no "deal", the data weight is set.
-    verify_weights(&rt, &h, snos[0], piece_size, 0);
-    // Sector 1: With an allocation, the verified weight is set instead.
-    verify_weights(&rt, &h, snos[1], 0, piece_size);
-    // Sector 2: Deal weight is set.
-    verify_weights(&rt, &h, snos[2], piece_size, 0);
-    // Sector 3: Deal doesn't make a difference to verified weight only set.
-    verify_weights(&rt, &h, snos[3], 0, piece_size);
+    let sectors_after = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect::<Vec<_>>();
+    for i in 0..sectors.len() {
+        // Sectors 1 and 3 are full of verified data, 0 and 2 are not
+        let has_verified = i % 2 == 1;
 
-    // Check that the fees haven't changed.
-    let sectors_after = snos.iter().map(|sno| h.get_sector(&rt, *sno));
-    for (before, after) in std::iter::zip(sectors, sectors_after) {
+        verify_weights(
+            &rt,
+            &h,
+            snos[i],
+            if has_verified { 0 } else { piece_size },
+            if has_verified { piece_size } else { 0 },
+        );
+
+        // Check daily fees - if we added verified data, we expect the fees to be x10
+        let expected_fee = sectors[i].daily_fee.clone() * if has_verified { 10 } else { 1 };
         assert_eq!(
-            before.daily_fee, after.daily_fee,
+            expected_fee, sectors_after[i].daily_fee,
             "daily fees differ for sector {}",
-            before.sector_number
+            sectors[i].sector_number
         );
     }
+
+    let total_fees = sectors_after.iter().map(|s| s.daily_fee.clone()).sum::<TokenAmount>();
+
+    let (deadline_index, partition_index) = st.find_sector(rt.store(), snos[0]).unwrap();
+    // check the deadline and partition state is correct for the replaced sector's fee
+    let (deadline, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+
+    // deadline has the total fees for all sectors
+    assert_eq!(total_fees, deadline.daily_fee);
+
+    // partition expiration queue has the total fees for all sectors as a deduction
+    let quant = h.get_state(&rt).quant_spec_for_deadline(&rt.policy, deadline_index);
+    let quantized_expiration = quant.quantize_up(sectors_after[0].expiration);
+    let p_queue = h.collect_partition_expirations(&rt, &partition);
+    let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+    assert_eq!(total_fees, entry.fee_deduction);
 
     h.check_state(&rt);
 }
@@ -139,7 +158,23 @@ fn update_fee() {
     rt.set_circulating_supply(TokenAmount::zero());
     let sector_expiry = *rt.epoch.borrow() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
     let sectors = onboard_empty_sectors(&rt, &h, sector_expiry, FIRST_SECTOR_NUMBER, 4);
-    assert!(sectors.iter().all(|s| s.daily_fee.is_zero()), "sectors have zero daily fees");
+    let st: State = h.get_state(&rt);
+    let (deadline_index, partition_index) =
+        st.find_sector(rt.store(), sectors[0].sector_number).unwrap();
+    // check the deadline and partition state is correct for the replaced sector's fee
+    let (deadline, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+
+    // sanity check the fee state
+    // 1. sectors have no fees
+    assert!(sectors.iter().all(|s| s.daily_fee.is_zero()));
+    // 2. deadline has no fees
+    assert!(deadline.daily_fee.is_zero());
+    // 3. expiration queue has no fees
+    let quant = h.get_state(&rt).quant_spec_for_deadline(&rt.policy, deadline_index);
+    let quantized_expiration = quant.quantize_up(sectors[0].expiration);
+    let p_queue = h.collect_partition_expirations(&rt, &partition);
+    let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+    assert!(entry.fee_deduction.is_zero());
 
     // Now set the circulating supply to a non-zero value. Snapping should change the daily fee.
     let new_circulating_supply = TokenAmount::from_whole(500_000);
@@ -159,7 +194,7 @@ fn update_fee() {
 
     let cfg = ProveReplicaUpdatesConfig::default();
     let (result, claims, notifications) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, true, cfg).unwrap();
     assert_update_result(&vec![ExitCode::OK; sectors.len()], &result);
 
     // Explicitly verify claims match what we expect.
@@ -224,49 +259,49 @@ fn update_fee() {
         notifications
     );
 
-    // When checking sector daily_fee, for a reference we'll calculate the fee for a fully verified sector and
-    // divide as required
+    // When checking sector daily_fee, for a reference we'll calculate the fee for a fully verified
+    // sector and divide as required
     let full_verified_fee = daily_proof_fee(
         &rt.policy,
         &new_circulating_supply,
         &BigInt::from(h.sector_size as u64 * 10),
     );
 
-    // Sector 0: Even though there's no "deal", the data weight is set.
-    verify_weights(&rt, &h, snos[0], piece_size, 0);
-    assert_eq!(
-        full_verified_fee.div_floor(10),
-        h.get_sector(&rt, snos[0]).daily_fee,
-        "daily fee for sector {} matches expected fee",
-        snos[0]
-    );
+    let sectors_after = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect::<Vec<_>>();
+    for i in 0..sectors.len() {
+        // Sectors 1 and 3 are full of verified data, 0 and 2 are not
+        let has_verified = i % 2 == 1;
 
-    // Sector 1: With an allocation, the verified weight is set instead.
-    verify_weights(&rt, &h, snos[1], 0, piece_size);
-    assert_eq!(
-        full_verified_fee,
-        h.get_sector(&rt, snos[1]).daily_fee,
-        "daily fee for sector {} matches expected fee",
-        snos[1]
-    );
+        verify_weights(
+            &rt,
+            &h,
+            snos[i],
+            if has_verified { 0 } else { piece_size },
+            if has_verified { piece_size } else { 0 },
+        );
 
-    // Sector 2: Deal weight is set.
-    verify_weights(&rt, &h, snos[2], piece_size, 0);
-    assert_eq!(
-        full_verified_fee.div_floor(10),
-        h.get_sector(&rt, snos[2]).daily_fee,
-        "daily fee for sector {} matches expected fee",
-        snos[2]
-    );
+        // Check daily fees - for unverified sectors, the full verified fee is divided by 10
+        let expected_fee = full_verified_fee.div_floor(if has_verified { 1 } else { 10 });
+        assert_eq!(
+            expected_fee, sectors_after[i].daily_fee,
+            "daily fees differ for sector {}",
+            sectors[i].sector_number
+        );
+    }
 
-    // Sector 3: Deal doesn't make a difference to verified weight only set.
-    verify_weights(&rt, &h, snos[3], 0, piece_size);
-    assert_eq!(
-        full_verified_fee,
-        h.get_sector(&rt, snos[3]).daily_fee,
-        "daily fee for sector {} matches expected fee",
-        snos[3]
-    );
+    let total_fees = sectors_after.iter().map(|s| s.daily_fee.clone()).sum::<TokenAmount>();
+
+    let (deadline_index, partition_index) = st.find_sector(rt.store(), snos[0]).unwrap();
+    // check the deadline and partition state is correct for the replaced sector's fee
+    let (deadline, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+
+    // deadline has the total fees for all sectors
+    assert_eq!(total_fees, deadline.daily_fee);
+
+    // partition expiration queue has the total fees for all sectors as a deduction
+    let p_queue = h.collect_partition_expirations(&rt, &partition);
+    let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+    assert_eq!(total_fees, entry.fee_deduction);
 
     h.check_state(&rt);
 }
@@ -295,7 +330,7 @@ fn multiple_pieces_in_sector() {
 
     let cfg = ProveReplicaUpdatesConfig::default();
     let (result, claims, notifications) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, true, cfg).unwrap();
     assert_update_result(&[ExitCode::OK, ExitCode::OK], &result);
 
     // Explicitly verify claims match what we expect.
@@ -408,7 +443,7 @@ fn multiple_notifs_for_piece() {
 
     let cfg = ProveReplicaUpdatesConfig::default();
     let (result, _, notifications) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, true, cfg).unwrap();
     assert_update_result(&[ExitCode::OK, ExitCode::OK], &result);
 
     // Explicitly verify notifications match what we expect.
@@ -480,7 +515,7 @@ fn cant_update_nonempty_sector() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "cannot update sector with non-zero data",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, true, cfg),
     );
     h.check_state(&rt);
 }
@@ -502,7 +537,7 @@ fn invalid_update_dropped() {
 
     let cfg = ProveReplicaUpdatesConfig { validation_failure: vec![0], ..Default::default() };
     let (result, claims, notifications) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg).unwrap();
     assert_update_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     // Sector 0: no change.
@@ -530,7 +565,7 @@ fn invalid_proof_dropped() {
 
     let cfg = ProveReplicaUpdatesConfig { proof_failure: vec![0], ..Default::default() };
     let (result, _, _) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg).unwrap();
     assert_update_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     verify_weights(&rt, &h, snos[0], 0, 0);
@@ -552,7 +587,7 @@ fn invalid_claim_dropped() {
 
     let cfg = ProveReplicaUpdatesConfig { claim_failure: vec![0], ..Default::default() };
     let (result, _, _) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg).unwrap();
     assert_update_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     verify_weights(&rt, &h, snos[0], 0, 0);
@@ -578,7 +613,7 @@ fn aborted_notification_dropped() {
         ..Default::default()
     };
     let (result, _, _) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg).unwrap();
     // All sectors succeed anyway.
     assert_update_result(&vec![ExitCode::OK; sectors.len()], &result);
 
@@ -604,7 +639,7 @@ fn rejected_notification_dropped() {
 
     let cfg = ProveReplicaUpdatesConfig { notification_rejected: true, ..Default::default() };
     let (result, _, _) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg).unwrap();
     // All sectors succeed anyway.
     assert_update_result(&vec![ExitCode::OK; sectors.len()], &result);
 
@@ -628,7 +663,7 @@ fn update_to_empty() {
 
     let cfg = ProveReplicaUpdatesConfig::default();
     let (result, _, _) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, true, cfg).unwrap();
     assert_update_result(&vec![ExitCode::OK; sectors.len()], &result);
     verify_weights(&rt, &h, snos[0], 0, 0);
 
@@ -638,7 +673,7 @@ fn update_to_empty() {
 
     let cfg = ProveReplicaUpdatesConfig::default();
     let (result, _, _) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg).unwrap();
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, true, cfg).unwrap();
     assert_update_result(&vec![ExitCode::OK; sectors.len()], &result);
 
     // But not again now it's non-empty.
@@ -646,7 +681,7 @@ fn update_to_empty() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "cannot update sector with non-zero data",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, true, cfg),
     );
 
     h.check_state(&rt);

@@ -214,6 +214,8 @@ fn updates_expiration_with_valid_params(v2: bool) {
 
     // assert that the fee hasn't changed
     assert_eq!(old_sector.daily_fee, new_sector.daily_fee);
+    let deadline = h.get_deadline(&rt, deadline_index);
+    assert_eq!(new_sector.daily_fee, deadline.daily_fee);
 
     let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
 
@@ -235,8 +237,9 @@ fn updates_expiration_with_valid_params(v2: bool) {
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn updates_expiration_and_daily_fee(v2: bool) {
-    // Two sectors for both cases, but in v2 we will make the second sector fully verified to
-    // test the fee calculation.
+    // Start with sectors that have a zero fee (i.e. indicating they are pre-FIP-0100). Two sectors
+    // for both cases, but in v2 we will make the second sector fully verified to test the fee
+    // calculation.
 
     let (mut h, rt) = setup();
 
@@ -289,6 +292,8 @@ fn updates_expiration_and_daily_fee(v2: bool) {
         state.find_sector(rt.store(), old_sectors[0].sector_number).unwrap();
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sectors[0].expiration + extension;
+
+    assert!(h.get_deadline(&rt, deadline_index).daily_fee.is_zero());
 
     // Set circulating supply to trigger fee calculation
     let new_circulating_supply = TokenAmount::from_whole(500_000_000);
@@ -361,6 +366,19 @@ fn updates_expiration_and_daily_fee(v2: bool) {
     // Second sector fee depends on version
     let expected_fee = if v2 { full_verified_fee } else { full_verified_fee.div_floor(10) };
     assert_eq!(expected_fee, new_sectors[1].daily_fee);
+
+    let total_fee = new_sectors[0].daily_fee.clone() + new_sectors[1].daily_fee.clone();
+    let (deadline, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+
+    // deadline has the two fees
+    assert_eq!(total_fee, deadline.daily_fee);
+
+    // partition expiration queue has the total fee as a deduction
+    let quant = h.get_state(&rt).quant_spec_for_deadline(&rt.policy, deadline_index);
+    let quantized_expiration = quant.quantize_up(new_sectors[0].expiration);
+    let p_queue = h.collect_partition_expirations(&rt, &partition);
+    let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+    assert_eq!(total_fee, entry.fee_deduction);
 
     h.check_state(&rt);
 }
@@ -589,6 +607,22 @@ fn update_expiration2_multiple_claims() {
         deadline_index,
         partition_index,
     );
+
+    // fee should not have changed
+    let new_sector = h.get_sector(&rt, old_sector.sector_number);
+    assert_eq!(old_sector.daily_fee, new_sector.daily_fee);
+
+    let (deadline, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+
+    // deadline has the fee
+    assert_eq!(new_sector.daily_fee, deadline.daily_fee);
+
+    // partition expiration queue has the fee as a deduction
+    let quant = h.get_state(&rt).quant_spec_for_deadline(&rt.policy, deadline_index);
+    let quantized_expiration = quant.quantize_up(new_sector.expiration);
+    let p_queue = h.collect_partition_expirations(&rt, &partition);
+    let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+    assert_eq!(new_sector.daily_fee, entry.fee_deduction);
 }
 
 #[test]
@@ -763,12 +797,27 @@ fn extend_expiration2_drop_claims() {
     ];
     let policy = Policy::default();
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
-    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
-
     let state: State = rt.get_state();
-
     let (deadline_index, partition_index) =
         state.find_sector(rt.store(), old_sector.sector_number).unwrap();
+
+    {
+        // sanity check deadline and partition state is correct for original sector's fees
+        let (deadline, partition) =
+            h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+
+        // deadline has the fee
+        assert_eq!(old_sector.daily_fee, deadline.daily_fee);
+
+        // partition expiration queue has the fee as a deduction
+        let quant = h.get_state(&rt).quant_spec_for_deadline(&rt.policy, deadline_index);
+        let quantized_expiration = quant.quantize_up(old_sector.expiration);
+        let p_queue = h.collect_partition_expirations(&rt, &partition);
+        let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+        assert_eq!(old_sector.daily_fee, entry.fee_deduction);
+    }
+
+    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -824,6 +873,33 @@ fn extend_expiration2_drop_claims() {
     );
 
     assert_sector_verified_space(&mut h, &rt, old_sector.sector_number, verified_deals[0].size.0);
+
+    let new_sector = h.get_sector(&rt, old_sector.sector_number);
+
+    {
+        // after dropping a claim that occupies half of the sector the daily fee should go down to the
+        // fee of a half verified sector
+        let expected_new_fee = (old_sector.daily_fee * 11).div_floor(20);
+        assert_eq!(expected_new_fee, new_sector.daily_fee);
+        let deadline = h.get_deadline(&rt, deadline_index);
+        assert_eq!(expected_new_fee, deadline.daily_fee);
+    }
+
+    {
+        // check the deadline and partition state is correct for the replaced sector's fee
+        let (deadline, partition) =
+            h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+
+        // deadline has the fee
+        assert_eq!(new_sector.daily_fee, deadline.daily_fee);
+
+        // partition expiration queue has the fee as a deduction
+        let quant = h.get_state(&rt).quant_spec_for_deadline(&rt.policy, deadline_index);
+        let quantized_expiration = quant.quantize_up(new_sector.expiration);
+        let p_queue = h.collect_partition_expirations(&rt, &partition);
+        let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+        assert_eq!(new_sector.daily_fee, entry.fee_deduction);
+    }
 
     // only claim0 stored in verifreg now
     let mut claims = HashMap::new();

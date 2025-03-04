@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::cmp;
-use std::ops::Shl;
 
 use cid::{Cid, Version};
 use fil_actors_runtime::network::*;
@@ -28,6 +27,7 @@ lazy_static! {
     /// Quality multiplier for verified deals in a sector
     pub static ref VERIFIED_DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(100);
 
+    static ref DAILY_FEE_PRECISION_SCALE: BigInt =  BigInt::from(1) << DAILY_FEE_PRECISION_BITS;
 }
 
 /// The maximum number of partitions that may be required to be loaded in a single invocation,
@@ -205,13 +205,13 @@ pub fn reward_for_disputed_window_post(
     BASE_REWARD_FOR_DISPUTED_WINDOW_POST.clone()
 }
 
+// Calculate the daily fee for a sector's quality-adjusted power based on the current circulating
+// supply.
 pub fn daily_proof_fee(
     policy: &Policy,
     circulating_supply: &TokenAmount,
     qa_power: &StoragePower,
 ) -> TokenAmount {
-    const PRECISION_BITS: u32 = 128; // Use 128 bits of precision for calculations
-    let scale = BigInt::from(1).shl(PRECISION_BITS);
     let num = BigInt::from(policy.daily_fee_circulating_supply_qap_multiplier_num);
     let denom = BigInt::from(policy.daily_fee_circulating_supply_qap_multiplier_scale_1)
         * BigInt::from(policy.daily_fee_circulating_supply_qap_multiplier_scale_2);
@@ -219,8 +219,24 @@ pub fn daily_proof_fee(
     // num/denom gives us the fraction of the circulating supply that should be paid as a fee per
     // byte of quality-adjusted power.
 
-    let power_multiplier = (num * &scale * qa_power) / denom;
-    TokenAmount::from_atto(power_multiplier * circulating_supply.atto() / scale)
+    let power_multiplier = (num * &*DAILY_FEE_PRECISION_SCALE * qa_power) / denom;
+    TokenAmount::from_atto(
+        (power_multiplier * circulating_supply.atto()).div_floor(&*DAILY_FEE_PRECISION_SCALE),
+    )
+}
+
+// Adjust the daily fee based on the change in quality-adjusted power.
+pub fn daily_proof_fee_adjust(
+    daily_fee: &TokenAmount,
+    old_qa_power: &StoragePower,
+    new_qa_power: &StoragePower,
+) -> TokenAmount {
+    if old_qa_power == new_qa_power {
+        return daily_fee.clone();
+    }
+    // adjust the daily_fee by the same proportion as the power changed
+    let change = (new_qa_power * &*DAILY_FEE_PRECISION_SCALE) / old_qa_power;
+    TokenAmount::from_atto((daily_fee.atto() * change).div_floor(&*DAILY_FEE_PRECISION_SCALE))
 }
 
 // Given a daily fee payable and an estimated BR for the sector(s) the fee is being paid for,
