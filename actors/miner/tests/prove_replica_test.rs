@@ -110,28 +110,29 @@ fn update_batch() {
     );
 
     let sectors_after = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect::<Vec<_>>();
-    for i in 0..sectors.len() {
-        // Sectors 1 and 3 are full of verified data, 0 and 2 are not
+    let mut total_fees = TokenAmount::zero();
+    for (i, (before, after)) in sectors.iter().zip(&sectors_after).enumerate() {
+        // Sectors with odd indices (1 and 3) are full of verified data, even indices (0 and 2) are not
         let has_verified = i % 2 == 1;
 
         verify_weights(
             &rt,
             &h,
-            snos[i],
+            before.sector_number,
             if has_verified { 0 } else { piece_size },
             if has_verified { piece_size } else { 0 },
         );
 
         // Check daily fees - if we added verified data, we expect the fees to be x10
-        let expected_fee = sectors[i].daily_fee.clone() * if has_verified { 10 } else { 1 };
+        let expected_fee = &before.daily_fee * if has_verified { 10 } else { 1 };
         assert_eq!(
-            expected_fee, sectors_after[i].daily_fee,
+            expected_fee, after.daily_fee,
             "daily fees differ for sector {}",
-            sectors[i].sector_number
+            before.sector_number
         );
-    }
 
-    let total_fees = sectors_after.iter().map(|s| s.daily_fee.clone()).sum::<TokenAmount>();
+        total_fees += &after.daily_fee;
+    }
 
     let (deadline_index, partition_index) = st.find_sector(rt.store(), snos[0]).unwrap();
     // check the deadline and partition state is correct for the replaced sector's fee
@@ -144,7 +145,7 @@ fn update_batch() {
     let quant = h.get_state(&rt).quant_spec_for_deadline(&rt.policy, deadline_index);
     let quantized_expiration = quant.quantize_up(sectors_after[0].expiration);
     let p_queue = h.collect_partition_expirations(&rt, &partition);
-    let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+    let entry = p_queue.get(&quantized_expiration).unwrap().clone();
     assert_eq!(total_fees, entry.fee_deduction);
 
     h.check_state(&rt);
@@ -173,7 +174,7 @@ fn update_fee() {
     let quant = h.get_state(&rt).quant_spec_for_deadline(&rt.policy, deadline_index);
     let quantized_expiration = quant.quantize_up(sectors[0].expiration);
     let p_queue = h.collect_partition_expirations(&rt, &partition);
-    let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+    let entry = p_queue.get(&quantized_expiration).unwrap().clone();
     assert!(entry.fee_deduction.is_zero());
 
     // Now set the circulating supply to a non-zero value. Snapping should change the daily fee.
@@ -268,14 +269,15 @@ fn update_fee() {
     );
 
     let sectors_after = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect::<Vec<_>>();
-    for i in 0..sectors.len() {
-        // Sectors 1 and 3 are full of verified data, 0 and 2 are not
+    let mut total_fees = TokenAmount::zero();
+    for (i, (before, after)) in sectors.iter().zip(&sectors_after).enumerate() {
+        // Sectors with odd indices (1 and 3) are full of verified data, even indices (0 and 2) are not
         let has_verified = i % 2 == 1;
 
         verify_weights(
             &rt,
             &h,
-            snos[i],
+            before.sector_number,
             if has_verified { 0 } else { piece_size },
             if has_verified { piece_size } else { 0 },
         );
@@ -283,13 +285,13 @@ fn update_fee() {
         // Check daily fees - for unverified sectors, the full verified fee is divided by 10
         let expected_fee = full_verified_fee.div_floor(if has_verified { 1 } else { 10 });
         assert_eq!(
-            expected_fee, sectors_after[i].daily_fee,
+            expected_fee, after.daily_fee,
             "daily fees differ for sector {}",
-            sectors[i].sector_number
+            before.sector_number
         );
-    }
 
-    let total_fees = sectors_after.iter().map(|s| s.daily_fee.clone()).sum::<TokenAmount>();
+        total_fees += &after.daily_fee;
+    }
 
     let (deadline_index, partition_index) = st.find_sector(rt.store(), snos[0]).unwrap();
     // check the deadline and partition state is correct for the replaced sector's fee
@@ -300,7 +302,7 @@ fn update_fee() {
 
     // partition expiration queue has the total fees for all sectors as a deduction
     let p_queue = h.collect_partition_expirations(&rt, &partition);
-    let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+    let entry = p_queue.get(&quantized_expiration).unwrap().clone();
     assert_eq!(total_fees, entry.fee_deduction);
 
     h.check_state(&rt);

@@ -214,9 +214,9 @@ pub fn daily_proof_fee(
     // circulating supply that should be paid as a fee per byte of quality-adjusted power.
     TokenAmount::from_atto(
         (&policy.daily_fee_circulating_supply_qap_multiplier_num
-            * qa_power
-            * circulating_supply.atto())
-        .div_floor(&policy.daily_fee_circulating_supply_qap_multiplier_denom),
+            * circulating_supply.atto()
+            * qa_power)
+            .div_floor(&policy.daily_fee_circulating_supply_qap_multiplier_denom),
     )
 }
 
