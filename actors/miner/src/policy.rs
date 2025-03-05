@@ -26,8 +26,6 @@ lazy_static! {
 
     /// Quality multiplier for verified deals in a sector
     pub static ref VERIFIED_DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(100);
-
-    static ref DAILY_FEE_PRECISION_SCALE: BigInt =  BigInt::from(1) << DAILY_FEE_PRECISION_BITS;
 }
 
 /// The maximum number of partitions that may be required to be loaded in a single invocation,
@@ -231,9 +229,7 @@ pub fn daily_proof_fee_adjust(
     if old_qa_power == new_qa_power {
         return daily_fee.clone();
     }
-    // adjust the daily_fee by the same proportion as the power changed
-    let change = (new_qa_power * &*DAILY_FEE_PRECISION_SCALE) / old_qa_power;
-    TokenAmount::from_atto((daily_fee.atto() * change).div_floor(&*DAILY_FEE_PRECISION_SCALE))
+    TokenAmount::from_atto((daily_fee.atto() * new_qa_power).div_floor(old_qa_power))
 }
 
 // Given a daily fee payable and an estimated BR for the sector(s) the fee is being paid for,
