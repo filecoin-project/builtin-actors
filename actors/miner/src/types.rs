@@ -446,17 +446,17 @@ pub struct SectorOnChainInfo {
     /// Expected one day projection of reward for sector computed at activation / update / extension time
     /// This field is no longer used and all new sectors will have this set to zero. It can be
     /// removed in a future state migration.
-    pub expected_day_reward: TokenAmount,
+    pub expected_day_reward: Option<TokenAmount>,
     /// Expected twenty day projection of reward for sector computed at activation / update / extension time
     /// This field is no longer used and all new sectors will have this set to zero. It can be
     /// removed in a future state migration.
-    pub expected_storage_pledge: TokenAmount,
+    pub expected_storage_pledge: Option<TokenAmount>,
     /// Epoch at which this sector's power was most recently updated
     pub power_base_epoch: ChainEpoch,
     /// Maximum day reward this sector has had in previous iterations (zero for brand new sectors)
     /// This field is no longer used and all new sectors will have this set to zero. It can be
     /// removed in a future state migration.
-    pub replaced_day_reward: TokenAmount,
+    pub replaced_day_reward: Option<TokenAmount>,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,
     /// Additional flags, see [`SectorOnChainInfoFlags`]

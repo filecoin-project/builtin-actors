@@ -2125,10 +2125,10 @@ impl Actor {
                 deal_weight: DealWeight::zero(),
                 verified_deal_weight: DealWeight::zero(),
                 initial_pledge: sector_initial_pledge.clone(),
-                expected_day_reward: TokenAmount::zero(),
-                expected_storage_pledge: TokenAmount::zero(),
+                expected_day_reward: None,
+                expected_storage_pledge: None,
                 power_base_epoch: curr_epoch,
-                replaced_day_reward: TokenAmount::zero(),
+                replaced_day_reward: None,
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
             })
@@ -3867,10 +3867,10 @@ fn extend_simple_qap_sector(
         new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space) * new_duration;
 
         // As of [FIP-0098](https://github.com/filecoin-project/FIPs/blob/de3c8e2cae9f003dfb52d664d640745d96ca19ac/FIPS/fip-0098.md),
-        // Those fields are not used anymore and should be set to zero.
-        new_sector.expected_day_reward = TokenAmount::zero();
-        new_sector.expected_storage_pledge = TokenAmount::zero();
-        new_sector.replaced_day_reward = TokenAmount::zero();
+        // Those fields are not used anymore and should be unset.
+        new_sector.expected_day_reward = None;
+        new_sector.expected_storage_pledge = None;
+        new_sector.replaced_day_reward = None;
     }
 
     Ok(new_sector)
@@ -3894,9 +3894,9 @@ fn extend_non_simple_qap_sector(
     new_sector.deal_weight = new_deal_weight;
     new_sector.verified_deal_weight = new_verified_deal_weight;
     new_sector.power_base_epoch = curr_epoch;
-    new_sector.expected_day_reward = TokenAmount::zero();
-    new_sector.replaced_day_reward = TokenAmount::zero();
-    new_sector.expected_storage_pledge = TokenAmount::zero();
+    new_sector.expected_day_reward = None;
+    new_sector.replaced_day_reward = None;
+    new_sector.expected_storage_pledge = None;
 
     Ok(new_sector)
 }
@@ -4246,9 +4246,9 @@ fn update_existing_sector_info(
     // compute initial pledge
     let qa_pow = qa_power_for_weight(sector_size, duration, &new_sector_info.verified_deal_weight);
 
-    new_sector_info.expected_day_reward = TokenAmount::zero();
-    new_sector_info.replaced_day_reward = TokenAmount::zero();
-    new_sector_info.expected_storage_pledge = TokenAmount::zero();
+    new_sector_info.expected_day_reward = None;
+    new_sector_info.replaced_day_reward = None;
+    new_sector_info.expected_storage_pledge = None;
 
     new_sector_info.initial_pledge = max(
         new_sector_info.initial_pledge,
@@ -5497,10 +5497,10 @@ fn activate_new_sector_infos(
                 deal_weight,
                 verified_deal_weight,
                 initial_pledge,
-                expected_day_reward: TokenAmount::zero(),
-                expected_storage_pledge: TokenAmount::zero(),
+                expected_day_reward: None,
+                expected_storage_pledge: None,
                 power_base_epoch: activation_epoch,
-                replaced_day_reward: TokenAmount::zero(),
+                replaced_day_reward: None,
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
             };

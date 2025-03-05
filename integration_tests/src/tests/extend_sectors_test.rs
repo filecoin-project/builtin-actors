@@ -757,7 +757,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     // replaced day reward updated.
     // As of [FIP-0098](https://github.com/filecoin-project/FIPs/blob/de3c8e2cae9f003dfb52d664d640745d96ca19ac/FIPS/fip-0098.md),
     // the replaced day reward is set to zero and unused.
-    assert_eq!(TokenAmount::zero(), sector_info_after_update.replaced_day_reward);
+    assert_eq!(None, sector_info_after_update.replaced_day_reward);
 
     // extend the updated sector
 
@@ -803,6 +803,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     assert_eq!(sector_info_after_extension.power_base_epoch, v.epoch());
     assert_eq!(sector_info_after_update.activation, sector_info_after_extension.activation);
-    assert_eq!(TokenAmount::zero(), sector_info_after_extension.replaced_day_reward);
-    assert_eq!(TokenAmount::zero(), sector_info_after_update.replaced_day_reward);
+    assert_eq!(None, sector_info_after_extension.replaced_day_reward);
+    assert_eq!(None, sector_info_after_update.replaced_day_reward);
 }
