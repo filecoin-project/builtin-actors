@@ -4,6 +4,7 @@ use fvm_shared::{
     bigint::{BigInt, Zero},
     econ::TokenAmount,
 };
+use num_traits::sign::Signed;
 use std::ops::Neg;
 
 #[test]
@@ -44,18 +45,37 @@ fn aggregate_power_pledge_penalty_for_continued_fault() {
     let reward_estimate = FilterEstimate::new(epoch_target_reward, BigInt::zero());
     let power_estimate = FilterEstimate::new(network_qa_power, power_rate_of_change);
 
-    let multiple_sectors = 10;
-    let qa_power = BigInt::from(1_u64 << 36) * 10;
+    // Note: these cases follow a discussion in
+    // [FIP-0098](https://github.com/filecoin-project/FIPs/pull/1128#discussion_r1978683778)
+    let cases = [
+        (10, BigInt::from(1u64 << 6)),
+        (10, BigInt::from(1u64 << 36)),
+        (10, BigInt::from(1u64 << 50)),
+        (1000, BigInt::from(1u64 << 6)),
+        (1000, BigInt::from(1u64 << 36)),
+        (1000, BigInt::from(1u64 << 50)),
+    ];
 
-    let aggregate_penalty = pledge_penalty_for_continued_fault(
-        &reward_estimate,
-        &power_estimate,
-        &(&qa_power * multiple_sectors),
-    );
-
-    let _individual_penalties = multiple_sectors
-        * pledge_penalty_for_continued_fault(&reward_estimate, &power_estimate, &qa_power);
-    assert!(aggregate_penalty > TokenAmount::zero());
-    // TODO: this is not equal. Should we allow for a small difference?
-    // assert_eq!(aggregate_penalty, individual_penalties);
+    for (sector_multiple, qa_power) in cases.into_iter() {
+        // allow 1 atto per sector difference
+        let allowed_atto_difference = BigInt::from(sector_multiple);
+        let aggregate_penalty = pledge_penalty_for_continued_fault(
+            &reward_estimate,
+            &power_estimate,
+            &(&qa_power * sector_multiple),
+        );
+        let individual_penalties: TokenAmount = sector_multiple
+            * pledge_penalty_for_continued_fault(&reward_estimate, &power_estimate, &qa_power);
+        assert!(aggregate_penalty > TokenAmount::zero());
+        println!(
+            "aggregate_penalty: {}, individual_penalties: {}, diff: {}",
+            aggregate_penalty.atto(),
+            individual_penalties.atto(),
+            (aggregate_penalty.atto() - individual_penalties.atto()).abs()
+        );
+        assert!(
+            (aggregate_penalty.atto() - individual_penalties.atto()).abs()
+                <= allowed_atto_difference
+        );
+    }
 }
