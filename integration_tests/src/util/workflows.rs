@@ -38,7 +38,6 @@ use fil_actor_market::{
     PublishStorageDealsReturn, SectorDeals, State as MarketState, MARKET_NOTIFY_DEAL_METHOD,
 };
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
     max_prove_commit_duration, ChangeBeneficiaryParams, CompactCommD, DataActivationNotification,
     DeadlineInfo, DeclareFaultsRecoveredParams, ExpirationExtension2,
     ExtendSectorExpiration2Params, Method as MinerMethod, PieceActivationManifest, PoStPartition,
@@ -270,12 +269,6 @@ pub fn precommit_sectors_v2_expect_code(
         if !sectors_with_deals.is_empty() {
             invocs.push(Expect::market_verify_deals(miner_id, sectors_with_deals.clone()));
         }
-        if param_sectors.len() > 1 {
-            invocs.push(Expect::burn(
-                miner_id,
-                Some(aggregate_pre_commit_network_fee(param_sectors.len(), &TokenAmount::zero())),
-            ));
-        }
         if expect_cron_enroll && msg_sector_idx_base == 0 {
             invocs.push(Expect::power_enrol_cron(miner_id));
         }
@@ -431,7 +424,6 @@ pub fn prove_commit_sectors(
             })
             .collect();
 
-        let expected_fee = aggregate_prove_commit_network_fee(to_prove.len(), &TokenAmount::zero());
         ExpectInvocation {
             from: worker_id,
             to: *maddr,
@@ -441,7 +433,6 @@ pub fn prove_commit_sectors(
                 Expect::reward_this_epoch(miner_id),
                 Expect::power_current_total(miner_id),
                 Expect::power_update_pledge(miner_id, None),
-                Expect::burn(miner_id, Some(expected_fee)),
             ]),
             events: Some(events),
             ..Default::default()

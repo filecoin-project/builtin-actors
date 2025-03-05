@@ -4,7 +4,6 @@ use fvm_shared::{bigint::BigInt, clock::ChainEpoch, error::ExitCode};
 
 use fil_actor_miner::{
     Actor, Method, SectorNIActivationInfo, SectorOnChainInfo, SectorOnChainInfoFlags,
-    NI_AGGREGATE_FEE_BASE_SECTOR_COUNT,
 };
 use num_traits::Zero;
 use util::*;
@@ -185,10 +184,9 @@ fn ni_prove_partialy_valid_sectors_not_required_activation() {
 
     rt.set_epoch(activation_epoch);
 
+    let num_fails: usize = 5;
     let num_success: usize = 2;
-    let sector_nums =
-        (0..((NI_AGGREGATE_FEE_BASE_SECTOR_COUNT + num_success) as u64)).collect::<Vec<_>>();
-    let num_fails = NI_AGGREGATE_FEE_BASE_SECTOR_COUNT;
+    let sector_nums = (0..((num_fails + num_success) as u64)).collect::<Vec<_>>();
     let mut params = h.make_prove_commit_ni_params(
         miner,
         &sector_nums,

@@ -47,8 +47,7 @@ use fil_actor_market::{
     VerifyDealsForActivationParams, VerifyDealsForActivationReturn, NO_ALLOCATION_ID,
 };
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
-    ext,
+    consensus_fault_penalty, ext,
     ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
     ext::power::UPDATE_CLAIMED_POWER_METHOD,
     ext::verifreg::{
@@ -77,9 +76,8 @@ use fil_actor_miner::{
     SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
     SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
     TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, WindowedPoSt,
-    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
-    NI_AGGREGATE_FEE_BASE_SECTOR_COUNT, NO_QUANTIZATION, SECTORS_AMT_BITWIDTH,
-    SECTOR_CONTENT_CHANGED,
+    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, NO_QUANTIZATION,
+    SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
 };
 use fil_actor_miner::{
     raw_power_for_sector, ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn,
@@ -158,8 +156,6 @@ pub struct ActorHarness {
     pub epoch_reward_smooth: FilterEstimate,
     pub epoch_qa_power_smooth: FilterEstimate,
 
-    pub base_fee: TokenAmount,
-
     pub options: HarnessOptions,
 }
 
@@ -208,8 +204,6 @@ impl ActorHarness {
 
             epoch_reward_smooth: FilterEstimate::new(rwd.atto().clone(), BigInt::from(0)),
             epoch_qa_power_smooth: FilterEstimate::new(pwr, BigInt::from(0)),
-
-            base_fee: TokenAmount::zero(),
 
             options,
         }
@@ -580,7 +574,6 @@ impl ActorHarness {
         rt: &MockRuntime,
         params: PreCommitSectorBatchParams,
         conf: &PreCommitBatchConfig,
-        base_fee: &TokenAmount,
     ) -> Result<Option<IpldBlock>, ActorError> {
         let v2: Vec<_> = params
             .sectors
@@ -597,7 +590,7 @@ impl ActorHarness {
             })
             .collect();
 
-        return self.pre_commit_sector_batch_v2(rt, &v2, conf.first_for_miner, base_fee);
+        return self.pre_commit_sector_batch_v2(rt, &v2, conf.first_for_miner);
     }
 
     pub fn pre_commit_sector_batch_v2(
@@ -605,7 +598,6 @@ impl ActorHarness {
         rt: &MockRuntime,
         sectors: &[SectorPreCommitInfo],
         first_for_miner: bool,
-        base_fee: &TokenAmount,
     ) -> Result<Option<IpldBlock>, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
@@ -642,13 +634,8 @@ impl ActorHarness {
 
         let state = self.get_state(rt);
 
-        let mut expected_network_fee = TokenAmount::zero();
-        if sectors.len() > 1 {
-            expected_network_fee = aggregate_pre_commit_network_fee(sectors.len(), base_fee);
-        }
-        // burn networkFee
-        if state.fee_debt.is_positive() || expected_network_fee.is_positive() {
-            expect_burn(rt, expected_network_fee + state.fee_debt);
+        if state.fee_debt.is_positive() {
+            expect_burn(rt, state.fee_debt);
         }
 
         if first_for_miner {
@@ -685,9 +672,8 @@ impl ActorHarness {
         rt: &MockRuntime,
         params: PreCommitSectorBatchParams,
         conf: &PreCommitBatchConfig,
-        base_fee: &TokenAmount,
     ) -> Vec<SectorPreCommitOnChainInfo> {
-        let result = self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee).unwrap();
+        let result = self.pre_commit_sector_batch(rt, params.clone(), conf).unwrap();
 
         expect_empty(result);
         rt.verify();
@@ -706,7 +692,6 @@ impl ActorHarness {
             rt,
             PreCommitSectorBatchParams { sectors: vec![params] },
             &PreCommitBatchConfig { sector_unsealed_cid: vec![conf.0], first_for_miner: first },
-            &self.base_fee,
         );
         result
     }
@@ -717,7 +702,7 @@ impl ActorHarness {
         sectors: Vec<SectorPreCommitInfo>,
         first: bool,
     ) -> Vec<SectorPreCommitOnChainInfo> {
-        let result = self.pre_commit_sector_batch_v2(rt, &sectors, first, &self.base_fee).unwrap();
+        let result = self.pre_commit_sector_batch_v2(rt, &sectors, first).unwrap();
 
         expect_empty(result);
         rt.verify();
@@ -736,7 +721,6 @@ impl ActorHarness {
             rt,
             PreCommitSectorBatchParams { sectors: vec![params] },
             &PreCommitBatchConfig { sector_unsealed_cid: vec![conf.0], first_for_miner: first },
-            &self.base_fee,
         );
         rt.verify();
         result[0].clone()
@@ -905,14 +889,6 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
 
-        if params.sectors.len() - fail_count > NI_AGGREGATE_FEE_BASE_SECTOR_COUNT {
-            let aggregate_fee = aggregate_prove_commit_network_fee(
-                params.sectors.len() - fail_count - NI_AGGREGATE_FEE_BASE_SECTOR_COUNT,
-                &rt.base_fee.borrow(),
-            );
-            expect_burn(rt, aggregate_fee);
-        }
-
         let qa_sector_power = raw_power_for_sector(self.sector_size);
         let sector_pledge = self.initial_pledge_for_power(rt, &qa_sector_power);
         let total_pledge = BigInt::from(expected_success_count) * sector_pledge;
@@ -980,7 +956,6 @@ impl ActorHarness {
         config: ProveCommitConfig,
         precommits: Vec<SectorPreCommitOnChainInfo>,
         params: ProveCommitAggregateParams,
-        base_fee: &TokenAmount,
     ) -> Result<(), ActorError> {
         let comm_ds: Vec<_> = precommits
             .iter()
@@ -1017,11 +992,6 @@ impl ActorHarness {
             let piece_info = pieces.get(&num).unwrap();
             expect_sector_event(rt, "sector-activated", &num, unsealed_cids[i], &piece_info);
         }
-
-        // burn network fee
-        let expected_fee = aggregate_prove_commit_network_fee(precommits.len(), base_fee);
-        assert!(expected_fee.is_positive());
-        expect_burn(rt, expected_fee);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let addrs = self.caller_addrs().clone();
@@ -1397,14 +1367,6 @@ impl ActorHarness {
         // Expect pledge & power updates.
         self.expect_query_network_info(rt);
         expect_update_pledge(rt, &expected_pledge);
-        // Pay aggregation fee for successful proofs.
-        if aggregate {
-            let proven_count =
-                sector_activations.len() - (cfg.validation_failure.len() + cfg.proof_failure.len());
-            let expected_fee = aggregate_prove_commit_network_fee(proven_count, &self.base_fee);
-            assert!(expected_fee.is_positive());
-            expect_burn(rt, expected_fee);
-        }
 
         // Expect SectorContentChanged notification to market.
         let sector_notification_resps: Vec<SectorReturn> = expected_sector_notifications
@@ -3235,7 +3197,7 @@ pub fn onboard_sectors(
     precommits: &[SectorPreCommitInfo],
 ) -> Vec<SectorOnChainInfo> {
     // Precommit sectors in batch.
-    h.pre_commit_sector_batch_v2(rt, &precommits, true, &TokenAmount::zero()).unwrap();
+    h.pre_commit_sector_batch_v2(rt, &precommits, true).unwrap();
     let precommits: Vec<SectorPreCommitOnChainInfo> =
         precommits.iter().map(|sector| h.get_precommit(rt, sector.sector_number)).collect();
 

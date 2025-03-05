@@ -850,8 +850,6 @@ impl Actor {
             emit::sector_activated(rt, pc.info.sector_number, unsealed_cid, &data.pieces)?;
         }
 
-        // The aggregate fee is paid on the sectors successfully proven.
-        pay_aggregate_seal_proof_fee(rt, valid_precommits.len())?;
         Ok(())
     }
 
@@ -1589,22 +1587,8 @@ impl Actor {
         let mut fee_to_burn = TokenAmount::zero();
         let mut needs_cron = false;
         rt.transaction(|state: &mut State, rt| {
-            // Aggregate fee applies only when batching.
-            if sectors.len() > 1 {
-                let aggregate_fee = aggregate_pre_commit_network_fee(sectors.len(), &rt.base_fee());
-                // AggregateFee applied to fee debt to consolidate burn with outstanding debts
-                state.apply_penalty(&aggregate_fee)
-                    .map_err(|e| {
-                        actor_error!(
-                        illegal_state,
-                        "failed to apply penalty: {}",
-                        e
-                    )
-                    })?;
-            }
-            // available balance already accounts for fee debt so it is correct to call
-            // this before RepayDebts. We would have to
-            // subtract fee debt explicitly if we called this after.
+            // Available balance already accounts for fee debt so it is correct to call this before
+            // repay_debts. We would have to subtract fee debt explicitly if we called this after.
             let available_balance = state
                 .get_available_balance(&rt.current_balance())
                 .map_err(|e| {
@@ -1924,13 +1908,6 @@ impl Actor {
             &info,
         )?;
 
-        if !params.aggregate_proof.is_empty() {
-            // Aggregate fee is paid on the sectors successfully proven,
-            // but without regard to data activation which may have subsequently failed
-            // and prevented sector activation.
-            pay_aggregate_seal_proof_fee(rt, proven_activation_inputs.len())?;
-        }
-
         // Notify data consumers.
         let mut notifications: Vec<ActivationNotifications> = vec![];
         for (activations, sector) in &successful_sector_activations {
@@ -2195,13 +2172,6 @@ impl Actor {
         })?;
 
         burn_funds(rt, fee_to_burn)?;
-
-        let len_for_aggregate_fee = if sectors_len <= NI_AGGREGATE_FEE_BASE_SECTOR_COUNT {
-            0
-        } else {
-            sectors_len - NI_AGGREGATE_FEE_BASE_SECTOR_COUNT
-        };
-        pay_aggregate_seal_proof_fee(rt, len_for_aggregate_fee)?;
 
         notify_pledge_changed(rt, &total_pledge)?;
 
@@ -5150,29 +5120,6 @@ fn verify_aggregate_seal(
         infos: seal_verify_inputs,
     })
     .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")
-}
-
-// Compute and burn the aggregate network fee.
-fn pay_aggregate_seal_proof_fee(
-    rt: &impl Runtime,
-    aggregate_size: usize,
-) -> Result<(), ActorError> {
-    // State is loaded afresh as earlier operations for sector/data activation can change it.
-    let state: State = rt.state()?;
-    let aggregate_fee = aggregate_prove_commit_network_fee(aggregate_size, &rt.base_fee());
-    let unlocked_balance = state
-        .get_unlocked_balance(&rt.current_balance())
-        .map_err(|_e| actor_error!(illegal_state, "failed to determine unlocked balance"))?;
-    if unlocked_balance < aggregate_fee {
-        return Err(actor_error!(
-                insufficient_funds,
-                "remaining unlocked funds after prove-commit {} are insufficient to pay aggregation fee of {}",
-                unlocked_balance,
-                aggregate_fee
-            ));
-    }
-    burn_funds(rt, aggregate_fee)?;
-    state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)
 }
 
 fn verify_deals(
