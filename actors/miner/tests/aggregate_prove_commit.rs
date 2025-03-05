@@ -10,7 +10,6 @@ use fvm_shared::{bigint::BigInt, clock::ChainEpoch, econ::TokenAmount};
 
 mod util;
 use fil_actors_runtime::test_utils::make_piece_cid;
-use num_traits::Zero;
 use util::*;
 
 // an expiration ~10 days greater than effective min expiration taking into account 30 days max
@@ -69,7 +68,6 @@ fn valid_precommits_then_aggregate_provecommit() {
             pcc,
             precommits,
             make_prove_commit_aggregate(&sector_nos_bf),
-            &TokenAmount::zero(),
         )
         .unwrap();
 

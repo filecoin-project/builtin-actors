@@ -1,13 +1,13 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::cmp::{self, max};
+use std::cmp;
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::reward::math::PRECISION;
 use fil_actors_runtime::reward::{smooth, FilterEstimate};
 use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
-use fvm_shared::bigint::{BigInt, Integer};
+use fvm_shared::bigint::Integer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
@@ -106,10 +106,6 @@ pub fn expected_reward_for_power(
 
 pub mod detail {
     use super::*;
-
-    lazy_static! {
-        pub static ref BATCH_BALANCER: TokenAmount = TokenAmount::from_nano(5);
-    }
 
     // BR but zero values are clamped at 1 attofil
     // Some uses of BR (PCD, IP) require a strictly positive value for BR derived values so
@@ -321,36 +317,4 @@ pub fn consensus_fault_penalty(this_epoch_reward: TokenAmount) -> TokenAmount {
 pub fn locked_reward_from_reward(reward: TokenAmount) -> (TokenAmount, &'static VestSpec) {
     let lock_amount = (reward * LOCKED_REWARD_FACTOR_NUM).div_floor(LOCKED_REWARD_FACTOR_DENOM);
     (lock_amount, &REWARD_VESTING_SPEC)
-}
-
-const BATCH_DISCOUNT_NUM: u32 = 1;
-const BATCH_DISCOUNT_DENOM: u32 = 20;
-
-lazy_static! {
-    static ref ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE: BigInt = BigInt::from(49299973);
-    static ref ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE: BigInt = BigInt::from(16433324);
-}
-
-pub fn aggregate_prove_commit_network_fee(
-    aggregate_size: usize,
-    base_fee: &TokenAmount,
-) -> TokenAmount {
-    aggregate_network_fee(aggregate_size, &ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE, base_fee)
-}
-
-pub fn aggregate_pre_commit_network_fee(
-    aggregate_size: usize,
-    base_fee: &TokenAmount,
-) -> TokenAmount {
-    aggregate_network_fee(aggregate_size, &ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE, base_fee)
-}
-
-pub fn aggregate_network_fee(
-    aggregate_size: usize,
-    gas_usage: &BigInt,
-    base_fee: &TokenAmount,
-) -> TokenAmount {
-    let effective_gas_fee = max(base_fee, &*BATCH_BALANCER);
-    let network_fee_num = effective_gas_fee * gas_usage * aggregate_size * BATCH_DISCOUNT_NUM;
-    network_fee_num.div_floor(BATCH_DISCOUNT_DENOM)
 }

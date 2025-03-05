@@ -786,7 +786,6 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
             Expect::reward_this_epoch(miner_id),
             Expect::power_current_total(miner_id),
             Expect::power_update_pledge(miner_id, None),
-            Expect::burn(miner_id, None),
         ]),
         events: Some(events),
         ..Default::default()
