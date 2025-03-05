@@ -137,8 +137,13 @@ fn test_fee_capped_by_reward(capped_upfront: bool, num_sectors: usize) {
         EPOCHS_IN_DAY,
     );
 
-    assert!(daily_fee < day_reward); // fee should be less than daily reward
-    assert!(daily_fee > day_reward.div_floor(2)); // but greater than 50% of daily reward
+    assert!(daily_fee < day_reward, "daily_fee: {} < day_reward: {}", daily_fee, day_reward); // fee should be less than daily reward
+    assert!(
+        daily_fee > day_reward.div_floor(2),
+        "daily_fee: {} <, day_reward/2: {}",
+        daily_fee,
+        day_reward.div_floor(2)
+    ); // but greater than 50% of daily reward
 
     // define various helper functions to keep this terse
 

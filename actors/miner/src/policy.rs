@@ -212,16 +212,13 @@ pub fn daily_proof_fee(
     circulating_supply: &TokenAmount,
     qa_power: &StoragePower,
 ) -> TokenAmount {
-    let num = BigInt::from(policy.daily_fee_circulating_supply_qap_multiplier_num);
-    let denom = BigInt::from(policy.daily_fee_circulating_supply_qap_multiplier_scale_1)
-        * BigInt::from(policy.daily_fee_circulating_supply_qap_multiplier_scale_2);
-
-    // num/denom gives us the fraction of the circulating supply that should be paid as a fee per
-    // byte of quality-adjusted power.
-
-    let power_multiplier = (num * &*DAILY_FEE_PRECISION_SCALE * qa_power) / denom;
+    // daily_fee_circulating_supply_qap_multiplier{num/denom} gives us the fraction of the
+    // circulating supply that should be paid as a fee per byte of quality-adjusted power.
     TokenAmount::from_atto(
-        (power_multiplier * circulating_supply.atto()).div_floor(&*DAILY_FEE_PRECISION_SCALE),
+        (&policy.daily_fee_circulating_supply_qap_multiplier_num
+            * qa_power
+            * circulating_supply.atto())
+        .div_floor(&policy.daily_fee_circulating_supply_qap_multiplier_denom),
     )
 }
 
