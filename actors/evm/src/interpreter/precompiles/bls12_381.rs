@@ -5,7 +5,7 @@ use fil_actors_runtime::runtime::Runtime;
 use crate::interpreter::System;
 
 use blst::{
-    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine, blst_fp, blst_p1_affine_on_curve, blst_fp_from_bendian, blst_bendian_from_fp
+    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine, blst_fp, blst_p1_affine_on_curve, blst_fp_from_bendian, blst_bendian_from_fp, blst_scalar, blst_scalar_from_bendian, p1_affines
 };
 
 const G1_INPUT_LENGTH: usize = 128;
@@ -42,6 +42,32 @@ fn fp_from_bendian(bytes: &[u8; 48]) -> Result<blst_fp, PrecompileError> {
         blst_fp_from_bendian(&mut fp, bytes.as_ptr());
     }
     Ok(fp)
+}
+
+
+/// Extracts a scalar value from a 32-byte input.
+/// 
+/// According to EIP-2537, the scalar input:
+/// - Must be exactly 32 bytes
+/// - Is interpreted as a big-endian integer
+/// - Is not required to be less than the curve order
+/// 
+/// Returns a Result containing either the scalar value or a PrecompileError
+pub(super) fn extract_scalar_input(input: &[u8]) -> Result<blst_scalar, PrecompileError> {
+    // Check input length
+    if input.len() != SCALAR_LENGTH {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+
+    let mut scalar = blst_scalar::default();
+    
+    // Convert from big-endian bytes to scalar
+    // SAFETY: Input length is checked above and scalar is properly initialized
+    unsafe {
+        blst_scalar_from_bendian(&mut scalar, input.as_ptr());
+    }
+
+    Ok(scalar)
 }
 
 /// Returns a `blst_p1_affine` from the provided byte slices, which represent the x and y
@@ -139,8 +165,14 @@ fn encode_g1_point(input: *const blst_p1_affine) -> Vec<u8> {
     out.into()
 }
 
-/// BLS12_G1MSM precompile
-/// Implements G1 multi-scalar multiplication according to EIP-2537
+/// Implements EIP-2537 G1MSM precompile.
+/// G1 multi-scalar-multiplication call expects `160*k` bytes as an input that is interpreted
+/// as byte concatenation of `k` slices each of them being a byte concatenation
+/// of encoding of G1 point (`128` bytes) and encoding of a scalar value (`32`
+/// bytes).
+/// Output is an encoding of multi-scalar-multiplication operation result - single G1
+/// point (`128` bytes).
+/// See also: <https://eips.ethereum.org/EIPS/eip-2537#abi-for-g1-multiexponentiation>
 pub(super) fn bls12_g1msm<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
@@ -153,7 +185,8 @@ pub(super) fn bls12_g1msm<RT: Runtime>(
 
     let k = input_len / G1_MSM_INPUT_LENGTH;
     let mut g1_points: Vec<blst_p1> = Vec::with_capacity(k);
-    
+    let mut scalars: Vec<u8> = Vec::with_capacity(k * SCALAR_LENGTH);
+
     // Process each (point, scalar) pair
     for i in 0..k {
         let slice = &input[i * G1_MSM_INPUT_LENGTH..i * G1_MSM_INPUT_LENGTH + G1_INPUT_ITEM_LENGTH];
@@ -163,25 +196,40 @@ pub(super) fn bls12_g1msm<RT: Runtime>(
             continue;
         }
 
-        // Extract and validate the G1 point
-        let p0_aff = extract_g1_point(slice)?;
+        // NB: Scalar multiplications, MSMs and pairings MUST perform a subgroup check.
+        //
+        // So we set the subgroup_check flag to `true`
+        let p0_aff = &extract_g1_point(slice)?;
 
         let mut p0 = blst_p1::default();
-        // Convert to projective coordinates
-        unsafe { blst_p1_from_affine(&mut p0, &p0_aff) };
+        // SAFETY: `p0` and `p0_aff` are blst values.
+        unsafe { blst_p1_from_affine(&mut p0, p0_aff) };
         g1_points.push(p0);
+
+        scalars.extend_from_slice(
+            &extract_scalar_input(
+                &input[i * G1_MSM_INPUT_LENGTH + G1_INPUT_ITEM_LENGTH
+                    ..i * G1_MSM_INPUT_LENGTH + G1_INPUT_ITEM_LENGTH + SCALAR_LENGTH],
+            )?
+            .b,
+        );
     }
 
     // Return infinity point if all points are infinity
     if g1_points.is_empty() {
         return Ok(vec![0u8; G1_OUTPUT_LENGTH]);
     }
+    let points = p1_affines::from(&g1_points);
+    let multiexp = points.mult(&scalars, NBITS);
 
+    let mut multiexp_aff = blst_p1_affine::default();
+    // SAFETY: `multiexp_aff` and `multiexp` are blst values.
+    unsafe { blst_p1_to_affine(&mut multiexp_aff, &multiexp) };
     // Convert result back to affine coordinates
-    let mut result_aff = blst_p1_affine::default();
-    unsafe { blst_p1_to_affine(&mut result_aff, &g1_points[0]) };
+    // let mut result_aff = blst_p1_affine::default();
+    // unsafe { blst_p1_to_affine(&mut result_aff, &g1_points[0]) };
 
-    Ok(encode_g1_point(&result_aff))
+    Ok(encode_g1_point(&multiexp_aff))
 }
 
 
