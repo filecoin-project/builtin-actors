@@ -1,12 +1,16 @@
 use fil_actor_miner::{
-    pledge_penalty_for_termination, TERMINATION_LIFETIME_CAP,
+    pledge_penalty_for_termination, Method, TERMINATION_LIFETIME_CAP,
     TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM,
     TERM_FEE_MIN_PLEDGE_MULTIPLE_DENOM, TERM_FEE_MIN_PLEDGE_MULTIPLE_NUM,
     TERM_FEE_PLEDGE_MULTIPLE_DENOM, TERM_FEE_PLEDGE_MULTIPLE_NUM,
 };
+use fil_actor_miner::{Actor, TerminationFeePercentageResult};
+use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
+
+mod util;
 
 // Not considering fault fees, for a sector where its age >= `TERMINATION_LIFETIME_CAP`, termination fee should equal `TERM_FEE_PLEDGE_MULTIPLE_PERCENTAGE * initial pledge`
 #[test]
@@ -72,4 +76,24 @@ fn when_termination_fee_less_than_minimum_returns_minimum() {
             .div_floor(TERM_FEE_MIN_PLEDGE_MULTIPLE_DENOM),
         fee
     );
+}
+
+#[test]
+fn test_termination_fee_percentage() {
+    let rt = MockRuntime::default();
+    let h = util::ActorHarness::new(0);
+    h.construct_and_verify(&rt);
+
+    rt.expect_validate_caller_any();
+    let ret: TerminationFeePercentageResult = rt
+        .call::<Actor>(Method::TerminationFeePercentageExported as u64, None)
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+
+    assert_eq!(TERM_FEE_PLEDGE_MULTIPLE_NUM, ret.num);
+    assert_eq!(TERM_FEE_PLEDGE_MULTIPLE_DENOM, ret.denom);
+    h.check_state(&rt);
 }
