@@ -688,12 +688,13 @@ pub struct PieceReturn {
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct MaxTerminationFeeParams {
-    pub initial_pledge: TokenAmount,
     #[serde(with = "bigint_ser")]
     pub power: StoragePower,
+    pub initial_pledge: TokenAmount,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
 pub struct MaxTerminationFeeReturn {
     pub max_fee: TokenAmount,
 }

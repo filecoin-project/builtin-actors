@@ -1,7 +1,10 @@
 use fil_actor_miner::{
-    pledge_penalty_for_continued_fault, pledge_penalty_for_termination, qa_power_for_sector, Actor,
-    CronEventPayload, DeferredCronEventParams, Method, SectorOnChainInfo, State,
-    TerminateSectorsParams, TerminationDeclaration, CRON_EVENT_PROCESS_EARLY_TERMINATIONS,
+    pledge_penalty_for_continued_fault, pledge_penalty_for_termination, power_for_sector,
+    qa_power_for_sector, Actor, CronEventPayload, DeferredCronEventParams, MaxTerminationFeeParams,
+    MaxTerminationFeeReturn, Method, SectorOnChainInfo, State, TerminateSectorsParams,
+    TerminationDeclaration, CRON_EVENT_PROCESS_EARLY_TERMINATIONS,
+    TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM,
+    TERM_FEE_PLEDGE_MULTIPLE_DENOM, TERM_FEE_PLEDGE_MULTIPLE_NUM,
 };
 use fil_actors_runtime::{
     runtime::Runtime,
@@ -9,7 +12,9 @@ use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
-use fvm_shared::{econ::TokenAmount, error::ExitCode, METHOD_SEND};
+use fvm_shared::{
+    econ::TokenAmount, error::ExitCode, sector::StoragePower, MethodNum, METHOD_SEND,
+};
 use std::collections::HashMap;
 
 mod util;
@@ -321,4 +326,65 @@ fn calc_expected_fee_for_termination(
         &sector_power,
     );
     pledge_penalty_for_termination(initial_pledge, sector_age, &fault_fee)
+}
+
+#[test]
+fn max_termination_fee_returns_correct_results() {
+    let (mut h, rt) = setup();
+
+    let deal_ids = vec![10];
+    let sector_info =
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![deal_ids], true);
+    assert_eq!(sector_info.len(), 1);
+
+    h.advance_and_submit_posts(&rt, &sector_info);
+
+    let sector = sector_info.into_iter().next().unwrap();
+    let initial_pledge = sector.initial_pledge.clone();
+    let qa_sector_power = power_for_sector(sector.seal_proof.sector_size().unwrap(), &sector).qa;
+
+    let cases = [
+        // low power resulting in low fault fee => termination fee should be pledge multiple *
+        // initial pledge
+        (
+            StoragePower::zero(),
+            (initial_pledge.clone() * TERM_FEE_PLEDGE_MULTIPLE_NUM)
+                .div_floor(TERM_FEE_PLEDGE_MULTIPLE_DENOM),
+        ),
+        // high power resulting in high fault fee => termination fee should be fault fee * max
+        // fault fee multiple
+        (
+            qa_sector_power.clone(),
+            (pledge_penalty_for_continued_fault(
+                &h.epoch_reward_smooth,
+                &h.epoch_qa_power_smooth,
+                &qa_sector_power,
+            ) * TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM)
+                .div_floor(TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM),
+        ),
+    ];
+
+    for (quality_adj_power, expected) in cases {
+        let params = MaxTerminationFeeParams {
+            initial_pledge: initial_pledge.clone(),
+            power: quality_adj_power,
+        };
+
+        h.expect_query_network_info(&rt);
+        rt.expect_validate_caller_any();
+        let res = rt
+            .call::<Actor>(
+                Method::MaxTerminationFeeExported as MethodNum,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            )
+            .unwrap()
+            .unwrap()
+            .deserialize::<MaxTerminationFeeReturn>()
+            .unwrap();
+        rt.verify();
+
+        assert_eq!(expected, res.max_fee);
+    }
+
+    h.check_state(&rt);
 }

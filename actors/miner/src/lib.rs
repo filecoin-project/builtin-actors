@@ -5999,8 +5999,8 @@ impl ActorCode for Actor {
         ProveReplicaUpdates3 => prove_replica_updates3,
         ProveCommitSectorsNI => prove_commit_sectors_ni,
         MaxTerminationFeeExported => max_termination_fee,
-        TerminationFeePercentageExported => termination_fee_percentage,
         InitialPledgeExported => initial_pledge,
+        TerminationFeePercentageExported => termination_fee_percentage,
     }
 }
 
