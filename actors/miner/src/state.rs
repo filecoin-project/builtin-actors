@@ -15,7 +15,7 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize};
+use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, StoragePower};
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use itertools::Itertools;
 use multihash_codetable::Code;
@@ -1088,7 +1088,7 @@ impl State {
                 detected_faulty_power: PowerPair::zero(),
                 total_faulty_power: PowerPair::zero(),
                 daily_fee: TokenAmount::zero(),
-                live_power: PowerPair::zero(),
+                live_qa_power: StoragePower::zero(),
             });
         }
 
@@ -1111,7 +1111,7 @@ impl State {
                 detected_faulty_power: PowerPair::zero(),
                 total_faulty_power: deadline.faulty_power,
                 daily_fee: TokenAmount::zero(),
-                live_power: PowerPair::zero(),
+                live_qa_power: StoragePower::zero(),
             });
         }
 
@@ -1156,7 +1156,7 @@ impl State {
             detected_faulty_power,
             total_faulty_power,
             daily_fee: deadline.daily_fee,
-            live_power: deadline.live_power,
+            live_qa_power: deadline.live_qa_power,
         })
     }
 
@@ -1197,8 +1197,8 @@ pub struct AdvanceDeadlineResult {
     pub total_faulty_power: PowerPair,
     /// Fee payable for the sectors in the deadline being advanced
     pub daily_fee: TokenAmount,
-    /// Total power for the deadline, including active, faulty, and unproven
-    pub live_power: PowerPair,
+    /// Total QAP for the deadline, including active, faulty, and unproven
+    pub live_qa_power: StoragePower,
 }
 
 /// Static information about miner

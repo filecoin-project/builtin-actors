@@ -255,8 +255,8 @@ mod serialization {
     fn deadline() {
         let test_cases = vec![(
             Deadline { ..Default::default() },
-            // [baeaaaaa,baeaaaaa,[],[],0,0,[[],[]],baeaaaaa,baeaaaaa,baeaaaaa,baeaaaaa,[[],[]],[]]
-            &hex!("8dd82a450001000000d82a45000100000040400000824040d82a450001000000d82a450001000000d82a450001000000d82a45000100000082404040")[..],
+            // [baeaaaaa,baeaaaaa,[],[],0,0,[[],[]],baeaaaaa,baeaaaaa,baeaaaaa,baeaaaaa,[],[]]
+            &hex!("8dd82a450001000000d82a45000100000040400000824040d82a450001000000d82a450001000000d82a450001000000d82a4500010000004040")[..],
         ),
         (
             Deadline{
@@ -275,11 +275,11 @@ mod serialization {
                 sectors_snapshot: Cid::from_str("bagboea4seaaqg").unwrap(),
                 partitions_snapshot: Cid::from_str("bagboea4seaaqi").unwrap(),
                 optimistic_post_submissions_snapshot: Cid::from_str("bagboea4seaaqk").unwrap(),
-                live_power: PowerPair::new(BigInt::from(6), BigInt::from(7)),
+                live_qa_power: BigInt::from(6),
                 daily_fee: TokenAmount::from_whole(8),
             },
-            // [bagboea4seaaqa,bagboea4seaaqc,[DA],[GA],2,3,[[AAQ],[AAU]],bagboea4seaaqe,bagboea4seaaqg,bagboea4seaaqi,bagboea4seaaqk,[[AAY],[AAc]],[AG8FtZ07IAAA]]
-            &hex!("8dd82a49000182e20392200100d82a49000182e20392200101410c4118020382420004420005d82a49000182e20392200102d82a49000182e20392200103d82a49000182e20392200104d82a49000182e203922001058242000642000749006f05b59d3b200000"),
+            // [bagboea4seaaqa,bagboea4seaaqc,[DA],[GA],2,3,[[AAQ],[AAU]],bagboea4seaaqe,bagboea4seaaqg,bagboea4seaaqi,bagboea4seaaqk,[AAY],[AG8FtZ07IAAA]]
+            &hex!("8dd82a49000182e20392200100d82a49000182e20392200101410c4118020382420004420005d82a49000182e20392200102d82a49000182e20392200103d82a49000182e20392200104d82a49000182e2039220010542000649006f05b59d3b200000"),            
         ),
         ];
 

@@ -2427,7 +2427,7 @@ impl Actor {
                     }
                 }
 
-                deadline.live_power += &deadline_power_delta;
+                deadline.live_qa_power += &deadline_power_delta.qa;
                 deadline.daily_fee += &deadline_daily_fee_delta;
 
                 power_delta += &deadline_power_delta;
@@ -4235,7 +4235,7 @@ where
                 new_sectors.push(new_sector_info);
             } // End loop over declarations in one deadline.
 
-            deadline.live_power += &deadline_power_delta;
+            deadline.live_qa_power += &deadline_power_delta.qa;
             deadline.daily_fee += &deadline_daily_fee_delta;
 
             power_delta += &deadline_power_delta;
@@ -4574,7 +4574,7 @@ fn handle_proving_deadline(
             let day_reward = expected_reward_for_power(
                 reward_smoothed,
                 quality_adj_power_smoothed,
-                &result.live_power.qa,
+                &result.live_qa_power,
                 fil_actors_runtime::EPOCHS_IN_DAY,
             );
             let daily_fee = daily_proof_fee_payable(policy, &result.daily_fee, &day_reward);

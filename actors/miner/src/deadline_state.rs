@@ -10,9 +10,11 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
+use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{PoStProof, SectorSize};
 use multihash_codetable::Code;
 use num_traits::{Signed, Zero};
@@ -164,9 +166,10 @@ pub struct Deadline {
     // disputed window PoSts are removed from the snapshot.
     pub optimistic_post_submissions_snapshot: Cid,
 
-    /// Memoized sum of all non-terminated power in partitions, including active, faulty, and
+    /// Memoized sum of all non-terminated QAP in partitions, including active, faulty, and
     /// unproven. Used to cap the daily fee as a proportion of expected block reward.
-    pub live_power: PowerPair,
+    #[serde(with = "bigint_ser")]
+    pub live_qa_power: StoragePower,
 
     /// Memoized sum of daily fee payable to the network for the active sectors
     /// in this deadline.
@@ -241,7 +244,7 @@ impl Deadline {
             partitions_snapshot: empty_partitions_array,
             sectors_snapshot: empty_sectors_array,
             optimistic_post_submissions_snapshot: empty_post_submissions_array,
-            live_power: PowerPair::zero(),
+            live_qa_power: StoragePower::zero(),
             daily_fee: TokenAmount::zero(),
         })
     }
@@ -406,8 +409,8 @@ impl Deadline {
         self.live_sectors -= on_time_count + early_count;
 
         self.faulty_power -= &all_faulty_power;
-        self.live_power -= &all_faulty_power;
-        self.live_power -= &all_active_power;
+        self.live_qa_power -= &all_faulty_power.qa;
+        self.live_qa_power -= &all_active_power.qa;
 
         self.daily_fee -= &all_fee_deductions;
 
@@ -512,7 +515,7 @@ impl Deadline {
             .map_err(|e| e.downcast_wrap("failed to add expirations for new deadlines"))?;
         self.expirations_epochs = deadline_expirations.amt.flush()?;
         self.daily_fee += &total_daily_fee;
-        self.live_power += &total_power;
+        self.live_qa_power += &total_power.qa;
 
         Ok((total_power, total_daily_fee))
     }
@@ -650,9 +653,9 @@ impl Deadline {
             } // note: we should _always_ have early terminations, unless the early termination bitfield is empty.
 
             self.faulty_power -= &removed.faulty_power;
-            self.live_power -= &removed.active_power;
-            self.live_power -= &removed.faulty_power;
-            self.live_power -= &removed_unproven;
+            self.live_qa_power -= &removed.active_power.qa;
+            self.live_qa_power -= &removed.faulty_power.qa;
+            self.live_qa_power -= &removed_unproven.qa;
             self.daily_fee -= &removed.fee_deduction;
 
             // Aggregate power lost from active sectors
@@ -771,7 +774,7 @@ impl Deadline {
         self.live_sectors -= removed_live_sectors;
         self.total_sectors -= removed_live_sectors + removed_dead_sectors;
         // we can leave faulty power alone because there can be no faults here.
-        self.live_power -= &removed_power;
+        self.live_qa_power -= &removed_power.qa;
         // NOTE: We don't update the fees here, we fix them up in the compact_partition logic (the
         // only caller). This will be fixed in a future commit.
 
