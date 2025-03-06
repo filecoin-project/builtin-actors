@@ -30,8 +30,28 @@ const PERIOD_OFFSET: ChainEpoch = 100;
 #[test]
 fn fee_paid_at_deadline() {
     let (mut h, rt) = setup();
+    // set circulating supply to a value that will yield a predictable fee using the original
+    // 7.4e-15 * CS for 32GiB QAP metric: 5155580000000 for a CS of 696.7M FIL
+    let reference_cs = TokenAmount::from_whole(696_700_000);
+    let reference_fee = TokenAmount::from_atto(5_155_580_000_000_u64);
+    rt.set_circulating_supply(reference_cs);
+
     let one_sector = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let daily_fee = daily_fee_for_sectors(&one_sector);
+
+    {
+        // sanity check that we get within a reasonable distance from the reference amount using our
+        // per-byte multiplier (we expect to round under the reference amount)
+        let fee_ref_diff = reference_fee.atto() - daily_fee.atto();
+        // should be within 1/5 of a nanoFIL of the reference amount
+        let fee_ref_diff_tolerance = TokenAmount::from_nano(1).div_floor(5);
+        assert!(
+            fee_ref_diff.is_positive() && fee_ref_diff.abs() <= *fee_ref_diff_tolerance.atto(),
+            "daily_fee: {} !≈ reference amount ({})",
+            daily_fee.atto(),
+            reference_fee.atto()
+        );
+    }
 
     // plenty of funds available to pay fees
     let miner_balance_before = rt.get_balance();
