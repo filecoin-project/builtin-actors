@@ -185,7 +185,9 @@ pub fn pledge_penalty_for_termination_lower_bound(
     )
 }
 
-// TODO: write better description, mention FIP-0098
+/// Calculates termination fee for a given sector. Normally, it's calculated as a fixed percentage
+/// of the initial pledge. However, there are some special cases outlined in the
+/// [FIP-0098](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0098.md).
 pub fn pledge_penalty_for_termination(
     initial_pledge: &TokenAmount,
     sector_age: ChainEpoch,
