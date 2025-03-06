@@ -685,3 +685,27 @@ pub struct PieceReturn {
     // The caller is free to ignore this, but may chose to abort and roll back.
     pub accepted: bool,
 }
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct MaxTerminationFeeParams {
+    pub initial_pledge: TokenAmount,
+    #[serde(with = "bigint_ser")]
+    pub power: StoragePower,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct MaxTerminationFeeReturn {
+    pub max_fee: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct InitialPledgeReturn {
+    pub initial_pledge: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct TerminationFeePercentageResult {
+    pub num: u32,
+    pub denom: u32,
+}
