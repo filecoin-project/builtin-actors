@@ -19,8 +19,9 @@ use std::ops::Neg;
 
 use fil_actor_power::{
     consensus_miner_min_power, Actor as PowerActor, Actor, CreateMinerParams, CreateMinerReturn,
-    EnrollCronEventParams, Method, MinerRawPowerParams, MinerRawPowerReturn, NetworkRawPowerReturn,
-    State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
+    EnrollCronEventParams, Method, MinerPowerParams, MinerPowerReturn, MinerRawPowerParams,
+    MinerRawPowerReturn, NetworkRawPowerReturn, State, UpdateClaimedPowerParams,
+    CONSENSUS_MINER_MIN_MINERS,
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -607,6 +608,22 @@ fn get_network_and_miner_power() {
         .unwrap();
 
     assert_eq!(power_unit, &miner_power.raw_byte_power);
+
+    h.update_claimed_power(&rt, MINER1, &StoragePower::zero(), power_unit);
+    rt.expect_validate_caller_any();
+    let miner_power: MinerPowerReturn = rt
+        .call::<Actor>(
+            Method::MinerPowerExported as u64,
+            IpldBlock::serialize_cbor(&MinerPowerParams { miner: MINER1.id().unwrap() }).unwrap(),
+        )
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
+
+    let power_unit_x2 = &(power_unit * 2);
+    assert_eq!(power_unit, &miner_power.raw_byte_power);
+    assert_eq!(power_unit_x2, &miner_power.quality_adj_power);
 
     h.check_state(&rt);
 }
