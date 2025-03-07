@@ -4,11 +4,13 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof, SectorNumber};
+use fvm_shared::sector::{
+    RegisteredAggregateProof, RegisteredSealProof, SectorNumber, StoragePower,
+};
 use num_traits::Zero;
 
 use export_macro::vm_test;
-use fil_actor_miner::{Method as MinerMethod, SectorOnChainInfoFlags};
+use fil_actor_miner::{daily_proof_fee, Method as MinerMethod, SectorOnChainInfoFlags};
 use fil_actor_miner::{
     ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn, SectorNIActivationInfo,
 };
@@ -29,14 +31,14 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
     // Expectations depend on the correct unsealed CID for empty sector.
     override_compute_unsealed_sector_cid(v);
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
-    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep;
+    let seal_proof_type = RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep;
     let (owner, worker, _, _) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let worker_id = worker.id().unwrap();
     let (maddr, _) = create_miner(
         v,
         &owner,
         &worker,
-        seal_proof.registered_window_post_proof().unwrap(),
+        seal_proof_type.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(8_000),
     );
     let miner_id = maddr.id().unwrap();
@@ -72,7 +74,7 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
     let aggregate_proof = RawBytes::new(vec![1, 2, 3, 4]);
     let params = ProveCommitSectorsNIParams {
         sectors: sectors_info.clone(),
-        seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep,
+        seal_proof_type,
         aggregate_proof,
         aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
         proving_deadline,
@@ -125,6 +127,11 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
         .iter()
         .map(|sector_number| sector_info(v, &maddr, *sector_number))
         .collect::<Vec<_>>();
+    let expected_daily_fee = daily_proof_fee(
+        &policy,
+        &v.circulating_supply(),
+        &StoragePower::from(seal_proof_type.sector_size().unwrap() as u64),
+    );
 
     for (on_chain_sector, input_sector) in sectors.iter().zip(sectors_info) {
         assert_eq!(input_sector.sector_number, on_chain_sector.sector_number);
@@ -137,6 +144,7 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
         assert_eq!(BigInt::zero(), on_chain_sector.verified_deal_weight);
         assert_eq!(activation_epoch, on_chain_sector.power_base_epoch);
         assert!(on_chain_sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER));
+        assert_eq!(expected_daily_fee, on_chain_sector.daily_fee);
     }
 
     let deadline = deadline_state(v, &maddr, proving_deadline);

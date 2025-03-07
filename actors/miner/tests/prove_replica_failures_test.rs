@@ -19,7 +19,7 @@ use util::*;
 
 mod util;
 
-// Tests for ProveReplicaUpdates2 where the request fails completely
+// Tests for ProveReplicaUpdates3 where the request fails completely
 
 const CLIENT_ID: ActorID = 1000;
 const DEFAULT_SECTOR_EXPIRATION_DAYS: ChainEpoch = 220;
@@ -35,7 +35,7 @@ fn reject_unauthorized_caller() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "caller",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -53,7 +53,7 @@ fn reject_no_proof_types() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "exactly one of sector proofs or aggregate proof must be non-empty",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -71,7 +71,7 @@ fn reject_both_proof_types() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "exactly one of sector proofs or aggregate proof must be non-empty",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -88,7 +88,7 @@ fn reject_mismatched_proof_len() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "mismatched lengths",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -107,7 +107,7 @@ fn reject_aggregate_proof() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "aggregate update proofs not yet supported",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -119,7 +119,7 @@ fn reject_all_proofs_fail() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "no valid updates",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -132,7 +132,7 @@ fn reject_invalid_update() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "invalid update 1 while requiring activation success",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, false, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -144,7 +144,7 @@ fn reject_required_proof_failure() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "requiring activation success",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, false, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -156,7 +156,7 @@ fn reject_required_claim_failure() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "error claiming allocations",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, true, false, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -173,7 +173,7 @@ fn reject_required_notification_abort() {
     expect_abort_contains_message(
         ERR_NOTIFICATION_RECEIVER_ABORTED,
         "receiver aborted",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, true, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, true, cfg),
     );
     h.check_state(&rt);
 }
@@ -187,7 +187,7 @@ fn reject_required_notification_rejected() {
     expect_abort_contains_message(
         ERR_NOTIFICATION_REJECTED,
         "sector change rejected",
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, true, cfg),
+        h.prove_replica_updates3_batch(&rt, &sector_updates, false, true, cfg),
     );
     h.check_state(&rt);
 }

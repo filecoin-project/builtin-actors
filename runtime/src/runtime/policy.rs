@@ -1,3 +1,4 @@
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
 use num_traits::FromPrimitive;
@@ -139,11 +140,10 @@ pub struct Policy {
 
     /// Numerator of the fraction of circulating supply that will be used to calculate
     /// the daily fee for new sectors.
-    pub daily_fee_circulating_supply_multiplier_num: i64,
+    pub daily_fee_circulating_supply_qap_multiplier_num: BigInt,
     /// Denominator of the fraction of circulating supply that will be used to calculate
     /// the daily fee for new sectors.
-    pub daily_fee_circulating_supply_multiplier_denom: i64,
-
+    pub daily_fee_circulating_supply_qap_multiplier_denom: BigInt,
     /// Denominator for the fraction of estimated daily block reward for the sector(s)
     /// attracting a fee, to be used as a cap for the fees when payable.
     /// No numerator is provided as the fee is calculated as a fraction of the estimated
@@ -232,10 +232,14 @@ impl Default for Policy {
                 policy_constants::CONSENSUS_FAULT_INELIGIBILITY_DURATION,
             new_sectors_per_period_max: policy_constants::NEW_SECTORS_PER_PERIOD_MAX,
             chain_finality: policy_constants::CHAIN_FINALITY,
-            daily_fee_circulating_supply_multiplier_num:
-                policy_constants::DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_NUM,
-            daily_fee_circulating_supply_multiplier_denom:
-                policy_constants::DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_DENOM,
+            daily_fee_circulating_supply_qap_multiplier_num: BigInt::from_u64(
+                policy_constants::DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_NUM,
+            )
+            .unwrap(),
+            daily_fee_circulating_supply_qap_multiplier_denom: BigInt::from_u128(
+                policy_constants::DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_DENOM,
+            )
+            .unwrap(),
             daily_fee_block_reward_cap_denom: policy_constants::DAILY_FEE_BLOCK_REWARD_CAP_DENOM,
 
             valid_post_proof_type: ProofSet::default_post_proofs(),
@@ -378,9 +382,13 @@ pub mod policy_constants {
     /// This is a conservative value that is chosen via simulations of all known attacks.
     pub const CHAIN_FINALITY: ChainEpoch = 900;
 
-    /// A multiplier of k=7.4e-15, represented as 74/10^16
-    pub const DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_NUM: i64 = 74;
-    pub const DAILY_FEE_CIRCULATING_SUPPLY_MULTIPLIER_DENOM: i64 = 10_000_000_000_000_000; // 10^16
+    // Fraction of circulating supply per byte of quality adjusted power that will
+    // be used to calculate the daily fee for new sectors.
+    // The target multiplier is 2.1536e-25, which is ≈ 7.4e-15 / 32 GiB as specified
+    // by FIP-0100. We implement this as 21536e10^29.
+    pub const DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_NUM: u64 = 21536;
+    pub const DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_DENOM: u128 =
+        100_000_000_000_000_000_000_000_000_000;
 
     // 50% of estimated daily block rewards
     pub const DAILY_FEE_BLOCK_REWARD_CAP_DENOM: i64 = 2;

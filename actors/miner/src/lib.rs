@@ -2094,7 +2094,8 @@ impl Actor {
         );
 
         let circulating_supply = rt.total_fil_circ_supply();
-        let daily_fee = daily_proof_fee(policy, &circulating_supply);
+        // Same fee for all sectors: same size, all raw
+        let daily_fee = daily_proof_fee(policy, &circulating_supply, &qa_sector_power);
 
         let sectors_to_add = valid_sectors
             .iter()
@@ -2369,6 +2370,7 @@ impl Actor {
                                     &circulating_supply,
                                     decl.new_expiration,
                                     sector,
+                                    info.sector_size,
                                 )
                             }
                             ExtensionKind::ExtendCommittment => match &inner.claims {
@@ -2382,6 +2384,7 @@ impl Actor {
                                     &circulating_supply,
                                     decl.new_expiration,
                                     sector,
+                                    info.sector_size,
                                     claim_space_by_sector,
                                 ),
                             },
@@ -2490,6 +2493,8 @@ impl Actor {
             Ok((power_delta, pledge_delta))
         })?;
 
+        // power_delta should be zero in most cases, but can be negative if claims are dropped in
+        // the process of extending sector expirations.
         request_update_power(rt, power_delta)?;
 
         // Note: the pledge delta is expected to be zero, since pledge is not re-calculated for the extension.
@@ -3754,21 +3759,43 @@ fn extend_sector_committment(
     curr_epoch: ChainEpoch,
     circulating_supply: &TokenAmount,
     new_expiration: ChainEpoch,
-    sector: &SectorOnChainInfo,
+    sector_info: &SectorOnChainInfo,
+    sector_size: SectorSize,
     claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
-    validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
+    validate_extended_expiration(policy, curr_epoch, new_expiration, sector_info)?;
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
-    let mut sector = if sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER) {
-        extend_simple_qap_sector(policy, new_expiration, curr_epoch, sector, claim_space_by_sector)
+    let mut new_sector_info = if sector_info.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER)
+    {
+        extend_simple_qap_sector(
+            policy,
+            new_expiration,
+            curr_epoch,
+            sector_info,
+            claim_space_by_sector,
+        )
     } else {
-        extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+        extend_non_simple_qap_sector(new_expiration, curr_epoch, sector_info)
     }?;
-    if sector.daily_fee.is_zero() {
-        sector.daily_fee = daily_proof_fee(policy, circulating_supply)
+
+    let new_qa_power = qa_power_for_weight(
+        sector_size,
+        new_sector_info.expiration - new_sector_info.power_base_epoch,
+        &new_sector_info.verified_deal_weight,
+    );
+    if new_sector_info.daily_fee.is_zero() {
+        // pre-FIP-0100 sector
+        new_sector_info.daily_fee = daily_proof_fee(policy, circulating_supply, &new_qa_power);
+    } else {
+        let old_qa_power = qa_power_for_sector(sector_size, sector_info);
+        if old_qa_power != new_qa_power {
+            // adjust the daily_fee by the same proportion as the power changed
+            new_sector_info.daily_fee =
+                daily_proof_fee_adjust(&sector_info.daily_fee, &old_qa_power, &new_qa_power)
+        }
     }
-    Ok(sector)
+    Ok(new_sector_info)
 }
 
 fn extend_sector_committment_legacy(
@@ -3777,6 +3804,7 @@ fn extend_sector_committment_legacy(
     circulating_supply: &TokenAmount,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
+    sector_size: SectorSize,
 ) -> Result<SectorOnChainInfo, ActorError> {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
@@ -3792,7 +3820,12 @@ fn extend_sector_committment_legacy(
     }
     let mut sector = extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)?;
     if sector.daily_fee.is_zero() {
-        sector.daily_fee = daily_proof_fee(policy, circulating_supply)
+        let power = qa_power_for_weight(
+            sector_size,
+            sector.expiration - sector.power_base_epoch,
+            &sector.verified_deal_weight,
+        );
+        sector.daily_fee = daily_proof_fee(policy, circulating_supply, &power);
     }
     Ok(sector)
 }
@@ -4288,7 +4321,8 @@ fn update_existing_sector_info(
     new_sector_info.verified_deal_weight = activated_data.verified_space.clone() * duration;
 
     // compute initial pledge
-    let qa_pow = qa_power_for_weight(sector_size, duration, &new_sector_info.verified_deal_weight);
+    let new_qa_power =
+        qa_power_for_weight(sector_size, duration, &new_sector_info.verified_deal_weight);
 
     new_sector_info.expected_day_reward = None;
     new_sector_info.replaced_day_reward = None;
@@ -4297,7 +4331,7 @@ fn update_existing_sector_info(
     new_sector_info.initial_pledge = max(
         new_sector_info.initial_pledge,
         initial_pledge_for_power(
-            &qa_pow,
+            &new_qa_power,
             &pledge_inputs.network_baseline,
             &pledge_inputs.epoch_reward,
             &pledge_inputs.network_qap,
@@ -4307,7 +4341,17 @@ fn update_existing_sector_info(
         ),
     );
     if new_sector_info.daily_fee.is_zero() {
-        new_sector_info.daily_fee = daily_proof_fee(policy, &pledge_inputs.circulating_supply);
+        // pre-FIP-0100 sector
+        new_sector_info.daily_fee =
+            daily_proof_fee(policy, &pledge_inputs.circulating_supply, &new_qa_power);
+    } else {
+        let old_qa_power =
+            qa_power_for_weight(sector_size, duration, &sector_info.verified_deal_weight);
+        if old_qa_power != new_qa_power {
+            // adjust the daily_fee by the same proportion as the power changed
+            new_sector_info.daily_fee =
+                daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, &new_qa_power)
+        }
     }
     new_sector_info
 }
@@ -5491,8 +5535,6 @@ fn activate_new_sector_infos(
         let policy = rt.policy();
         let store = rt.store();
 
-        let daily_fee = daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply);
-
         let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(data_activations.len());
         let mut deposit_to_unlock = TokenAmount::zero();
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
@@ -5516,6 +5558,7 @@ fn activate_new_sector_infos(
             let verified_deal_weight = &deal_spaces.verified_space * duration;
 
             let power = qa_power_for_weight(info.sector_size, duration, &verified_deal_weight);
+            let daily_fee = daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply, &power);
 
             let initial_pledge = initial_pledge_for_power(
                 &power,
@@ -5546,7 +5589,7 @@ fn activate_new_sector_infos(
                 replaced_day_reward: None,
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
-                daily_fee: daily_fee.clone(),
+                daily_fee,
             };
 
             new_sector_numbers.push(new_sector_info.sector_number);

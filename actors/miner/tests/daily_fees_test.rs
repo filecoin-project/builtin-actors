@@ -1,19 +1,27 @@
+use std::collections::HashMap;
 use std::ops::Neg;
 
+use num_traits::Signed;
+
+use fil_actor_market::{ActivatedDeal, NO_ALLOCATION_ID};
 use fil_actor_miner::{
-    daily_fee_for_sectors, expected_reward_for_power, pledge_penalty_for_continued_fault,
-    pledge_penalty_for_termination, power_for_sectors, qa_power_for_sector, Actor,
-    ApplyRewardParams, DeadlineInfo, Method, PoStPartition, SectorOnChainInfo,
+    daily_fee_for_sectors, daily_proof_fee, expected_reward_for_power,
+    pledge_penalty_for_continued_fault, pledge_penalty_for_termination, power_for_sectors,
+    qa_power_for_sector, Actor, ApplyRewardParams, DeadlineInfo, Method, PoStPartition,
+    SectorOnChainInfo,
 };
 use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::test_utils::{MockRuntime, REWARD_ACTOR_CODE_ID};
-
 use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, REWARD_ACTOR_ADDR};
+
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::METHOD_SEND;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
+
+use test_case::test_case;
 
 mod util;
 use crate::util::*;
@@ -23,8 +31,28 @@ const PERIOD_OFFSET: ChainEpoch = 100;
 #[test]
 fn fee_paid_at_deadline() {
     let (mut h, rt) = setup();
+    // set circulating supply to a value that will yield a predictable fee using the original
+    // 7.4e-15 * CS for 32GiB QAP metric: 5155580000000 for a CS of 696.7M FIL
+    let reference_cs = TokenAmount::from_whole(696_700_000);
+    let reference_fee = TokenAmount::from_atto(5_155_580_000_000_u64);
+    rt.set_circulating_supply(reference_cs);
+
     let one_sector = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let daily_fee = daily_fee_for_sectors(&one_sector);
+
+    {
+        // sanity check that we get within a reasonable distance from the reference amount using our
+        // per-byte multiplier (we expect to round under the reference amount)
+        let fee_ref_diff = reference_fee.atto() - daily_fee.atto();
+        // should be within 1/5 of a nanoFIL of the reference amount
+        let fee_ref_diff_tolerance = TokenAmount::from_nano(1).div_floor(5);
+        assert!(
+            fee_ref_diff.is_positive() && fee_ref_diff.abs() <= *fee_ref_diff_tolerance.atto(),
+            "daily_fee: {} !≈ reference amount ({})",
+            daily_fee.atto(),
+            reference_fee.atto()
+        );
+    }
 
     // plenty of funds available to pay fees
     let miner_balance_before = rt.get_balance();
@@ -78,31 +106,15 @@ fn fee_paid_at_deadline() {
     let miner_balance_after = rt.get_balance();
     assert_eq!(st.initial_pledge, miner_balance_after); // back to locked balance
     st = h.get_state(&rt);
-    assert_eq!(st.fee_debt, *extra); // paid back debt, but added half back
+    assert_eq!(st.fee_debt, daily_fee - extra); // paid back debt, but added half back
 
     h.check_state(&rt);
 }
 
-#[test]
-fn fee_capped_by_block_reward_first() {
-    test_fee_capped_by_reward(true, 1);
-}
-
-#[test]
-fn fee_capped_by_block_reward_many_sectors_first() {
-    test_fee_capped_by_reward(true, 55);
-}
-
-#[test]
-fn fee_capped_by_block_reward_later() {
-    test_fee_capped_by_reward(false, 1);
-}
-
-#[test]
-fn fee_capped_by_block_reward_many_sectors_later() {
-    test_fee_capped_by_reward(false, 55);
-}
-
+#[test_case(true, 1; "capped upfront, single sector")]
+#[test_case(true, 55; "capped upfront, many sectors")]
+#[test_case(false, 1; "capped later, single sector")]
+#[test_case(false, 55; "capped later, many sectors")]
 fn test_fee_capped_by_reward(capped_upfront: bool, num_sectors: usize) {
     // This tests that the miner's daily fee is capped by the reward for the day. We work through
     // various sector lifecycle scenarios to ensure that the fee is correctly calculated and paid.
@@ -146,8 +158,13 @@ fn test_fee_capped_by_reward(capped_upfront: bool, num_sectors: usize) {
         EPOCHS_IN_DAY,
     );
 
-    assert!(daily_fee < day_reward); // fee should be less than daily reward
-    assert!(daily_fee > day_reward.div_floor(2)); // but greater than 50% of daily reward
+    assert!(daily_fee < day_reward, "daily_fee: {} < day_reward: {}", daily_fee, day_reward); // fee should be less than daily reward
+    assert!(
+        daily_fee > day_reward.div_floor(2),
+        "daily_fee: {} <, day_reward/2: {}",
+        daily_fee,
+        day_reward.div_floor(2)
+    ); // but greater than 50% of daily reward
 
     // define various helper functions to keep this terse
 
@@ -294,6 +311,83 @@ fn test_fee_capped_by_reward(capped_upfront: bool, num_sectors: usize) {
     verify_balance_change(&daily_fee, &|| {
         h.advance_and_submit_posts(&rt, &sectors);
     });
+}
+
+#[test]
+fn fees_proportional_to_qap() {
+    let (mut h, rt) = setup();
+
+    let sectors = h.commit_and_prove_sectors_with_cfgs(
+        &rt,
+        5,
+        DEFAULT_SECTOR_EXPIRATION,
+        vec![vec![], vec![1], vec![2], vec![3], vec![4]],
+        true,
+        ProveCommitConfig {
+            verify_deals_exit: Default::default(),
+            claim_allocs_exit: Default::default(),
+            activated_deals: HashMap::from_iter(vec![
+                (
+                    1,
+                    vec![ActivatedDeal {
+                        client: 0,
+                        allocation_id: NO_ALLOCATION_ID,
+                        data: Default::default(),
+                        size: PaddedPieceSize(h.sector_size as u64),
+                    }],
+                ),
+                (
+                    2,
+                    vec![ActivatedDeal {
+                        client: 0,
+                        allocation_id: NO_ALLOCATION_ID,
+                        data: Default::default(),
+                        size: PaddedPieceSize(h.sector_size as u64 / 2),
+                    }],
+                ),
+                (
+                    3,
+                    vec![ActivatedDeal {
+                        client: 0,
+                        allocation_id: 1,
+                        data: Default::default(),
+                        size: PaddedPieceSize(h.sector_size as u64),
+                    }],
+                ),
+                (
+                    4,
+                    vec![ActivatedDeal {
+                        client: 0,
+                        allocation_id: 2,
+                        data: Default::default(),
+                        size: PaddedPieceSize(h.sector_size as u64 / 2),
+                    }],
+                ),
+            ]),
+        },
+    );
+
+    // for a reference we'll calculate the fee for a fully verified sector and
+    // divide as required
+    let full_verified_fee = daily_proof_fee(
+        &rt.policy,
+        &rt.circulating_supply.borrow(),
+        &BigInt::from(h.sector_size as u64 * 10),
+    );
+
+    // no deals
+    assert_eq!(full_verified_fee.div_floor(10), sectors[0].daily_fee);
+    // deal, unverified
+    assert_eq!(full_verified_fee.div_floor(10), sectors[1].daily_fee);
+    // deal, half, unverified
+    assert_eq!(full_verified_fee.div_floor(10), sectors[2].daily_fee);
+    // deal, verified
+    assert_eq!(full_verified_fee.clone(), sectors[3].daily_fee);
+    // deal, half, verified
+    assert!(
+        ((full_verified_fee.clone() * 11).div_floor(20) - &sectors[4].daily_fee).atto().abs()
+            <= BigInt::from(1)
+    );
 }
 
 fn setup() -> (ActorHarness, MockRuntime) {

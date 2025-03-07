@@ -1427,11 +1427,11 @@ impl ActorHarness {
         Ok((result, sector_allocation_claims, expected_sector_notifications))
     }
 
-    // Invokes prove_replica_updates2 with a batch of sector updates, and
+    // Invokes prove_replica_updates3 with a batch of sector updates, and
     // sets and checks mock expectations for the expected interactions.
     // Returns the result of the invocation along with the expected sector claims and notifications
     // (which match the actual, if mock verification succeeded).
-    pub fn prove_replica_updates2_batch(
+    pub fn prove_replica_updates3_batch(
         &self,
         rt: &MockRuntime,
         sector_updates: &[SectorUpdateManifest],
@@ -1654,6 +1654,7 @@ impl ActorHarness {
         dlinfo
     }
 
+    // TODO: remove this, duplicate of get_deadline_info
     pub fn deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
         let state = self.get_state(rt);
         state.recorded_deadline_info(&rt.policy, *rt.epoch.borrow())
