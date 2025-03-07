@@ -26,7 +26,6 @@ lazy_static! {
 
     /// Quality multiplier for verified deals in a sector
     pub static ref VERIFIED_DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(100);
-
 }
 
 /// The maximum number of partitions that may be required to be loaded in a single invocation,
@@ -204,13 +203,33 @@ pub fn reward_for_disputed_window_post(
     BASE_REWARD_FOR_DISPUTED_WINDOW_POST.clone()
 }
 
-// The daily fee payable per sector.
-pub fn daily_proof_fee(policy: &Policy, circulating_supply: &TokenAmount) -> TokenAmount {
-    let num = BigInt::from(policy.daily_fee_circulating_supply_multiplier_num);
-    let denom = BigInt::from(policy.daily_fee_circulating_supply_multiplier_denom);
+// Calculate the daily fee for a sector's quality-adjusted power based on the current circulating
+// supply.
+pub fn daily_proof_fee(
+    policy: &Policy,
+    circulating_supply: &TokenAmount,
+    qa_power: &StoragePower,
+) -> TokenAmount {
+    // daily_fee_circulating_supply_qap_multiplier{num/denom} gives us the fraction of the
+    // circulating supply that should be paid as a fee per byte of quality-adjusted power.
+    TokenAmount::from_atto(
+        (&policy.daily_fee_circulating_supply_qap_multiplier_num
+            * circulating_supply.atto()
+            * qa_power)
+            .div_floor(&policy.daily_fee_circulating_supply_qap_multiplier_denom),
+    )
+}
 
-    let fee = (num * circulating_supply.atto()).div_floor(&denom);
-    TokenAmount::from_atto(fee)
+// Adjust the daily fee based on the change in quality-adjusted power.
+pub fn daily_proof_fee_adjust(
+    daily_fee: &TokenAmount,
+    old_qa_power: &StoragePower,
+    new_qa_power: &StoragePower,
+) -> TokenAmount {
+    if old_qa_power == new_qa_power {
+        return daily_fee.clone();
+    }
+    TokenAmount::from_atto((daily_fee.atto() * new_qa_power).div_floor(old_qa_power))
 }
 
 // Given a daily fee payable and an estimated BR for the sector(s) the fee is being paid for,
