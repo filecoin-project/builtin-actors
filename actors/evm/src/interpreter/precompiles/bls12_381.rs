@@ -372,4 +372,85 @@ mod tests {
         fp_to_bytes(&mut output, &fp);
         assert_eq!(test_bytes, output);
     }
+    #[test]
+    fn test_g1_msm_success() {
+        let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+        let mut system = System::create(&rt).unwrap();
+
+        // Test case: bls_g1mul_(g1+g1=2*g1)
+        let input = hex::decode(
+            "0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb\
+             0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1\
+             0000000000000000000000000000000000000000000000000000000000000002"
+        ).unwrap();
+
+        let expected = hex::decode(
+            "000000000000000000000000000000000572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e\
+             00000000000000000000000000000000166a9d8cabc673a322fda673779d8e3822ba3ecb8670e461f73bb9021d5fd76a4c56d9d4cd16bd1bba86881979749d28"
+        ).unwrap();
+
+        let res = bls12_g1msm(&mut system, &input, PrecompileContext::default()).unwrap();
+        assert_eq!(res, expected, 
+            "G1 MSM result did not match expected output.\nGot: {}\nExpected: {}", 
+            hex::encode(&res), hex::encode(&expected)
+        );
+    }
+
+    #[test]
+    fn test_g1_msm_failures() {
+        let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+        let mut system = System::create(&rt).unwrap();
+        let ctx = PrecompileContext::default();
+
+        // Test: Empty input
+        let res = bls12_g1msm(&mut system, &[], ctx);
+        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
+
+        // Test: Short input
+        let short_input = hex::decode(
+            "00000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb\
+             0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1\
+             0000000000000000000000000000000000000000000000000000000000000002"
+        ).unwrap();
+        let res = bls12_g1msm(&mut system, &short_input, ctx);
+        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
+
+        // // Test: Invalid field element
+        // let invalid_field = hex::decode(
+        //     "0000000000000000000000000000000031f2e5916b17be2e71b10b4292f558e727dfd7d48af9cbc5087f0ce00dcca27c8b01e83eaace1aefb539f00adb22716\
+        //      0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1\
+        //      0000000000000000000000000000000000000000000000000000000000000002"
+        // ).unwrap();
+        // let res = bls12_g1msm(&mut system, &invalid_field, ctx);
+        // assert!(matches!(res, Err(PrecompileError::InvalidInput)));
+
+        // Test: Point not on curve
+        let not_on_curve = hex::decode(
+            "0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb\
+             00000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21\
+             0000000000000000000000000000000000000000000000000000000000000002"
+        ).unwrap();
+        let res = bls12_g1msm(&mut system, &not_on_curve, ctx);
+        assert!(matches!(res, Err(PrecompileError::InvalidInput)));
+
+        // Test: Invalid top bytes
+        let invalid_top = hex::decode(
+            "1000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb\
+             0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1\
+             0000000000000000000000000000000000000000000000000000000000000002"
+        ).unwrap();
+        let res = bls12_g1msm(&mut system, &invalid_top, ctx);
+        assert!(matches!(res, Err(PrecompileError::InvalidInput)));
+
+        // // Test: Point not in correct subgroup
+        // let not_in_subgroup = hex::decode(
+        //     "000000000000000000000000000000000123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0\
+        //      00000000000000000000000000000000193fb7cedb32b2c3adc06ec11a96bc0d661869316f5e4a577a9f7c179593987beb4fb2ee424dbb2f5dd891e228b46c4a\
+        //      0000000000000000000000000000000000000000000000000000000000000002"
+        // ).unwrap();
+        // let res = bls12_g1msm(&mut system, &not_in_subgroup, ctx);
+        // assert!(matches!(res, Err(PrecompileError::InvalidInput)));
+    }
 }
