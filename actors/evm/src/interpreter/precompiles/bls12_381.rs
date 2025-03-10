@@ -225,10 +225,6 @@ pub(super) fn bls12_g1msm<RT: Runtime>(
     let mut multiexp_aff = blst_p1_affine::default();
     // SAFETY: `multiexp_aff` and `multiexp` are blst values.
     unsafe { blst_p1_to_affine(&mut multiexp_aff, &multiexp) };
-    // Convert result back to affine coordinates
-    // let mut result_aff = blst_p1_affine::default();
-    // unsafe { blst_p1_to_affine(&mut result_aff, &g1_points[0]) };
-
     Ok(encode_g1_point(&multiexp_aff))
 }
 
@@ -417,13 +413,24 @@ mod tests {
         let res = bls12_g1msm(&mut system, &short_input, ctx);
         assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
 
+        // TODO: Fix this test
+        // Error caused by the fact that the input is not padded to 64 bytes and the padding is not removed
+        // https://ethereum-magicians.org/t/eip-2537-bls12-precompile-discussion-thread/4187
+        // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2537.md
+
         // // Test: Invalid field element
         // let invalid_field = hex::decode(
-        //     "0000000000000000000000000000000031f2e5916b17be2e71b10b4292f558e727dfd7d48af9cbc5087f0ce00dcca27c8b01e83eaace1aefb539f00adb22716\
-        //      0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1\
-        //      0000000000000000000000000000000000000000000000000000000000000002"
+        //     "0000000000000000000000000000000031f2e5916b17be2e71b10b4292f558e727dfd7d48af9cbc5087f0ce00dcca27c8b01e83eaace1aefb539f00adb2271660000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e10000000000000000000000000000000000000000000000000000000000000002"
         // ).unwrap();
         // let res = bls12_g1msm(&mut system, &invalid_field, ctx);
+        // match res {
+        //     Ok(_) => panic!("Expected error for invalid field element, got success"),
+        //     Err(e) => {
+        //         println!("Got error: {:?}", e);
+        //         assert!(matches!(e, PrecompileError::InvalidInput), 
+        //             "Expected InvalidInput error, got {:?}", e);
+        //     }
+        // }
         // assert!(matches!(res, Err(PrecompileError::InvalidInput)));
 
         // Test: Point not on curve
