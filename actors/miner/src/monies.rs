@@ -4,8 +4,8 @@
 use std::cmp::{self, max};
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::reward::math::PRECISION;
-use fil_actors_runtime::reward::{smooth, FilterEstimate};
+use fil_actors_runtime::power::expected_reward_for_power;
+use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
@@ -40,18 +40,6 @@ pub const TERMINATION_REWARD_FACTOR_DENOM: u32 = 2;
 const LOCKED_REWARD_FACTOR_NUM: u32 = 3;
 const LOCKED_REWARD_FACTOR_DENOM: u32 = 4;
 
-/// Used to compute termination fees in the base case by multiplying against initial pledge.
-pub const TERM_FEE_PLEDGE_MULTIPLE_NUM: u32 = 85;
-pub const TERM_FEE_PLEDGE_MULTIPLE_DENOM: u32 = 1000;
-
-/// Used to ensure the termination fee for young sectors is not arbitrarily low.
-pub const TERM_FEE_MIN_PLEDGE_MULTIPLE_NUM: u32 = 2;
-pub const TERM_FEE_MIN_PLEDGE_MULTIPLE_DENOM: u32 = 100;
-
-/// Used to compute termination fees when the termination fee of a sector is less than the fault fee for the same sector.
-pub const TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM: u32 = 105;
-pub const TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM: u32 = 100;
-
 lazy_static! {
     /// Cap on initial pledge requirement for sectors during the Space Race network.
     /// The target is 1 FIL (10**18 attoFIL) per 32GiB.
@@ -81,42 +69,14 @@ pub const CONTINUED_FAULT_PROJECTION_PERIOD: ChainEpoch =
 
 const TERMINATION_PENALTY_LOWER_BOUND_PROJECTIONS_PERIOD: ChainEpoch = (EPOCHS_IN_DAY * 35) / 10;
 
-// Maximum number of lifetime days penalized when a sector is terminated.
-pub const TERMINATION_LIFETIME_CAP: ChainEpoch = 140;
-
 // Multiplier of whole per-winner rewards for a consensus fault penalty.
 const CONSENSUS_FAULT_FACTOR: u64 = 5;
 
 const GAMMA_FIXED_POINT_FACTOR: u64 = 1000; // 3 decimal places
 
-/// The projected block reward a sector would earn over some period.
-/// Also known as "BR(t)".
-/// BR(t) = ProjectedRewardFraction(t) * SectorQualityAdjustedPower
-/// ProjectedRewardFraction(t) is the sum of estimated reward over estimated total power
-/// over all epochs in the projection period [t t+projectionDuration]
-pub fn expected_reward_for_power(
-    reward_estimate: &FilterEstimate,
-    network_qa_power_estimate: &FilterEstimate,
-    qa_sector_power: &StoragePower,
-    projection_duration: ChainEpoch,
-) -> TokenAmount {
-    let network_qa_power_smoothed = network_qa_power_estimate.estimate();
-
-    if network_qa_power_smoothed.is_zero() {
-        return TokenAmount::from_atto(reward_estimate.estimate());
-    }
-
-    let expected_reward_for_proving_period = smooth::extrapolated_cum_sum_of_ratio(
-        projection_duration,
-        0,
-        reward_estimate,
-        network_qa_power_estimate,
-    );
-    let br128 = qa_sector_power * expected_reward_for_proving_period; // Q.0 * Q.128 => Q.128
-    TokenAmount::from_atto(std::cmp::max(br128 >> PRECISION, Default::default()))
-}
-
 pub mod detail {
+    use fil_actors_runtime::power::expected_reward_for_power;
+
     use super::*;
 
     lazy_static! {
@@ -154,22 +114,6 @@ pub mod detail {
 // 	return br
 // }
 
-/// The penalty for a sector continuing faulty for another proving period.
-/// It is a projection of the expected reward earned by the sector.
-/// Also known as "FF(t)"
-pub fn pledge_penalty_for_continued_fault(
-    reward_estimate: &FilterEstimate,
-    network_qa_power_estimate: &FilterEstimate,
-    qa_sector_power: &StoragePower,
-) -> TokenAmount {
-    expected_reward_for_power(
-        reward_estimate,
-        network_qa_power_estimate,
-        qa_sector_power,
-        CONTINUED_FAULT_PROJECTION_PERIOD,
-    )
-}
-
 /// This is the SP(t) penalty for a newly faulty sector that has not been declared.
 /// SP(t) = UndeclaredFaultFactor * BR(t)
 pub fn pledge_penalty_for_termination_lower_bound(
@@ -183,34 +127,6 @@ pub fn pledge_penalty_for_termination_lower_bound(
         qa_sector_power,
         TERMINATION_PENALTY_LOWER_BOUND_PROJECTIONS_PERIOD,
     )
-}
-
-/// Calculates termination fee for a given sector. Normally, it's calculated as a fixed percentage
-/// of the initial pledge. However, there are some special cases outlined in the
-/// [FIP-0098](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0098.md).
-pub fn pledge_penalty_for_termination(
-    initial_pledge: &TokenAmount,
-    sector_age: ChainEpoch,
-    fault_fee: &TokenAmount,
-) -> TokenAmount {
-    // Use the _percentage of the initial pledge_ strategy to determine the termination fee.
-    let simple_termination_fee =
-        (initial_pledge * TERM_FEE_PLEDGE_MULTIPLE_NUM).div_floor(TERM_FEE_PLEDGE_MULTIPLE_DENOM);
-
-    // Apply the age adjustment for young sectors to arrive at the base termination fee.
-    let base_termination_fee = cmp::min(
-        simple_termination_fee.clone(),
-        (sector_age * &simple_termination_fee).div_floor(TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY),
-    );
-
-    // Calculate the minimum allowed fee (a lower bound on the termination fee) by comparing the absolute minimum termination fee value against the fault fee. Whatever result is _larger_ sets the lower bound for the termination fee.
-    let minimum_fee_abs = (initial_pledge * TERM_FEE_MIN_PLEDGE_MULTIPLE_NUM)
-        .div_floor(TERM_FEE_MIN_PLEDGE_MULTIPLE_DENOM);
-    let minimum_fee_ff = (fault_fee * TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM)
-        .div_floor(TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM);
-    let minimum_fee = cmp::max(minimum_fee_abs, minimum_fee_ff);
-
-    cmp::max(base_termination_fee, minimum_fee)
 }
 
 // The penalty for optimistically proving a sector with an invalid window PoSt.

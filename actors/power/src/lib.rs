@@ -1,7 +1,10 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::reward::ThisEpochRewardReturn;
+use fil_actors_runtime::power::{
+    pledge_penalty_for_continued_fault, pledge_penalty_for_termination, TERMINATION_LIFETIME_CAP,
+};
+use fil_actors_runtime::reward::{request_current_epoch_block_reward, ThisEpochRewardReturn};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
@@ -17,7 +20,8 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorDowncast, ActorError,
-    Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    Multimap, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 
 pub use self::policy::*;
@@ -57,6 +61,7 @@ pub enum Method {
     MinerCountExported = frc42_dispatch::method_hash!("MinerCount"),
     MinerConsensusCountExported = frc42_dispatch::method_hash!("MinerConsensusCount"),
     MinerPowerExported = frc42_dispatch::method_hash!("MinerPower"),
+    MaxTerminationFeeExported = frc42_dispatch::method_hash!("MaxTerminationFee"),
 }
 
 pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
@@ -340,6 +345,30 @@ impl Actor {
         }
     }
 
+    /// Returns the maximum termination fee calculation for a given initial pledge and power amount
+    fn max_termination_fee(
+        rt: &impl Runtime,
+        params: MaxTerminationFeeParams,
+    ) -> Result<MaxTerminationFeeReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+        let quality_adj_power_smoothed = st.this_epoch_qa_power_smoothed;
+        let reward_smoothed = request_current_epoch_block_reward(rt)?.this_epoch_reward_smoothed;
+        let fault_fee = pledge_penalty_for_continued_fault(
+            &reward_smoothed,
+            &quality_adj_power_smoothed,
+            &params.power,
+        );
+
+        let max_fee = pledge_penalty_for_termination(
+            &params.initial_pledge,
+            TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY,
+            &fault_fee,
+        );
+
+        Ok(MaxTerminationFeeReturn { max_fee })
+    }
+
     fn process_deferred_cron_events(
         rt: &impl Runtime,
         rewret: ThisEpochRewardReturn,
@@ -463,5 +492,6 @@ impl ActorCode for Actor {
         MinerCountExported => miner_count,
         MinerConsensusCountExported => miner_consensus_count,
         MinerPowerExported => miner_power,
+        MaxTerminationFeeExported => max_termination_fee,
     }
 }

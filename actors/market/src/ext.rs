@@ -145,10 +145,6 @@ pub mod datacap {
     pub const TRANSFER_FROM_METHOD: u64 = frc42_dispatch::method_hash!("TransferFrom");
 }
 
-pub mod reward {
-    pub const THIS_EPOCH_REWARD_METHOD: u64 = 3;
-}
-
 pub mod power {
     use super::*;
 

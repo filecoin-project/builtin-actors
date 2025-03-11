@@ -1,10 +1,11 @@
-use fil_actor_miner::{
-    pledge_penalty_for_termination, Method, TERMINATION_LIFETIME_CAP,
+use fil_actor_miner::Method;
+use fil_actor_miner::{Actor, TerminationFeePercentageResult};
+use fil_actors_runtime::power::{
+    pledge_penalty_for_termination, TERMINATION_LIFETIME_CAP,
     TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM,
     TERM_FEE_MIN_PLEDGE_MULTIPLE_DENOM, TERM_FEE_MIN_PLEDGE_MULTIPLE_NUM,
     TERM_FEE_PLEDGE_MULTIPLE_DENOM, TERM_FEE_PLEDGE_MULTIPLE_NUM,
 };
-use fil_actor_miner::{Actor, TerminationFeePercentageResult};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fvm_shared::bigint::Zero;

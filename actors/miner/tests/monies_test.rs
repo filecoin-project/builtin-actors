@@ -1,5 +1,7 @@
-use fil_actor_miner::{expected_reward_for_power, pledge_penalty_for_continued_fault};
-use fil_actors_runtime::reward::FilterEstimate;
+use fil_actors_runtime::{
+    power::{expected_reward_for_power, pledge_penalty_for_continued_fault},
+    reward::FilterEstimate,
+};
 use fvm_shared::{
     bigint::{BigInt, Zero},
     econ::TokenAmount,

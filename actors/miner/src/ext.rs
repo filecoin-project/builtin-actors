@@ -121,10 +121,6 @@ pub mod power {
     pub const MAX_MINER_PROVE_COMMITS_PER_EPOCH: usize = 200;
 }
 
-pub mod reward {
-    pub const THIS_EPOCH_REWARD_METHOD: u64 = 3;
-}
-
 pub mod verifreg {
     use super::*;
 

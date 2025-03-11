@@ -7,6 +7,7 @@ use std::ops::Neg;
 
 use anyhow::anyhow;
 use cid::Cid;
+use fil_actors_runtime::power::pledge_penalty_for_continued_fault;
 use fil_actors_runtime::reward::FilterEstimate;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::iter::Ranges;
@@ -57,8 +58,8 @@ use fil_actor_miner::{
     },
     ext::verifreg::{Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn},
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
-    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report,
+    new_deadline_info_from_offset_and_epoch, power_for_sectors, qa_power_for_sector,
+    qa_power_for_weight, reward_for_consensus_slash_report,
     testing::{check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary},
     ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
     ChangeBeneficiaryParams, ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams,
@@ -762,7 +763,7 @@ impl ActorHarness {
         state.get_precommitted_sector(&rt.store, sector_number).unwrap().unwrap()
     }
 
-    pub fn expect_query_network_info(&self, rt: &MockRuntime) {
+    pub fn expect_query_current_total_power(&self, rt: &MockRuntime) {
         let current_power = CurrentTotalPowerReturn {
             raw_byte_power: self.network_raw_power.clone(),
             quality_adj_power: self.network_qa_power.clone(),
@@ -771,6 +772,18 @@ impl ActorHarness {
             ramp_start_epoch: 0,
             ramp_duration_epochs: 0,
         };
+
+        rt.expect_send_simple(
+            STORAGE_POWER_ACTOR_ADDR,
+            PowerMethod::CurrentTotalPower as u64,
+            None,
+            TokenAmount::zero(),
+            IpldBlock::serialize_cbor(&current_power).unwrap(),
+            ExitCode::OK,
+        );
+    }
+
+    pub fn expect_query_current_reward(&self, rt: &MockRuntime) {
         let current_reward = ThisEpochRewardReturn {
             this_epoch_baseline_power: self.baseline_power.clone(),
             this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
@@ -783,14 +796,11 @@ impl ActorHarness {
             IpldBlock::serialize_cbor(&current_reward).unwrap(),
             ExitCode::OK,
         );
-        rt.expect_send_simple(
-            STORAGE_POWER_ACTOR_ADDR,
-            PowerMethod::CurrentTotalPower as u64,
-            None,
-            TokenAmount::zero(),
-            IpldBlock::serialize_cbor(&current_power).unwrap(),
-            ExitCode::OK,
-        );
+    }
+
+    pub fn expect_query_network_info(&self, rt: &MockRuntime) {
+        self.expect_query_current_reward(rt);
+        self.expect_query_current_total_power(rt);
     }
 
     // deprecated flow calling prove commit sector and then confirm sector proofs valid

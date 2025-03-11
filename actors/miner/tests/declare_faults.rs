@@ -1,6 +1,6 @@
-use fil_actor_miner::pledge_penalty_for_continued_fault;
 use fil_actor_miner::power_for_sectors;
 
+use fil_actors_runtime::power::pledge_penalty_for_continued_fault;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 

@@ -1,12 +1,17 @@
 use fil_actor_miner::{
-    pledge_penalty_for_continued_fault, pledge_penalty_for_termination, power_for_sector,
-    qa_power_for_sector, Actor, CronEventPayload, DeferredCronEventParams, MaxTerminationFeeParams,
-    MaxTerminationFeeReturn, Method, SectorOnChainInfo, State, TerminateSectorsParams,
-    TerminationDeclaration, CRON_EVENT_PROCESS_EARLY_TERMINATIONS,
-    TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM,
-    TERM_FEE_PLEDGE_MULTIPLE_DENOM, TERM_FEE_PLEDGE_MULTIPLE_NUM,
+    power_for_sector, qa_power_for_sector, Actor, CronEventPayload, DeferredCronEventParams,
+    Method, SectorOnChainInfo, State, TerminateSectorsParams, TerminationDeclaration,
+    CRON_EVENT_PROCESS_EARLY_TERMINATIONS,
+};
+use fil_actor_power::{
+    Actor as PowerActor, MaxTerminationFeeParams, MaxTerminationFeeReturn, Method as PowerMethod,
 };
 use fil_actors_runtime::{
+    power::{
+        pledge_penalty_for_continued_fault, pledge_penalty_for_termination,
+        TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM,
+        TERM_FEE_PLEDGE_MULTIPLE_DENOM, TERM_FEE_PLEDGE_MULTIPLE_NUM,
+    },
     runtime::Runtime,
     test_utils::{expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID},
     BURNT_FUNDS_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -370,11 +375,11 @@ fn max_termination_fee_returns_correct_results() {
             power: quality_adj_power,
         };
 
-        h.expect_query_network_info(&rt);
+        h.expect_query_current_reward(&rt);
         rt.expect_validate_caller_any();
         let res = rt
-            .call::<Actor>(
-                Method::MaxTerminationFeeExported as MethodNum,
+            .call::<PowerActor>(
+                PowerMethod::MaxTerminationFeeExported as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()

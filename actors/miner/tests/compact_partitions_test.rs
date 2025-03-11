@@ -1,8 +1,6 @@
-use fil_actor_miner::{
-    new_deadline_info, pledge_penalty_for_continued_fault, pledge_penalty_for_termination,
-    qa_power_for_sector, State,
-};
+use fil_actor_miner::{new_deadline_info, qa_power_for_sector, State};
 use fil_actors_runtime::{
+    power::{pledge_penalty_for_continued_fault, pledge_penalty_for_termination},
     runtime::{Runtime, RuntimePolicy},
     test_utils::{expect_abort, expect_abort_contains_message, MockRuntime},
 };

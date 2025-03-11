@@ -117,3 +117,16 @@ pub struct MinerCountReturn {
 pub struct MinerConsensusCountReturn {
     pub miner_consensus_count: i64,
 }
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct MaxTerminationFeeParams {
+    #[serde(with = "bigint_ser")]
+    pub power: StoragePower,
+    pub initial_pledge: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct MaxTerminationFeeReturn {
+    pub max_fee: TokenAmount,
+}

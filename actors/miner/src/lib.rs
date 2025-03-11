@@ -10,6 +10,10 @@ use std::ops::Neg;
 use anyhow::{anyhow, Error};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::Cid;
+use fil_actors_runtime::power::{
+    pledge_penalty_for_continued_fault, pledge_penalty_for_termination,
+    TERM_FEE_PLEDGE_MULTIPLE_DENOM, TERM_FEE_PLEDGE_MULTIPLE_NUM,
+};
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -44,16 +48,15 @@ pub use deadline_state::*;
 pub use deadlines::*;
 pub use expiration_queue::*;
 use fil_actors_runtime::cbor::{serialize, serialize_vec};
-use fil_actors_runtime::reward::{FilterEstimate, ThisEpochRewardReturn};
+use fil_actors_runtime::reward::{request_current_epoch_block_reward, FilterEstimate};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, util, ActorContext,
     ActorDowncast, ActorError, AsActorError, BatchReturn, BatchReturnGen, DealWeight,
-    BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 pub use monies::*;
 pub use partition_state::*;
@@ -157,7 +160,6 @@ pub enum Method {
     GetVestingFundsExported = frc42_dispatch::method_hash!("GetVestingFunds"),
     GetPeerIDExported = frc42_dispatch::method_hash!("GetPeerID"),
     GetMultiaddrsExported = frc42_dispatch::method_hash!("GetMultiaddrs"),
-    MaxTerminationFeeExported = frc42_dispatch::method_hash!("MaxTerminationFee"),
     InitialPledgeExported = frc42_dispatch::method_hash!("InitialPledge"),
     TerminationFeePercentageExported = frc42_dispatch::method_hash!("TerminationFeePercentage"),
 }
@@ -2220,30 +2222,6 @@ impl Actor {
 
         Ok(ProveCommitSectorsNIReturn { activation_results: validation_batch })
     }
-    /// Returns the maximum termination fee calculation for a given initial pledge and power amount
-    fn max_termination_fee(
-        rt: &impl Runtime,
-        params: MaxTerminationFeeParams,
-    ) -> Result<MaxTerminationFeeReturn, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        let reward_smoothed = request_current_epoch_block_reward(rt)?.this_epoch_reward_smoothed;
-        let quality_adj_power_smoothed =
-            request_current_total_power(rt)?.quality_adj_power_smoothed;
-        let fault_fee = pledge_penalty_for_continued_fault(
-            &reward_smoothed,
-            &quality_adj_power_smoothed,
-            &params.power,
-        );
-
-        let max_fee = pledge_penalty_for_termination(
-            &params.initial_pledge,
-            TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY,
-            &fault_fee,
-        );
-
-        Ok(MaxTerminationFeeReturn { max_fee })
-    }
-
     /// Returns the miner's total initial pledge amount
     fn initial_pledge(rt: &impl Runtime) -> Result<InitialPledgeReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -5154,22 +5132,6 @@ fn verify_deals(
     ))?)
 }
 
-/// Requests the current epoch target block reward from the reward actor.
-/// return value includes reward, smoothed estimate of reward, and baseline power
-fn request_current_epoch_block_reward(
-    rt: &impl Runtime,
-) -> Result<ThisEpochRewardReturn, ActorError> {
-    deserialize_block(
-        extract_send_result(rt.send_simple(
-            &REWARD_ACTOR_ADDR,
-            ext::reward::THIS_EPOCH_REWARD_METHOD,
-            Default::default(),
-            TokenAmount::zero(),
-        ))
-        .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
-    )
-}
-
 /// Requests the current network total power and pledge from the power actor.
 fn request_current_total_power(
     rt: &impl Runtime,
@@ -5998,7 +5960,6 @@ impl ActorCode for Actor {
         ProveCommitSectors3 => prove_commit_sectors3,
         ProveReplicaUpdates3 => prove_replica_updates3,
         ProveCommitSectorsNI => prove_commit_sectors_ni,
-        MaxTerminationFeeExported => max_termination_fee,
         InitialPledgeExported => initial_pledge,
         TerminationFeePercentageExported => termination_fee_percentage,
     }

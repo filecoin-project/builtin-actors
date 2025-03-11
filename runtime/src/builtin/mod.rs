@@ -6,6 +6,7 @@ pub use self::shared::*;
 pub use self::singletons::*;
 
 pub mod network;
+pub mod power;
 pub mod reward;
 pub mod shared;
 pub mod singletons;

@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use cid::multihash::Multihash;
 use cid::Cid;
-use fil_actors_runtime::reward::ThisEpochRewardReturn;
+use fil_actors_runtime::reward::{ThisEpochRewardReturn, THIS_EPOCH_REWARD_METHOD};
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -1775,7 +1775,7 @@ fn escrow_address(
 fn request_current_baseline_power(rt: &impl Runtime) -> Result<StoragePower, ActorError> {
     let ret: ThisEpochRewardReturn = deserialize_block(extract_send_result(rt.send_simple(
         &REWARD_ACTOR_ADDR,
-        ext::reward::THIS_EPOCH_REWARD_METHOD,
+        THIS_EPOCH_REWARD_METHOD,
         None,
         TokenAmount::zero(),
     ))?)?;
