@@ -5,21 +5,138 @@ use fil_actors_runtime::runtime::Runtime;
 use crate::interpreter::System;
 
 use blst::{
-    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine, blst_fp, blst_p1_affine_on_curve, blst_fp_from_bendian, blst_bendian_from_fp, blst_scalar, blst_scalar_from_bendian, p1_affines
+    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine, blst_fp, blst_p1_affine_on_curve, blst_fp_from_bendian, blst_bendian_from_fp, blst_scalar, blst_scalar_from_bendian, p1_affines, blst_p2, blst_p2_affine, blst_p2_add_or_double_affine, blst_p2_from_affine, blst_p2_to_affine, blst_p2_affine_on_curve, blst_p2_affine_in_g2, blst_fp2
 };
 
-const G1_INPUT_LENGTH: usize = 128;
-const G1_ADD_INPUT_LENGTH: usize = G1_INPUT_LENGTH * 2;
-const G1_OUTPUT_LENGTH: usize = 128;
-/// Finite field element padded input length.
+pub const G1_INPUT_LENGTH: usize = 128;
+pub const G1_ADD_INPUT_LENGTH: usize = G1_INPUT_LENGTH * 2;
+pub const G1_OUTPUT_LENGTH: usize = 128;
 pub const PADDED_FP_LENGTH: usize = 64;
-/// Input elements padding length.
 pub const PADDING_LENGTH: usize = 16;
-const G1_MSM_INPUT_LENGTH: usize = 160;
-const G1_INPUT_ITEM_LENGTH: usize = 128;
-const SCALAR_LENGTH: usize = 32;
-const NBITS: usize = 255; // Number of bits in BLS12-381 scalar field
+pub const G1_MSM_INPUT_LENGTH: usize = 160;
+pub const G1_INPUT_ITEM_LENGTH: usize = 128;
+pub const SCALAR_LENGTH: usize = 32;
+pub const NBITS: usize = 255; 
+pub const G2_ADD_INPUT_LENGTH: usize = 512;
+pub const G2_INPUT_ITEM_LENGTH: usize = 256;
+pub const G2_OUTPUT_LENGTH: usize = 256;
 
+
+/// Encodes a G2 point in affine format into byte slice with padded elements.
+/// G2 points have two coordinates (x,y) where each coordinate is a complex number (real,imaginary)
+/// So we need to encode 4 field elements total: x.re, x.im, y.re, y.im
+pub(super) fn encode_g2_point(input: &blst_p2_affine) -> Vec<u8> {
+    // Create output buffer with space for all coordinates (4 * 64 bytes)
+    let mut out = vec![0u8; G2_OUTPUT_LENGTH];
+
+    // Encode x coordinate
+    // Real part (x.fp[0])
+    fp_to_bytes(&mut out[..PADDED_FP_LENGTH], &input.x.fp[0]);
+    // Imaginary part (x.fp[1]) 
+    fp_to_bytes(
+        &mut out[PADDED_FP_LENGTH..2 * PADDED_FP_LENGTH],
+        &input.x.fp[1],
+    );
+
+    // Encode y coordinate
+    // Real part (y.fp[0])
+    fp_to_bytes(
+        &mut out[2 * PADDED_FP_LENGTH..3 * PADDED_FP_LENGTH],
+        &input.y.fp[0],
+    );
+    // Imaginary part (y.fp[1])
+    fp_to_bytes(
+        &mut out[3 * PADDED_FP_LENGTH..4 * PADDED_FP_LENGTH],
+        &input.y.fp[1],
+    );
+
+    out
+}
+
+/// Convert field elements from byte slices into a `blst_p2_affine` point.
+/// Takes four 48-byte arrays representing:
+/// - x1: real part of x coordinate
+/// - x2: imaginary part of x coordinate
+/// - y1: real part of y coordinate
+/// - y2: imaginary part of y coordinate
+pub(super) fn decode_and_check_g2(
+    x1: &[u8; 48], // x.re
+    x2: &[u8; 48], // x.im
+    y1: &[u8; 48], // y.re
+    y2: &[u8; 48], // y.im
+) -> Result<blst_p2_affine, PrecompileError> {
+    Ok(blst_p2_affine {
+        // Create x coordinate as complex number
+        x: check_canonical_fp2(x1, x2)?,
+        // Create y coordinate as complex number
+        y: check_canonical_fp2(y1, y2)?,
+    })
+}
+
+/// Helper function to create and validate an Fp2 element from two Fp elements
+fn check_canonical_fp2(
+    input_1: &[u8; 48],
+    input_2: &[u8; 48],
+) -> Result<blst_fp2, PrecompileError> {
+    let fp_1 = fp_from_bendian(input_1)?;
+    let fp_2 = fp_from_bendian(input_2)?;
+
+    let fp2 = blst_fp2 { fp: [fp_1, fp_2] };
+
+    Ok(fp2)
+}
+
+
+/// Extracts a G2 point in Affine format from a 256 byte slice representation.
+///
+/// **Note**: This function will perform a G2 subgroup check if `subgroup_check` is set to `true`.
+/// 
+/// Subgroup checks are required for:
+/// - Scalar multiplication
+/// - Multi-scalar multiplication (MSM)
+/// - Pairing operations
+///
+/// But not required for:
+/// - Point addition
+/// - Point negation
+pub(super) fn extract_g2_input(
+    input: &[u8],
+    subgroup_check: bool,
+) -> Result<blst_p2_affine, PrecompileError> {
+    // Check input length (256 bytes = 4 * 64 bytes for x.re, x.im, y.re, y.im)
+    if input.len() != G2_INPUT_ITEM_LENGTH {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+
+    // Extract the four field elements (removing padding)
+    let x_re = remove_padding(&input[..PADDED_FP_LENGTH])?;
+    let x_im = remove_padding(&input[PADDED_FP_LENGTH..2 * PADDED_FP_LENGTH])?;
+    let y_re = remove_padding(&input[2 * PADDED_FP_LENGTH..3 * PADDED_FP_LENGTH])?;
+    let y_im = remove_padding(&input[3 * PADDED_FP_LENGTH..4 * PADDED_FP_LENGTH])?;
+
+    // Convert bytes to point
+    let point = decode_and_check_g2(x_re, x_im, y_re, y_im)?;
+
+    if subgroup_check {
+        // Subgroup check (more expensive but required for certain operations)
+        // Verifies that the point has the correct order and is in G2
+        // SAFETY: point is properly initialized above
+        unsafe {
+            if !blst_p2_affine_in_g2(&point) {
+                return Err(PrecompileError::InvalidInput);
+            }
+        }
+    } else {
+        // Basic curve check (less expensive, sufficient for addition)
+        // Only verifies that the point is on the curve
+        // SAFETY: point is properly initialized above
+        if unsafe { !blst_p2_affine_on_curve(&point) } {
+            return Err(PrecompileError::InvalidInput);
+        }
+    }
+
+    Ok(point)
+}
 
 /// https://eips.ethereum.org/EIPS/eip-2537
 /// Encodes a single finite field element into byte slice with padding.
@@ -237,7 +354,29 @@ pub(super) fn bls12_g2add<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    Err(PrecompileError::CallForbidden)
+    if input.len() != G2_ADD_INPUT_LENGTH {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+
+    // Extract the two input G2 points
+    // No subgroup check needed for addition
+    let a_aff = extract_g2_input(&input[..G2_INPUT_ITEM_LENGTH], false)?;
+    let b_aff = extract_g2_input(&input[G2_INPUT_ITEM_LENGTH..], false)?;
+
+    let mut b = blst_p2::default();
+    // Convert b_aff to projective coordinates
+    unsafe { blst_p2_from_affine(&mut b, &b_aff) };
+
+    let mut p = blst_p2::default();
+    // Add the points
+    unsafe { blst_p2_add_or_double_affine(&mut p, &b, &a_aff) };
+
+    let mut p_aff = blst_p2_affine::default();
+    // Convert result back to affine coordinates
+    unsafe { blst_p2_to_affine(&mut p_aff, &p) };
+
+    // Encode the result
+    Ok(encode_g2_point(&p_aff))
 }
 
 /// BLS12_G2MSM precompile
@@ -283,6 +422,7 @@ pub(super) fn bls12_map_fp2_to_g2<RT: Runtime>(
 ) -> PrecompileResult {
     Err(PrecompileError::CallForbidden)
 }
+
 
 #[cfg(test)]
 mod tests {
