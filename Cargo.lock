@@ -1214,7 +1214,6 @@ dependencies = [
  "num",
  "num-derive",
  "num-traits",
- "paste",
  "pretty_env_logger",
  "rand",
  "regex",
