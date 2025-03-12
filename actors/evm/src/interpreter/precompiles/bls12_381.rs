@@ -5,7 +5,7 @@ use fil_actors_runtime::runtime::Runtime;
 use crate::interpreter::System;
 
 use blst::{
-    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine, blst_fp, blst_p1_affine_on_curve, blst_fp_from_bendian, blst_bendian_from_fp, blst_scalar, blst_scalar_from_bendian, p1_affines, blst_p2, blst_p2_affine, blst_p2_add_or_double_affine, blst_p2_from_affine, blst_p2_to_affine, blst_p2_affine_on_curve, blst_p2_affine_in_g2, blst_fp2, p2_affines
+    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine, blst_p1_affine_in_g1, blst_fp, blst_p1_affine_on_curve, blst_fp_from_bendian, blst_bendian_from_fp, blst_scalar, blst_scalar_from_bendian, p1_affines, blst_p2, blst_p2_affine, blst_p2_add_or_double_affine, blst_p2_from_affine, blst_p2_to_affine, blst_p2_affine_on_curve, blst_p2_affine_in_g2, blst_fp2, p2_affines
 };
 
 pub const G1_INPUT_LENGTH: usize = 128;
@@ -220,8 +220,8 @@ pub(super) fn bls12_g1add<RT: Runtime>(
     let b_bytes = &input[G1_INPUT_LENGTH..];
 
     // Convert input bytes to blst affine points
-    let a_aff = extract_g1_point(a_bytes)?;
-    let b_aff = extract_g1_point(b_bytes)?;
+    let a_aff = extract_g1_input(a_bytes, false)?;
+    let b_aff = extract_g1_input(b_bytes, false)?;
 
     let mut b = blst_p1::default();
     // Convert b_aff to projective coordinates
@@ -239,7 +239,7 @@ pub(super) fn bls12_g1add<RT: Runtime>(
     Ok(encode_g1_point(&p_aff))
 }
 /// Extracts a G1 point in Affine format from a 128 byte slice representation.
-fn extract_g1_point(input: &[u8]) -> Result<blst_p1_affine, PrecompileError> {
+fn extract_g1_input(input: &[u8], subgroup_check: bool) -> Result<blst_p1_affine, PrecompileError> {
     if input.len() != G1_INPUT_LENGTH {
         return Err(PrecompileError::IncorrectInputSize);
     }
@@ -251,12 +251,18 @@ fn extract_g1_point(input: &[u8]) -> Result<blst_p1_affine, PrecompileError> {
     let point = decode_and_check_g1(x_bytes, y_bytes)?;
 
     // Check if point is on curve (no subgroup check needed for addition)
-    unsafe {
-        if !blst_p1_affine_on_curve(&point) {
+    if subgroup_check {
+        if unsafe { !blst_p1_affine_in_g1(&point) } {
             return Err(PrecompileError::InvalidInput);
         }
     }
-
+    else{
+        unsafe {
+            if !blst_p1_affine_on_curve(&point) {
+                return Err(PrecompileError::InvalidInput);
+            }
+        }
+    }
     Ok(point)
 }
 
@@ -317,7 +323,7 @@ pub(super) fn bls12_g1msm<RT: Runtime>(
         // NB: Scalar multiplications, MSMs and pairings MUST perform a subgroup check.
         //
         // So we set the subgroup_check flag to `true`
-        let p0_aff = &extract_g1_point(slice)?;
+        let p0_aff = &extract_g1_input(slice, true)?;
 
         let mut p0 = blst_p1::default();
         // SAFETY: `p0` and `p0_aff` are blst values.
@@ -646,13 +652,11 @@ mod tests {
         let res = bls12_g1msm(&mut system, &invalid_top, ctx);
         assert!(matches!(res, Err(PrecompileError::InvalidInput)));
 
-        // // Test: Point not in correct subgroup
-        // let not_in_subgroup = hex::decode(
-        //     "000000000000000000000000000000000123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0\
-        //      00000000000000000000000000000000193fb7cedb32b2c3adc06ec11a96bc0d661869316f5e4a577a9f7c179593987beb4fb2ee424dbb2f5dd891e228b46c4a\
-        //      0000000000000000000000000000000000000000000000000000000000000002"
-        // ).unwrap();
-        // let res = bls12_g1msm(&mut system, &not_in_subgroup, ctx);
-        // assert!(matches!(res, Err(PrecompileError::InvalidInput)));
+        // Test: Point not in correct subgroup
+        let not_in_subgroup = hex::decode(
+            "000000000000000000000000000000000123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef00000000000000000000000000000000193fb7cedb32b2c3adc06ec11a96bc0d661869316f5e4a577a9f7c179593987beb4fb2ee424dbb2f5dd891e228b46c4a0000000000000000000000000000000000000000000000000000000000000002"
+        ).unwrap();
+        let res = bls12_g1msm(&mut system, &not_in_subgroup, ctx);
+        assert!(matches!(res, Err(PrecompileError::InvalidInput)));
     }
 }
