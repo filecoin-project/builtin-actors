@@ -704,9 +704,3 @@ pub struct MaxTerminationFeeReturn {
 pub struct InitialPledgeReturn {
     pub initial_pledge: TokenAmount,
 }
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct TerminationFeePercentageResult {
-    pub num: u32,
-    pub denom: u32,
-}

@@ -159,7 +159,6 @@ pub enum Method {
     GetMultiaddrsExported = frc42_dispatch::method_hash!("GetMultiaddrs"),
     MaxTerminationFeeExported = frc42_dispatch::method_hash!("MaxTerminationFee"),
     InitialPledgeExported = frc42_dispatch::method_hash!("InitialPledge"),
-    TerminationFeePercentageExported = frc42_dispatch::method_hash!("TerminationFeePercentage"),
 }
 
 pub const SECTOR_CONTENT_CHANGED: MethodNum = frc42_dispatch::method_hash!("SectorContentChanged");
@@ -2250,17 +2249,6 @@ impl Actor {
         let state: State = rt.state()?;
 
         Ok(InitialPledgeReturn { initial_pledge: state.initial_pledge })
-    }
-
-    /// Returns the network's termination fee percentage
-    fn termination_fee_percentage(
-        rt: &impl Runtime,
-    ) -> Result<TerminationFeePercentageResult, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        Ok(TerminationFeePercentageResult {
-            num: TERM_FEE_PLEDGE_MULTIPLE_NUM,
-            denom: TERM_FEE_PLEDGE_MULTIPLE_DENOM,
-        })
     }
 
     fn check_sector_proven(
@@ -6000,7 +5988,6 @@ impl ActorCode for Actor {
         ProveCommitSectorsNI => prove_commit_sectors_ni,
         MaxTerminationFeeExported => max_termination_fee,
         InitialPledgeExported => initial_pledge,
-        TerminationFeePercentageExported => termination_fee_percentage,
     }
 }
 
