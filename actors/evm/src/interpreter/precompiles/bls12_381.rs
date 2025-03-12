@@ -5,7 +5,7 @@ use fil_actors_runtime::runtime::Runtime;
 use crate::interpreter::System;
 
 use blst::{
-    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine, blst_fp, blst_p1_affine_on_curve, blst_fp_from_bendian, blst_bendian_from_fp, blst_scalar, blst_scalar_from_bendian, p1_affines, blst_p2, blst_p2_affine, blst_p2_add_or_double_affine, blst_p2_from_affine, blst_p2_to_affine, blst_p2_affine_on_curve, blst_p2_affine_in_g2, blst_fp2
+    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine, blst_fp, blst_p1_affine_on_curve, blst_fp_from_bendian, blst_bendian_from_fp, blst_scalar, blst_scalar_from_bendian, p1_affines, blst_p2, blst_p2_affine, blst_p2_add_or_double_affine, blst_p2_from_affine, blst_p2_to_affine, blst_p2_affine_on_curve, blst_p2_affine_in_g2, blst_fp2, p2_affines
 };
 
 pub const G1_INPUT_LENGTH: usize = 128;
@@ -20,6 +20,7 @@ pub const NBITS: usize = 255;
 pub const G2_ADD_INPUT_LENGTH: usize = 512;
 pub const G2_INPUT_ITEM_LENGTH: usize = 256;
 pub const G2_OUTPUT_LENGTH: usize = 256;
+pub const G2_MSM_INPUT_LENGTH: usize = 288;
 
 
 /// Encodes a G2 point in affine format into byte slice with padded elements.
@@ -381,13 +382,67 @@ pub(super) fn bls12_g2add<RT: Runtime>(
 
 /// BLS12_G2MSM precompile
 /// Implements G2 multi-scalar multiplication according to EIP-2537
-#[allow(dead_code,unused_variables)]
 pub(super) fn bls12_g2msm<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    Err(PrecompileError::CallForbidden)
+    let input_len = input.len();
+    if input_len == 0 || input_len % G2_MSM_INPUT_LENGTH != 0 {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+
+    let k = input_len / G2_MSM_INPUT_LENGTH;
+    let mut g2_points: Vec<blst_p2> = Vec::with_capacity(k);
+    let mut scalars: Vec<u8> = Vec::with_capacity(k * SCALAR_LENGTH);
+
+    // Process each (point, scalar) pair
+    for i in 0..k {
+        let slice = &input[i * G2_MSM_INPUT_LENGTH..i * G2_MSM_INPUT_LENGTH + G2_INPUT_ITEM_LENGTH];
+
+        // Skip points at infinity (all zeros)
+        if slice.iter().all(|i| *i == 0) {
+            continue;
+        }
+
+        // NB: Scalar multiplications, MSMs and pairings MUST perform a subgroup check.
+        //
+        // So we set the subgroup_check flag to `true`
+        let p0_aff = extract_g2_input(slice, true)?;
+
+        let mut p0 = blst_p2::default();
+        // Convert to projective coordinates
+        // SAFETY: `p0` and `p0_aff` are blst values
+        unsafe { blst_p2_from_affine(&mut p0, &p0_aff) };
+        g2_points.push(p0);
+
+        // Extract and add scalar
+        scalars.extend_from_slice(
+            &extract_scalar_input(
+                &input[i * G2_MSM_INPUT_LENGTH + G2_INPUT_ITEM_LENGTH
+                    ..i * G2_MSM_INPUT_LENGTH + G2_INPUT_ITEM_LENGTH + SCALAR_LENGTH],
+            )?
+            .b,
+        );
+    }
+
+    // Return infinity point if all points are infinity
+    if g2_points.is_empty() {
+        return Ok(vec![0u8; G2_OUTPUT_LENGTH]);
+    }
+
+    // Convert points to affine representation for batch operation
+    let points = p2_affines::from(&g2_points);
+    // Perform multi-scalar multiplication
+    let multiexp = points.mult(&scalars, NBITS);
+
+    let mut multiexp_aff = blst_p2_affine::default();
+    // Convert result back to affine coordinates
+    // SAFETY: `multiexp_aff` and `multiexp` are blst values
+    unsafe { blst_p2_to_affine(&mut multiexp_aff, &multiexp) };
+
+    // Encode the result
+    Ok(encode_g2_point(&multiexp_aff))
 }
 
 /// BLS12_PAIRING precompile
