@@ -149,7 +149,6 @@ pub fn miner_precommit_one_sector_v2(
     precommit_sectors_v2(
         v,
         1,
-        1,
         vec![meta_data],
         worker,
         maddr,
@@ -206,7 +205,6 @@ pub struct PrecommitMetadata {
 pub fn precommit_sectors_v2_expect_code(
     v: &dyn VM,
     count: usize,
-    batch_size: usize,
     metadata: Vec<PrecommitMetadata>, // Per-sector deal metadata, or empty vector for no deals.
     worker: &Address,
     maddr: &Address,
@@ -236,8 +234,7 @@ pub fn precommit_sectors_v2_expect_code(
         let mut invocs =
             vec![Expect::reward_this_epoch(miner_id), Expect::power_current_total(miner_id)];
         let mut param_sectors = Vec::<SectorPreCommitInfo>::new();
-        let mut j = 0;
-        while j < batch_size && sector_idx < count {
+        while sector_idx < count {
             let sector_number = sector_number_base + sector_idx as u64;
             let sector_meta = metadata.get(sector_idx).unwrap_or(&no_deals);
             param_sectors.push(SectorPreCommitInfo {
@@ -258,7 +255,6 @@ pub fn precommit_sectors_v2_expect_code(
                 });
             }
             sector_idx += 1;
-            j += 1;
         }
 
         let events: Vec<EmittedEvent> = param_sectors
@@ -306,7 +302,6 @@ pub fn precommit_sectors_v2_expect_code(
 pub fn precommit_sectors_v2(
     v: &dyn VM,
     count: usize,
-    batch_size: usize,
     metadata: Vec<PrecommitMetadata>, // Per-sector deal metadata, or empty vector for no deals.
     worker: &Address,
     maddr: &Address,
@@ -319,7 +314,6 @@ pub fn precommit_sectors_v2(
     precommit_sectors_v2_expect_code(
         v,
         count,
-        batch_size,
         metadata,
         worker,
         maddr,
