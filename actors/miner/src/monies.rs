@@ -197,11 +197,11 @@ pub fn pledge_penalty_for_termination(
     let simple_termination_fee =
         (initial_pledge * TERM_FEE_PLEDGE_MULTIPLE_NUM).div_floor(TERM_FEE_PLEDGE_MULTIPLE_DENOM);
 
+    let duration_termination_fee =
+        (sector_age * &simple_termination_fee).div_floor(TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY);
+
     // Apply the age adjustment for young sectors to arrive at the base termination fee.
-    let base_termination_fee = cmp::min(
-        simple_termination_fee.clone(),
-        (sector_age * &simple_termination_fee).div_floor(TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY),
-    );
+    let base_termination_fee = cmp::min(simple_termination_fee, duration_termination_fee);
 
     // Calculate the minimum allowed fee (a lower bound on the termination fee) by comparing the absolute minimum termination fee value against the fault fee. Whatever result is _larger_ sets the lower bound for the termination fee.
     let minimum_fee_abs = (initial_pledge * TERM_FEE_MIN_PLEDGE_MULTIPLE_NUM)
