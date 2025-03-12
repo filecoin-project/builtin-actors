@@ -178,7 +178,6 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     let new_precommits = precommit_sectors_v2(
         v,
         more_than_one_partition,
-        batch_size,
         vec![],
         &worker,
         &maddr,
@@ -467,58 +466,6 @@ pub fn terminated_sector_failure_test(v: &dyn VM) {
 }
 
 #[vm_test]
-pub fn bad_batch_size_failure_test(v: &dyn VM) {
-    let policy = Policy::default();
-    let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
-    let (worker, owner) = (addrs[0], addrs[0]);
-    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-    let (maddr, robust) = create_miner(
-        v,
-        &owner,
-        &worker,
-        seal_proof.registered_window_post_proof().unwrap(),
-        &TokenAmount::from_whole(10_000),
-    );
-
-    // advance to have seal randomness epoch in the past
-    v.set_epoch(200);
-
-    let sector_number = 100;
-    let (d_idx, p_idx) = create_sector(v, worker, maddr, sector_number, seal_proof);
-
-    // make some deals
-    let deal_ids = create_deals(1, v, worker, worker, maddr);
-
-    // fail to replicaUpdate more sectors than batch size
-    let new_cid = make_sealed_cid(b"replica1");
-    let mut updates = vec![];
-
-    for _ in 0..policy.prove_replica_updates_max_size + 1 {
-        updates.push(ReplicaUpdate {
-            sector_number,
-            deadline: d_idx,
-            partition: p_idx,
-            new_sealed_cid: new_cid,
-            deals: deal_ids.clone(),
-            update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-            replica_proof: vec![].into(),
-        });
-    }
-
-    apply_code(
-        v,
-        &worker,
-        &robust,
-        &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
-        Some(ProveReplicaUpdatesParams { updates }),
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-    );
-
-    assert_invariants(v, &Policy::default(), None)
-}
-
-#[vm_test]
 pub fn nodispute_after_upgrade_test(v: &dyn VM) {
     let (_, worker, miner_id, deadline_index, _, _) = create_miner_and_upgrade_sector(v);
 
@@ -731,7 +678,6 @@ pub fn extend_after_upgrade_test(v: &dyn VM) {
 
 #[vm_test]
 pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
-    let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -757,7 +703,7 @@ pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
     let new_cid = make_sealed_cid(b"replica1");
     let mut updates = vec![];
 
-    for _ in 0..policy.prove_replica_updates_max_size + 1 {
+    for _ in 0..256 + 1 {
         updates.push(ReplicaUpdate {
             sector_number,
             deadline: d_idx + 1,
@@ -787,7 +733,6 @@ pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
 
 #[vm_test]
 pub fn wrong_partition_index_failure_test(v: &dyn VM) {
-    let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -813,7 +758,7 @@ pub fn wrong_partition_index_failure_test(v: &dyn VM) {
     let new_cid = make_sealed_cid(b"replica1");
     let mut updates = vec![];
 
-    for _ in 0..policy.prove_replica_updates_max_size + 1 {
+    for _ in 0..256 + 1 {
         updates.push(ReplicaUpdate {
             sector_number,
             deadline: d_idx,
@@ -863,7 +808,6 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     let precommits = precommit_sectors_v2(
         v,
         policy.min_aggregated_sectors as usize,
-        policy.pre_commit_sector_batch_max_size,
         vec![],
         &worker,
         &maddr,
@@ -1182,7 +1126,6 @@ pub fn create_sector(
     let exp = v.epoch() + Policy::default().max_sector_expiration_extension;
     let precommits = precommit_sectors_v2(
         v,
-        1,
         1,
         vec![],
         &worker,

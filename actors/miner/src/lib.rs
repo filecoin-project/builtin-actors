@@ -1480,18 +1480,8 @@ impl Actor {
         sectors: Vec<SectorPreCommitInfoInner>,
     ) -> Result<(), ActorError> {
         let curr_epoch = rt.curr_epoch();
-        {
-            let policy = rt.policy();
-            if sectors.is_empty() {
-                return Err(actor_error!(illegal_argument, "batch empty"));
-            } else if sectors.len() > policy.pre_commit_sector_batch_max_size {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "batch of {} too large, max {}",
-                    sectors.len(),
-                    policy.pre_commit_sector_batch_max_size
-                ));
-            }
+        if sectors.is_empty() {
+            return Err(actor_error!(illegal_argument, "batch empty"));
         }
         // Check per-sector preconditions before opening state transaction or sending other messages.
         let challenge_earliest = curr_epoch - rt.policy().max_pre_commit_randomness_lookback;
@@ -2511,18 +2501,6 @@ impl Actor {
         // Note: this cannot terminate pre-committed but un-proven sectors.
         // They must be allowed to expire (and deposit burnt).
 
-        {
-            let policy = rt.policy();
-            if params.terminations.len() as u64 > policy.declarations_max {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "too many declarations when terminating sectors: {} > {}",
-                    params.terminations.len(),
-                    policy.declarations_max
-                ));
-            }
-        }
-
         let mut to_process = DeadlineSectorMap::new();
 
         for term in params.terminations {
@@ -2652,18 +2630,6 @@ impl Actor {
     }
 
     fn declare_faults(rt: &impl Runtime, params: DeclareFaultsParams) -> Result<(), ActorError> {
-        {
-            let policy = rt.policy();
-            if params.faults.len() as u64 > policy.declarations_max {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "too many fault declarations for a single message: {} > {}",
-                    params.faults.len(),
-                    policy.declarations_max
-                ));
-            }
-        }
-
         let mut to_process = DeadlineSectorMap::new();
 
         for term in params.faults {
@@ -2785,18 +2751,6 @@ impl Actor {
         rt: &impl Runtime,
         params: DeclareFaultsRecoveredParams,
     ) -> Result<(), ActorError> {
-        {
-            let policy = rt.policy();
-            if params.recoveries.len() as u64 > policy.declarations_max {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "too many recovery declarations for a single message: {} > {}",
-                    params.recoveries.len(),
-                    policy.declarations_max
-                ));
-            }
-        }
-
         let mut to_process = DeadlineSectorMap::new();
 
         for term in params.recoveries {
@@ -3988,15 +3942,6 @@ fn validate_replica_updates<'a, BS>(
 where
     BS: Blockstore,
 {
-    if updates.len() > policy.prove_replica_updates_max_size {
-        return Err(actor_error!(
-            illegal_argument,
-            "too many updates ({} > {})",
-            updates.len(),
-            policy.prove_replica_updates_max_size
-        ));
-    }
-
     let mut sector_numbers = BTreeSet::<SectorNumber>::new();
     let mut validate_one = |update: &ReplicaUpdateInner,
                             sector_info: &SectorOnChainInfo|
