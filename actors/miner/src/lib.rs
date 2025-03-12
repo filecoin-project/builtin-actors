@@ -2249,7 +2249,7 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
 
-        Ok(InitialPledgeReturn { initial_pledge: state.initial_pledge.clone() })
+        Ok(InitialPledgeReturn { initial_pledge: state.initial_pledge })
     }
 
     /// Returns the network's termination fee percentage

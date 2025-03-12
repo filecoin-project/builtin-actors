@@ -332,8 +332,8 @@ impl Actor {
 
         if let Some(claim) = claim {
             Ok(MinerPowerReturn {
-                quality_adj_power: claim.quality_adj_power,
                 raw_byte_power: claim.raw_byte_power,
+                quality_adj_power: claim.quality_adj_power,
             })
         } else {
             Err(actor_error!(not_found, "miner not found"))

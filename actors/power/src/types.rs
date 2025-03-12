@@ -101,9 +101,9 @@ pub struct MinerPowerParams {
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct MinerPowerReturn {
     #[serde(with = "bigint_ser")]
-    pub quality_adj_power: StoragePower,
-    #[serde(with = "bigint_ser")]
     pub raw_byte_power: StoragePower,
+    #[serde(with = "bigint_ser")]
+    pub quality_adj_power: StoragePower,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
