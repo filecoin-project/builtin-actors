@@ -214,6 +214,7 @@ impl State {
     pub fn deadline_info(&self, policy: &Policy, current_epoch: ChainEpoch) -> DeadlineInfo {
         new_deadline_info_from_offset_and_epoch(policy, self.proving_period_start, current_epoch)
     }
+
     // Returns deadline calculations for the state recorded proving period and deadline.
     // This is out of date if the a miner does not have an active miner cron
     pub fn recorded_deadline_info(
@@ -877,6 +878,7 @@ impl State {
                 amount_unlocked
             ));
         }
+
         // add locked funds now
         vesting_funds.add_locked_funds(current_epoch, vesting_sum, self.proving_period_start, spec);
         self.locked_funds += vesting_sum;
@@ -937,6 +939,7 @@ impl State {
 
         Ok(std::mem::take(&mut self.fee_debt))
     }
+
     /// Unlocks an amount of funds that have *not yet vested*, if possible.
     /// The soonest-vesting entries are unlocked first.
     /// Returns the amount actually unlocked.

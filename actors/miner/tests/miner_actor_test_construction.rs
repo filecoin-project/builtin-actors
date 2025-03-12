@@ -1,20 +1,23 @@
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::INIT_ACTOR_ADDR;
-
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{
     Actor, Deadline, Deadlines, Method, MinerConstructorParams as ConstructorParams, State,
 };
+use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
+use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
+use fil_actors_runtime::reward::FilterEstimate;
+use fil_actors_runtime::{test_utils::*, STORAGE_POWER_ACTOR_ADDR};
+use fil_actors_runtime::{INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR};
 
 use fvm_ipld_encoding::{BytesDe, CborStore};
 use fvm_shared::address::Address;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredPoStProof, SectorSize};
+use fvm_shared::sector::{RegisteredPoStProof, SectorSize, StoragePower};
 
 use cid::Cid;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use num_traits::Zero;
+use num_traits::{FromPrimitive, Zero};
 
 mod util;
 
@@ -27,10 +30,17 @@ struct TestEnv {
     control_addrs: Vec<Address>,
     peer_id: Vec<u8>,
     multiaddrs: Vec<BytesDe>,
+    power: StoragePower,
+    reward: TokenAmount,
+    epoch_reward_smooth: FilterEstimate,
     rt: MockRuntime,
 }
 
 fn prepare_env() -> TestEnv {
+    let reward = TokenAmount::from_whole(10);
+    let power = StoragePower::from_i128(1 << 50).unwrap();
+    let epoch_reward_smooth = FilterEstimate::new(reward.atto().clone(), BigInt::from(0u8));
+
     let mut env = TestEnv {
         receiver: Address::new_id(1000),
         owner: Address::new_id(100),
@@ -39,6 +49,9 @@ fn prepare_env() -> TestEnv {
         control_addrs: vec![Address::new_id(999), Address::new_id(998)],
         peer_id: vec![1, 2, 3],
         multiaddrs: vec![BytesDe(vec![1, 2, 3])],
+        power,
+        reward,
+        epoch_reward_smooth,
         rt: MockRuntime::default(),
     };
 
@@ -50,6 +63,8 @@ fn prepare_env() -> TestEnv {
     env.rt.hash_func = Box::new(hash);
     env.rt.caller.replace(INIT_ACTOR_ADDR);
     env.rt.caller_type.replace(*INIT_ACTOR_CODE_ID);
+    // add balance for create miner deposit
+    env.rt.add_balance(TokenAmount::from_atto(633318697598976000u64));
     env
 }
 
@@ -61,16 +76,46 @@ fn constructor_params(env: &TestEnv) -> ConstructorParams {
         window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         peer_id: env.peer_id.clone(),
         multi_addresses: env.multiaddrs.clone(),
+        network_qap: env.epoch_reward_smooth.clone(),
     }
 }
 
 #[test]
 fn simple_construction() {
     let env = prepare_env();
+    let current_reward = ThisEpochRewardReturn {
+        this_epoch_baseline_power: env.power.clone(),
+        this_epoch_reward_smoothed: env.epoch_reward_smooth.clone(),
+    };
+    let current_total_power = CurrentTotalPowerReturn {
+        raw_byte_power: Default::default(),
+        quality_adj_power: Default::default(),
+        pledge_collateral: Default::default(),
+        quality_adj_power_smoothed: Default::default(),
+        ramp_start_epoch: Default::default(),
+        ramp_duration_epochs: Default::default(),
+    };
+
     let params = constructor_params(&env);
 
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+    env.rt.expect_send_simple(
+        REWARD_ACTOR_ADDR,
+        RewardMethod::ThisEpochReward as u64,
+        None,
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&current_reward).unwrap(),
+        ExitCode::OK,
+    );
+    env.rt.expect_send_simple(
+        STORAGE_POWER_ACTOR_ADDR,
+        PowerMethod::CurrentTotalPower as u64,
+        Default::default(),
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&current_total_power).unwrap(),
+        ExitCode::OK,
+    );
     env.rt.expect_send_simple(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
@@ -87,7 +132,7 @@ fn simple_construction() {
     expect_empty(result);
     env.rt.verify();
 
-    let state = env.rt.get_state::<State>();
+    let mut state = env.rt.get_state::<State>();
 
     let info = state.get_info(&env.rt.store).unwrap();
     assert_eq!(env.owner, info.owner);
@@ -100,9 +145,20 @@ fn simple_construction() {
     assert_eq!(2349, info.window_post_partition_sectors);
 
     assert_eq!(TokenAmount::zero(), state.pre_commit_deposits);
-    assert_eq!(TokenAmount::zero(), state.locked_funds);
+    assert_eq!(TokenAmount::from_atto(633318697598976000u64), state.locked_funds);
+    assert_eq!(180, state.load_vesting_funds(&env.rt.store).unwrap().funds.len());
     assert_ne!(Cid::default(), state.pre_committed_sectors);
     assert_ne!(Cid::default(), state.sectors);
+
+    // reset create miner deposit vesting funds
+    state.save_vesting_funds(&env.rt.store, &fil_actor_miner::VestingFunds::new()).unwrap();
+    state.locked_funds = TokenAmount::zero();
+    env.rt.replace_state(&state);
+
+    let state = env.rt.get_state::<State>();
+    let create_depost_vesting_funds = state.load_vesting_funds(&env.rt.store).unwrap();
+    assert!(create_depost_vesting_funds.funds.is_empty());
+    assert!(state.locked_funds.is_zero());
 
     // according to original specs-actors test, this is set by running the code; magic...
     let proving_period_start = -2222;
@@ -129,8 +185,66 @@ fn simple_construction() {
 }
 
 #[test]
+fn fails_if_insufficient_to_cover_the_miner_creation_deposit() {
+    let env = prepare_env();
+    env.rt.set_balance(TokenAmount::zero());
+    let current_reward = ThisEpochRewardReturn {
+        this_epoch_baseline_power: env.power.clone(),
+        this_epoch_reward_smoothed: env.epoch_reward_smooth.clone(),
+    };
+    let current_total_power = CurrentTotalPowerReturn {
+        raw_byte_power: Default::default(),
+        quality_adj_power: Default::default(),
+        pledge_collateral: Default::default(),
+        quality_adj_power_smoothed: Default::default(),
+        ramp_start_epoch: Default::default(),
+        ramp_duration_epochs: Default::default(),
+    };
+
+    let params = constructor_params(&env);
+
+    env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+    env.rt.expect_send_simple(
+        REWARD_ACTOR_ADDR,
+        RewardMethod::ThisEpochReward as u64,
+        None,
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&current_reward).unwrap(),
+        ExitCode::OK,
+    );
+    env.rt.expect_send_simple(
+        STORAGE_POWER_ACTOR_ADDR,
+        PowerMethod::CurrentTotalPower as u64,
+        Default::default(),
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&current_total_power).unwrap(),
+        ExitCode::OK,
+    );
+
+    expect_abort(
+        ExitCode::USR_INSUFFICIENT_FUNDS,
+        env.rt
+            .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap()),
+    );
+    env.rt.verify();
+}
+
+#[test]
 fn control_addresses_are_resolved_during_construction() {
     let mut env = prepare_env();
+    let current_reward = ThisEpochRewardReturn {
+        this_epoch_baseline_power: env.power.clone(),
+        this_epoch_reward_smoothed: env.epoch_reward_smooth.clone(),
+    };
+    let current_total_power = CurrentTotalPowerReturn {
+        raw_byte_power: Default::default(),
+        quality_adj_power: Default::default(),
+        pledge_collateral: Default::default(),
+        quality_adj_power_smoothed: Default::default(),
+        ramp_start_epoch: Default::default(),
+        ramp_duration_epochs: Default::default(),
+    };
 
     let control1 = new_bls_addr(1);
     let control1id = Address::new_id(555);
@@ -146,6 +260,22 @@ fn control_addresses_are_resolved_during_construction() {
     let params = constructor_params(&env);
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+    env.rt.expect_send_simple(
+        REWARD_ACTOR_ADDR,
+        RewardMethod::ThisEpochReward as u64,
+        None,
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&current_reward).unwrap(),
+        ExitCode::OK,
+    );
+    env.rt.expect_send_simple(
+        STORAGE_POWER_ACTOR_ADDR,
+        PowerMethod::CurrentTotalPower as u64,
+        Default::default(),
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&current_total_power).unwrap(),
+        ExitCode::OK,
+    );
     env.rt.expect_send_simple(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
