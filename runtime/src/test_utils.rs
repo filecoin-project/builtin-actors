@@ -157,7 +157,7 @@ pub struct MockRuntime {
             &[u8; SECP_SIG_LEN],
         ) -> Result<[u8; SECP_PUB_LEN], ()>,
     >,
-    pub network_version: NetworkVersion,
+    pub network_version: RefCell<NetworkVersion>,
 
     // Actor State
     pub state: RefCell<Option<Cid>>,
@@ -346,7 +346,7 @@ impl MockRuntime {
             value_received: Default::default(),
             hash_func: Box::new(hash),
             recover_secp_pubkey_fn: Box::new(recover_secp_public_key),
-            network_version: NetworkVersion::V0,
+            network_version: RefCell::new(NetworkVersion::V0),
             state: Default::default(),
             balance: Default::default(),
             in_call: Default::default(),
@@ -730,6 +730,10 @@ impl MockRuntime {
         self.circulating_supply.replace(circ_supply);
     }
 
+    pub fn set_network_version(&self, nv: NetworkVersion) {
+        self.network_version.replace(nv);
+    }
+
     #[allow(dead_code)]
     pub fn set_epoch(&self, epoch: ChainEpoch) -> ChainEpoch {
         self.epoch.replace(epoch);
@@ -853,7 +857,7 @@ impl Runtime for MockRuntime {
     type Blockstore = Rc<MemoryBlockstore>;
 
     fn network_version(&self) -> NetworkVersion {
-        self.network_version
+        *self.network_version.borrow()
     }
 
     fn message(&self) -> &dyn MessageInfo {

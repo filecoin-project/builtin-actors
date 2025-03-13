@@ -363,10 +363,12 @@ pub mod policy_constants {
     /// This is a conservative value that is chosen via simulations of all known attacks.
     pub const CHAIN_FINALITY: ChainEpoch = 900;
 
-    // Fraction of circulating supply per byte of quality adjusted power that will
-    // be used to calculate the daily fee for new sectors.
-    // The target multiplier is 1.61817e-25, which is ≈ 5.56e-15 / 32GiB as specified
-    // by FIP-0100. We implement this as 161817e-30.
+    // Fraction of circulating supply per byte of quality adjusted power that will be used to calculate
+    // the daily fee for new sectors.
+    // The target multiplier is:
+    //   5.56e-15 / 32GiB = 5.56e-15 / (32 * 2^30) = 5.56e-15 / 34,359,738,368 ≈ 1.61817e-25
+    // (i.e. slightly rounded for simplicity and a more direct multiplication).
+    // We implement this as 161817e-30.
     pub const DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_NUM: u64 = 161817;
     pub const DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_DENOM: u128 =
         1_000_000_000_000_000_000_000_000_000_000; // 10^30

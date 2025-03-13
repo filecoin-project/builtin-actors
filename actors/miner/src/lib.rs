@@ -28,6 +28,7 @@ use fvm_shared::sector::{
     RegisteredUpdateProof, ReplicaUpdateInfo, SealRandomness, SealVerifyInfo, SectorID, SectorInfo,
     SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
+use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use itertools::Itertools;
 use log::{error, info, warn};
@@ -2338,6 +2339,7 @@ impl Actor {
                             ExtensionKind::ExtendCommittmentLegacy => {
                                 extend_sector_committment_legacy(
                                     rt.policy(),
+                                    rt.network_version(),
                                     curr_epoch,
                                     &circulating_supply,
                                     decl.new_expiration,
@@ -2352,6 +2354,7 @@ impl Actor {
                                 )),
                                 Some(claim_space_by_sector) => extend_sector_committment(
                                     rt.policy(),
+                                    rt.network_version(),
                                     curr_epoch,
                                     reward_stats,
                                     power_stats,
@@ -3694,6 +3697,7 @@ fn validate_extension_declarations(
 #[allow(clippy::too_many_arguments)]
 fn extend_sector_committment(
     policy: &Policy,
+    curr_nv: NetworkVersion,
     curr_epoch: ChainEpoch,
     reward_stats: &ThisEpochRewardReturn,
     power_stats: &ext::power::CurrentTotalPowerReturn,
@@ -3729,7 +3733,9 @@ fn extend_sector_committment(
     );
     if new_sector_info.daily_fee.is_zero() {
         // pre-FIP-0100 sector
-        new_sector_info.daily_fee = daily_proof_fee(policy, circulating_supply, &new_qa_power);
+        if curr_nv >= FIP_0100_GRACE_PERIOD_END_VERSION {
+            new_sector_info.daily_fee = daily_proof_fee(policy, circulating_supply, &new_qa_power);
+        } // else grace period
     } else {
         let old_qa_power = qa_power_for_sector(sector_size, sector_info);
         if old_qa_power != new_qa_power {
@@ -3743,6 +3749,7 @@ fn extend_sector_committment(
 
 fn extend_sector_committment_legacy(
     policy: &Policy,
+    curr_nv: NetworkVersion,
     curr_epoch: ChainEpoch,
     circulating_supply: &TokenAmount,
     new_expiration: ChainEpoch,
@@ -3762,7 +3769,10 @@ fn extend_sector_committment_legacy(
         ));
     }
     let mut sector = extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)?;
-    if sector.daily_fee.is_zero() {
+
+    // adjust daily fee only if this is a legacy sector and we're not in the grace period; no need
+    // to handle the QAP change case here as QAP can only change with ExtendSectorExpiration2
+    if curr_nv >= FIP_0100_GRACE_PERIOD_END_VERSION && sector.daily_fee.is_zero() {
         let power = qa_power_for_weight(
             sector_size,
             sector.expiration - sector.power_base_epoch,

@@ -17,6 +17,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::version::NetworkVersion;
 use fvm_shared::{
     address::Address,
     clock::ChainEpoch,
@@ -234,9 +235,11 @@ fn updates_expiration_with_valid_params(v2: bool) {
     h.check_state(&rt);
 }
 
-#[test_case(false; "v1")]
-#[test_case(true; "v2")]
-fn updates_expiration_and_daily_fee(v2: bool) {
+#[test_case(false, 25; "v1_grace")]
+#[test_case(false, 26; "v1_active")]
+#[test_case(true, 25; "v2_grace")]
+#[test_case(true, 26; "v2_active")]
+fn updates_expiration_and_daily_fee(v2: bool, nv: u32) {
     // Start with sectors that have a zero fee (i.e. indicating they are pre-FIP-0100). Two sectors
     // for both cases, but in v2 we will make the second sector fully verified to test the fee
     // calculation.
@@ -246,6 +249,7 @@ fn updates_expiration_and_daily_fee(v2: bool) {
     // Common setup
     h.construct_and_verify(&rt);
     rt.set_circulating_supply(TokenAmount::zero());
+    rt.set_network_version(NetworkVersion::from(nv));
 
     // Create deal for v2 cases
     let deal = ActivatedDeal {
@@ -354,12 +358,20 @@ fn updates_expiration_and_daily_fee(v2: bool) {
         assert_eq!(new_expiration, sector.expiration);
     }
 
-    // Calculate expected fee
-    let full_verified_fee = daily_proof_fee(
-        &rt.policy,
-        &rt.circulating_supply.borrow(),
-        &BigInt::from(h.sector_size as u64 * 10),
-    );
+    // Calculate expected fee for a full verified sector and the total fee of our two sectors
+    // combined, taking into account the grace period during which fees are zero.
+    let (full_verified_fee, total_fee) = if nv >= 26 {
+        (
+            daily_proof_fee(
+                &rt.policy,
+                &rt.circulating_supply.borrow(),
+                &BigInt::from(h.sector_size as u64 * 10),
+            ),
+            new_sectors[0].daily_fee.clone() + new_sectors[1].daily_fee.clone(),
+        )
+    } else {
+        (TokenAmount::zero(), TokenAmount::zero()) // grace period
+    };
 
     // Verify fees - first sector has divided fee in both versions
     assert_eq!(full_verified_fee.div_floor(10), new_sectors[0].daily_fee);
@@ -367,13 +379,11 @@ fn updates_expiration_and_daily_fee(v2: bool) {
     let expected_fee = if v2 { full_verified_fee } else { full_verified_fee.div_floor(10) };
     assert_eq!(expected_fee, new_sectors[1].daily_fee);
 
-    let total_fee = new_sectors[0].daily_fee.clone() + new_sectors[1].daily_fee.clone();
     let (deadline, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
-
-    // deadline has the two fees
+    // Deadline has the two fees
     assert_eq!(total_fee, deadline.daily_fee);
 
-    // partition expiration queue has the total fee as a deduction
+    // Partition expiration queue has the total fee as a deduction
     let quant = h.get_state(&rt).quant_spec_for_deadline(&rt.policy, deadline_index);
     let quantized_expiration = quant.quantize_up(new_sectors[0].expiration);
     let p_queue = h.collect_partition_expirations(&rt, &partition);
