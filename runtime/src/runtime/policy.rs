@@ -365,11 +365,11 @@ pub mod policy_constants {
 
     // Fraction of circulating supply per byte of quality adjusted power that will
     // be used to calculate the daily fee for new sectors.
-    // The target multiplier is 2.1536e-25, which is ≈ 7.4e-15 / 32 GiB as specified
-    // by FIP-0100. We implement this as 21536e10^29.
-    pub const DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_NUM: u64 = 21536;
+    // The target multiplier is 1.61817e-25, which is ≈ 5.56e-15 / 32GiB as specified
+    // by FIP-0100. We implement this as 161817e-30.
+    pub const DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_NUM: u64 = 161817;
     pub const DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_DENOM: u128 =
-        100_000_000_000_000_000_000_000_000_000;
+        1_000_000_000_000_000_000_000_000_000_000; // 10^30
 
     // 50% of estimated daily block rewards
     pub const DAILY_FEE_BLOCK_REWARD_CAP_DENOM: i64 = 2;
