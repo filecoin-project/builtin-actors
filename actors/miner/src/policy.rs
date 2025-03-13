@@ -12,6 +12,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, POSEIDON_BLS12_381_A1_FC1};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, SectorSize, StoragePower};
+use fvm_shared::version::NetworkVersion;
 use lazy_static::lazy_static;
 
 use super::types::SectorOnChainInfo;
@@ -202,6 +203,11 @@ pub fn reward_for_disputed_window_post(
     // This is currently just the base. In the future, the fee may scale based on the disputed power.
     BASE_REWARD_FOR_DISPUTED_WINDOW_POST.clone()
 }
+
+// Network version at which the FIP-0100 grace period for application of the fee to legacy sector
+// extensions ends. After we reach this network version, the fee will be applied to all sector
+// extensions which currently have a zero fee value.
+pub const FIP_0100_GRACE_PERIOD_END_VERSION: NetworkVersion = NetworkVersion::new(26);
 
 // Calculate the daily fee for a sector's quality-adjusted power based on the current circulating
 // supply.
