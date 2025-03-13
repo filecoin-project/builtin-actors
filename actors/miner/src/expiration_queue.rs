@@ -45,6 +45,11 @@ pub struct ExpirationSet {
     pub faulty_power: PowerPair,
     /// Adjustment to the daily fee recorded for the deadline associated with this expiration set
     /// to account for expiring sectors.
+    ///
+    /// This field is not included in the serialised form of the struct prior to the activation of
+    /// FIP-0100, and is added as the 6th element of the array after that point only for new objects
+    /// or objects that are updated after that point. For old objects, the value of this field will
+    /// always be zero.
     #[serde(default)]
     pub fee_deduction: TokenAmount,
 }
