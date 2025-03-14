@@ -871,7 +871,6 @@ impl Actor {
                 deadline: ru.deadline,
                 partition: ru.partition,
                 new_sealed_cid: ru.new_sealed_cid,
-                new_unsealed_cid: None, // Unknown
                 deals: ru.deals,
                 update_proof_type: ru.update_proof_type,
                 replica_proof: ru.replica_proof,
@@ -1060,29 +1059,21 @@ impl Actor {
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
         let mut sector_infos = Vec::with_capacity(params.sector_updates.len());
         let mut updates = Vec::with_capacity(params.sector_updates.len());
-        let mut sector_commds: HashMap<SectorNumber, CompactCommD> =
-            HashMap::with_capacity(params.sector_updates.len());
         for (i, update) in params.sector_updates.iter().enumerate() {
             let sector = sectors.must_get(update.sector)?;
-            let sector_type = sector.seal_proof;
             sector_infos.push(sector);
-
-            let computed_commd = unsealed_cid_from_pieces(rt, &update.pieces, sector_type)?;
 
             updates.push(ReplicaUpdateInner {
                 sector_number: update.sector,
                 deadline: update.deadline,
                 partition: update.partition,
                 new_sealed_cid: update.new_sealed_cid,
-                new_unsealed_cid: Some(computed_commd.get_cid(sector_type)?),
                 deals: vec![],
                 update_proof_type: params.update_proofs_type,
                 // Replica proof may be empty if an aggregate is being proven.
                 // Validation needs to accept this empty proof.
                 replica_proof: params.sector_proofs.get(i).unwrap_or(&RawBytes::default()).clone(),
             });
-
-            sector_commds.insert(update.sector, computed_commd);
         }
 
         // Validate inputs.
@@ -1100,6 +1091,9 @@ impl Actor {
         )?;
         let valid_unproven_usis = validation_batch.successes(&update_sector_infos);
         let valid_manifests = validation_batch.successes(&params.sector_updates);
+
+        let mut sector_commds: HashMap<SectorNumber, CompactCommD> =
+            HashMap::with_capacity(params.sector_updates.len());
 
         // Verify proofs before activating anything.
         let mut proven_manifests: Vec<(&SectorUpdateManifest, &SectorOnChainInfo)> = vec![];
@@ -1119,13 +1113,16 @@ impl Actor {
             // return a BatchReturn, and then extract successes from
             // valid_unproven_usis and valid_manifests, following the pattern used elsewhere.
             for (usi, manifest) in valid_unproven_usis.iter().zip(valid_manifests) {
+                let sector_type = usi.sector_info.seal_proof;
+                let computed_commd = unsealed_cid_from_pieces(rt, &manifest.pieces, sector_type)?;
                 let proof_inputs = ReplicaUpdateInfo {
                     update_proof_type: usi.update.update_proof_type,
                     new_sealed_cid: usi.update.new_sealed_cid,
                     old_sealed_cid: usi.sector_info.sealed_cid,
-                    new_unsealed_cid: usi.update.new_unsealed_cid.unwrap(), // set above
+                    new_unsealed_cid: computed_commd.get_cid(sector_type)?,
                     proof: usi.update.replica_proof.clone().into(),
                 };
+                sector_commds.insert(manifest.sector, computed_commd);
                 match rt.verify_replica_update(&proof_inputs) {
                     Ok(_) => {
                         proven_manifests.push((manifest, usi.sector_info));
@@ -3558,8 +3555,6 @@ pub struct ReplicaUpdateInner {
     pub deadline: u64,
     pub partition: u64,
     pub new_sealed_cid: Cid,
-    /// None means unknown
-    pub new_unsealed_cid: Option<Cid>,
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
     pub replica_proof: RawBytes,

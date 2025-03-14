@@ -1469,14 +1469,15 @@ impl ActorHarness {
         let mut unsealed_cids: HashMap<SectorNumber, Option<Cid>> = HashMap::new();
 
         for (i, sup) in sector_updates.iter().enumerate() {
+            if cfg.validation_failure.contains(&i) {
+                continue;
+            }
+
             let sector = self.get_sector(rt, sup.sector);
             let unsealed_cid =
                 expect_compute_unsealed_cid_from_pieces(rt, self.seal_proof_type, &sup.pieces);
             unsealed_cids.insert(sector.sector_number, unsealed_cid.0);
 
-            if cfg.validation_failure.contains(&i) {
-                continue;
-            }
             let proof_ok = !cfg.proof_failure.contains(&i);
             rt.expect_replica_verify(
                 ReplicaUpdateInfo {
