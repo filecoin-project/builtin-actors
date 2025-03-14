@@ -980,7 +980,7 @@ mod miner_actor_test_partitions {
 
         let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1;
         let _sector_size = proof_type.sector_size().unwrap();
-        let partition_sectors = proof_type.window_post_partitions_sector().unwrap();
+        let partition_sectors = proof_type.window_post_partition_sectors().unwrap();
 
         let mut many_sectors = vec![SectorOnChainInfo::default(); partition_sectors as usize];
         let mut ids = vec![0u64; partition_sectors as usize];

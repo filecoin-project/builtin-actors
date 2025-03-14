@@ -193,7 +193,7 @@ impl ActorHarness {
             seal_proof_type: proof_type,
             window_post_proof_type: proof_type.registered_window_post_proof().unwrap(),
             sector_size: proof_type.sector_size().unwrap(),
-            partition_size: proof_type.window_post_partitions_sector().unwrap(),
+            partition_size: proof_type.window_post_partition_sectors().unwrap(),
 
             next_sector_no: 0,
 
@@ -243,7 +243,7 @@ impl ActorHarness {
         self.seal_proof_type = proof_type;
         self.window_post_proof_type = proof_type.registered_window_post_proof().unwrap();
         self.sector_size = proof_type.sector_size().unwrap();
-        self.partition_size = proof_type.window_post_partitions_sector().unwrap();
+        self.partition_size = proof_type.window_post_partition_sectors().unwrap();
     }
 
     pub fn construct_and_verify(&self, rt: &MockRuntime) {

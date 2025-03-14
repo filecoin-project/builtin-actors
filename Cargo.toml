@@ -125,14 +125,14 @@ ipld-core = { version = "0.4.1", features = ["serde"] }
 integer-encoding = { version = "4.0.2", default-features = false }
 
 # actor-utils
-fvm_actor_utils = "12.0.0"
-frc42_dispatch = "8.0.0"
-frc46_token = "12.0.0"
+fvm_actor_utils = "13.0.0"
+frc42_dispatch = "9.0.0"
+frc46_token = "13.0.0"
 
 # FVM
-fvm_sdk = "4.5.1"
-fvm_shared = "4.5.1"
-fvm_ipld_encoding = "0.5.0"
+fvm_sdk = "4.6.0"
+fvm_shared = "4.6.0"
+fvm_ipld_encoding = "0.5.2"
 fvm_ipld_blockstore = "0.3.0"
 fvm_ipld_hamt = "0.10.2"
 fvm_ipld_kamt = "0.4.3"
