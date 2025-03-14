@@ -94,6 +94,20 @@ pub struct MinerRawPowerReturn {
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
+pub struct MinerPowerParams {
+    pub miner: ActorID,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct MinerPowerReturn {
+    #[serde(with = "bigint_ser")]
+    pub raw_byte_power: StoragePower,
+    #[serde(with = "bigint_ser")]
+    pub quality_adj_power: StoragePower,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
 pub struct MinerCountReturn {
     pub miner_count: i64,
 }

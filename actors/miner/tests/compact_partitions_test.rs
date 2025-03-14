@@ -1,11 +1,10 @@
 use fil_actor_miner::{
-    expected_reward_for_power, new_deadline_info, pledge_penalty_for_termination,
-    qa_power_for_sector, State, INITIAL_PLEDGE_PROJECTION_PERIOD,
+    new_deadline_info, pledge_penalty_for_continued_fault, pledge_penalty_for_termination,
+    qa_power_for_sector, State,
 };
 use fil_actors_runtime::{
     runtime::{Runtime, RuntimePolicy},
     test_utils::{expect_abort, expect_abort_contains_message, MockRuntime},
-    EPOCHS_IN_DAY,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, error::ExitCode, sector::SectorNumber};
@@ -74,30 +73,14 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
 
     let terminated_sector = &sectors_info[0];
     let sector_size = terminated_sector.seal_proof.sector_size().unwrap();
-    let sector_power = qa_power_for_sector(sector_size, terminated_sector);
-    let day_reward = expected_reward_for_power(
-        &h.epoch_reward_smooth,
-        &h.epoch_qa_power_smooth,
-        &sector_power,
-        EPOCHS_IN_DAY,
-    );
-    let twenty_day_reward = expected_reward_for_power(
-        &h.epoch_reward_smooth,
-        &h.epoch_qa_power_smooth,
-        &sector_power,
-        INITIAL_PLEDGE_PROJECTION_PERIOD,
-    );
     let sector_age = *rt.epoch.borrow() - terminated_sector.activation;
-    let expected_fee = pledge_penalty_for_termination(
-        &day_reward,
-        sector_age,
-        &twenty_day_reward,
-        &h.epoch_qa_power_smooth,
-        &sector_power,
+    let initial_pledge = &terminated_sector.initial_pledge;
+    let fault_fee = pledge_penalty_for_continued_fault(
         &h.epoch_reward_smooth,
-        &TokenAmount::zero(),
-        0,
+        &h.epoch_qa_power_smooth,
+        &qa_power_for_sector(sector_size, terminated_sector),
     );
+    let expected_fee = pledge_penalty_for_termination(initial_pledge, sector_age, &fault_fee);
 
     h.terminate_sectors(&rt, &bitfield_from_slice(&[sectors[0]]), expected_fee);
 

@@ -56,6 +56,7 @@ pub enum Method {
     MinerRawPowerExported = frc42_dispatch::method_hash!("MinerRawPower"),
     MinerCountExported = frc42_dispatch::method_hash!("MinerCount"),
     MinerConsensusCountExported = frc42_dispatch::method_hash!("MinerConsensusCount"),
+    MinerPowerExported = frc42_dispatch::method_hash!("MinerPower"),
 }
 
 pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
@@ -318,6 +319,27 @@ impl Actor {
         Ok(MinerConsensusCountReturn { miner_consensus_count: st.miner_above_min_power_count })
     }
 
+    /// Returns the miner's quality-adjusted and raw power
+    fn miner_power(
+        rt: &impl Runtime,
+        params: MinerPowerParams,
+    ) -> Result<MinerPowerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        let miner_address = &fvm_shared::address::Address::new_id(params.miner);
+        let claim = st.miner_power(rt.store(), miner_address)?;
+
+        if let Some(claim) = claim {
+            Ok(MinerPowerReturn {
+                raw_byte_power: claim.raw_byte_power,
+                quality_adj_power: claim.quality_adj_power,
+            })
+        } else {
+            Err(actor_error!(not_found, "miner not found"))
+        }
+    }
+
     fn process_deferred_cron_events(
         rt: &impl Runtime,
         rewret: ThisEpochRewardReturn,
@@ -440,5 +462,6 @@ impl ActorCode for Actor {
         MinerRawPowerExported => miner_raw_power,
         MinerCountExported => miner_count,
         MinerConsensusCountExported => miner_consensus_count,
+        MinerPowerExported => miner_power,
     }
 }

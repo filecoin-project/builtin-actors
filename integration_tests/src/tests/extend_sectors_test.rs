@@ -94,8 +94,7 @@ pub fn extend(
         }
     };
 
-    let mut expect_invoke =
-        vec![Expect::reward_this_epoch(miner_id), Expect::power_current_total(miner_id)];
+    let mut expect_invoke = vec![];
 
     if !power_delta.is_zero() {
         expect_invoke.push(Expect::power_update_claim(miner_id, power_delta));
@@ -755,11 +754,10 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     // activation not changed
     assert_eq!(initial_sector_info.activation, sector_info_after_update.activation);
 
-    // replaced day reward updated
-    assert_eq!(
-        initial_sector_info.expected_day_reward,
-        sector_info_after_update.replaced_day_reward
-    );
+    // replaced day reward updated.
+    // As of [FIP-0098](https://github.com/filecoin-project/FIPs/blob/de3c8e2cae9f003dfb52d664d640745d96ca19ac/FIPS/fip-0098.md),
+    // the replaced day reward is set to zero and unused.
+    assert_eq!(None, sector_info_after_update.replaced_day_reward);
 
     // extend the updated sector
 
@@ -805,8 +803,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     assert_eq!(sector_info_after_extension.power_base_epoch, v.epoch());
     assert_eq!(sector_info_after_update.activation, sector_info_after_extension.activation);
-    assert_eq!(
-        sector_info_after_extension.replaced_day_reward,
-        sector_info_after_update.expected_day_reward
-    );
+    assert_eq!(None, sector_info_after_extension.replaced_day_reward);
+    assert_eq!(None, sector_info_after_update.replaced_day_reward);
 }
