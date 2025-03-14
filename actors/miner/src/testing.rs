@@ -239,7 +239,7 @@ fn check_miner_info(info: MinerInfo, acc: &MessageAccumulator) {
         );
 
         let partition_sectors =
-            info.window_post_proof_type.window_post_partitions_sector().unwrap();
+            info.window_post_proof_type.window_post_partition_sectors().unwrap();
         acc.require(info.window_post_partition_sectors == partition_sectors, format!("miner partition sectors {} does not match partition sectors {} for PoSt proof type {:?}", info.window_post_partition_sectors, partition_sectors, info.window_post_proof_type));
     }
 }

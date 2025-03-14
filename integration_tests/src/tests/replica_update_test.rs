@@ -172,7 +172,7 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     let more_than_one_partition = 2440;
     let batch_size = 100;
     let first_sector_number_p1 = 0;
-    let first_sector_number_p2 = seal_proof.window_post_partitions_sector().unwrap();
+    let first_sector_number_p2 = seal_proof.window_post_partition_sectors().unwrap();
     let expiration = v.epoch() + policy.max_sector_expiration_extension;
 
     let new_precommits = precommit_sectors_v2(
