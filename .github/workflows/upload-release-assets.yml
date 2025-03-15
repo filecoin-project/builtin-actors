@@ -3,21 +3,28 @@ name: Upload Release Assets
 on:
   workflow_dispatch:
     inputs:
-      tag_name:
-        description: 'The name of the tag to upload assets for'
+      release_id:
+        description: 'The id of the release to upload the assets for'
         required: true
+        type: string
+      release_ref:
+        description: 'The ref to build the release assets from'
+        required: false
         type: string
   workflow_call:
     inputs:
-      tag_name:
+      release_id:
         required: true
+        type: string
+      release_ref:
+        required: false
         type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.tag_name || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -32,19 +39,10 @@ jobs:
       matrix:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
     steps:
-    - id: tag
-      env:
-        TAG_NAME: ${{ inputs.tag_name }}
-      run: |
-        if [[ "$TAG_NAME" != '' ]]; then
-          echo "name=$TAG_NAME" | tee -a "$GITHUB_OUTPUT"
-        else
-          echo "name=${GITHUB_REF#refs/tags/}" | tee -a "$GITHUB_OUTPUT"
-        fi
-    - name: Checking out the release
+    - name: Checking out builtin-actors
       uses: actions/checkout@v4
       with:
-        ref: ${{ format('refs/tags/{0}', steps.tag.outputs.name) }}
+        ref: ${{ inputs.release_ref || github.ref }}
     - name: Setting up cache
       uses: pl-strflt/rust-sccache-action@v1
       env:
@@ -59,7 +57,7 @@ jobs:
     - name: Upload release assets to GitHub Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_RELEASE_URL: ${{ github.api_url }}/repos/${{ github.repository }}/releases/${{ steps.tag.outputs.name }}
+        GITHUB_RELEASE_URL: ${{ github.api_url }}/repos/${{ github.repository }}/releases/${{ inputs.release_id }}
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
         git checkout $GITHUB_REF -- scripts/upload-release-assets.sh

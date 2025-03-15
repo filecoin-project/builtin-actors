@@ -25,7 +25,7 @@ jobs:
     if: fromJSON(needs.draft.outputs.json)['Cargo.toml']
     uses: ./.github/workflows/upload-release-assets.yml
     with:
-      tag_name: ${{ fromJSON(needs.draft.outputs.json)['Cargo.toml'].id }}
+      release_id: ${{ fromJSON(needs.draft.outputs.json)['Cargo.toml'].id }}
   # If a draft release was created/update, publish the release
   releaser:
     needs: [draft, upload-release-assets]
