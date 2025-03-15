@@ -28,7 +28,7 @@ jobs:
       tag_name: ${{ fromJSON(needs.draft.outputs.json)['Cargo.toml'].id }}
   # If a draft release was created/update, publish the release
   releaser:
-    needs: [draft]
+    needs: [draft, upload-release-assets]
     if: fromJSON(needs.draft.outputs.json)['Cargo.toml']
     uses: ipdxco/unified-github-workflows/.github/workflows/releaser.yml@v1.0
     with:
