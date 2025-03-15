@@ -9,13 +9,30 @@ permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
-  releaser:
+  # Create/update a draft release if this is a release creating push event
+  draft:
     uses: ipdxco/unified-github-workflows/.github/workflows/releaser.yml@v1.0
     with:
       sources: '["Cargo.toml"]'
+      draft: true
+  # If a draft release was created/updated, build and upload release assets
+  upload-release-assets:
+    needs: [draft]
+    if: fromJSON(needs.draft.outputs.json)['Cargo.toml']
+    uses: ./.github/workflows/upload-release-assets.yml
+    with:
+      release_id: ${{ fromJSON(needs.draft.outputs.json)['Cargo.toml'].id }}
+  # If a draft release was created/update, publish the release
+  releaser:
+    needs: [draft, upload-release-assets]
+    if: fromJSON(needs.draft.outputs.json)['Cargo.toml']
+    uses: ipdxco/unified-github-workflows/.github/workflows/releaser.yml@v1.0
+    with:
+      sources: '["Cargo.toml"]'
+      draft: false
     secrets:
       UCI_GITHUB_TOKEN: ${{ secrets.UCI_GITHUB_TOKEN }}

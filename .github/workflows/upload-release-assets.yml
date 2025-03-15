@@ -1,0 +1,64 @@
+name: Upload Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: 'The id of the release to upload the assets for'
+        required: true
+        type: string
+      release_ref:
+        description: 'The ref to build the release assets from'
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      release_id:
+        required: true
+        type: string
+      release_ref:
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  upload-release-assets:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CARGO_INCREMENTAL: 0
+      CACHE_SKIP_SAVE: true
+      RUSTFLAGS: -Dwarnings
+    strategy:
+      matrix:
+        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
+    steps:
+    - name: Checking out builtin-actors
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.release_ref || github.ref }}
+    - name: Setting up cache
+      uses: pl-strflt/rust-sccache-action@v1
+      env:
+        SCCACHE_CACHE_SIZE: 2G
+        SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+        CACHE_SKIP_SAVE: true
+    - name: Writing bundle
+      env:
+        BUILD_FIL_NETWORK: ${{ matrix.network }}
+      run: |
+        make bundle-repro
+    - name: Upload release assets to GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_RELEASE_URL: ${{ github.api_url }}/repos/${{ github.repository }}/releases/${{ inputs.release_id }}
+        BUILD_FIL_NETWORK: ${{ matrix.network }}
+      run: |
+        git checkout $GITHUB_REF -- scripts/upload-release-assets.sh
+        ./scripts/upload-release-assets.sh

@@ -19,36 +19,3 @@ jobs:
     uses: ipdxco/unified-github-workflows/.github/workflows/release-check.yml@v1.0
     with:
       sources: '["Cargo.toml"]'
-  upload-release-assets:
-    needs: [release-check]
-    if: fromJSON(needs.release-check.outputs.json)['Cargo.toml']
-    runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
-      RUSTFLAGS: -Dwarnings
-    strategy:
-      matrix:
-        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
-    steps:
-    - name: Checking out
-      uses: actions/checkout@v4
-    - name: Setting up cache
-      uses: pl-strflt/rust-sccache-action@v1
-      env:
-        SCCACHE_CACHE_SIZE: 2G
-        SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-        CACHE_SKIP_SAVE: true
-    - name: Writing bundle
-      env:
-        BUILD_FIL_NETWORK: ${{ matrix.network }}
-      run: |
-        make bundle-repro
-    - name: Upload release assets to GitHub Release
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_RELEASE_URL: ${{ github.api_url }}/repos/${{ github.repository }}/releases/${{ fromJSON(needs.release-check.outputs.json)['Cargo.toml'].id }}
-        BUILD_FIL_NETWORK: ${{ matrix.network }}
-      run: |
-        ./scripts/upload-release-assets.sh
