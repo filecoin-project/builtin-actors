@@ -2,6 +2,7 @@ name: Releaser
 
 on:
   push:
+    branches: ["**"]
     paths: ["Cargo.toml"]
   workflow_dispatch:
 
