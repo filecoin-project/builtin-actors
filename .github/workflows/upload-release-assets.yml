@@ -23,10 +23,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
-  cancel-in-progress: true
-
 jobs:
   upload-release-assets:
     runs-on: ubuntu-latest
