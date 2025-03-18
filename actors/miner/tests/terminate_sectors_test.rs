@@ -1,19 +1,23 @@
 use fil_actor_miner::{
     pledge_penalty_for_continued_fault, pledge_penalty_for_termination, power_for_sector,
-    qa_power_for_sector, Actor, CronEventPayload, DeferredCronEventParams, MaxTerminationFeeParams,
-    MaxTerminationFeeReturn, Method, SectorOnChainInfo, State, TerminateSectorsParams,
-    TerminationDeclaration, CRON_EVENT_PROCESS_EARLY_TERMINATIONS,
-    TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM,
-    TERM_FEE_PLEDGE_MULTIPLE_DENOM, TERM_FEE_PLEDGE_MULTIPLE_NUM,
+    qa_power_for_sector, Actor, CronEventPayload, DeferredCronEventParams, ExpirationExtension2,
+    ExtendSectorExpiration2Params, MaxTerminationFeeParams, MaxTerminationFeeReturn, Method,
+    SectorOnChainInfo, State, TerminateSectorsParams, TerminationDeclaration,
+    CRON_EVENT_PROCESS_EARLY_TERMINATIONS, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM,
+    TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM, TERM_FEE_PLEDGE_MULTIPLE_DENOM,
+    TERM_FEE_PLEDGE_MULTIPLE_NUM,
 };
 use fil_actors_runtime::{
+    reward::FilterEstimate,
     runtime::Runtime,
     test_utils::{expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID},
-    BURNT_FUNDS_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    BatchReturn, BURNT_FUNDS_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{
-    econ::TokenAmount, error::ExitCode, sector::StoragePower, MethodNum, METHOD_SEND,
+    bigint::BigInt, econ::TokenAmount, error::ExitCode, sector::StoragePower, MethodNum,
+    METHOD_SEND,
 };
 use std::collections::HashMap;
 
@@ -47,15 +51,53 @@ fn setup() -> (ActorHarness, MockRuntime) {
 }
 
 #[test]
-fn removes_sector_with_correct_accounting() {
+fn removes_sectors_with_correct_accounting() {
     let (mut h, rt) = setup();
 
-    let sector_info =
-        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, Vec::new(), true);
+    // set the reward such that our termination fees don't bottom out at the fault fee multiple and
+    // instead invoke the duration multipler so we can also test that
+    h.epoch_reward_smooth = FilterEstimate::new(BigInt::from(1e12 as u64), BigInt::zero());
 
-    assert_eq!(sector_info.len(), 1);
-    h.advance_and_submit_posts(&rt, &sector_info);
-    let sector = sector_info.into_iter().next().unwrap();
+    // 3 sectors: one left alone, one that we'll extend and one that we'll update, they should all
+    // have the same termination fee
+    let sectors = h.commit_and_prove_sectors(&rt, 3, DEFAULT_SECTOR_EXPIRATION, Vec::new(), true);
+    assert_eq!(sectors.len(), 3);
+
+    // advance enough to make the duration component of the termination fee large enough to not hit
+    // the minimum bound
+    for _ in 0..40 {
+        h.advance_and_submit_posts(&rt, &sectors);
+    }
+
+    // extend the second sector, shouldn't affect the termination fee
+    let state: State = rt.get_state();
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.store(), sectors[1].sector_number).unwrap();
+    let extension = 42 * rt.policy.wpost_proving_period;
+    let new_expiration = sectors[1].expiration + extension;
+    let params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[sectors[1].sector_number]),
+            sectors_with_claims: vec![],
+            new_expiration,
+        }],
+    };
+    h.extend_sectors2(&rt, params, HashMap::new()).unwrap();
+
+    // update the third sector with no pieces, should not affect the termination fee
+    let updates = make_update_manifest(&rt.get_state(), rt.store(), sectors[2].sector_number, &[]); // No pieces
+    let (result, _, _) = h
+        .prove_replica_updates3_batch(
+            &rt,
+            &[updates],
+            true,
+            true,
+            ProveReplicaUpdatesConfig::default(),
+        )
+        .unwrap();
+    assert_eq!(BatchReturn::of(&[ExitCode::OK; 1]), result.activation_results);
 
     // A miner will pay the minimum of termination fee and locked funds. Add some locked funds to ensure
     // correct fee calculation is used.
@@ -63,16 +105,18 @@ fn removes_sector_with_correct_accounting() {
     let state: State = rt.get_state();
     let initial_locked_funds = state.locked_funds;
 
-    let expected_fee = calc_expected_fee_for_termination(&h, &rt, &sector);
+    // fee for all sectors is the same, so we can just use the first one
+    let expected_fee = calc_expected_fee_for_termination(&h, &rt, &sectors[0]) * 3;
 
-    let sectors = bitfield_from_slice(&[sector.sector_number]);
-    h.terminate_sectors(&rt, &sectors, expected_fee.clone());
+    let bf = bitfield_from_slice(&sectors.iter().map(|s| s.sector_number).collect::<Vec<u64>>());
+    h.terminate_sectors(&rt, &bf, expected_fee.clone());
 
     // expect sector to be marked as terminated and the early termination queue to be empty (having been fully processed)
     let state: State = rt.get_state();
-    let (_, mut partition) = h.find_sector(&rt, sector.sector_number);
-    let terminated = partition.terminated.get(sector.sector_number);
-    assert!(terminated);
+    let (_, mut partition) = h.find_sector(&rt, sectors[0].sector_number);
+    for s in &sectors {
+        assert!(partition.terminated.get(s.sector_number));
+    }
 
     let (result, _) = partition.pop_early_terminations(rt.store(), 1000).unwrap();
     assert!(result.is_empty());

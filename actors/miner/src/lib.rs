@@ -4355,7 +4355,7 @@ fn process_early_terminations(
                 total_initial_pledge += &sector.initial_pledge;
                 let sector_power = qa_power_for_sector(info.sector_size, sector);
                 terminated_sector_nums.push(sector.sector_number);
-                let sector_age = epoch - sector.power_base_epoch;
+                let sector_age = epoch - sector.activation;
                 let fault_fee = pledge_penalty_for_continued_fault(
                     reward_smoothed,
                     quality_adj_power_smoothed,
