@@ -32,6 +32,7 @@ jobs:
       CACHE_SKIP_SAVE: true
       RUSTFLAGS: -Dwarnings
     strategy:
+      fail-fast: false
       matrix:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
     steps:
