@@ -28,9 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: true
-      RUSTFLAGS: -Dwarnings
     strategy:
       fail-fast: false
       matrix:
@@ -40,12 +37,6 @@ jobs:
       uses: actions/checkout@v4
       with:
         ref: ${{ inputs.release_ref || github.ref }}
-    - name: Setting up cache
-      uses: pl-strflt/rust-sccache-action@v1
-      env:
-        SCCACHE_CACHE_SIZE: 2G
-        SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-        CACHE_SKIP_SAVE: true
     - name: Writing bundle
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
