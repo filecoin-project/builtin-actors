@@ -11,6 +11,7 @@ use crate::reader::OverflowError;
 use super::{CallKind, System};
 mod blake2f_impl;
 mod bls12_381;
+mod bls_util;
 mod evm;
 mod fvm;
 
