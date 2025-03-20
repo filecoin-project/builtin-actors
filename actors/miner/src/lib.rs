@@ -4497,9 +4497,11 @@ fn handle_proving_deadline(
 
         if result.daily_fee.is_positive() {
             // Apply daily fee for sectors in this deadline, applied through the penalty/fee_debt
-            // mechanism.
-            // The daily fee payable is capped at a fraction of estimated daily block reward for the
-            // sectors being charged.
+            // mechanism. The daily fee payable is capped at a fraction of estimated daily block
+            // reward for the sectors being charged.
+            // Note that the daily_fee and live_power values here do not include sectors that have
+            // just been removed from the deadline via advance_dealine (above), but they do include
+            // sectors that have been added within the current proving period.
             let day_reward = expected_reward_for_power(
                 reward_smoothed,
                 quality_adj_power_smoothed,
