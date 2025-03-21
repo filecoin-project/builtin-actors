@@ -166,6 +166,8 @@ pub struct Deadline {
 
     /// Memoized sum of all non-terminated power in partitions, including active, faulty, and
     /// unproven. Used to cap the daily fee as a proportion of expected block reward.
+    /// This field should not be used as an accurate measure of a miner's power as it includes
+    /// faulty and unproven power.
     pub live_power: PowerPair,
 
     /// Memoized sum of daily fee payable to the network for the active sectors
