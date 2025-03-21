@@ -6,6 +6,9 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
+use std::io::prelude::*;
+use flate2::Compression;
+use flate2::write::GzEncoder;
 
 /// Cargo package for an actor.
 type Package = str;
@@ -180,6 +183,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("cargo:warning=added {} ({}) to bundle with CID {}", name, id, cid);
     }
     bundler.finish().expect("failed to finish bundle");
+
+    let car_contents = std::fs::read(&dst).expect("failed to read CAR file");
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::best());
+    encoder.write_all(&car_contents).expect("failed to compress CAR");
+    let compressed = encoder.finish().expect("failed to finish compression");
+
+    std::fs::write(&dst, compressed).expect("failed to write compressed bundle");
 
     println!("cargo:warning=bundle={}", dst.display());
 

@@ -14,4 +14,8 @@ rustflags = [
     "-Ctarget-feature=-multivalue",
     "-Ctarget-feature=-atomics",
     "-Clink-arg=--export-table",
+    "-Copt-level=z",
+    "-Clto=fat",
+    "-Ccodegen-units=1",
+    "-Cpanic=abort",
 ]

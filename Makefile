@@ -84,8 +84,18 @@ check-clean:
 		exit 1; \
 	}
 
-.PHONY: rustfmt check check-clean test bundle
+.PHONY: rustfmt check check-clean test bundle optimize-bundle analyze-size
 .PHONY: all-bundles bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet \
 	bundle-devnet bundle-testing all-bundles-repro bundle-mainnet-repro bundle-caterpillarnet-repro \
 	bundle-butterflynet-repro bundle-calibrationnet-repro bundle-devnet-repro bundle-testing-repro \
 	docker-builder
+
+optimize-bundle: bundle
+	@echo "Optimizing bundle size..."
+	wasm-opt -Oz --strip-debug --strip-producers -o output/optimized.wasm output/bundle.wasm
+	@echo "Generating size metrics..."
+	cargo run --bin generate-metrics
+
+analyze-size:
+	@echo "Analyzing bundle size..."
+	@cargo run --bin analyze-metrics

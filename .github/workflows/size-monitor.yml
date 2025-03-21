@@ -1,0 +1,29 @@
+name: Bundle Size Monitor
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  analyze-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Build and analyze bundle
+        run: |
+          make optimize-bundle
+          make analyze-size
+          
+      - name: Check size constraints
+        run: |
+          ./scripts/check-size-limits.sh
+          
+      - name: Upload size metrics
+        if: always()
+        uses: actions/upload-artifact@v2
+        with:
+          name: bundle-size-metrics
+          path: output/metrics.json 
