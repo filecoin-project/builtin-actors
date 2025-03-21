@@ -101,7 +101,8 @@ fn simple_construction() {
 
     assert_eq!(TokenAmount::zero(), state.pre_commit_deposits);
     assert_eq!(TokenAmount::zero(), state.locked_funds);
-    assert_ne!(Cid::default(), state.pre_committed_sectors);
+    assert!(state.pre_committed_sectors.is_none());
+    assert!(state.pre_committed_sectors_cleanup.is_none());
     assert_ne!(Cid::default(), state.sectors);
 
     // according to original specs-actors test, this is set by running the code; magic...
