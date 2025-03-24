@@ -20,7 +20,6 @@ use blst::{
 pub const G1_INPUT_LENGTH: usize = 128;
 pub const G1_ADD_INPUT_LENGTH: usize = G1_INPUT_LENGTH * 2;
 pub const G1_OUTPUT_LENGTH: usize = 128;
-pub const PADDED_FP_LENGTH: usize = 64;
 pub const PADDING_LENGTH: usize = 16;
 pub const G1_MSM_INPUT_LENGTH: usize = 160;
 pub const G1_INPUT_ITEM_LENGTH: usize = 128;
@@ -30,6 +29,12 @@ pub const G2_ADD_INPUT_LENGTH: usize = 512;
 pub const G2_INPUT_ITEM_LENGTH: usize = 256;
 pub const G2_OUTPUT_LENGTH: usize = 256;
 pub const G2_MSM_INPUT_LENGTH: usize = 288;
+pub const PADDED_FP_LENGTH: usize = 64;
+pub const PADDED_FP2_LENGTH: usize = 2 * PADDED_FP_LENGTH;
+pub const PADDED_G1_LENGTH: usize = 2 * PADDED_FP_LENGTH;
+pub const PADDED_G2_LENGTH: usize = 2 * PADDED_FP2_LENGTH;
+pub const PAIRING_INPUT_LENGTH: usize = PADDED_G1_LENGTH + PADDED_G2_LENGTH;
+
 
 /// Encodes a G2 point in affine format into byte slice with padded elements.
 /// G2 points have two coordinates (x,y) where each coordinate is a complex number (real,imaginary)
