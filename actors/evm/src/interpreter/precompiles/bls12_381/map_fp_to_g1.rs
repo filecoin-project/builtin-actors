@@ -12,9 +12,11 @@ use crate::interpreter::precompiles::bls_util::{
 
 use blst::{
     blst_map_to_g1,
-    blst_p1_affine,
     blst_fp,
-    blst_fp_from_bendian
+    blst_fp_from_bendian,
+    blst_p1,
+    blst_p1_affine,
+    blst_p1_to_affine
 };
 
 /// BLS12_MAP_FP_TO_G1 precompile
@@ -41,13 +43,35 @@ pub fn bls12_map_fp_to_g1<RT: Runtime>(
     }
 
     // Map the field element to a G1 point
-    let mut p_aff = blst_p1_affine::default();
-    unsafe {
-        blst_map_to_g1(&mut p_aff, &fp);
-    }
+    let p_aff = map_fp_to_g1(&fp);
 
     // Encode the result
     Ok(encode_g1_point(&p_aff))
+}
+
+#[inline]
+fn p1_to_affine(p: &blst_p1) -> blst_p1_affine {
+    let mut p_affine = blst_p1_affine::default();
+    // SAFETY: both inputs are valid blst types
+    unsafe { blst_p1_to_affine(&mut p_affine, p) };
+    p_affine
+}
+
+/// Maps a field element to a G1 point
+///
+/// Takes a field element (blst_fp) and returns the corresponding G1 point in affine form
+#[inline]
+pub(super) fn map_fp_to_g1(fp: &blst_fp) -> blst_p1_affine {
+    // Create a new G1 point in Jacobian coordinates
+    let mut p = blst_p1::default();
+
+    // Map the field element to a point on the curve
+    // SAFETY: `p` and `fp` are blst values
+    // Third argument is unused if null
+    unsafe { blst_map_to_g1(&mut p, fp, core::ptr::null()) };
+
+    // Convert to affine coordinates
+    p1_to_affine(&p)
 }
 
 #[cfg(test)]

@@ -88,7 +88,7 @@ pub(super) fn decode_and_check_g2(
 }
 
 /// Helper function to create and validate an Fp2 element from two Fp elements
-fn check_canonical_fp2(
+pub fn check_canonical_fp2(
     input_1: &[u8; 48],
     input_2: &[u8; 48],
 ) -> Result<blst_fp2, PrecompileError> {
