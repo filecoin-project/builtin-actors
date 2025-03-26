@@ -3,7 +3,7 @@ use fil_actor_init::Method as InitMethod;
 use fil_actor_miner::{
     max_prove_commit_duration, Method as MinerMethod, MinerConstructorParams, MIN_SECTOR_EXPIRATION,
 };
-use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
+use fil_actor_power::{CreateMinerParams, Method as PowerMethod, State as PowerState};
 use fil_actors_runtime::runtime::Policy;
 
 use fil_actors_runtime::{
@@ -19,12 +19,12 @@ use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
 use vm_api::trace::ExpectInvocation;
-use vm_api::util::{apply_ok, serialize_ok};
+use vm_api::util::{apply_ok, DynBlockstore};
 use vm_api::VM;
 
 use crate::expects::Expect;
 use crate::util::{
-    assert_invariants, create_accounts, create_miner, expect_invariants,
+    assert_invariants, create_accounts, create_miner, create_miner_internal, expect_invariants,
     invariant_failure_patterns, miner_dline_info, miner_precommit_one_sector_v2, PrecommitMetadata,
 };
 use crate::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
@@ -32,17 +32,12 @@ use crate::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 #[vm_test]
 pub fn power_create_miner_test(v: &dyn VM) {
     let owner = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-    v.execute_message(
-        &TEST_FAUCET_ADDR,
-        &owner,
-        &TokenAmount::from_atto(10_000u32),
-        METHOD_SEND,
-        None,
-    )
-    .unwrap();
+    let value = TokenAmount::from_atto(10_000u32);
+    v.execute_message(&TEST_FAUCET_ADDR, &owner, &value, METHOD_SEND, None).unwrap();
+
+    let post_proof = RegisteredPoStProof::StackedDRGWindow32GiBV1P1;
     let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
     let peer_id = "miner".as_bytes().to_vec();
-    let post_proof = RegisteredPoStProof::StackedDRGWindow32GiBV1P1;
     let params = CreateMinerParams {
         owner,
         worker: owner,
@@ -50,18 +45,11 @@ pub fn power_create_miner_test(v: &dyn VM) {
         peer: peer_id.clone(),
         multiaddrs: multiaddrs.clone(),
     };
-
-    let res = v
-        .execute_message(
-            &owner,
-            &STORAGE_POWER_ACTOR_ADDR,
-            &TokenAmount::from_atto(1000u32),
-            PowerMethod::CreateMiner as u64,
-            Some(serialize_ok(&params)),
-        )
-        .unwrap();
+    let res = create_miner_internal(v, &params, &value);
 
     let owner_id = v.resolve_id_address(&owner).unwrap().id().unwrap();
+    let state = PowerState::new(&DynBlockstore::wrap(v.blockstore())).unwrap();
+    let network_qap = state.this_epoch_qa_power_smoothed.clone();
     let expect = ExpectInvocation {
         // send to power actor
         from: owner_id,
@@ -88,6 +76,7 @@ pub fn power_create_miner_test(v: &dyn VM) {
                             peer_id,
                             control_addresses: vec![],
                             multi_addresses: multiaddrs,
+                            network_qap,
                         })
                         .unwrap(),
                     ),
