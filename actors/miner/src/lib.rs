@@ -186,7 +186,12 @@ impl Actor {
         check_valid_post_proof_type(rt.policy(), params.window_post_proof_type)?;
 
         let balance = rt.current_balance();
-        let deposit = calculate_create_miner_deposit(rt, params.network_qap)?;
+        let sector_size = params
+            .window_post_proof_type
+            .sector_size()
+            .map_err(|e| actor_error!(illegal_argument, "invalid sector size: {}", e))?;
+
+        let deposit = calculate_create_miner_deposit(rt, params.network_qap, sector_size)?;
         if balance < deposit {
             return Err(actor_error!(insufficient_funds;
                 "not enough balance to lock for create miner deposit: \
@@ -5618,6 +5623,7 @@ fn activate_new_sector_infos(
 pub fn calculate_create_miner_deposit(
     rt: &impl Runtime,
     network_qap: FilterEstimate,
+    sector_size: SectorSize,
 ) -> Result<TokenAmount, ActorError> {
     // set network pledge inputs
     let rew = request_current_epoch_block_reward(rt)?;
@@ -5631,20 +5637,6 @@ pub fn calculate_create_miner_deposit(
         epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
         ramp_duration_epochs: pwr.ramp_duration_epochs,
     };
-
-    /// set sector size with min power
-    #[cfg(feature = "min-power-2k")]
-    let sector_size = SectorSize::_2KiB;
-    #[cfg(feature = "min-power-2g")]
-    let sector_size = SectorSize::_8MiB;
-    #[cfg(feature = "min-power-32g")]
-    let sector_size = SectorSize::_512MiB;
-    #[cfg(not(any(
-        feature = "min-power-2k",
-        feature = "min-power-2g",
-        feature = "min-power-32g"
-    )))]
-    let sector_size = SectorSize::_32GiB;
 
     let sector_number = MINIMUM_CONSENSUS_POWER / sector_size as i64;
     let power = qa_power_for_weight(sector_size, MIN_SECTOR_EXPIRATION, &BigInt::zero());

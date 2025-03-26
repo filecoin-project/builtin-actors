@@ -156,7 +156,6 @@ pub struct ActorHarness {
     pub epoch_reward_smooth: FilterEstimate,
     pub epoch_qa_power_smooth: FilterEstimate,
 
-    pub base_fee: TokenAmount,
     pub create_depost: TokenAmount,
 
     pub options: HarnessOptions,
@@ -208,8 +207,8 @@ impl ActorHarness {
             epoch_reward_smooth: FilterEstimate::new(rwd.atto().clone(), BigInt::from(0)),
             epoch_qa_power_smooth: FilterEstimate::new(pwr, BigInt::from(0)),
 
-            base_fee: TokenAmount::zero(),
-            create_depost: TokenAmount::from_atto(633318697598976000u64),
+            create_depost: TokenAmount::from_atto(798245441765376000u64),
+
             options,
         }
     }
@@ -228,22 +227,22 @@ impl ActorHarness {
 
     pub fn check_create_miner_depost_and_reset_state(&self, rt: &MockRuntime) {
         let mut st = self.get_state(&rt);
-        let create_depost_vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
+        let create_depost_vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
 
         // create miner deposit
-        assert!(create_depost_vesting_funds.funds.len() == 180);
+        assert!(create_depost_vesting_funds.len() == 180);
         assert!(st.locked_funds == self.create_depost);
 
         // reset create miner deposit vesting funds
-        st.save_vesting_funds(&rt.store(), &VestingFunds::new()).unwrap();
+        st.vesting_funds = Default::default();
         st.locked_funds = TokenAmount::zero();
         rt.replace_state(&st);
         rt.set_balance(rt.get_balance() - &self.create_depost);
 
         let st = self.get_state(&rt);
-        let create_depost_vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
+        let create_depost_vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
 
-        assert!(create_depost_vesting_funds.funds.is_empty());
+        assert!(create_depost_vesting_funds.is_empty());
         assert!(st.locked_funds.is_zero());
     }
 

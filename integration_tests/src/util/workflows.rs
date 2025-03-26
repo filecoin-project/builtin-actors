@@ -160,16 +160,16 @@ pub fn create_miner_internal(
     let wrap_store = DynBlockstore::wrap(v.blockstore());
     vm_api::util::mutate_state(v, &res.id_address, |st: &mut MinerState| {
         // checkcreate miner deposit
-        assert!(st.load_vesting_funds(&wrap_store).unwrap().funds.len() == 180);
+        assert!(st.vesting_funds.load(&wrap_store).unwrap().len() == 180);
         assert!(st.locked_funds == TokenAmount::from_atto(CREATE_MINER_DEPOSIT));
 
         // reset create miner deposit vesting funds
-        st.save_vesting_funds(&wrap_store, &fil_actor_miner::VestingFunds::new()).unwrap();
+        st.vesting_funds = Default::default();
         st.locked_funds = TokenAmount::zero();
     });
 
     let state: MinerState = get_state(v, &res.id_address).unwrap();
-    assert!(state.load_vesting_funds(&wrap_store).unwrap().funds.is_empty());
+    assert!(state.vesting_funds.load(&wrap_store).unwrap().is_empty());
     assert!(state.locked_funds.is_zero());
 
     let mut actor_state = v.actor(&res.id_address).unwrap();

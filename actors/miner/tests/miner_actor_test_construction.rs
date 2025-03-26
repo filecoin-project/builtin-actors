@@ -64,7 +64,7 @@ fn prepare_env() -> TestEnv {
     env.rt.caller.replace(INIT_ACTOR_ADDR);
     env.rt.caller_type.replace(*INIT_ACTOR_CODE_ID);
     // add balance for create miner deposit
-    env.rt.add_balance(TokenAmount::from_atto(633318697598976000u64));
+    env.rt.add_balance(TokenAmount::from_atto(798245441765376000u64));
     env
 }
 
@@ -146,18 +146,18 @@ fn simple_construction() {
 
     assert_eq!(TokenAmount::zero(), state.pre_commit_deposits);
     assert_eq!(TokenAmount::from_atto(633318697598976000u64), state.locked_funds);
-    assert_eq!(180, state.load_vesting_funds(&env.rt.store).unwrap().funds.len());
+    assert_eq!(180, state.vesting_funds.load(&env.rt.store).unwrap().len());
     assert_ne!(Cid::default(), state.pre_committed_sectors);
     assert_ne!(Cid::default(), state.sectors);
 
     // reset create miner deposit vesting funds
-    state.save_vesting_funds(&env.rt.store, &fil_actor_miner::VestingFunds::new()).unwrap();
+    state.vesting_funds = Default::default();
     state.locked_funds = TokenAmount::zero();
     env.rt.replace_state(&state);
 
     let state = env.rt.get_state::<State>();
-    let create_depost_vesting_funds = state.load_vesting_funds(&env.rt.store).unwrap();
-    assert!(create_depost_vesting_funds.funds.is_empty());
+    let create_depost_vesting_funds = state.vesting_funds.load(&env.rt.store).unwrap();
+    assert!(create_depost_vesting_funds.is_empty());
     assert!(state.locked_funds.is_zero());
 
     // according to original specs-actors test, this is set by running the code; magic...
