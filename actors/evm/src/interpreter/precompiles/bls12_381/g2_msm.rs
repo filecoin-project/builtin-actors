@@ -3,7 +3,6 @@ use crate::interpreter::{
     System,
 };
 use fil_actors_runtime::runtime::Runtime;
-use substrate_bn::CurveError;
 
 use crate::interpreter::precompiles::bls_util::{
     G2_MSM_INPUT_LENGTH,
@@ -95,7 +94,7 @@ mod tests {
     use crate::interpreter::System;
     use fil_actors_runtime::test_utils::MockRuntime;
     use hex_literal::hex;
-
+    use substrate_bn::CurveError;
     
     #[test]
     fn test_g2_msm_success() {

@@ -79,20 +79,6 @@ pub(super) fn encode_g2_point(input: &blst_p2_affine) -> Vec<u8> {
     out
 }
 
-/// Helper function to create and validate an Fp2 element from two Fp elements
-pub fn check_canonical_fp2(
-    input_1: &[u8; 48],
-    input_2: &[u8; 48],
-) -> Result<blst_fp2, PrecompileError> {
-    let fp_1 = fp_from_bendian(input_1)?;
-    let fp_2 = fp_from_bendian(input_2)?;
-
-    let fp2 = blst_fp2 { fp: [fp_1, fp_2] };
-
-    Ok(fp2)
-}
-
-
 /// Extracts a G2 point in Affine format from a 256 byte slice representation.
 ///
 /// **Note**: This function will perform a G2 subgroup check if `subgroup_check` is set to `true`.
@@ -114,12 +100,7 @@ pub(super) fn extract_g2_input(
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    // Extract the four field elements (removing padding)
-    let x_re = remove_padding(&input[..PADDED_FP_LENGTH])?;
-    let x_im = remove_padding(&input[PADDED_FP_LENGTH..2 * PADDED_FP_LENGTH])?;
-    let y_re = remove_padding(&input[2 * PADDED_FP_LENGTH..3 * PADDED_FP_LENGTH])?;
-    let y_im = remove_padding(&input[3 * PADDED_FP_LENGTH..4 * PADDED_FP_LENGTH])?;
-
+    let [x_re, x_im, y_re, y_im]=remove_g2_padding(&input)?;
     // Convert bytes to point
     let point = decode_g2_on_curve(x_re, x_im, y_re, y_im)?;
 
@@ -199,10 +180,8 @@ pub fn extract_g1_input(input: &[u8], subgroup_check: bool) -> Result<blst_p1_af
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    // Split input and remove padding for x and y coordinates
-    let x_bytes = remove_padding(&input[..PADDED_FP_LENGTH])?;
-    let y_bytes = remove_padding(&input[PADDED_FP_LENGTH..G1_INPUT_LENGTH])?;
- 
+    let [x_bytes, y_bytes]= remove_g1_padding(&input)?;
+
     let point = decode_g1_on_curve(x_bytes, y_bytes)?;
 
     // Check if point is on curve (no subgroup check needed for addition)
@@ -269,6 +248,18 @@ fn decode_g1_on_curve(
     Ok(out)
 }
 
+/// remove_g1_padding removes the padding applied to the Fp elements that constitute the
+/// encoded G1 element.
+pub(super) fn remove_g1_padding(input: &[u8]) -> Result<[&[u8; FP_LENGTH]; 2], PrecompileError> {
+    if input.len() != PADDED_G1_LENGTH {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+
+    let x = remove_padding(&input[..PADDED_FP_LENGTH])?;
+    let y = remove_padding(&input[PADDED_FP_LENGTH..PADDED_G1_LENGTH])?;
+    Ok([x, y])
+}
+
 
 /// Returns a `blst_p2_affine` from the provided byte slices, which represent the x and y
 /// affine coordinates of the point.
@@ -303,6 +294,19 @@ fn decode_g2_on_curve(
     Ok(out)
 }
 
+/// remove_g2_padding removes the padding applied to the Fp elements that constitute the
+/// encoded G2 element.
+pub(super) fn remove_g2_padding(input: &[u8]) -> Result<[&[u8; FP_LENGTH]; 4], PrecompileError> {
+    if input.len() != PADDED_G2_LENGTH {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+
+    let mut input_fps = [&[0; FP_LENGTH]; 4];
+    for i in 0..4 {
+        input_fps[i] = remove_padding(&input[i * PADDED_FP_LENGTH..(i + 1) * PADDED_FP_LENGTH])?;
+    }
+    Ok(input_fps)
+}
 /// Creates a blst_fp2 element from two field elements.
 ///
 /// Field elements are expected to be in Big Endian format.

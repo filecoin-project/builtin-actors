@@ -3,7 +3,6 @@ use crate::interpreter::{
     System,
 };
 use fil_actors_runtime::runtime::Runtime;
-use substrate_bn::CurveError;
 
 use crate::interpreter::precompiles::bls_util::{
     PADDED_FP_LENGTH,
@@ -15,7 +14,6 @@ use crate::interpreter::precompiles::bls_util::{
 use blst::{
     blst_map_to_g1,
     blst_fp,
-    blst_fp_from_bendian,
     blst_p1,
     blst_p1_affine,
     blst_p1_to_affine
@@ -76,7 +74,8 @@ mod tests {
     use crate::interpreter::System;
     use fil_actors_runtime::test_utils::MockRuntime;
     use hex_literal::hex;
-    
+    use substrate_bn::CurveError;
+
     #[test]
     fn test_map_fp_to_g1_success() {
         let rt = MockRuntime::default();

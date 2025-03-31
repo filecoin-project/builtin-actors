@@ -3,12 +3,10 @@ use crate::interpreter::{
     System,
 };
 use fil_actors_runtime::runtime::Runtime;
-use substrate_bn::CurveError;
 
 use crate::interpreter::precompiles::bls_util::{
     G1_ADD_INPUT_LENGTH,
     PADDED_G1_LENGTH,
-    G1_OUTPUT_LENGTH,
     encode_g1_point,
     extract_g1_input,
 };
@@ -52,7 +50,7 @@ pub fn bls12_g1add<RT: Runtime>(
 #[inline]
 pub(super) fn p1_add_affine(a: &blst_p1_affine, b: &blst_p1_affine) -> blst_p1_affine {
     // Convert first point to Jacobian coordinates
-    let mut a_jacobian = p1_from_affine(a);
+    let a_jacobian = p1_from_affine(a);
     
 
     // Add second point (in affine) to first point (in Jacobian)
@@ -92,6 +90,8 @@ mod tests {
     use crate::interpreter::System;
     use fil_actors_runtime::test_utils::MockRuntime;
     use hex_literal::hex;
+    use substrate_bn::CurveError;
+
     #[test]
     fn test_g1_add_success() {
         let rt = MockRuntime::default();
