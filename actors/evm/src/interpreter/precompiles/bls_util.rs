@@ -35,6 +35,19 @@ pub const PADDED_G1_LENGTH: usize = 2 * PADDED_FP_LENGTH;
 pub const PADDED_G2_LENGTH: usize = 2 * PADDED_FP2_LENGTH;
 pub const PAIRING_INPUT_LENGTH: usize = PADDED_G1_LENGTH + PADDED_G2_LENGTH;
 
+/// FP_LENGTH specifies the number of bytes needed to represent an
+/// Fp element. This is an element in the base field of BLS12-381.
+///
+/// Note: The base field is used to define G1 and G2 elements.
+pub const FP_LENGTH: usize = 48;
+
+// Big-endian non-Montgomery form.
+const MODULUS_REPR: [u8; 48] = [
+    0x1a, 0x01, 0x11, 0xea, 0x39, 0x7f, 0xe6, 0x9a, 0x4b, 0x1b, 0xa7, 0xb6, 0x43, 0x4b, 0xac, 0xd7,
+    0x64, 0x77, 0x4b, 0x84, 0xf3, 0x85, 0x12, 0xbf, 0x67, 0x30, 0xd2, 0xa0, 0xf6, 0xb0, 0xf6, 0x24,
+    0x1e, 0xab, 0xff, 0xfe, 0xb1, 0x53, 0xff, 0xff, 0xb9, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xab,
+];
+use substrate_bn::CurveError;
 
 /// Encodes a G2 point in affine format into byte slice with padded elements.
 /// G2 points have two coordinates (x,y) where each coordinate is a complex number (real,imaginary)
@@ -201,21 +214,6 @@ pub(super) fn extract_scalar_input(input: &[u8]) -> Result<blst_scalar, Precompi
     Ok(scalar)
 }
 
-/// Returns a `blst_p1_affine` from the provided byte slices, which represent the x and y
-/// affine coordinates of the point.
-///
-/// If the x or y coordinate do not represent a canonical field element, an error is returned.
-///
-/// See [fp_from_bendian] for more information.
-pub fn decode_and_check_g1(
-    x_bytes: &[u8; 48],
-    y_bytes: &[u8; 48],
-) -> Result<blst_p1_affine, PrecompileError> {
-    Ok(blst_p1_affine {
-        x: fp_from_bendian(x_bytes)?,
-        y: fp_from_bendian(y_bytes)?,
-    })
-}
 /// Extracts a G1 point in Affine format from a 128 byte slice representation.
 pub fn extract_g1_input(input: &[u8], subgroup_check: bool) -> Result<blst_p1_affine, PrecompileError> {
     if input.len() != G1_INPUT_LENGTH {
@@ -226,19 +224,12 @@ pub fn extract_g1_input(input: &[u8], subgroup_check: bool) -> Result<blst_p1_af
     let x_bytes = remove_padding(&input[..PADDED_FP_LENGTH])?;
     let y_bytes = remove_padding(&input[PADDED_FP_LENGTH..G1_INPUT_LENGTH])?;
  
-    let point = decode_and_check_g1(x_bytes, y_bytes)?;
+    let point = decode_g1_on_curve(x_bytes, y_bytes)?;
 
     // Check if point is on curve (no subgroup check needed for addition)
     if subgroup_check {
         if unsafe { !blst_p1_affine_in_g1(&point) } {
             return Err(PrecompileError::InvalidInput);
-        }
-    }
-    else{
-        unsafe {
-            if !blst_p1_affine_on_curve(&point) {
-                return Err(PrecompileError::InvalidInput);
-            }
         }
     }
     Ok(point)
@@ -265,4 +256,60 @@ pub fn encode_g1_point(input: *const blst_p1_affine) -> Vec<u8> {
         fp_to_bytes(&mut out[PADDED_FP_LENGTH..], &(*input).y);
     }
     out.into()
+}
+
+/// Returns a `blst_p1_affine` from the provided byte slices, which represent the x and y
+/// affine coordinates of the point.
+///
+/// Note: Coordinates are expected to be in Big Endian format.
+///
+/// - If the x or y coordinate do not represent a canonical field element, an error is returned.
+///   See [read_fp] for more information.
+/// - If the point is not on the curve, an error is returned.
+fn decode_g1_on_curve(
+    p0_x: &[u8; FP_LENGTH],
+    p0_y: &[u8; FP_LENGTH],
+) -> Result<blst_p1_affine, PrecompileError> {
+    let out = blst_p1_affine {
+        x: read_fp(p0_x)?,
+        y: read_fp(p0_y)?,
+    };
+
+    // From EIP-2537:
+    //
+    // Error cases:
+    //
+    // * An input is neither a point on the G1 elliptic curve nor the infinity point
+    //
+    // SAFETY: Out is a blst value.
+    if unsafe { !blst_p1_affine_on_curve(&out) } {
+        return Err(PrecompileError::EcErr(CurveError::NotMember),
+        );
+    }
+
+    Ok(out)
+}
+
+
+/// Checks whether or not the input represents a canonical field element
+/// returning the field element if successful.
+///
+/// Note: The field element is expected to be in big endian format.
+pub fn read_fp(input: &[u8; FP_LENGTH]) -> Result<blst_fp, PrecompileError> {
+    if !is_valid_be(input) {
+        return Err(PrecompileError::EcErr(CurveError::NotMember));
+    }
+    let mut fp = blst_fp::default();
+    // SAFETY: `input` has fixed length, and `fp` is a blst value.
+    unsafe {
+        // This performs the check for canonical field elements
+        blst_fp_from_bendian(&mut fp, input.as_ptr());
+    }
+
+    Ok(fp)
+}
+
+/// Checks if the input is a valid big-endian representation of a field element.
+fn is_valid_be(input: &[u8; 48]) -> bool {
+    *input < MODULUS_REPR
 }
