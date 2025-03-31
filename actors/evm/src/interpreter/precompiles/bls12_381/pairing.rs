@@ -10,8 +10,6 @@ use crate::interpreter::precompiles::bls_util::{
     PADDED_G2_LENGTH,
     extract_g1_input,
     extract_g2_input,
-    remove_g1_padding,
-    remove_g2_padding,
 };
 
 use blst::{

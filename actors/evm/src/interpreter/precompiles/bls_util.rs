@@ -137,17 +137,6 @@ pub(super) fn fp_to_bytes(out: &mut [u8], input: *const blst_fp) {
     unsafe { blst_bendian_from_fp(rest.as_mut_ptr(), input) };
 }
 
-/// Checks whether or not the input represents a canonical field element, returning the field
-/// element if successful.
-fn fp_from_bendian(bytes: &[u8; 48]) -> Result<blst_fp, PrecompileError> {
-    let mut fp = blst_fp::default();
-    unsafe {
-        // This performs the check for canonical field elements
-        blst_fp_from_bendian(&mut fp, bytes.as_ptr());
-    }
-    Ok(fp)
-}
-
 
 /// Extracts a scalar value from a 32-byte input.
 /// 
