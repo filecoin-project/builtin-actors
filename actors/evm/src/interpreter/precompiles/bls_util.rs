@@ -54,8 +54,7 @@ use substrate_bn::CurveError;
 /// So we need to encode 4 field elements total: x.re, x.im, y.re, y.im
 pub(super) fn encode_g2_point(input: &blst_p2_affine) -> Vec<u8> {
     // Create output buffer with space for all coordinates (4 * 64 bytes)
-    let mut out = vec![0u8; G2_OUTPUT_LENGTH];
-
+    let mut out = vec![0u8; PADDED_G2_LENGTH];
     // Encode x coordinate
     // Real part (x.fp[0])
     fp_to_bytes(&mut out[..PADDED_FP_LENGTH], &input.x.fp[0]);
@@ -78,26 +77,6 @@ pub(super) fn encode_g2_point(input: &blst_p2_affine) -> Vec<u8> {
     );
 
     out
-}
-
-/// Convert field elements from byte slices into a `blst_p2_affine` point.
-/// Takes four 48-byte arrays representing:
-/// - x1: real part of x coordinate
-/// - x2: imaginary part of x coordinate
-/// - y1: real part of y coordinate
-/// - y2: imaginary part of y coordinate
-pub(super) fn decode_and_check_g2(
-    x1: &[u8; 48], // x.re
-    x2: &[u8; 48], // x.im
-    y1: &[u8; 48], // y.re
-    y2: &[u8; 48], // y.im
-) -> Result<blst_p2_affine, PrecompileError> {
-    Ok(blst_p2_affine {
-        // Create x coordinate as complex number
-        x: check_canonical_fp2(x1, x2)?,
-        // Create y coordinate as complex number
-        y: check_canonical_fp2(y1, y2)?,
-    })
 }
 
 /// Helper function to create and validate an Fp2 element from two Fp elements
@@ -142,7 +121,7 @@ pub(super) fn extract_g2_input(
     let y_im = remove_padding(&input[3 * PADDED_FP_LENGTH..4 * PADDED_FP_LENGTH])?;
 
     // Convert bytes to point
-    let point = decode_and_check_g2(x_re, x_im, y_re, y_im)?;
+    let point = decode_g2_on_curve(x_re, x_im, y_re, y_im)?;
 
     if subgroup_check {
         // Subgroup check (more expensive but required for certain operations)
@@ -291,6 +270,54 @@ fn decode_g1_on_curve(
 }
 
 
+/// Returns a `blst_p2_affine` from the provided byte slices, which represent the x and y
+/// affine coordinates of the point.
+///
+/// Note: Coordinates are expected to be in Big Endian format.
+///
+/// - If the x or y coordinate do not represent a canonical field element, an error is returned.
+///   See [read_fp2] for more information.
+/// - If the point is not on the curve, an error is returned.
+fn decode_g2_on_curve(
+    x1: &[u8; FP_LENGTH],
+    x2: &[u8; FP_LENGTH],
+    y1: &[u8; FP_LENGTH],
+    y2: &[u8; FP_LENGTH],
+) -> Result<blst_p2_affine, PrecompileError> {
+    let out = blst_p2_affine {
+        x: read_fp2(x1, x2)?,
+        y: read_fp2(y1, y2)?,
+    };
+
+    // From EIP-2537:
+    //
+    // Error cases:
+    //
+    // * An input is neither a point on the G2 elliptic curve nor the infinity point
+    //
+    // SAFETY: Out is a blst value.
+    if unsafe { !blst_p2_affine_on_curve(&out) } {
+        return Err(PrecompileError::EcErr(CurveError::NotMember));
+    }
+
+    Ok(out)
+}
+
+/// Creates a blst_fp2 element from two field elements.
+///
+/// Field elements are expected to be in Big Endian format.
+/// Returns an error if either of the input field elements is not canonical.
+pub(super) fn read_fp2(
+    input_1: &[u8; FP_LENGTH],
+    input_2: &[u8; FP_LENGTH],
+) -> Result<blst_fp2, PrecompileError> {
+    let fp_1 = read_fp(input_1)?;
+    let fp_2 = read_fp(input_2)?;
+
+    let fp2 = blst_fp2 { fp: [fp_1, fp_2] };
+
+    Ok(fp2)
+}
 /// Checks whether or not the input represents a canonical field element
 /// returning the field element if successful.
 ///

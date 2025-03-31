@@ -3,6 +3,7 @@ use crate::interpreter::{
     System,
 };
 use fil_actors_runtime::runtime::Runtime;
+use substrate_bn::CurveError;
 
 use crate::interpreter::precompiles::bls_util::{
     G1_MSM_INPUT_LENGTH,
@@ -121,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn test_g1_msm_failures() {
+    fn test_g1_msm_failure() {
         let rt = MockRuntime::default();
         rt.in_call.replace(true);
         let mut system = System::create(&rt).unwrap();
@@ -140,25 +141,13 @@ mod tests {
         let res = bls12_g1msm(&mut system, &short_input, ctx);
         assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
 
-        // TODO: Fix this test
-        // Error caused by the fact that the input is not padded to 64 bytes and the padding is not removed
-        // https://ethereum-magicians.org/t/eip-2537-bls12-precompile-discussion-thread/4187
-        // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2537.md
 
         // // Test: Invalid field element
-        // let invalid_field = hex::decode(
-        //     "0000000000000000000000000000000031f2e5916b17be2e71b10b4292f558e727dfd7d48af9cbc5087f0ce00dcca27c8b01e83eaace1aefb539f00adb2271660000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e10000000000000000000000000000000000000000000000000000000000000002"
-        // ).unwrap();
-        // let res = bls12_g1msm(&mut system, &invalid_field, ctx);
-        // match res {
-        //     Ok(_) => panic!("Expected error for invalid field element, got success"),
-        //     Err(e) => {
-        //         println!("Got error: {:?}", e);
-        //         assert!(matches!(e, PrecompileError::InvalidInput), 
-        //             "Expected InvalidInput error, got {:?}", e);
-        //     }
-        // }
-        // assert!(matches!(res, Err(PrecompileError::InvalidInput)));
+        let invalid_field = hex::decode(
+            "0000000000000000000000000000000031f2e5916b17be2e71b10b4292f558e727dfd7d48af9cbc5087f0ce00dcca27c8b01e83eaace1aefb539f00adb2271660000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e10000000000000000000000000000000000000000000000000000000000000002"
+        ).unwrap();
+        let res = bls12_g1msm(&mut system, &invalid_field, ctx);
+        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))));
 
         // Test: Point not on curve
         let not_on_curve = hex::decode(
@@ -167,7 +156,7 @@ mod tests {
             0000000000000000000000000000000000000000000000000000000000000002"
         ).unwrap();
         let res = bls12_g1msm(&mut system, &not_on_curve, ctx);
-        assert!(matches!(res, Err(PrecompileError::InvalidInput)));
+        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))));
 
         // Test: Invalid top bytes
         let invalid_top = hex::decode(

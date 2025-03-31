@@ -3,6 +3,7 @@ use crate::interpreter::{
     System,
 };
 use fil_actors_runtime::runtime::Runtime;
+use substrate_bn::CurveError;
 
 use crate::interpreter::precompiles::bls_util::{
     PADDED_FP_LENGTH,

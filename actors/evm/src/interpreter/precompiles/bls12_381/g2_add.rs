@@ -3,6 +3,7 @@ use crate::interpreter::{
     System,
 };
 use fil_actors_runtime::runtime::Runtime;
+use substrate_bn::CurveError;
 
 use crate::interpreter::precompiles::bls_util::{
     G2_ADD_INPUT_LENGTH,
@@ -59,7 +60,7 @@ mod tests {
     use hex_literal::hex;
 
     #[test]
-    fn test_g2_add() {
+    fn test_g2_add_success() {
         let rt = MockRuntime::default();
         rt.in_call.replace(true);
         let mut system = System::create(&rt).unwrap();
@@ -122,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn test_g2_add_fail() {
+    fn test_g2_add_failure() {
         let rt = MockRuntime::default();
         rt.in_call.replace(true);
         let mut system = System::create(&rt).unwrap();
@@ -171,16 +172,16 @@ mod tests {
              000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"
         );
         let res = bls12_g2add(&mut system, &not_on_curve, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::InvalidInput)),
+        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
             "Point not on curve should return InvalidInput error");
 
-        // // Test case 5: Invalid field element
-        // let invalid_field = hex!(
-        //     "000000000000000000000000000000001c4bb49d2a0ef12b7123acdd7110bd292b5bc659edc54dc21b81de057194c79b2a5803255959bbef8e7f56c8c12168630000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be00000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"
-        // );
-        // let res = bls12_g2add(&mut system, &invalid_field, PrecompileContext::default());
-        // assert!(matches!(res, Err(PrecompileError::InvalidInput)),
-        //     "Invalid field element should return InvalidInput error");
+        // Test case 5: Invalid field element
+        let invalid_field = hex!(
+            "000000000000000000000000000000001c4bb49d2a0ef12b7123acdd7110bd292b5bc659edc54dc21b81de057194c79b2a5803255959bbef8e7f56c8c12168630000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be00000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"
+        );
+        let res = bls12_g2add(&mut system, &invalid_field, PrecompileContext::default());
+        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
+            "Invalid field element should return InvalidInput error");
 
         // Test case 6: Invalid top bytes
         let invalid_top = hex!(
