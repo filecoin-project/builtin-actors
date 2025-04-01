@@ -1,23 +1,7 @@
 use super::PrecompileError;
 use blst::{
     // Basic types
-    blst_fp,
-    blst_fp2,
-    blst_p1_affine,
-    blst_p2_affine,
-    blst_scalar,
-    blst_p2,
-
-    // Unsafe functions needed for point operations
-    blst_bendian_from_fp,
-    blst_fp_from_bendian,
-    blst_p1_affine_in_g1,
-    blst_p1_affine_on_curve,
-    blst_p2_affine_in_g2,
-    blst_p2_affine_on_curve,
-    blst_scalar_from_bendian,
-    blst_p2_to_affine,
-    blst_p2_from_affine,
+    blst_bendian_from_fp, blst_fp, blst_fp2, blst_fp_from_bendian, blst_p1, blst_p1_affine, blst_p1_affine_in_g1, blst_p1_affine_on_curve, blst_p1_from_affine, blst_p1_mult, blst_p1_to_affine, blst_p2, blst_p2_affine, blst_p2_affine_in_g2, blst_p2_affine_on_curve, blst_p2_from_affine, blst_p2_mult, blst_p2_to_affine, blst_scalar, blst_scalar_from_bendian
 };
 
 pub const G1_INPUT_LENGTH: usize = 128;
@@ -25,9 +9,7 @@ pub const G1_ADD_INPUT_LENGTH: usize = G1_INPUT_LENGTH * 2;
 pub const G1_OUTPUT_LENGTH: usize = 128;
 pub const PADDING_LENGTH: usize = 16;
 pub const G1_MSM_INPUT_LENGTH: usize = 160;
-pub const G1_INPUT_ITEM_LENGTH: usize = 128;
 pub const SCALAR_LENGTH: usize = 32;
-pub const NBITS: usize = 255; 
 pub const G2_ADD_INPUT_LENGTH: usize = 512;
 pub const G2_INPUT_ITEM_LENGTH: usize = 256;
 pub const G2_OUTPUT_LENGTH: usize = 256;
@@ -57,6 +39,22 @@ const MODULUS_REPR: [u8; 48] = [
 ];
 use substrate_bn::CurveError;
 
+#[inline]
+pub fn p1_to_affine(p: &blst_p1) -> blst_p1_affine {
+    let mut p_affine = blst_p1_affine::default();
+    // SAFETY: both inputs are valid blst types
+    unsafe { blst_p1_to_affine(&mut p_affine, p) };
+    p_affine
+}
+
+
+#[inline]
+pub fn p1_from_affine(p_affine: &blst_p1_affine) -> blst_p1 {
+    let mut p = blst_p1::default();
+    // SAFETY: both inputs are valid blst types
+    unsafe { blst_p1_from_affine(&mut p, p_affine) };
+    p
+}
 
 #[inline]
 pub fn p2_to_affine(p: &blst_p2) -> blst_p2_affine {
@@ -74,6 +72,79 @@ pub fn p2_from_affine(p_affine: &blst_p2_affine) -> blst_p2 {
     unsafe { blst_p2_from_affine(&mut p, p_affine) };
     p
 }
+
+
+pub fn read_scalar(input: &[u8]) -> Result<blst_scalar, PrecompileError> {
+    if input.len() != SCALAR_LENGTH {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+
+    let mut out = blst_scalar::default();
+    // SAFETY: `input` length is checked previously, out is a blst value.
+    unsafe {
+        // Note: We do not use `blst_scalar_fr_check` here because, from EIP-2537:
+        //
+        // * The corresponding integer is not required to be less than or equal than main subgroup
+        // order `q`.
+        blst_scalar_from_bendian(&mut out, input.as_ptr())
+    };
+
+    Ok(out)
+}
+
+/// Performs a G1 scalar multiplication
+///
+/// Takes a G1 point in affine form and a scalar, and returns the result
+/// of the scalar multiplication in affine form
+///
+/// Note: The scalar is expected to be in Big Endian format.
+#[inline]
+pub fn p1_scalar_mul(p: &blst_p1_affine, scalar: &blst_scalar) -> blst_p1_affine {
+    // Convert point to Jacobian coordinates
+    let p_jacobian = p1_from_affine(p);
+
+    let mut result = blst_p1::default();
+
+    // SAFETY: all inputs are valid blst types
+    unsafe {
+        blst_p1_mult(
+            &mut result,
+            &p_jacobian,
+            scalar.b.as_ptr(),
+            scalar.b.len() * 8,
+        )
+    };
+
+    // Convert result back to affine coordinates
+    p1_to_affine(&result)
+}
+
+/// Performs a G2 scalar multiplication
+///
+/// Takes a G2 point in affine form and a scalar, and returns the result
+/// of the scalar multiplication in affine form
+///
+/// Note: The scalar is expected to be in Big Endian format.
+#[inline]
+pub fn p2_scalar_mul(p: &blst_p2_affine, scalar: &blst_scalar) -> blst_p2_affine {
+    // Convert point to Jacobian coordinates
+    let p_jacobian = p2_from_affine(p);
+
+    let mut result = blst_p2::default();
+    // SAFETY: all inputs are valid blst types
+    unsafe {
+        blst_p2_mult(
+            &mut result,
+            &p_jacobian,
+            scalar.b.as_ptr(),
+            scalar.b.len() * 8,
+        )
+    };
+
+    // Convert result back to affine coordinates
+    p2_to_affine(&result)
+}
+
 
 /// Encodes a G2 point in affine format into byte slice with padded elements.
 /// G2 points have two coordinates (x,y) where each coordinate is a complex number (real,imaginary)
@@ -163,31 +234,6 @@ pub(super) fn fp_to_bytes(out: &mut [u8], input: *const blst_fp) {
     unsafe { blst_bendian_from_fp(rest.as_mut_ptr(), input) };
 }
 
-
-/// Extracts a scalar value from a 32-byte input.
-/// 
-/// According to EIP-2537, the scalar input:
-/// - Must be exactly 32 bytes
-/// - Is interpreted as a big-endian integer
-/// - Is not required to be less than the curve order
-/// 
-/// Returns a Result containing either the scalar value or a PrecompileError
-pub(super) fn extract_scalar_input(input: &[u8]) -> Result<blst_scalar, PrecompileError> {
-    // Check input length
-    if input.len() != SCALAR_LENGTH {
-        return Err(PrecompileError::IncorrectInputSize);
-    }
-
-    let mut scalar = blst_scalar::default();
-    
-    // Convert from big-endian bytes to scalar
-    // SAFETY: Input length is checked above and scalar is properly initialized
-    unsafe {
-        blst_scalar_from_bendian(&mut scalar, input.as_ptr());
-    }
-
-    Ok(scalar)
-}
 
 /// Extracts a G1 point in Affine format from a 128 byte slice representation.
 pub fn extract_g1_input(input: &[u8], subgroup_check: bool) -> Result<blst_p1_affine, PrecompileError> {

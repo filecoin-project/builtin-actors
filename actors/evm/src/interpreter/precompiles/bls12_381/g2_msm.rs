@@ -12,16 +12,14 @@ use crate::interpreter::precompiles::bls_util::{
     SCALAR_LENGTH_BITS,
     encode_g2_point,
     extract_g2_input,
-    p2_from_affine,
+    read_scalar,
     p2_to_affine,
+    p2_scalar_mul,
 };
 
 use blst::{
     blst_p2_affine,
     blst_scalar,
-    blst_scalar_from_bendian,
-    blst_p2,
-    blst_p2_mult,
     MultiPoint,
 };
 
@@ -124,50 +122,6 @@ pub(super) fn p2_msm(g2_points: Vec<blst_p2_affine>, scalars: Vec<blst_scalar>) 
 
     // Convert result back to affine coordinates
     p2_to_affine(&multiexp)
-}
-
-pub(super) fn read_scalar(input: &[u8]) -> Result<blst_scalar, PrecompileError> {
-    if input.len() != SCALAR_LENGTH {
-        return Err(PrecompileError::IncorrectInputSize);
-    }
-
-    let mut out = blst_scalar::default();
-    // SAFETY: `input` length is checked previously, out is a blst value.
-    unsafe {
-        // Note: We do not use `blst_scalar_fr_check` here because, from EIP-2537:
-        //
-        // * The corresponding integer is not required to be less than or equal than main subgroup
-        // order `q`.
-        blst_scalar_from_bendian(&mut out, input.as_ptr())
-    };
-
-    Ok(out)
-}
-
-/// Performs a G2 scalar multiplication
-///
-/// Takes a G2 point in affine form and a scalar, and returns the result
-/// of the scalar multiplication in affine form
-///
-/// Note: The scalar is expected to be in Big Endian format.
-#[inline]
-fn p2_scalar_mul(p: &blst_p2_affine, scalar: &blst_scalar) -> blst_p2_affine {
-    // Convert point to Jacobian coordinates
-    let p_jacobian = p2_from_affine(p);
-
-    let mut result = blst_p2::default();
-    // SAFETY: all inputs are valid blst types
-    unsafe {
-        blst_p2_mult(
-            &mut result,
-            &p_jacobian,
-            scalar.b.as_ptr(),
-            scalar.b.len() * 8,
-        )
-    };
-
-    // Convert result back to affine coordinates
-    p2_to_affine(&result)
 }
 
 #[cfg(test)]
