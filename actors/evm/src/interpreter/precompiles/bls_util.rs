@@ -6,6 +6,7 @@ use blst::{
     blst_p1_affine,
     blst_p2_affine,
     blst_scalar,
+    blst_p2,
 
     // Unsafe functions needed for point operations
     blst_bendian_from_fp,
@@ -15,6 +16,8 @@ use blst::{
     blst_p2_affine_in_g2,
     blst_p2_affine_on_curve,
     blst_scalar_from_bendian,
+    blst_p2_to_affine,
+    blst_p2_from_affine,
 };
 
 pub const G1_INPUT_LENGTH: usize = 128;
@@ -41,6 +44,11 @@ pub const PAIRING_INPUT_LENGTH: usize = PADDED_G1_LENGTH + PADDED_G2_LENGTH;
 /// Note: The base field is used to define G1 and G2 elements.
 pub const FP_LENGTH: usize = 48;
 
+/// SCALAR_LENGTH_BITS specifies the number of bits needed to represent an Fr element.
+/// This is an element in the scalar field of BLS12-381.
+pub const SCALAR_LENGTH_BITS: usize = SCALAR_LENGTH * 8;
+
+
 // Big-endian non-Montgomery form.
 const MODULUS_REPR: [u8; 48] = [
     0x1a, 0x01, 0x11, 0xea, 0x39, 0x7f, 0xe6, 0x9a, 0x4b, 0x1b, 0xa7, 0xb6, 0x43, 0x4b, 0xac, 0xd7,
@@ -48,6 +56,24 @@ const MODULUS_REPR: [u8; 48] = [
     0x1e, 0xab, 0xff, 0xfe, 0xb1, 0x53, 0xff, 0xff, 0xb9, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xab,
 ];
 use substrate_bn::CurveError;
+
+
+#[inline]
+pub fn p2_to_affine(p: &blst_p2) -> blst_p2_affine {
+    let mut p_affine = blst_p2_affine::default();
+    // SAFETY: both inputs are valid blst types
+    unsafe { blst_p2_to_affine(&mut p_affine, p) };
+    p_affine
+}
+
+
+#[inline]
+pub fn p2_from_affine(p_affine: &blst_p2_affine) -> blst_p2 {
+    let mut p = blst_p2::default();
+    // SAFETY: both inputs are valid blst types
+    unsafe { blst_p2_from_affine(&mut p, p_affine) };
+    p
+}
 
 /// Encodes a G2 point in affine format into byte slice with padded elements.
 /// G2 points have two coordinates (x,y) where each coordinate is a complex number (real,imaginary)

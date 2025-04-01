@@ -10,13 +10,13 @@ use crate::interpreter::precompiles::bls_util::{
     encode_g2_point,
     remove_padding,
     read_fp2,
+    p2_to_affine,
 };
 
 use blst::{
     blst_fp2,
     blst_p2,
     blst_p2_affine,
-    blst_p2_to_affine,
     blst_map_to_g2,
 };
 /// BLS12_MAP_FP2_TO_G2 precompile
@@ -61,13 +61,6 @@ pub(super) fn map_fp2_to_g2(fp2: &blst_fp2) -> blst_p2_affine {
 
     // Convert to affine coordinates
     p2_to_affine(&p)
-}
-#[inline]
-fn p2_to_affine(p: &blst_p2) -> blst_p2_affine {
-    let mut p_affine = blst_p2_affine::default();
-    // SAFETY: both inputs are valid blst types
-    unsafe { blst_p2_to_affine(&mut p_affine, p) };
-    p_affine
 }
 
 #[cfg(test)]

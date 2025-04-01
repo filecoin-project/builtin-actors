@@ -6,21 +6,23 @@ use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
     G2_MSM_INPUT_LENGTH,
-    G2_INPUT_ITEM_LENGTH,
     G2_OUTPUT_LENGTH,
     SCALAR_LENGTH,
-    NBITS,
+    PADDED_G2_LENGTH,
+    SCALAR_LENGTH_BITS,
     encode_g2_point,
     extract_g2_input,
-    extract_scalar_input,
+    p2_from_affine,
+    p2_to_affine,
 };
 
 use blst::{
-    blst_p2,
     blst_p2_affine,
-    blst_p2_from_affine,
-    blst_p2_to_affine,
-    p2_affines,
+    blst_scalar,
+    blst_scalar_from_bendian,
+    blst_p2,
+    blst_p2_mult,
+    MultiPoint,
 };
 
 /// BLS12_G2MSM precompile
@@ -36,37 +38,41 @@ pub fn bls12_g2msm<RT: Runtime>(
     }
 
     let k = input_len / G2_MSM_INPUT_LENGTH;
-    let mut g2_points: Vec<blst_p2> = Vec::with_capacity(k);
-    let mut scalars: Vec<u8> = Vec::with_capacity(k * SCALAR_LENGTH);
+    let mut g2_points: Vec<_> = Vec::with_capacity(k);
+    let mut scalars = Vec::with_capacity(k);
 
     // Process each (point, scalar) pair
     for i in 0..k {
-        let slice = &input[i * G2_MSM_INPUT_LENGTH..i * G2_MSM_INPUT_LENGTH + G2_INPUT_ITEM_LENGTH];
+        let encoded_g2_element =
+            &input[i * G2_MSM_INPUT_LENGTH..i * G2_MSM_INPUT_LENGTH + PADDED_G2_LENGTH];
+        let encoded_scalar = &input[i * G2_MSM_INPUT_LENGTH + PADDED_G2_LENGTH
+            ..i * G2_MSM_INPUT_LENGTH + PADDED_G2_LENGTH + SCALAR_LENGTH];
 
-        // Skip points at infinity (all zeros)
-        if slice.iter().all(|i| *i == 0) {
+        // Filter out points infinity as an optimization, since it is a no-op.
+        // Note: Previously, points were being batch converted from Jacobian to Affine. In `blst`, this would essentially,
+        // zero out all of the points. Since all points are in affine, this bug is avoided.
+        if encoded_g2_element.iter().all(|i| *i == 0) {
             continue;
         }
 
         // NB: Scalar multiplications, MSMs and pairings MUST perform a subgroup check.
         //
         // So we set the subgroup_check flag to `true`
-        let p0_aff = extract_g2_input(slice, true)?;
+        let p0_aff = extract_g2_input(encoded_g2_element, true)?;
 
-        let mut p0 = blst_p2::default();
-        // Convert to projective coordinates
-        // SAFETY: `p0` and `p0_aff` are blst values
-        unsafe { blst_p2_from_affine(&mut p0, &p0_aff) };
-        g2_points.push(p0);
+        // If the scalar is zero, then this is a no-op.
+        //
+        // Note: This check is made after checking that g2 is valid.
+        // this is because we want the precompile to error when
+        // G2 is invalid, even if the scalar is zero.
+        if encoded_scalar.iter().all(|i| *i == 0) {
+            continue;
+        }
 
-        // Extract and add scalar
-        scalars.extend_from_slice(
-            &extract_scalar_input(
-                &input[i * G2_MSM_INPUT_LENGTH + G2_INPUT_ITEM_LENGTH
-                    ..i * G2_MSM_INPUT_LENGTH + G2_INPUT_ITEM_LENGTH + SCALAR_LENGTH],
-            )?
-            .b,
-        );
+        // Convert affine point to Jacobian coordinates using our helper function
+        g2_points.push(p0_aff);
+
+        scalars.push(read_scalar(encoded_scalar)?);
     }
 
     // Return infinity point if all points are infinity
@@ -74,18 +80,94 @@ pub fn bls12_g2msm<RT: Runtime>(
         return Ok(vec![0u8; G2_OUTPUT_LENGTH]);
     }
 
-    // Convert points to affine representation for batch operation
-    let points = p2_affines::from(&g2_points);
-    // Perform multi-scalar multiplication
-    let multiexp = points.mult(&scalars, NBITS);
-
-    let mut multiexp_aff = blst_p2_affine::default();
-    // Convert result back to affine coordinates
-    // SAFETY: `multiexp_aff` and `multiexp` are blst values
-    unsafe { blst_p2_to_affine(&mut multiexp_aff, &multiexp) };
+    // Perform multi-scalar multiplication using the safe wrapper
+    let multiexp_aff = p2_msm(g2_points, scalars);
 
     // Encode the result
     Ok(encode_g2_point(&multiexp_aff))
+}
+
+/// Performs multi-scalar multiplication (MSM) for G2 points
+///
+/// Takes a vector of G2 points and corresponding scalars, and returns their weighted sum
+///
+/// Note: Scalars are expected to be in Big Endian format.
+/// This method assumes that `g2_points` does not contain any points at infinity.
+#[inline]
+pub(super) fn p2_msm(g2_points: Vec<blst_p2_affine>, scalars: Vec<blst_scalar>) -> blst_p2_affine {
+    assert_eq!(
+        g2_points.len(),
+        scalars.len(),
+        "number of scalars should equal the number of g2 points"
+    );
+
+    // When no inputs are given, we return the point at infinity.
+    // This case can only trigger, if the initial MSM pairs
+    // all had, either a zero scalar or the point at infinity.
+    //
+    // The precompile will return an error, if the initial input
+    // was empty, in accordance with EIP-2537.
+    if g2_points.is_empty() {
+        return blst_p2_affine::default();
+    }
+
+    // When there is only a single point, we use a simpler scalar multiplication
+    // procedure
+    if g2_points.len() == 1 {
+        return p2_scalar_mul(&g2_points[0], &scalars[0]);
+    }
+
+    let scalars_bytes: Vec<_> = scalars.into_iter().flat_map(|s| s.b).collect();
+
+    // Perform multi-scalar multiplication
+    let multiexp = g2_points.mult(&scalars_bytes, SCALAR_LENGTH_BITS);
+
+    // Convert result back to affine coordinates
+    p2_to_affine(&multiexp)
+}
+
+pub(super) fn read_scalar(input: &[u8]) -> Result<blst_scalar, PrecompileError> {
+    if input.len() != SCALAR_LENGTH {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+
+    let mut out = blst_scalar::default();
+    // SAFETY: `input` length is checked previously, out is a blst value.
+    unsafe {
+        // Note: We do not use `blst_scalar_fr_check` here because, from EIP-2537:
+        //
+        // * The corresponding integer is not required to be less than or equal than main subgroup
+        // order `q`.
+        blst_scalar_from_bendian(&mut out, input.as_ptr())
+    };
+
+    Ok(out)
+}
+
+/// Performs a G2 scalar multiplication
+///
+/// Takes a G2 point in affine form and a scalar, and returns the result
+/// of the scalar multiplication in affine form
+///
+/// Note: The scalar is expected to be in Big Endian format.
+#[inline]
+fn p2_scalar_mul(p: &blst_p2_affine, scalar: &blst_scalar) -> blst_p2_affine {
+    // Convert point to Jacobian coordinates
+    let p_jacobian = p2_from_affine(p);
+
+    let mut result = blst_p2::default();
+    // SAFETY: all inputs are valid blst types
+    unsafe {
+        blst_p2_mult(
+            &mut result,
+            &p_jacobian,
+            scalar.b.as_ptr(),
+            scalar.b.len() * 8,
+        )
+    };
+
+    // Convert result back to affine coordinates
+    p2_to_affine(&result)
 }
 
 #[cfg(test)]
@@ -196,14 +278,14 @@ mod tests {
             .expect("g2 msm should succeed");
         assert_eq!(res1, expected1, "bls_g2msm_multiple result mismatch");
 
-        // // Test case 2: bls_g2msm_random*g2_unnormalized_scalar
-        // let input2 = hex!("00000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be9a2b64cc58f8992cb21237914262ca9ada6cb13dc7b7d3f11c278fe0462040e4");
+        // Test case 2: bls_g2msm_random*g2_unnormalized_scalar
+        let input2 = hex!("00000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be9a2b64cc58f8992cb21237914262ca9ada6cb13dc7b7d3f11c278fe0462040e4");
 
-        // let expected2 = hex!(
-        //     "0000000000000000000000000000000014856c22d8cdb2967c720e963eedc999e738373b14172f06fc915769d3cc5ab7ae0a1b9c38f48b5585fb09d4bd2733bb000000000000000000000000000000000c400b70f6f8cd35648f5c126cce5417f3be4d8eefbd42ceb4286a14df7e03135313fe5845e3a575faab3e8b949d248800000000000000000000000000000000149a0aacc34beba2beb2f2a19a440166e76e373194714f108e4ab1c3fd331e80f4e73e6b9ea65fe3ec96d7136de81544000000000000000000000000000000000e4622fef26bdb9b1e8ef6591a7cc99f5b73164500c1ee224b6a761e676b8799b09a3fd4fa7e242645cc1a34708285e4" );
-        // let res2 = bls12_g2msm(&mut system, &input2, PrecompileContext::default())
-        //     .expect("g2 msm should succeed");
-        // assert_eq!(res2, expected2, "bls_g2msm_random*g2_unnormalized_scalar result mismatch");
+        let expected2 = hex!(
+            "0000000000000000000000000000000014856c22d8cdb2967c720e963eedc999e738373b14172f06fc915769d3cc5ab7ae0a1b9c38f48b5585fb09d4bd2733bb000000000000000000000000000000000c400b70f6f8cd35648f5c126cce5417f3be4d8eefbd42ceb4286a14df7e03135313fe5845e3a575faab3e8b949d248800000000000000000000000000000000149a0aacc34beba2beb2f2a19a440166e76e373194714f108e4ab1c3fd331e80f4e73e6b9ea65fe3ec96d7136de81544000000000000000000000000000000000e4622fef26bdb9b1e8ef6591a7cc99f5b73164500c1ee224b6a761e676b8799b09a3fd4fa7e242645cc1a34708285e4" );
+        let res2 = bls12_g2msm(&mut system, &input2, PrecompileContext::default())
+            .expect("g2 msm should succeed");
+        assert_eq!(res2, expected2, "bls_g2msm_random*g2_unnormalized_scalar result mismatch");
 
         // Test case 3: bls_g2msm_multiple_with_point_at_infinity
         let input3 = hex!(
