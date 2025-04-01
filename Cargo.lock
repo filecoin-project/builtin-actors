@@ -794,9 +794,9 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_bundler"
-version = "7.1.0"
+version = "7.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51452516b9dd524ec99d2b38992a0cfed4eda7e2b28fed696e17f05f68fdaf46"
+checksum = "80029390c3879b41be9c38907dcfd4ae2638fab5e38d818c22e5f5360d07018b"
 dependencies = [
  "anyhow",
  "async-std",
@@ -1226,30 +1226,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "fil_builtin_actors_bundle"
+name = "fil_builtin_actors_builder"
 version = "16.0.0-rc3"
 dependencies = [
+ "anyhow",
  "cid",
  "clap",
- "fil_actor_account",
  "fil_actor_bundler",
- "fil_actor_cron",
- "fil_actor_datacap",
- "fil_actor_eam",
- "fil_actor_ethaccount",
- "fil_actor_evm",
- "fil_actor_init",
- "fil_actor_market",
- "fil_actor_miner",
- "fil_actor_multisig",
- "fil_actor_paych",
- "fil_actor_placeholder",
- "fil_actor_power",
- "fil_actor_reward",
- "fil_actor_system",
- "fil_actor_verifreg",
  "fil_actors_runtime",
  "num-traits",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
