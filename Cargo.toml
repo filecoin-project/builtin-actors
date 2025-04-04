@@ -135,7 +135,7 @@ fvm_shared = "4.6.0"
 fvm_ipld_encoding = "0.5.2"
 fvm_ipld_blockstore = "0.3.0"
 fvm_ipld_hamt = "0.10.2"
-fvm_ipld_kamt = "0.4.3"
+fvm_ipld_kamt = "0.4.4"
 fvm_ipld_amt = { version = "0.7.3" }
 fvm_ipld_bitfield = "0.7.0"
 
