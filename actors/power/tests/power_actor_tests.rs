@@ -101,6 +101,9 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
     rt.set_balance(TokenAmount::from_atto(10));
     rt.expect_validate_caller_any();
 
+    let st: State = rt.get_state();
+    let network_qap = st.this_epoch_qa_power_smoothed.clone();
+
     let message_params = ExecParams {
         code_cid: *MINER_ACTOR_CODE_ID,
         constructor_params: RawBytes::serialize(MinerConstructorParams {
@@ -110,6 +113,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
             peer_id: peer,
             multi_addresses: multiaddrs,
             control_addresses: Default::default(),
+            network_qap,
         })
         .unwrap(),
     };
@@ -1058,7 +1062,10 @@ fn create_miner_restricted_correctly() {
     })
     .unwrap();
 
+    let deposit = TokenAmount::from_atto(320);
     rt.set_caller(*EVM_ACTOR_CODE_ID, *OWNER);
+    rt.set_received(deposit.clone());
+    rt.set_balance(deposit.clone());
 
     // cannot call the unexported method
     expect_abort_contains_message(
@@ -1070,6 +1077,9 @@ fn create_miner_restricted_correctly() {
     // can call the exported method
 
     rt.expect_validate_caller_any();
+
+    let st: State = rt.get_state();
+    let network_qap = st.this_epoch_qa_power_smoothed.clone();
     let expected_init_params = ExecParams {
         code_cid: *MINER_ACTOR_CODE_ID,
         constructor_params: RawBytes::serialize(MinerConstructorParams {
@@ -1079,6 +1089,7 @@ fn create_miner_restricted_correctly() {
             window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
             peer_id: peer,
             multi_addresses: multiaddrs,
+            network_qap,
         })
         .unwrap(),
     };
@@ -1087,7 +1098,7 @@ fn create_miner_restricted_correctly() {
         INIT_ACTOR_ADDR,
         EXEC_METHOD,
         IpldBlock::serialize_cbor(&expected_init_params).unwrap(),
-        TokenAmount::zero(),
+        deposit,
         IpldBlock::serialize_cbor(&create_miner_ret).unwrap(),
         ExitCode::OK,
     );
