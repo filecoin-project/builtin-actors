@@ -712,6 +712,94 @@ pub fn evm_staticcall_delegatecall_test(v: &dyn VM) {
     }
 }
 
+#[allow(non_snake_case)]
+#[vm_test]
+pub fn evm_constructor_delegatecall_regression_test(v: &dyn VM) {
+    const IMP_INITCODE: &str =
+        include_str!("../../../actors/evm/tests/contracts/recall_contract/implementation.hex");
+    const PROXY_INITCODE: &str =
+        include_str!("../../../actors/evm/tests/contracts/recall_contract/proxy.hex");
+
+    // Create accounts for deployment
+    let deployer = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
+
+    // 1. Deploy the implementation contract
+    let imp_bytecode = hex::decode(IMP_INITCODE).unwrap();
+    let imp_deploy_result = v
+        .execute_message(
+            &deployer,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
+            fil_actor_eam::Method::CreateExternal as u64,
+            Some(serialize_ok(&fil_actor_eam::CreateExternalParams(imp_bytecode))),
+        )
+        .unwrap();
+
+    assert!(
+        imp_deploy_result.code.is_success(),
+        "Failed to deploy implementation contract: {}",
+        imp_deploy_result.message
+    );
+
+    let imp_return: fil_actor_eam::CreateExternalReturn = imp_deploy_result
+        .ret
+        .unwrap()
+        .deserialize()
+        .expect("Failed to decode implementation deployment results");
+
+    // Make sure we deployed an EVM actor
+    assert_eq!(&v.actor(&Address::new_id(imp_return.actor_id)).unwrap().code, &*EVM_ACTOR_CODE_ID);
+
+    // 2. Deploy the proxy contract with implementation address in constructor, replacing the
+    // mainnet implementation address.
+    let proxy_initcode_fixed = PROXY_INITCODE.replace(
+        "1835374384aa51b169c0705da26a84bb760f2b37",
+        &hex::encode(imp_return.eth_address.0),
+    );
+    let proxy_initcode = hex::decode(proxy_initcode_fixed).unwrap();
+
+    let proxy_deploy_result = v
+        .execute_message(
+            &deployer,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
+            fil_actor_eam::Method::CreateExternal as u64,
+            Some(serialize_ok(&fil_actor_eam::CreateExternalParams(proxy_initcode))),
+        )
+        .unwrap();
+
+    assert!(
+        proxy_deploy_result.code.is_success(),
+        "Failed to deploy proxy contract: {}",
+        proxy_deploy_result.message
+    );
+
+    let proxy_return: fil_actor_eam::CreateExternalReturn = proxy_deploy_result
+        .ret
+        .unwrap()
+        .deserialize()
+        .expect("Failed to decode proxy deployment results");
+
+    let proxy_robust_addr = proxy_return.robust_address.unwrap();
+
+    // Try to mint:
+    const PARAMS: &str = "40c10f1900000000000000000000000090f79bf6eb2c4f870365e785982e1f101e93b9060000000000000000000000000000000000000000000000008ac7230489e80000";
+    let params = hex::decode(PARAMS).unwrap();
+
+    let mint_result = v
+        .execute_message(
+            &deployer,
+            &proxy_robust_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(serialize_ok(&ContractParams(params))),
+        )
+        .unwrap();
+
+    assert!(mint_result.code.is_success(), "Failed to mint: {}", mint_result.message);
+}
+
+#[allow(non_snake_case)]
 #[vm_test]
 pub fn evm_init_revert_data_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
