@@ -9,11 +9,13 @@ use crate::interpreter::precompiles::bls_util::{
 };
 
 use blst::{
-    blst_p2, blst_p2_add_or_double_affine, blst_p2_affine, blst_p2_from_affine, blst_p2_to_affine,
+    blst_p2, blst_p2_add_or_double_affine, blst_p2_affine, blst_p2_affine_is_inf,
+    blst_p2_from_affine, blst_p2_to_affine,
 };
 
-/// BLS12_G2ADD precompile
-/// Implements G2 point addition according to EIP-2537
+/// **BLS12_G2ADD Precompile**
+///
+/// Implements G2 point addition according to [EIP-2537](https://eips.ethereum.org/EIPS/eip-2537).
 pub fn bls12_g2add<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
@@ -23,25 +25,74 @@ pub fn bls12_g2add<RT: Runtime>(
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    // Extract the two input G2 points
-    // No subgroup check needed for addition
+    // Split the input into two segments corresponding to the two G2 points.
     let a_aff = extract_g2_input(&input[..G2_INPUT_ITEM_LENGTH], false)?;
     let b_aff = extract_g2_input(&input[G2_INPUT_ITEM_LENGTH..], false)?;
 
-    let mut b = blst_p2::default();
-    // Convert b_aff to projective coordinates
-    unsafe { blst_p2_from_affine(&mut b, &b_aff) };
+    // If either point is at infinity, return the other point.
+    if is_infinity(&a_aff) {
+        return Ok(encode_g2_point(&b_aff));
+    }
+    if is_infinity(&b_aff) {
+        return Ok(encode_g2_point(&a_aff));
+    }
 
+    let result_aff = p2_add_affine(&a_aff, &b_aff);
+    Ok(encode_g2_point(&result_aff))
+}
+
+/// Adds two G2 points (provided in affine form) and returns the sum in affine form.
+#[inline]
+pub(super) fn p2_add_affine(a: &blst_p2_affine, b: &blst_p2_affine) -> blst_p2_affine {
+    let a_proj = p2_from_affine(a);
+    let sum_proj = p2_add_or_double(&a_proj, b);
+    p2_to_affine(&sum_proj)
+}
+
+/// Returns true if the given G2 point (affine form) is the point at infinity.
+///
+/// # Safety
+///
+/// The input is guaranteed valid by `extract_g2_input`.
+#[inline]
+fn is_infinity(p: &blst_p2_affine) -> bool {
+    unsafe { blst_p2_affine_is_inf(p) }
+}
+
+/// Converts a G2 point from affine form to projective (Jacobian) form.
+///
+/// # Safety
+///
+/// The input is assumed valid.
+#[inline]
+pub fn p2_from_affine(p_affine: &blst_p2_affine) -> blst_p2 {
     let mut p = blst_p2::default();
-    // Add the points
-    unsafe { blst_p2_add_or_double_affine(&mut p, &b, &a_aff) };
+    unsafe { blst_p2_from_affine(&mut p, p_affine) };
+    p
+}
 
-    let mut p_aff = blst_p2_affine::default();
-    // Convert result back to affine coordinates
-    unsafe { blst_p2_to_affine(&mut p_aff, &p) };
+/// Converts a G2 point from projective (Jacobian) form back to affine form.
+///
+/// # Safety
+///
+/// The conversion is safe for valid BLST types.
+#[inline]
+fn p2_to_affine(p: &blst_p2) -> blst_p2_affine {
+    let mut p_affine = blst_p2_affine::default();
+    unsafe { blst_p2_to_affine(&mut p_affine, p) };
+    p_affine
+}
 
-    // Encode the result
-    Ok(encode_g2_point(&p_aff))
+/// Adds a G2 point in projective form with a G2 point in affine form.
+///
+/// # Safety
+///
+/// All inputs are assumed valid due to earlier checks.
+#[inline]
+pub fn p2_add_or_double(p: &blst_p2, p_affine: &blst_p2_affine) -> blst_p2 {
+    let mut result = blst_p2::default();
+    unsafe { blst_p2_add_or_double_affine(&mut result, p, p_affine) };
+    result
 }
 
 #[cfg(test)]

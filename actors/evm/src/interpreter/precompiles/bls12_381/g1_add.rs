@@ -9,11 +9,13 @@ use crate::interpreter::precompiles::bls_util::{
 };
 
 use blst::{
-    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine,
+    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_affine_is_inf,
+    blst_p1_from_affine, blst_p1_to_affine,
 };
 
-/// BLS12_G1ADD precompile
-/// Implements G1 point addition according to EIP-2537
+/// **BLS12_G1ADD Precompile**
+///
+/// Implements G1 point addition according to [EIP-2537](https://eips.ethereum.org/EIPS/eip-2537).
 pub fn bls12_g1add<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
@@ -23,55 +25,79 @@ pub fn bls12_g1add<RT: Runtime>(
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    // Extract the two input G1 points
+    // Split the input bytes into two segments representing each G1 point.
     let a_bytes = &input[..PADDED_G1_LENGTH];
     let b_bytes = &input[PADDED_G1_LENGTH..];
 
-    // Convert input bytes to blst affine points
+    // Convert the input bytes to their corresponding BLST affine representations.
     let a_aff = extract_g1_input(a_bytes, false)?;
     let b_aff = extract_g1_input(b_bytes, false)?;
 
-    let p_aff = p1_add_affine(&a_aff, &b_aff);
-    // Encode the result
-    Ok(encode_g1_point(&p_aff))
+    // If either point is at infinity, return the other point as the result.
+    if is_infinity(&a_aff) {
+        return Ok(encode_g1_point(&b_aff));
+    }
+    if is_infinity(&b_aff) {
+        return Ok(encode_g1_point(&a_aff));
+    }
+
+    // Perform the addition in Jacobian coordinates, then convert back to affine.
+    let result_aff = p1_add_affine(&a_aff, &b_aff);
+    Ok(encode_g1_point(&result_aff))
 }
 
-/// p1_add_affine adds two G1 points in affine form, returning the result in affine form
+/// Adds two G1 points given in affine form and returns the result in affine form.
 ///
-/// Note: `a` and `b` can be the same, ie this method is safe to call if one wants
-/// to essentially double a point
+/// This method is safe for point doubling since it allows `a` and `b` to be identical.
 #[inline]
 pub(super) fn p1_add_affine(a: &blst_p1_affine, b: &blst_p1_affine) -> blst_p1_affine {
-    // Convert first point to Jacobian coordinates
     let a_jacobian = p1_from_affine(a);
-
-    // Add second point (in affine) to first point (in Jacobian)
     let sum_jacobian = p1_add_or_double(&a_jacobian, b);
-
-    // Convert result back to affine coordinates
     p1_to_affine(&sum_jacobian)
 }
 
+/// Returns true if the given G1 point (affine form) is the point at infinity.
+///
+/// # Safety
+///
+/// The input is guaranteed to be valid by `extract_g1_input`.
+#[inline]
+fn is_infinity(p: &blst_p1_affine) -> bool {
+    unsafe { blst_p1_affine_is_inf(p) }
+}
+
+/// Converts a G1 point from affine form to its Jacobian (projective) form.
+///
+/// # Safety
+///
+/// Both inputs are valid BLST types as ensured by previous validations.
 #[inline]
 pub fn p1_from_affine(p_affine: &blst_p1_affine) -> blst_p1 {
     let mut p = blst_p1::default();
-    // SAFETY: both inputs are valid blst types
     unsafe { blst_p1_from_affine(&mut p, p_affine) };
     p
 }
 
+/// Converts a G1 point from its Jacobian (projective) form to affine form.
+///
+/// # Safety
+///
+/// The conversion is safe for valid BLST points.
 #[inline]
 fn p1_to_affine(p: &blst_p1) -> blst_p1_affine {
     let mut p_affine = blst_p1_affine::default();
-    // SAFETY: both inputs are valid blst types
     unsafe { blst_p1_to_affine(&mut p_affine, p) };
     p_affine
 }
 
+/// Adds a G1 point in Jacobian coordinates and a G1 point in affine form.
+///
+/// # Safety
+///
+/// All inputs are assumed valid due to earlier checks.
 #[inline]
 pub fn p1_add_or_double(p: &blst_p1, p_affine: &blst_p1_affine) -> blst_p1 {
     let mut result = blst_p1::default();
-    // SAFETY: all inputs are valid blst types
     unsafe { blst_p1_add_or_double_affine(&mut result, p, p_affine) };
     result
 }
