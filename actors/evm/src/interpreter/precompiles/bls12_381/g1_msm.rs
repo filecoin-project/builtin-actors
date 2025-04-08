@@ -1,23 +1,18 @@
 use crate::interpreter::{
-    precompiles::{bls_util::{p1_scalar_mul, p1_to_affine, SCALAR_LENGTH_BITS}, PrecompileContext, PrecompileError, PrecompileResult},
+    precompiles::{
+        bls_util::{p1_scalar_mul, p1_to_affine, SCALAR_LENGTH_BITS},
+        PrecompileContext, PrecompileError, PrecompileResult,
+    },
     System,
 };
 use fil_actors_runtime::runtime::Runtime;
 
-
 use crate::interpreter::precompiles::bls_util::{
-    G1_MSM_INPUT_LENGTH,
-    PADDED_G1_LENGTH,
-    G1_OUTPUT_LENGTH,
-    SCALAR_LENGTH,
-    encode_g1_point,
-    extract_g1_input,
-    read_scalar,
+    encode_g1_point, extract_g1_input, read_scalar, G1_MSM_INPUT_LENGTH, G1_OUTPUT_LENGTH,
+    PADDED_G1_LENGTH, SCALAR_LENGTH,
 };
 
-use blst::{
-    blst_p1_affine, blst_scalar, MultiPoint
-};
+use blst::{blst_p1_affine, blst_scalar, MultiPoint};
 
 /// Implements EIP-2537 G1MSM precompile.
 /// G1 multi-scalar-multiplication call expects `160*k` bytes as an input that is interpreted
@@ -82,7 +77,6 @@ pub fn bls12_g1msm<RT: Runtime>(
     Ok(encode_g1_point(&multiexp_aff))
 }
 
-
 /// Performs multi-scalar multiplication (MSM) for G1 points
 ///
 /// Takes a vector of G1 points and corresponding scalars, and returns their weighted sum
@@ -125,8 +119,8 @@ mod tests {
     use super::*;
     use crate::interpreter::System;
     use fil_actors_runtime::test_utils::MockRuntime;
-    use substrate_bn::CurveError;
     use hex_literal::hex;
+    use substrate_bn::CurveError;
 
     #[test]
     fn test_g1_msm_success() {
@@ -209,8 +203,7 @@ mod tests {
         let res3 = bls12_g1msm(&mut system, &input3, PrecompileContext::default())
             .expect("g2 msm should succeed");
         assert_eq!(res3, expected3, "bls_g2msm_multiple_with_point_at_infinity result mismatch");
-
-        }
+    }
     #[test]
     fn test_g1_msm_failure() {
         let rt = MockRuntime::default();
@@ -230,7 +223,6 @@ mod tests {
         ).unwrap();
         let res = bls12_g1msm(&mut system, &short_input, ctx);
         assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
-
 
         // // Test: Invalid field element
         let invalid_field = hex::decode(

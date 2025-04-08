@@ -5,18 +5,11 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    G1_ADD_INPUT_LENGTH,
-    PADDED_G1_LENGTH,
-    encode_g1_point,
-    extract_g1_input,
+    encode_g1_point, extract_g1_input, G1_ADD_INPUT_LENGTH, PADDED_G1_LENGTH,
 };
 
 use blst::{
-    blst_p1,
-    blst_p1_add_or_double_affine,
-    blst_p1_affine,
-    blst_p1_from_affine,
-    blst_p1_to_affine,
+    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine,
 };
 
 /// BLS12_G1ADD precompile
@@ -29,7 +22,7 @@ pub fn bls12_g1add<RT: Runtime>(
     if input.len() != G1_ADD_INPUT_LENGTH {
         return Err(PrecompileError::IncorrectInputSize);
     }
-    
+
     // Extract the two input G1 points
     let a_bytes = &input[..PADDED_G1_LENGTH];
     let b_bytes = &input[PADDED_G1_LENGTH..];
@@ -51,7 +44,6 @@ pub fn bls12_g1add<RT: Runtime>(
 pub(super) fn p1_add_affine(a: &blst_p1_affine, b: &blst_p1_affine) -> blst_p1_affine {
     // Convert first point to Jacobian coordinates
     let a_jacobian = p1_from_affine(a);
-    
 
     // Add second point (in affine) to first point (in Jacobian)
     let sum_jacobian = p1_add_or_double(&a_jacobian, b);
@@ -165,8 +157,10 @@ mod tests {
         // Test case 1: Empty input
         let empty_input: Vec<u8> = vec![];
         let res = bls12_g1add(&mut system, &empty_input, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Empty input should return IncorrectInputSize error");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Empty input should return IncorrectInputSize error"
+        );
 
         // Test case 2: Short input
         let short_input = hex!(
@@ -176,8 +170,10 @@ mod tests {
              00000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21"
         );
         let res = bls12_g1add(&mut system, &short_input, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Short input should return IncorrectInputSize error");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Short input should return IncorrectInputSize error"
+        );
 
         // Test case 3: Large input (extra byte at start)
         let large_input = hex!(
@@ -187,8 +183,10 @@ mod tests {
              00000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21"
         );
         let res = bls12_g1add(&mut system, &large_input, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Large input should return IncorrectInputSize error");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Large input should return IncorrectInputSize error"
+        );
 
         // Test case 4: Point not on curve
         let not_on_curve = hex!(
@@ -198,8 +196,10 @@ mod tests {
              00000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21"
         );
         let res = bls12_g1add(&mut system, &not_on_curve, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
-            "Point not on curve should return InvalidInput error");
+        assert!(
+            matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
+            "Point not on curve should return InvalidInput error"
+        );
 
         // // Test case 5: Invalid field element
         let invalid_field = hex!(
@@ -209,8 +209,10 @@ mod tests {
              00000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21"
         );
         let res = bls12_g1add(&mut system, &invalid_field, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
-            "Invalid field element should return InvalidInput error");
+        assert!(
+            matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
+            "Invalid field element should return InvalidInput error"
+        );
 
         // Test case 6: Invalid top bytes
         let invalid_top = hex!(
@@ -220,7 +222,9 @@ mod tests {
              00000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21"
         );
         let res = bls12_g1add(&mut system, &invalid_top, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::InvalidInput)),
-            "Invalid top bytes should return InvalidInput error");
+        assert!(
+            matches!(res, Err(PrecompileError::InvalidInput)),
+            "Invalid top bytes should return InvalidInput error"
+        );
     }
 }

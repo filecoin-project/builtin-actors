@@ -5,18 +5,11 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    G2_ADD_INPUT_LENGTH,
-    G2_INPUT_ITEM_LENGTH,
-    encode_g2_point,
-    extract_g2_input,
+    encode_g2_point, extract_g2_input, G2_ADD_INPUT_LENGTH, G2_INPUT_ITEM_LENGTH,
 };
 
 use blst::{
-    blst_p2,
-    blst_p2_add_or_double_affine,
-    blst_p2_affine,
-    blst_p2_from_affine,
-    blst_p2_to_affine,
+    blst_p2, blst_p2_add_or_double_affine, blst_p2_affine, blst_p2_from_affine, blst_p2_to_affine,
 };
 
 /// BLS12_G2ADD precompile
@@ -58,7 +51,7 @@ mod tests {
     use fil_actors_runtime::test_utils::MockRuntime;
     use hex_literal::hex;
     use substrate_bn::CurveError;
-    
+
     #[test]
     fn test_g2_add_success() {
         let rt = MockRuntime::default();
@@ -111,8 +104,7 @@ mod tests {
                 // bls_g2add_(p2+p2=2*p2)
                 hex!("00000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d87845100000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"),
                 hex!("000000000000000000000000000000000b76fcbb604082a4f2d19858a7befd6053fa181c5119a612dfec83832537f644e02454f2b70d40985ebb08042d1620d40000000000000000000000000000000019a4a02c0ae51365d964c73be7babb719db1c69e0ddbf9a8a335b5bed3b0a4b070d2d5df01d2da4a3f1e56aae2ec106d000000000000000000000000000000000d18322f821ac72d3ca92f92b000483cf5b7d9e5d06873a44071c4e7e81efd904f210208fe0b9b4824f01c65bc7e62080000000000000000000000000000000004e563d53609a2d1e216aaaee5fbc14ef460160db8d1fdc5e1bd4e8b54cd2f39abf6f925969fa405efb9e700b01c7085")
-            ),
-        
+            )
         ];
 
         for (input, expected) in test_vectors.iter() {
@@ -131,8 +123,10 @@ mod tests {
         // Test case 1: Empty input
         let empty_input: Vec<u8> = vec![];
         let res = bls12_g2add(&mut system, &empty_input, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Empty input should return IncorrectInputSize error");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Empty input should return IncorrectInputSize error"
+        );
 
         // Test case 2: Short input
         let short_input = hex!(
@@ -142,8 +136,10 @@ mod tests {
              000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be"
         );
         let res = bls12_g2add(&mut system, &short_input, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Short input should return IncorrectInputSize error");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Short input should return IncorrectInputSize error"
+        );
 
         // Test case 3: Long input (extra byte at start)
         let long_input = hex!(
@@ -157,8 +153,10 @@ mod tests {
              000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"
         );
         let res = bls12_g2add(&mut system, &long_input, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Long input should return IncorrectInputSize error");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Long input should return IncorrectInputSize error"
+        );
 
         // Test case 4: Point not on curve
         let not_on_curve = hex!(
@@ -172,16 +170,20 @@ mod tests {
              000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"
         );
         let res = bls12_g2add(&mut system, &not_on_curve, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
-            "Point not on curve should return InvalidInput error");
+        assert!(
+            matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
+            "Point not on curve should return InvalidInput error"
+        );
 
         // Test case 5: Invalid field element
         let invalid_field = hex!(
             "000000000000000000000000000000001c4bb49d2a0ef12b7123acdd7110bd292b5bc659edc54dc21b81de057194c79b2a5803255959bbef8e7f56c8c12168630000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be00000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"
         );
         let res = bls12_g2add(&mut system, &invalid_field, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
-            "Invalid field element should return InvalidInput error");
+        assert!(
+            matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
+            "Invalid field element should return InvalidInput error"
+        );
 
         // Test case 6: Invalid top bytes
         let invalid_top = hex!(
@@ -195,9 +197,9 @@ mod tests {
              000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"
         );
         let res = bls12_g2add(&mut system, &invalid_top, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::InvalidInput)),
-            "Invalid top bytes should return InvalidInput error");
-    
+        assert!(
+            matches!(res, Err(PrecompileError::InvalidInput)),
+            "Invalid top bytes should return InvalidInput error"
+        );
     }
-
 }

@@ -5,20 +5,10 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    PADDED_FP_LENGTH,
-    PADDED_FP2_LENGTH,
-    encode_g2_point,
-    remove_padding,
-    read_fp2,
-    p2_to_affine,
+    encode_g2_point, p2_to_affine, read_fp2, remove_padding, PADDED_FP2_LENGTH, PADDED_FP_LENGTH,
 };
 
-use blst::{
-    blst_fp2,
-    blst_p2,
-    blst_p2_affine,
-    blst_map_to_g2,
-};
+use blst::{blst_fp2, blst_map_to_g2, blst_p2, blst_p2_affine};
 /// BLS12_MAP_FP2_TO_G2 precompile
 /// Implements mapping of field element to G2 point according to EIP-2537
 pub fn bls12_map_fp2_to_g2<RT: Runtime>(
@@ -153,8 +143,10 @@ mod tests {
         // Test case 1: Empty input
         let input1: Vec<u8> = vec![];
         let res = bls12_map_fp2_to_g2(&mut system, &input1, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Test case 'bls_mapg2_empty_input' failed: expected 'invalid input length'");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Test case 'bls_mapg2_empty_input' failed: expected 'invalid input length'"
+        );
 
         // Test case 2: Short input
         let input2 = hex!(
@@ -162,8 +154,10 @@ mod tests {
              0000000000000000000000000000000002829ce3c021339ccb5caf3e187f6370e1e2a311dec9b75363117063ab2015603ff52c3d3b98f19c2f65575e99e8b7"
         );
         let res = bls12_map_fp2_to_g2(&mut system, &input2, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Test case 'bls_mapg2_short_input' failed: expected 'invalid input length'");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Test case 'bls_mapg2_short_input' failed: expected 'invalid input length'"
+        );
 
         // Test case 3: Long input
         let input3 = hex!(
@@ -171,8 +165,10 @@ mod tests {
              0000000000000000000000000000000002829ce3c021339ccb5caf3e187f6370e1e2a311dec9b75363117063ab2015603ff52c3d3b98f19c2f65575e99e8b78c"
         );
         let res = bls12_map_fp2_to_g2(&mut system, &input3, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Test case 'bls_mapg2_long_input' failed: expected 'invalid input length'");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Test case 'bls_mapg2_long_input' failed: expected 'invalid input length'"
+        );
 
         // Test case 4: Invalid top bytes
         let input4 = hex!(
@@ -180,8 +176,10 @@ mod tests {
              0000000000000000000000000000000002829ce3c021339ccb5caf3e187f6370e1e2a311dec9b75363117063ab2015603ff52c3d3b98f19c2f65575e99e8b7"
         );
         let res = bls12_map_fp2_to_g2(&mut system, &input4, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::InvalidInput)),
-            "Test case 'bls_mapg2_top_bytes' failed: expected 'invalid field element top bytes'");
+        assert!(
+            matches!(res, Err(PrecompileError::InvalidInput)),
+            "Test case 'bls_mapg2_top_bytes' failed: expected 'invalid field element top bytes'"
+        );
 
         // Test case 5: Invalid field element
         let input5 = hex!(
@@ -192,5 +190,4 @@ mod tests {
         assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
             "Test case 'bls_mapg2_invalid_fq_element' failed: expected 'invalid fp.Element encoding'");
     }
-    
 }
