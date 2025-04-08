@@ -1,6 +1,6 @@
 use crate::interpreter::{
     precompiles::{
-        bls_util::{p1_scalar_mul, p1_to_affine, SCALAR_LENGTH_BITS},
+        bls_util::{is_infinity, p1_scalar_mul, p1_to_affine, SCALAR_LENGTH_BITS},
         PrecompileContext, PrecompileError, PrecompileResult,
     },
     System,
@@ -9,109 +9,96 @@ use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
     encode_g1_point, extract_g1_input, read_scalar, G1_MSM_INPUT_LENGTH, G1_OUTPUT_LENGTH,
-    PADDED_G1_LENGTH, SCALAR_LENGTH,
+    PADDED_G1_LENGTH,
 };
 
 use blst::{blst_p1_affine, blst_scalar, MultiPoint};
 
-/// Implements EIP-2537 G1MSM precompile.
-/// G1 multi-scalar-multiplication call expects `160*k` bytes as an input that is interpreted
-/// as byte concatenation of `k` slices each of them being a byte concatenation
-/// of encoding of G1 point (`128` bytes) and encoding of a scalar value (`32`
-/// bytes).
-/// Output is an encoding of multi-scalar-multiplication operation result - single G1
-/// point (`128` bytes).
-/// See also: <https://eips.ethereum.org/EIPS/eip-2537#abi-for-g1-multiexponentiation>
+/// **BLS12_G1MSM Precompile**
+///
+/// Implements G1 multi-scalar multiplication (MSM) according to [EIP-2537](https://eips.ethereum.org/EIPS/eip-2537#abi-for-g1-multiexponentiation).
+/// The input is expected to be `160 * k` bytes, where each 160-byte segment consists of:
+/// - A 128-byte encoding of a G1 point (padded, in affine form)
+/// - A 32-byte encoding of a scalar value in Big-Endian
+///
+/// The output is an encoding of a single G1 point (128 bytes).
 pub fn bls12_g1msm<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
+    // Validate that the input length is non-zero and an exact multiple of the per-pair length.
     let input_len = input.len();
     if input_len == 0 || input_len % G1_MSM_INPUT_LENGTH != 0 {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
+    // Determine the number of (point, scalar) pairs.
     let k = input_len / G1_MSM_INPUT_LENGTH;
-    let mut g1_points: Vec<_> = Vec::with_capacity(k);
-    let mut scalars = Vec::with_capacity(k);
+    let mut g1_points: Vec<blst_p1_affine> = Vec::with_capacity(k);
+    let mut scalars: Vec<blst_scalar> = Vec::with_capacity(k);
 
-    // Process each (point, scalar) pair
+    // Process each (point, scalar) pair.
     for i in 0..k {
-        let encoded_g1_element =
-            &input[i * G1_MSM_INPUT_LENGTH..i * G1_MSM_INPUT_LENGTH + PADDED_G1_LENGTH];
-        let encoded_scalar = &input[i * G1_MSM_INPUT_LENGTH + PADDED_G1_LENGTH
-            ..i * G1_MSM_INPUT_LENGTH + PADDED_G1_LENGTH + SCALAR_LENGTH];
+        let offset = i * G1_MSM_INPUT_LENGTH;
+        let encoded_point = &input[offset..offset + PADDED_G1_LENGTH];
+        let encoded_scalar = &input[offset + PADDED_G1_LENGTH..offset + G1_MSM_INPUT_LENGTH];
 
-        // Filter out points infinity as an optimization, since it is a no-op.
-        // Note: Previously, points were being batch converted from Jacobian to Affine.
-        // In `blst`, this would essentially, zero out all of the points.
-        // Since all points are now in affine, this bug is avoided.
-        if encoded_g1_element.iter().all(|i| *i == 0) {
+        // Deserialize the point (performing subgroup check).
+        let point_aff = extract_g1_input(encoded_point, true)?;
+
+        // Optimization: skip this pair if the deserialized point represents infinity.
+        if is_infinity(&point_aff) {
             continue;
         }
 
-        // NB: Scalar multiplications, MSMs and pairings MUST perform a subgroup check.
-        //
-        // So we set the subgroup_check flag to `true`
-        let p0_aff = &extract_g1_input(encoded_g1_element, true)?;
-
-        // If the scalar is zero, then this is a no-op.
-        //
-        // Note: This check is made after checking that g1 is valid.
-        // this is because we want the precompile to error when
-        // G1 is invalid, even if the scalar is zero.
-        if encoded_scalar.iter().all(|i| *i == 0) {
+        // Skip this pair if the scalar encoding is zero.
+        if encoded_scalar.iter().all(|&b| b == 0) {
             continue;
         }
 
-        g1_points.push(*p0_aff);
+        g1_points.push(point_aff);
         scalars.push(read_scalar(encoded_scalar)?);
     }
 
-    // Return infinity point if all points are infinity
+    // If no valid (point, scalar) pairs remain, return the encoded point at infinity.
     if g1_points.is_empty() {
         return Ok(vec![0u8; G1_OUTPUT_LENGTH]);
     }
-    let multiexp_aff = p1_msm(g1_points, scalars);
-    Ok(encode_g1_point(&multiexp_aff))
+
+    // Compute the MSM and convert the projective result back to affine form.
+    let result_aff = p1_msm(g1_points, scalars);
+    Ok(encode_g1_point(&result_aff))
 }
 
-/// Performs multi-scalar multiplication (MSM) for G1 points
+/// Performs multi-scalar multiplication (MSM) for G1 points.
 ///
-/// Takes a vector of G1 points and corresponding scalars, and returns their weighted sum
+/// Given vectors of G1 points and corresponding scalars, returns their weighted sum.
+/// If a single (point, scalar) pair is provided, a simple scalar multiplication is used.
 ///
-/// Note: This method assumes that `g1_points` does not contain any points at infinity.
+/// # Panics
+///
+/// Panics if the number of points does not equal the number of scalars.
 #[inline]
 pub(super) fn p1_msm(g1_points: Vec<blst_p1_affine>, scalars: Vec<blst_scalar>) -> blst_p1_affine {
     assert_eq!(
         g1_points.len(),
         scalars.len(),
-        "number of scalars should equal the number of g1 points"
+        "Number of scalars must equal the number of G1 points"
     );
 
-    // When no inputs are given, we return the point at infinity.
-    // This case can only trigger, if the initial MSM pairs
-    // all had, either a zero scalar or the point at infinity.
-    //
-    // The precompile will return an error, if the initial input
-    // was empty, in accordance with EIP-2537.
-    if g1_points.is_empty() {
-        return blst_p1_affine::default();
-    }
-
-    // When there is only a single point, we use a simpler scalar multiplication
-    // procedure
     if g1_points.len() == 1 {
         return p1_scalar_mul(&g1_points[0], &scalars[0]);
     }
 
-    let scalars_bytes: Vec<_> = scalars.into_iter().flat_map(|s| s.b).collect();
-    // Perform multi-scalar multiplication
-    let multiexp = g1_points.mult(&scalars_bytes, SCALAR_LENGTH_BITS);
+    // Flatten the scalars into a contiguous byte vector.
+    let scalars_bytes: Vec<u8> = scalars.into_iter().flat_map(|s| s.b).collect();
 
-    // Convert result back to affine coordinates
-    p1_to_affine(&multiexp)
+    // Perform multi-scalar multiplication using the blst MultiPoint interface.
+    let multiexp_proj = g1_points.mult(&scalars_bytes, SCALAR_LENGTH_BITS);
+
+    // Convert the projective result back to affine form.
+    p1_to_affine(&multiexp_proj)
 }
 
 #[cfg(test)]

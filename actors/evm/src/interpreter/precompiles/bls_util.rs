@@ -8,6 +8,7 @@ use blst::{
     blst_p1,
     blst_p1_affine,
     blst_p1_affine_in_g1,
+    blst_p1_affine_is_inf,
     blst_p1_affine_on_curve,
     blst_p1_from_affine,
     blst_p1_mult,
@@ -15,6 +16,7 @@ use blst::{
     blst_p2,
     blst_p2_affine,
     blst_p2_affine_in_g2,
+    blst_p2_affine_is_inf,
     blst_p2_affine_on_curve,
     blst_p2_from_affine,
     blst_p2_mult,
@@ -389,4 +391,33 @@ pub fn read_fp(input: &[u8; FP_LENGTH]) -> Result<blst_fp, PrecompileError> {
 /// Checks if the input is a valid big-endian representation of a field element.
 fn is_valid_be(input: &[u8; 48]) -> bool {
     *input < MODULUS_REPR
+}
+
+/// Trait to check if an affine point is the point at infinity.
+pub trait IsInfinity {
+    fn is_infinity(&self) -> bool;
+}
+
+impl IsInfinity for blst_p1_affine {
+    #[inline]
+    fn is_infinity(&self) -> bool {
+        // # Safety
+        // Guaranteed valid by extract_g1_input
+        unsafe { blst_p1_affine_is_inf(self) }
+    }
+}
+
+impl IsInfinity for blst_p2_affine {
+    #[inline]
+    fn is_infinity(&self) -> bool {
+        // # Safety
+        // Guaranteed valid by extract_g2_input
+        unsafe { blst_p2_affine_is_inf(self) }
+    }
+}
+
+/// Generic utility to check if an affine point is at infinity.
+#[inline]
+pub fn is_infinity<T: IsInfinity>(p: &T) -> bool {
+    p.is_infinity()
 }

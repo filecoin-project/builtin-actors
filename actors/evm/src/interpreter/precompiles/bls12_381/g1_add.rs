@@ -5,12 +5,11 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    encode_g1_point, extract_g1_input, G1_ADD_INPUT_LENGTH, PADDED_G1_LENGTH,
+    encode_g1_point, extract_g1_input, is_infinity, G1_ADD_INPUT_LENGTH, PADDED_G1_LENGTH,
 };
 
 use blst::{
-    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_affine_is_inf,
-    blst_p1_from_affine, blst_p1_to_affine,
+    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine,
 };
 
 /// **BLS12_G1ADD Precompile**
@@ -54,16 +53,6 @@ pub(super) fn p1_add_affine(a: &blst_p1_affine, b: &blst_p1_affine) -> blst_p1_a
     let a_jacobian = p1_from_affine(a);
     let sum_jacobian = p1_add_or_double(&a_jacobian, b);
     p1_to_affine(&sum_jacobian)
-}
-
-/// Returns true if the given G1 point (affine form) is the point at infinity.
-///
-/// # Safety
-///
-/// The input is guaranteed to be valid by `extract_g1_input`.
-#[inline]
-fn is_infinity(p: &blst_p1_affine) -> bool {
-    unsafe { blst_p1_affine_is_inf(p) }
 }
 
 /// Converts a G1 point from affine form to its Jacobian (projective) form.

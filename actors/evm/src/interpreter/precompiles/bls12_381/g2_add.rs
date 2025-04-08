@@ -5,12 +5,11 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    encode_g2_point, extract_g2_input, G2_ADD_INPUT_LENGTH, G2_INPUT_ITEM_LENGTH,
+    encode_g2_point, extract_g2_input, is_infinity, G2_ADD_INPUT_LENGTH, G2_INPUT_ITEM_LENGTH,
 };
 
 use blst::{
-    blst_p2, blst_p2_add_or_double_affine, blst_p2_affine, blst_p2_affine_is_inf,
-    blst_p2_from_affine, blst_p2_to_affine,
+    blst_p2, blst_p2_add_or_double_affine, blst_p2_affine, blst_p2_from_affine, blst_p2_to_affine,
 };
 
 /// **BLS12_G2ADD Precompile**
@@ -47,16 +46,6 @@ pub(super) fn p2_add_affine(a: &blst_p2_affine, b: &blst_p2_affine) -> blst_p2_a
     let a_proj = p2_from_affine(a);
     let sum_proj = p2_add_or_double(&a_proj, b);
     p2_to_affine(&sum_proj)
-}
-
-/// Returns true if the given G2 point (affine form) is the point at infinity.
-///
-/// # Safety
-///
-/// The input is guaranteed valid by `extract_g2_input`.
-#[inline]
-fn is_infinity(p: &blst_p2_affine) -> bool {
-    unsafe { blst_p2_affine_is_inf(p) }
 }
 
 /// Converts a G2 point from affine form to projective (Jacobian) form.

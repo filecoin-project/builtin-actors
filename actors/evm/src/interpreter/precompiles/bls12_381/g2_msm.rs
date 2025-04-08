@@ -1,115 +1,99 @@
+use crate::interpreter::precompiles::bls_util::{
+    encode_g2_point, extract_g2_input, p2_scalar_mul, p2_to_affine, read_scalar,
+    G2_MSM_INPUT_LENGTH, G2_OUTPUT_LENGTH, PADDED_G2_LENGTH, SCALAR_LENGTH_BITS,
+};
 use crate::interpreter::{
     precompiles::{PrecompileContext, PrecompileError, PrecompileResult},
     System,
 };
 use fil_actors_runtime::runtime::Runtime;
 
-use crate::interpreter::precompiles::bls_util::{
-    encode_g2_point, extract_g2_input, p2_scalar_mul, p2_to_affine, read_scalar,
-    G2_MSM_INPUT_LENGTH, G2_OUTPUT_LENGTH, PADDED_G2_LENGTH, SCALAR_LENGTH, SCALAR_LENGTH_BITS,
-};
-
 use blst::{blst_p2_affine, blst_scalar, MultiPoint};
 
-/// BLS12_G2MSM precompile
-/// Implements G2 multi-scalar multiplication according to EIP-2537
+/// **BLS12_G2MSM Precompile**
+///
+/// Implements G2 multi-scalar multiplication (MSM) according to [EIP-2537](https://eips.ethereum.org/EIPS/eip-2537#abi-for-g2-multiexponentiation).
+/// The input must be `160 * k` bytes, where each 160-byte segment is composed of:
+/// - A 128-byte encoding of a G2 point (padded, in affine form)
+/// - A 32-byte encoding of a scalar value in Big-Endian format
+///
+/// The output is an encoded G2 point (128 bytes).
 pub fn bls12_g2msm<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
+    // Validate input length: must be non-zero and an exact multiple of G2_MSM_INPUT_LENGTH.
     let input_len = input.len();
     if input_len == 0 || input_len % G2_MSM_INPUT_LENGTH != 0 {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
     let k = input_len / G2_MSM_INPUT_LENGTH;
-    let mut g2_points: Vec<_> = Vec::with_capacity(k);
-    let mut scalars = Vec::with_capacity(k);
+    let mut g2_points: Vec<blst_p2_affine> = Vec::with_capacity(k);
+    let mut scalars: Vec<blst_scalar> = Vec::with_capacity(k);
 
-    // Process each (point, scalar) pair
+    // Process each (point, scalar) pair.
     for i in 0..k {
-        let encoded_g2_element =
-            &input[i * G2_MSM_INPUT_LENGTH..i * G2_MSM_INPUT_LENGTH + PADDED_G2_LENGTH];
-        let encoded_scalar = &input[i * G2_MSM_INPUT_LENGTH + PADDED_G2_LENGTH
-            ..i * G2_MSM_INPUT_LENGTH + PADDED_G2_LENGTH + SCALAR_LENGTH];
+        let offset = i * G2_MSM_INPUT_LENGTH;
+        let encoded_point = &input[offset..offset + PADDED_G2_LENGTH];
+        let encoded_scalar = &input[offset + PADDED_G2_LENGTH..offset + G2_MSM_INPUT_LENGTH];
 
-        // Filter out points infinity as an optimization, since it is a no-op.
-        // Note: Previously, points were being batch converted from Jacobian to Affine. In `blst`, this would essentially,
-        // zero out all of the points. Since all points are in affine, this bug is avoided.
-        if encoded_g2_element.iter().all(|i| *i == 0) {
+        // Deserialize the point (performing subgroup check).
+        let point_aff = extract_g2_input(encoded_point, true)?;
+
+        // Optimization: skip this pair if the deserialized point represents infinity.
+        if crate::interpreter::precompiles::bls_util::is_infinity(&point_aff) {
             continue;
         }
 
-        // NB: Scalar multiplications, MSMs and pairings MUST perform a subgroup check.
-        //
-        // So we set the subgroup_check flag to `true`
-        let p0_aff = extract_g2_input(encoded_g2_element, true)?;
-
-        // If the scalar is zero, then this is a no-op.
-        //
-        // Note: This check is made after checking that g2 is valid.
-        // this is because we want the precompile to error when
-        // G2 is invalid, even if the scalar is zero.
-        if encoded_scalar.iter().all(|i| *i == 0) {
+        // Skip this pair if the scalar encoding is zero.
+        if encoded_scalar.iter().all(|&b| b == 0) {
             continue;
         }
 
-        // Convert affine point to Jacobian coordinates using our helper function
-        g2_points.push(p0_aff);
-
+        g2_points.push(point_aff);
         scalars.push(read_scalar(encoded_scalar)?);
     }
 
-    // Return infinity point if all points are infinity
+    // If no valid pairs remain, return the encoded point at infinity.
     if g2_points.is_empty() {
         return Ok(vec![0u8; G2_OUTPUT_LENGTH]);
     }
 
-    // Perform multi-scalar multiplication using the safe wrapper
-    let multiexp_aff = p2_msm(g2_points, scalars);
-
-    // Encode the result
-    Ok(encode_g2_point(&multiexp_aff))
+    // Compute the MSM and convert the projective result back to affine form.
+    let result_aff = p2_msm(g2_points, scalars);
+    Ok(encode_g2_point(&result_aff))
 }
 
-/// Performs multi-scalar multiplication (MSM) for G2 points
+/// Performs multi-scalar multiplication (MSM) for G2 points.
 ///
-/// Takes a vector of G2 points and corresponding scalars, and returns their weighted sum
+/// Given a vector of G2 points and their corresponding scalars, computes their weighted sum.
+/// If only a single pair is provided, a straightforward scalar multiplication is performed.
 ///
-/// Note: Scalars are expected to be in Big Endian format.
-/// This method assumes that `g2_points` does not contain any points at infinity.
+/// # Panics
+///
+/// Panics if the number of points does not equal the number of scalars.
 #[inline]
 pub(super) fn p2_msm(g2_points: Vec<blst_p2_affine>, scalars: Vec<blst_scalar>) -> blst_p2_affine {
     assert_eq!(
         g2_points.len(),
         scalars.len(),
-        "number of scalars should equal the number of g2 points"
+        "Number of scalars must equal the number of G2 points"
     );
 
-    // When no inputs are given, we return the point at infinity.
-    // This case can only trigger, if the initial MSM pairs
-    // all had, either a zero scalar or the point at infinity.
-    //
-    // The precompile will return an error, if the initial input
-    // was empty, in accordance with EIP-2537.
-    if g2_points.is_empty() {
-        return blst_p2_affine::default();
-    }
-
-    // When there is only a single point, we use a simpler scalar multiplication
-    // procedure
     if g2_points.len() == 1 {
         return p2_scalar_mul(&g2_points[0], &scalars[0]);
     }
 
-    let scalars_bytes: Vec<_> = scalars.into_iter().flat_map(|s| s.b).collect();
+    // Flatten scalars into a contiguous byte vector.
+    let scalars_bytes: Vec<u8> = scalars.into_iter().flat_map(|s| s.b).collect();
 
-    // Perform multi-scalar multiplication
-    let multiexp = g2_points.mult(&scalars_bytes, SCALAR_LENGTH_BITS);
+    // Perform multi-scalar multiplication using the blst MultiPoint interface.
+    let multiexp_proj = g2_points.mult(&scalars_bytes, SCALAR_LENGTH_BITS);
 
-    // Convert result back to affine coordinates
-    p2_to_affine(&multiexp)
+    // Convert the projective result back to affine form.
+    p2_to_affine(&multiexp_proj)
 }
 
 #[cfg(test)]
