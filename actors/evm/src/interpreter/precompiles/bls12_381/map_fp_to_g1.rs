@@ -5,57 +5,53 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    encode_g1_point, read_fp, remove_padding, PADDED_FP_LENGTH,
+    encode_g1_point, read_fp, remove_padding, PADDED_FP_LENGTH, p1_to_affine,
 };
 
-use blst::{blst_fp, blst_map_to_g1, blst_p1, blst_p1_affine, blst_p1_to_affine};
+use blst::{blst_fp, blst_map_to_g1, blst_p1, blst_p1_affine};
 
-/// BLS12_MAP_FP_TO_G1 precompile
-/// Implements mapping of field element to G1 point according to EIP-2537
+/// **BLS12_MAP_FP_TO_G1 Precompile**
+///
+/// Implements mapping of a field element in Fp to a G1 point according to
+/// [EIP-2537](https://eips.ethereum.org/EIPS/eip-2537#abi-for-g1-multiexponentiation).
+///
+/// The input must be exactly **64 bytes** (a padded Fp element). The output is the 128‑byte encoding
+/// of the resulting G1 point.
 #[allow(dead_code, unused_variables)]
 pub fn bls12_map_fp_to_g1<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    // Check input length (should be 64 bytes)
+    // Ensure the input is exactly PADDED_FP_LENGTH (64 bytes).
     if input.len() != PADDED_FP_LENGTH {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    // Remove padding and get the field element
-    let input_p0 = remove_padding(input)?;
-    let fp = read_fp(input_p0)?;
+    // Remove padding and obtain the Fp element.
+    let unpadded = remove_padding(input)?;
+    let fp = read_fp(unpadded)?;
 
-    // Map the field element to a G1 point
+    // Map the Fp element to a G1 point.
     let p_aff = map_fp_to_g1(&fp);
 
-    // Encode the result
+    // Encode the resulting G1 point and return.
     Ok(encode_g1_point(&p_aff))
 }
 
-#[inline]
-fn p1_to_affine(p: &blst_p1) -> blst_p1_affine {
-    let mut p_affine = blst_p1_affine::default();
-    // SAFETY: both inputs are valid blst types
-    unsafe { blst_p1_to_affine(&mut p_affine, p) };
-    p_affine
-}
-
-/// Maps a field element to a G1 point
+/// Maps an Fp field element to a G1 point (affine form).
 ///
-/// Takes a field element (blst_fp) and returns the corresponding G1 point in affine form
+/// # Safety
+///
+/// - `fp` is assumed to be a valid Fp element.
+/// - The BLST function `blst_map_to_g1` is called within an unsafe block,
+///   relying on the validity of inputs.
 #[inline]
 pub(super) fn map_fp_to_g1(fp: &blst_fp) -> blst_p1_affine {
-    // Create a new G1 point in Jacobian coordinates
     let mut p = blst_p1::default();
-
-    // Map the field element to a point on the curve
-    // SAFETY: `p` and `fp` are blst values
-    // Third argument is unused if null
+    // SAFETY: `p` is zero-initialized, and `fp` is assumed to be valid.
+    // The third parameter is unused if null.
     unsafe { blst_map_to_g1(&mut p, fp, core::ptr::null()) };
-
-    // Convert to affine coordinates
     p1_to_affine(&p)
 }
 
