@@ -190,7 +190,7 @@ pub(super) fn extract_g2_input(
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    let [x_re, x_im, y_re, y_im] = remove_g2_padding(&input)?;
+    let [x_re, x_im, y_re, y_im] = remove_g2_padding(input)?;
     // Convert bytes to point
     let point = decode_g2_on_curve(x_re, x_im, y_re, y_im)?;
 
@@ -236,15 +236,13 @@ pub fn extract_g1_input(
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    let [x_bytes, y_bytes] = remove_g1_padding(&input)?;
+    let [x_bytes, y_bytes] = remove_g1_padding(input)?;
 
     let point = decode_g1_on_curve(x_bytes, y_bytes)?;
 
     // Check if point is on curve (no subgroup check needed for addition)
-    if subgroup_check {
-        if unsafe { !blst_p1_affine_in_g1(&point) } {
-            return Err(PrecompileError::InvalidInput);
-        }
+    if subgroup_check && unsafe { !blst_p1_affine_in_g1(&point) } {
+        return Err(PrecompileError::InvalidInput);
     }
     Ok(point)
 }
@@ -269,7 +267,7 @@ pub fn encode_g1_point(input: *const blst_p1_affine) -> Vec<u8> {
         fp_to_bytes(&mut out[..PADDED_FP_LENGTH], &(*input).x);
         fp_to_bytes(&mut out[PADDED_FP_LENGTH..], &(*input).y);
     }
-    out.into()
+    out
 }
 
 /// Returns a `blst_p1_affine` from the provided byte slices, which represent the x and y
