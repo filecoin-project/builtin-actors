@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "16.0.0-dev1"
+version = "16.0.0-rc3"
 license = "MIT OR Apache-2.0"
 edition = "2021"
 repository = "https://github.com/filecoin-project/builtin-actors"
@@ -95,7 +95,6 @@ regex = "1"
 test-case = "3.3.1"
 bimap = "0.6.2"
 castaway = "0.2.2"
-paste = "1.0.9"
 thiserror = "1.0.30"
 pretty_env_logger = "0.5.0"
 serde_repr = "0.1.8"
@@ -126,14 +125,14 @@ ipld-core = { version = "0.4.1", features = ["serde"] }
 integer-encoding = { version = "4.0.2", default-features = false }
 
 # actor-utils
-fvm_actor_utils = "12.0.0"
-frc42_dispatch = "8.0.0"
-frc46_token = "12.0.0"
+fvm_actor_utils = "13.0.0"
+frc42_dispatch = "9.0.0"
+frc46_token = "13.0.0"
 
 # FVM
-fvm_sdk = "4.5.1"
-fvm_shared = "4.5.1"
-fvm_ipld_encoding = "0.5.0"
+fvm_sdk = "4.6.0"
+fvm_shared = "4.6.0"
+fvm_ipld_encoding = "0.5.2"
 fvm_ipld_blockstore = "0.3.0"
 fvm_ipld_hamt = "0.10.2"
 fvm_ipld_kamt = "0.4.3"

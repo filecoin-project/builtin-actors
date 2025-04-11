@@ -12,6 +12,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, POSEIDON_BLS12_381_A1_FC1};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, SectorSize, StoragePower};
+use fvm_shared::version::NetworkVersion;
 use lazy_static::lazy_static;
 
 use super::types::SectorOnChainInfo;
@@ -20,16 +21,12 @@ use super::{PowerPair, BASE_REWARD_FOR_DISPUTED_WINDOW_POST};
 /// Precision used for making QA power calculations
 pub const SECTOR_QUALITY_PRECISION: i64 = 20;
 
-/// Base number of sectors before imposing the additional aggregate fee in ProveCommitSectorsNI
-pub const NI_AGGREGATE_FEE_BASE_SECTOR_COUNT: usize = 5;
-
 lazy_static! {
     /// Quality multiplier for committed capacity (no deals) in a sector
     pub static ref QUALITY_BASE_MULTIPLIER: BigInt = BigInt::from(10);
 
     /// Quality multiplier for verified deals in a sector
     pub static ref VERIFIED_DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(100);
-
 }
 
 /// The maximum number of partitions that may be required to be loaded in a single invocation,
@@ -205,4 +202,50 @@ pub fn reward_for_disputed_window_post(
 ) -> TokenAmount {
     // This is currently just the base. In the future, the fee may scale based on the disputed power.
     BASE_REWARD_FOR_DISPUTED_WINDOW_POST.clone()
+}
+
+// Network version at which the FIP-0100 grace period for application of the fee to legacy sector
+// extensions ends. After we reach this network version, the fee will be applied to all sector
+// extensions which currently have a zero fee value.
+pub const FIP_0100_GRACE_PERIOD_END_VERSION: NetworkVersion = NetworkVersion::new(26);
+
+// Calculate the daily fee for a sector's quality-adjusted power based on the current circulating
+// supply.
+pub fn daily_proof_fee(
+    policy: &Policy,
+    circulating_supply: &TokenAmount,
+    qa_power: &StoragePower,
+) -> TokenAmount {
+    // daily_fee_circulating_supply_qap_multiplier{num/denom} gives us the fraction of the
+    // circulating supply that should be paid as a fee per byte of quality-adjusted power.
+    TokenAmount::from_atto(
+        (&policy.daily_fee_circulating_supply_qap_multiplier_num
+            * circulating_supply.atto()
+            * qa_power)
+            .div_floor(&policy.daily_fee_circulating_supply_qap_multiplier_denom),
+    )
+}
+
+// Adjust the daily fee based on the change in quality-adjusted power.
+pub fn daily_proof_fee_adjust(
+    daily_fee: &TokenAmount,
+    old_qa_power: &StoragePower,
+    new_qa_power: &StoragePower,
+) -> TokenAmount {
+    if old_qa_power == new_qa_power {
+        return daily_fee.clone();
+    }
+    TokenAmount::from_atto((daily_fee.atto() * new_qa_power).div_floor(old_qa_power))
+}
+
+// Given a daily fee payable and an estimated BR for the sector(s) the fee is being paid for,
+// calculate the fee payable for the sector(s) by applying the appropriate BR cap.
+pub fn daily_proof_fee_payable(
+    policy: &Policy,
+    daily_fee: &TokenAmount,
+    estimated_day_reward: &TokenAmount,
+) -> TokenAmount {
+    let cap_denom = BigInt::from(policy.daily_fee_block_reward_cap_denom);
+    let cap = estimated_day_reward.div_floor(cap_denom);
+    std::cmp::min(&cap, daily_fee).clone()
 }

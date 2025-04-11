@@ -80,7 +80,6 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     precommit_sectors_v2(
         v,
         meta.len(),
-        meta.len(),
         meta,
         &worker,
         &maddr,

@@ -1,3 +1,4 @@
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
 use num_traits::FromPrimitive;
@@ -11,6 +12,9 @@ pub trait RuntimePolicy {
 // The policy itself
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Policy {
+    //
+    // --- miner policy ---
+    //
     /// Maximum amount of sectors that can be aggregated.
     pub max_aggregated_sectors: u64,
     /// Minimum amount of sectors that can be aggregated.
@@ -19,11 +23,6 @@ pub struct Policy {
     pub max_aggregated_proof_size: usize,
     /// Maximum total replica update proof size.
     pub max_replica_update_proof_size: usize,
-
-    /// The maximum number of sector pre-commitments in a single batch.
-    pub pre_commit_sector_batch_max_size: usize,
-    /// The maximum number of sector replica updates in a single batch.
-    pub prove_replica_updates_max_size: usize,
 
     /// The delay between pre commit expiration and clean up from state. This enforces that expired pre-commits
     /// stay in state for a period of time creating a grace period during which a late-running aggregated prove-commit
@@ -62,9 +61,6 @@ pub struct Policy {
     /// The maximum number of partitions that may be required to be loaded in a single invocation.
     /// This limits the number of simultaneous fault, recovery, or sector-extension declarations.
     pub addressed_partitions_max: u64,
-
-    /// Maximum number of unique "declarations" in batch operations.
-    pub declarations_max: u64,
 
     /// The maximum number of sector numbers addressable in a single invocation
     /// (which implies also the max infos that may be loaded at once).
@@ -134,7 +130,21 @@ pub struct Policy {
     /// Allowed pre commit proof types for new miners
     pub valid_pre_commit_proof_type: ProofSet,
 
-    // --- verifreg policy
+    /// Numerator of the fraction of circulating supply that will be used to calculate
+    /// the daily fee for new sectors.
+    pub daily_fee_circulating_supply_qap_multiplier_num: BigInt,
+    /// Denominator of the fraction of circulating supply that will be used to calculate
+    /// the daily fee for new sectors.
+    pub daily_fee_circulating_supply_qap_multiplier_denom: BigInt,
+    /// Denominator for the fraction of estimated daily block reward for the sector(s)
+    /// attracting a fee, to be used as a cap for the fees when payable.
+    /// No numerator is provided as the fee is calculated as a fraction of the estimated
+    /// daily block reward.
+    pub daily_fee_block_reward_cap_denom: i64,
+
+    //
+    // --- verifreg policy ---
+    //
     /// Minimum verified deal size
     pub minimum_verified_allocation_size: StoragePower,
     /// Minimum term for a verified data allocation (epochs)
@@ -147,7 +157,9 @@ pub struct Policy {
     // Period of time at the end of a sector's life during which claims can be dropped
     pub end_of_life_claim_drop_period: ChainEpoch,
 
+    //
     //  --- market policy ---
+    //
     /// The number of blocks between payouts for deals
     pub deal_updates_interval: i64,
 
@@ -163,7 +175,9 @@ pub struct Policy {
     /// allocation's maximum term.
     pub market_default_allocation_term_buffer: i64,
 
-    // --- power ---
+    //
+    // --- power policy ---
+    //
     /// Minimum miner consensus power
     pub minimum_consensus_power: StoragePower,
 }
@@ -175,8 +189,6 @@ impl Default for Policy {
             min_aggregated_sectors: policy_constants::MIN_AGGREGATED_SECTORS,
             max_aggregated_proof_size: policy_constants::MAX_AGGREGATED_PROOF_SIZE,
             max_replica_update_proof_size: policy_constants::MAX_REPLICA_UPDATE_PROOF_SIZE,
-            pre_commit_sector_batch_max_size: policy_constants::PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
-            prove_replica_updates_max_size: policy_constants::PROVE_REPLICA_UPDATES_MAX_SIZE,
             expired_pre_commit_clean_up_delay: policy_constants::EXPIRED_PRE_COMMIT_CLEAN_UP_DELAY,
             wpost_proving_period: policy_constants::WPOST_PROVING_PERIOD,
             wpost_challenge_window: policy_constants::WPOST_CHALLENGE_WINDOW,
@@ -189,7 +201,6 @@ impl Default for Policy {
             max_peer_id_length: policy_constants::MAX_PEER_ID_LENGTH,
             max_multiaddr_data: policy_constants::MAX_MULTIADDR_DATA,
             addressed_partitions_max: policy_constants::ADDRESSED_PARTITIONS_MAX,
-            declarations_max: policy_constants::DECLARATIONS_MAX,
             addressed_sectors_max: policy_constants::ADDRESSED_SECTORS_MAX,
             posted_partitions_max: policy_constants::POSTED_PARTITIONS_MAX,
             max_pre_commit_randomness_lookback:
@@ -210,6 +221,15 @@ impl Default for Policy {
                 policy_constants::CONSENSUS_FAULT_INELIGIBILITY_DURATION,
             new_sectors_per_period_max: policy_constants::NEW_SECTORS_PER_PERIOD_MAX,
             chain_finality: policy_constants::CHAIN_FINALITY,
+            daily_fee_circulating_supply_qap_multiplier_num: BigInt::from_u64(
+                policy_constants::DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_NUM,
+            )
+            .unwrap(),
+            daily_fee_circulating_supply_qap_multiplier_denom: BigInt::from_u128(
+                policy_constants::DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_DENOM,
+            )
+            .unwrap(),
+            daily_fee_block_reward_cap_denom: policy_constants::DAILY_FEE_BLOCK_REWARD_CAP_DENOM,
 
             valid_post_proof_type: ProofSet::default_post_proofs(),
             valid_pre_commit_proof_type: ProofSet::default_precommit_seal_proofs(),
@@ -241,6 +261,10 @@ pub mod policy_constants {
 
     use crate::builtin::*;
 
+    //
+    // --- miner policy ---
+    //
+
     /// The maximum assignable sector number.
     /// Raising this would require modifying our AMT implementation.
     pub const MAX_SECTOR_NUMBER: SectorNumber = i64::MAX as u64;
@@ -253,12 +277,6 @@ pub mod policy_constants {
     pub const MAX_AGGREGATED_PROOF_SIZE: usize = 81960;
 
     pub const MAX_REPLICA_UPDATE_PROOF_SIZE: usize = 4096;
-
-    // 32 sectors per epoch would support a single miner onboarding 1EiB of 32GiB sectors in 1 year.
-    pub const PRE_COMMIT_SECTOR_BATCH_MAX_SIZE: usize = 256;
-
-    // Same as PRE_COMMIT_SECTOR_BATCH_MAX_SIZE for consistency.
-    pub const PROVE_REPLICA_UPDATES_MAX_SIZE: usize = PRE_COMMIT_SECTOR_BATCH_MAX_SIZE;
 
     pub const EXPIRED_PRE_COMMIT_CLEAN_UP_DELAY: i64 = 8 * EPOCHS_IN_HOUR;
 
@@ -293,8 +311,6 @@ pub mod policy_constants {
     // of partitions of 32GiB sectors with 1 message per epoch within a single half-hour deadline.
     // A miner can of course submit more messages.
     pub const ADDRESSED_PARTITIONS_MAX: u64 = MAX_PARTITIONS_PER_DEADLINE;
-
-    pub const DECLARATIONS_MAX: u64 = ADDRESSED_PARTITIONS_MAX;
 
     pub const ADDRESSED_SECTORS_MAX: u64 = 25_000;
 
@@ -347,6 +363,23 @@ pub mod policy_constants {
     /// This is a conservative value that is chosen via simulations of all known attacks.
     pub const CHAIN_FINALITY: ChainEpoch = 900;
 
+    // Fraction of circulating supply per byte of quality adjusted power that will be used to calculate
+    // the daily fee for new sectors.
+    // The target multiplier is:
+    //   5.56e-15 / 32GiB = 5.56e-15 / (32 * 2^30) = 5.56e-15 / 34,359,738,368 ≈ 1.61817e-25
+    // (i.e. slightly rounded for simplicity and a more direct multiplication).
+    // We implement this as 161817e-30.
+    pub const DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_NUM: u64 = 161817;
+    pub const DAILY_FEE_CIRCULATING_SUPPLY_QAP_MULTIPLIER_DENOM: u128 =
+        1_000_000_000_000_000_000_000_000_000_000; // 10^30
+
+    // 50% of estimated daily block rewards
+    pub const DAILY_FEE_BLOCK_REWARD_CAP_DENOM: i64 = 2;
+
+    //
+    // --- verifreg policy ---
+    //
+
     #[cfg(not(feature = "small-deals"))]
     pub const MINIMUM_VERIFIED_ALLOCATION_SIZE: i32 = 1 << 20;
     #[cfg(feature = "small-deals")]
@@ -355,6 +388,10 @@ pub mod policy_constants {
     pub const MAXIMUM_VERIFIED_ALLOCATION_TERM: i64 = 5 * EPOCHS_IN_YEAR;
     pub const MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION: i64 = 60 * EPOCHS_IN_DAY;
     pub const END_OF_LIFE_CLAIM_DROP_PERIOD: ChainEpoch = 30 * EPOCHS_IN_DAY;
+
+    //
+    // --- market policy ---
+    //
 
     pub const DEAL_UPDATES_INTERVAL: i64 = 30 * EPOCHS_IN_DAY;
 
@@ -366,6 +403,10 @@ pub mod policy_constants {
     pub const PROV_COLLATERAL_PERCENT_SUPPLY_DENOM: i64 = 100;
 
     pub const MARKET_DEFAULT_ALLOCATION_TERM_BUFFER: i64 = 90 * EPOCHS_IN_DAY;
+
+    //
+    // --- power policy ---
+    //
 
     #[cfg(feature = "min-power-2k")]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 10;

@@ -1,7 +1,28 @@
 use super::PrecompileError;
 use blst::{
     // Basic types
-    blst_bendian_from_fp, blst_fp, blst_fp2, blst_fp_from_bendian, blst_p1, blst_p1_affine, blst_p1_affine_in_g1, blst_p1_affine_on_curve, blst_p1_from_affine, blst_p1_mult, blst_p1_to_affine, blst_p2, blst_p2_affine, blst_p2_affine_in_g2, blst_p2_affine_on_curve, blst_p2_from_affine, blst_p2_mult, blst_p2_to_affine, blst_scalar, blst_scalar_from_bendian
+    blst_bendian_from_fp,
+    blst_fp,
+    blst_fp2,
+    blst_fp_from_bendian,
+    blst_p1,
+    blst_p1_affine,
+    blst_p1_affine_in_g1,
+    blst_p1_affine_is_inf,
+    blst_p1_affine_on_curve,
+    blst_p1_from_affine,
+    blst_p1_mult,
+    blst_p1_to_affine,
+    blst_p2,
+    blst_p2_affine,
+    blst_p2_affine_in_g2,
+    blst_p2_affine_is_inf,
+    blst_p2_affine_on_curve,
+    blst_p2_from_affine,
+    blst_p2_mult,
+    blst_p2_to_affine,
+    blst_scalar,
+    blst_scalar_from_bendian,
 };
 
 pub const G1_INPUT_LENGTH: usize = 128;
@@ -30,7 +51,6 @@ pub const FP_LENGTH: usize = 48;
 /// This is an element in the scalar field of BLS12-381.
 pub const SCALAR_LENGTH_BITS: usize = SCALAR_LENGTH * 8;
 
-
 // Big-endian non-Montgomery form.
 const MODULUS_REPR: [u8; 48] = [
     0x1a, 0x01, 0x11, 0xea, 0x39, 0x7f, 0xe6, 0x9a, 0x4b, 0x1b, 0xa7, 0xb6, 0x43, 0x4b, 0xac, 0xd7,
@@ -46,7 +66,6 @@ pub fn p1_to_affine(p: &blst_p1) -> blst_p1_affine {
     unsafe { blst_p1_to_affine(&mut p_affine, p) };
     p_affine
 }
-
 
 #[inline]
 pub fn p1_from_affine(p_affine: &blst_p1_affine) -> blst_p1 {
@@ -64,7 +83,6 @@ pub fn p2_to_affine(p: &blst_p2) -> blst_p2_affine {
     p_affine
 }
 
-
 #[inline]
 pub fn p2_from_affine(p_affine: &blst_p2_affine) -> blst_p2 {
     let mut p = blst_p2::default();
@@ -72,7 +90,6 @@ pub fn p2_from_affine(p_affine: &blst_p2_affine) -> blst_p2 {
     unsafe { blst_p2_from_affine(&mut p, p_affine) };
     p
 }
-
 
 pub fn read_scalar(input: &[u8]) -> Result<blst_scalar, PrecompileError> {
     if input.len() != SCALAR_LENGTH {
@@ -106,14 +123,7 @@ pub fn p1_scalar_mul(p: &blst_p1_affine, scalar: &blst_scalar) -> blst_p1_affine
     let mut result = blst_p1::default();
 
     // SAFETY: all inputs are valid blst types
-    unsafe {
-        blst_p1_mult(
-            &mut result,
-            &p_jacobian,
-            scalar.b.as_ptr(),
-            scalar.b.len() * 8,
-        )
-    };
+    unsafe { blst_p1_mult(&mut result, &p_jacobian, scalar.b.as_ptr(), scalar.b.len() * 8) };
 
     // Convert result back to affine coordinates
     p1_to_affine(&result)
@@ -132,19 +142,11 @@ pub fn p2_scalar_mul(p: &blst_p2_affine, scalar: &blst_scalar) -> blst_p2_affine
 
     let mut result = blst_p2::default();
     // SAFETY: all inputs are valid blst types
-    unsafe {
-        blst_p2_mult(
-            &mut result,
-            &p_jacobian,
-            scalar.b.as_ptr(),
-            scalar.b.len() * 8,
-        )
-    };
+    unsafe { blst_p2_mult(&mut result, &p_jacobian, scalar.b.as_ptr(), scalar.b.len() * 8) };
 
     // Convert result back to affine coordinates
     p2_to_affine(&result)
 }
-
 
 /// Encodes a G2 point in affine format into byte slice with padded elements.
 /// G2 points have two coordinates (x,y) where each coordinate is a complex number (real,imaginary)
@@ -155,23 +157,14 @@ pub(super) fn encode_g2_point(input: &blst_p2_affine) -> Vec<u8> {
     // Encode x coordinate
     // Real part (x.fp[0])
     fp_to_bytes(&mut out[..PADDED_FP_LENGTH], &input.x.fp[0]);
-    // Imaginary part (x.fp[1]) 
-    fp_to_bytes(
-        &mut out[PADDED_FP_LENGTH..2 * PADDED_FP_LENGTH],
-        &input.x.fp[1],
-    );
+    // Imaginary part (x.fp[1])
+    fp_to_bytes(&mut out[PADDED_FP_LENGTH..2 * PADDED_FP_LENGTH], &input.x.fp[1]);
 
     // Encode y coordinate
     // Real part (y.fp[0])
-    fp_to_bytes(
-        &mut out[2 * PADDED_FP_LENGTH..3 * PADDED_FP_LENGTH],
-        &input.y.fp[0],
-    );
+    fp_to_bytes(&mut out[2 * PADDED_FP_LENGTH..3 * PADDED_FP_LENGTH], &input.y.fp[0]);
     // Imaginary part (y.fp[1])
-    fp_to_bytes(
-        &mut out[3 * PADDED_FP_LENGTH..4 * PADDED_FP_LENGTH],
-        &input.y.fp[1],
-    );
+    fp_to_bytes(&mut out[3 * PADDED_FP_LENGTH..4 * PADDED_FP_LENGTH], &input.y.fp[1]);
 
     out
 }
@@ -179,7 +172,7 @@ pub(super) fn encode_g2_point(input: &blst_p2_affine) -> Vec<u8> {
 /// Extracts a G2 point in Affine format from a 256 byte slice representation.
 ///
 /// **Note**: This function will perform a G2 subgroup check if `subgroup_check` is set to `true`.
-/// 
+///
 /// Subgroup checks are required for:
 /// - Scalar multiplication
 /// - Multi-scalar multiplication (MSM)
@@ -197,7 +190,7 @@ pub(super) fn extract_g2_input(
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    let [x_re, x_im, y_re, y_im]=remove_g2_padding(&input)?;
+    let [x_re, x_im, y_re, y_im] = remove_g2_padding(&input)?;
     // Convert bytes to point
     let point = decode_g2_on_curve(x_re, x_im, y_re, y_im)?;
 
@@ -234,14 +227,16 @@ pub(super) fn fp_to_bytes(out: &mut [u8], input: *const blst_fp) {
     unsafe { blst_bendian_from_fp(rest.as_mut_ptr(), input) };
 }
 
-
 /// Extracts a G1 point in Affine format from a 128 byte slice representation.
-pub fn extract_g1_input(input: &[u8], subgroup_check: bool) -> Result<blst_p1_affine, PrecompileError> {
+pub fn extract_g1_input(
+    input: &[u8],
+    subgroup_check: bool,
+) -> Result<blst_p1_affine, PrecompileError> {
     if input.len() != G1_INPUT_LENGTH {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    let [x_bytes, y_bytes]= remove_g1_padding(&input)?;
+    let [x_bytes, y_bytes] = remove_g1_padding(&input)?;
 
     let point = decode_g1_on_curve(x_bytes, y_bytes)?;
 
@@ -289,10 +284,7 @@ fn decode_g1_on_curve(
     p0_x: &[u8; FP_LENGTH],
     p0_y: &[u8; FP_LENGTH],
 ) -> Result<blst_p1_affine, PrecompileError> {
-    let out = blst_p1_affine {
-        x: read_fp(p0_x)?,
-        y: read_fp(p0_y)?,
-    };
+    let out = blst_p1_affine { x: read_fp(p0_x)?, y: read_fp(p0_y)? };
 
     // From EIP-2537:
     //
@@ -302,8 +294,7 @@ fn decode_g1_on_curve(
     //
     // SAFETY: Out is a blst value.
     if unsafe { !blst_p1_affine_on_curve(&out) } {
-        return Err(PrecompileError::EcErr(CurveError::NotMember),
-        );
+        return Err(PrecompileError::EcErr(CurveError::NotMember));
     }
 
     Ok(out)
@@ -321,7 +312,6 @@ pub(super) fn remove_g1_padding(input: &[u8]) -> Result<[&[u8; FP_LENGTH]; 2], P
     Ok([x, y])
 }
 
-
 /// Returns a `blst_p2_affine` from the provided byte slices, which represent the x and y
 /// affine coordinates of the point.
 ///
@@ -336,10 +326,7 @@ fn decode_g2_on_curve(
     y1: &[u8; FP_LENGTH],
     y2: &[u8; FP_LENGTH],
 ) -> Result<blst_p2_affine, PrecompileError> {
-    let out = blst_p2_affine {
-        x: read_fp2(x1, x2)?,
-        y: read_fp2(y1, y2)?,
-    };
+    let out = blst_p2_affine { x: read_fp2(x1, x2)?, y: read_fp2(y1, y2)? };
 
     // From EIP-2537:
     //
@@ -404,4 +391,33 @@ pub fn read_fp(input: &[u8; FP_LENGTH]) -> Result<blst_fp, PrecompileError> {
 /// Checks if the input is a valid big-endian representation of a field element.
 fn is_valid_be(input: &[u8; 48]) -> bool {
     *input < MODULUS_REPR
+}
+
+/// Trait to check if an affine point is the point at infinity.
+pub trait IsInfinity {
+    fn is_infinity(&self) -> bool;
+}
+
+impl IsInfinity for blst_p1_affine {
+    #[inline]
+    fn is_infinity(&self) -> bool {
+        // # Safety
+        // Guaranteed valid by extract_g1_input
+        unsafe { blst_p1_affine_is_inf(self) }
+    }
+}
+
+impl IsInfinity for blst_p2_affine {
+    #[inline]
+    fn is_infinity(&self) -> bool {
+        // # Safety
+        // Guaranteed valid by extract_g2_input
+        unsafe { blst_p2_affine_is_inf(self) }
+    }
+}
+
+/// Generic utility to check if an affine point is at infinity.
+#[inline]
+pub fn is_infinity<T: IsInfinity>(p: &T) -> bool {
+    p.is_infinity()
 }

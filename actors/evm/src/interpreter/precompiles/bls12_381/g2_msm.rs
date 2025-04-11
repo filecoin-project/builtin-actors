@@ -1,127 +1,99 @@
+use crate::interpreter::precompiles::bls_util::{
+    encode_g2_point, extract_g2_input, p2_scalar_mul, p2_to_affine, read_scalar,
+    G2_MSM_INPUT_LENGTH, G2_OUTPUT_LENGTH, PADDED_G2_LENGTH, SCALAR_LENGTH_BITS,
+};
 use crate::interpreter::{
     precompiles::{PrecompileContext, PrecompileError, PrecompileResult},
     System,
 };
 use fil_actors_runtime::runtime::Runtime;
 
-use crate::interpreter::precompiles::bls_util::{
-    G2_MSM_INPUT_LENGTH,
-    G2_OUTPUT_LENGTH,
-    SCALAR_LENGTH,
-    PADDED_G2_LENGTH,
-    SCALAR_LENGTH_BITS,
-    encode_g2_point,
-    extract_g2_input,
-    read_scalar,
-    p2_to_affine,
-    p2_scalar_mul,
-};
+use blst::{blst_p2_affine, blst_scalar, MultiPoint};
 
-use blst::{
-    blst_p2_affine,
-    blst_scalar,
-    MultiPoint,
-};
-
-/// BLS12_G2MSM precompile
-/// Implements G2 multi-scalar multiplication according to EIP-2537
+/// **BLS12_G2MSM Precompile**
+///
+/// Implements G2 multi-scalar multiplication (MSM) according to [EIP-2537](https://eips.ethereum.org/EIPS/eip-2537#abi-for-g2-multiexponentiation).
+/// The input must be `160 * k` bytes, where each 160-byte segment is composed of:
+/// - A 128-byte encoding of a G2 point (padded, in affine form)
+/// - A 32-byte encoding of a scalar value in Big-Endian format
+///
+/// The output is an encoded G2 point (128 bytes).
 pub fn bls12_g2msm<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
+    // Validate input length: must be non-zero and an exact multiple of G2_MSM_INPUT_LENGTH.
     let input_len = input.len();
     if input_len == 0 || input_len % G2_MSM_INPUT_LENGTH != 0 {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
     let k = input_len / G2_MSM_INPUT_LENGTH;
-    let mut g2_points: Vec<_> = Vec::with_capacity(k);
-    let mut scalars = Vec::with_capacity(k);
+    let mut g2_points: Vec<blst_p2_affine> = Vec::with_capacity(k);
+    let mut scalars: Vec<blst_scalar> = Vec::with_capacity(k);
 
-    // Process each (point, scalar) pair
+    // Process each (point, scalar) pair.
     for i in 0..k {
-        let encoded_g2_element =
-            &input[i * G2_MSM_INPUT_LENGTH..i * G2_MSM_INPUT_LENGTH + PADDED_G2_LENGTH];
-        let encoded_scalar = &input[i * G2_MSM_INPUT_LENGTH + PADDED_G2_LENGTH
-            ..i * G2_MSM_INPUT_LENGTH + PADDED_G2_LENGTH + SCALAR_LENGTH];
+        let offset = i * G2_MSM_INPUT_LENGTH;
+        let encoded_point = &input[offset..offset + PADDED_G2_LENGTH];
+        let encoded_scalar = &input[offset + PADDED_G2_LENGTH..offset + G2_MSM_INPUT_LENGTH];
 
-        // Filter out points infinity as an optimization, since it is a no-op.
-        // Note: Previously, points were being batch converted from Jacobian to Affine. In `blst`, this would essentially,
-        // zero out all of the points. Since all points are in affine, this bug is avoided.
-        if encoded_g2_element.iter().all(|i| *i == 0) {
+        // Deserialize the point (performing subgroup check).
+        let point_aff = extract_g2_input(encoded_point, true)?;
+
+        // Optimization: skip this pair if the deserialized point represents infinity.
+        if crate::interpreter::precompiles::bls_util::is_infinity(&point_aff) {
             continue;
         }
 
-        // NB: Scalar multiplications, MSMs and pairings MUST perform a subgroup check.
-        //
-        // So we set the subgroup_check flag to `true`
-        let p0_aff = extract_g2_input(encoded_g2_element, true)?;
-
-        // If the scalar is zero, then this is a no-op.
-        //
-        // Note: This check is made after checking that g2 is valid.
-        // this is because we want the precompile to error when
-        // G2 is invalid, even if the scalar is zero.
-        if encoded_scalar.iter().all(|i| *i == 0) {
+        // Skip this pair if the scalar encoding is zero.
+        if encoded_scalar.iter().all(|&b| b == 0) {
             continue;
         }
 
-        // Convert affine point to Jacobian coordinates using our helper function
-        g2_points.push(p0_aff);
-
+        g2_points.push(point_aff);
         scalars.push(read_scalar(encoded_scalar)?);
     }
 
-    // Return infinity point if all points are infinity
+    // If no valid pairs remain, return the encoded point at infinity.
     if g2_points.is_empty() {
         return Ok(vec![0u8; G2_OUTPUT_LENGTH]);
     }
 
-    // Perform multi-scalar multiplication using the safe wrapper
-    let multiexp_aff = p2_msm(g2_points, scalars);
-
-    // Encode the result
-    Ok(encode_g2_point(&multiexp_aff))
+    // Compute the MSM and convert the projective result back to affine form.
+    let result_aff = p2_msm(g2_points, scalars);
+    Ok(encode_g2_point(&result_aff))
 }
 
-/// Performs multi-scalar multiplication (MSM) for G2 points
+/// Performs multi-scalar multiplication (MSM) for G2 points.
 ///
-/// Takes a vector of G2 points and corresponding scalars, and returns their weighted sum
+/// Given a vector of G2 points and their corresponding scalars, computes their weighted sum.
+/// If only a single pair is provided, a straightforward scalar multiplication is performed.
 ///
-/// Note: Scalars are expected to be in Big Endian format.
-/// This method assumes that `g2_points` does not contain any points at infinity.
+/// # Panics
+///
+/// Panics if the number of points does not equal the number of scalars.
 #[inline]
 pub(super) fn p2_msm(g2_points: Vec<blst_p2_affine>, scalars: Vec<blst_scalar>) -> blst_p2_affine {
     assert_eq!(
         g2_points.len(),
         scalars.len(),
-        "number of scalars should equal the number of g2 points"
+        "Number of scalars must equal the number of G2 points"
     );
 
-    // When no inputs are given, we return the point at infinity.
-    // This case can only trigger, if the initial MSM pairs
-    // all had, either a zero scalar or the point at infinity.
-    //
-    // The precompile will return an error, if the initial input
-    // was empty, in accordance with EIP-2537.
-    if g2_points.is_empty() {
-        return blst_p2_affine::default();
-    }
-
-    // When there is only a single point, we use a simpler scalar multiplication
-    // procedure
     if g2_points.len() == 1 {
         return p2_scalar_mul(&g2_points[0], &scalars[0]);
     }
 
-    let scalars_bytes: Vec<_> = scalars.into_iter().flat_map(|s| s.b).collect();
+    // Flatten scalars into a contiguous byte vector.
+    let scalars_bytes: Vec<u8> = scalars.into_iter().flat_map(|s| s.b).collect();
 
-    // Perform multi-scalar multiplication
-    let multiexp = g2_points.mult(&scalars_bytes, SCALAR_LENGTH_BITS);
+    // Perform multi-scalar multiplication using the blst MultiPoint interface.
+    let multiexp_proj = g2_points.mult(&scalars_bytes, SCALAR_LENGTH_BITS);
 
-    // Convert result back to affine coordinates
-    p2_to_affine(&multiexp)
+    // Convert the projective result back to affine form.
+    p2_to_affine(&multiexp_proj)
 }
 
 #[cfg(test)]
@@ -131,7 +103,7 @@ mod tests {
     use fil_actors_runtime::test_utils::MockRuntime;
     use hex_literal::hex;
     use substrate_bn::CurveError;
-    
+
     #[test]
     fn test_g2_msm_success() {
         let rt = MockRuntime::default();
@@ -251,62 +223,57 @@ mod tests {
         let res3 = bls12_g2msm(&mut system, &input3, PrecompileContext::default())
             .expect("g2 msm should succeed");
         assert_eq!(res3, expected3, "bls_g2msm_multiple_with_point_at_infinity result mismatch");
+    }
+    #[test]
+    fn test_g2_msm_failure() {
+        let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+        let mut system = System::create(&rt).unwrap();
 
-        }
-        #[test]
-        fn test_g2_msm_failure() {
-            let rt = MockRuntime::default();
-            rt.in_call.replace(true);
-            let mut system = System::create(&rt).unwrap();
-        
-            // Test case 1: bls_g2msm_empty_input
-            let input1 = hex!("");
-            let res = bls12_g2msm(&mut system, &input1, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
-        
-            // Test case 2: bls_g2msm_short_input
-            let input2 = hex!(
+        // Test case 1: bls_g2msm_empty_input
+        let input1 = hex!("");
+        let res = bls12_g2msm(&mut system, &input1, PrecompileContext::default());
+        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
+
+        // Test case 2: bls_g2msm_short_input
+        let input2 = hex!(
                 "000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d8784510000000000000000000000000000000000000000000000000000000000000002"
             );
-            let res = bls12_g2msm(&mut system, &input2, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));        
-            // Test case 3: bls_g2msm_long_input
-            let input3 = hex!(
+        let res = bls12_g2msm(&mut system, &input2, PrecompileContext::default());
+        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
+        // Test case 3: bls_g2msm_long_input
+        let input3 = hex!(
                 "0000000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d8784510000000000000000000000000000000000000000000000000000000000000002"
             );
-            let res = bls12_g2msm(&mut system, &input3, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
+        let res = bls12_g2msm(&mut system, &input3, PrecompileContext::default());
+        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
 
-            // Test case 4: bls_g2msm_violate_top_bytes
-            let input4 = hex!(
+        // Test case 4: bls_g2msm_violate_top_bytes
+        let input4 = hex!(
                 "10000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d8784510000000000000000000000000000000000000000000000000000000000000002"
             );
-            let res = bls12_g2msm(&mut system, &input4, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::InvalidInput)));
+        let res = bls12_g2msm(&mut system, &input4, PrecompileContext::default());
+        assert!(matches!(res, Err(PrecompileError::InvalidInput)));
 
-            // Test case 5: bls_g2msm_invalid_field_element
-            let input5 = hex!(
+        // Test case 5: bls_g2msm_invalid_field_element
+        let input5 = hex!(
                 "000000000000000000000000000000001c4bb49d2a0ef12b7123acdd7110bd292b5bc659edc54dc21b81de057194c79b2a5803255959bbef8e7f56c8c12168630000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d8784510000000000000000000000000000000000000000000000000000000000000002"
             );
-            let res = bls12_g2msm(&mut system, &input5, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))));
+        let res = bls12_g2msm(&mut system, &input5, PrecompileContext::default());
+        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))));
 
-            // Test case 6: bls_g2msm_point_not_on_curve
-            let input6 = hex!(
+        // Test case 6: bls_g2msm_point_not_on_curve
+        let input6 = hex!(
                 "00000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb800000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d8784510000000000000000000000000000000000000000000000000000000000000002"
             );
-            let res = bls12_g2msm(&mut system, &input6, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))));
+        let res = bls12_g2msm(&mut system, &input6, PrecompileContext::default());
+        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))));
 
-            // Test case 7: bls_pairing_g2_not_in_correct_subgroup
-            let input7 = hex!(
+        // Test case 7: bls_pairing_g2_not_in_correct_subgroup
+        let input7 = hex!(
                 "00000000000000000000000000000000197bfd0342bbc8bee2beced2f173e1a87be576379b343e93232d6cef98d84b1d696e5612ff283ce2cfdccb2cfb65fa0c00000000000000000000000000000000184e811f55e6f9d84d77d2f79102fd7ea7422f4759df5bf7f6331d550245e3f1bcf6a30e3b29110d85e0ca16f9f6ae7a000000000000000000000000000000000f10e1eb3c1e53d2ad9cf2d398b2dc22c5842fab0a74b174f691a7e914975da3564d835cd7d2982815b8ac57f507348f000000000000000000000000000000000767d1c453890f1b9110fda82f5815c27281aba3f026ee868e4176a0654feea41a96575e0c4d58a14dbfbcc05b5010b1000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d8784510000000000000000000000000000000000000000000000000000000000000002"
             );
-            let res = bls12_g2msm(&mut system, &input7, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::InvalidInput)));
-
-            
-        }
-        
-
+        let res = bls12_g2msm(&mut system, &input7, PrecompileContext::default());
+        assert!(matches!(res, Err(PrecompileError::InvalidInput)));
+    }
 }

@@ -1,13 +1,13 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::cmp::{self, max};
+use std::cmp;
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::reward::math::PRECISION;
 use fil_actors_runtime::reward::{smooth, FilterEstimate};
 use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
-use fvm_shared::bigint::{BigInt, Integer};
+use fvm_shared::bigint::Integer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
@@ -39,6 +39,18 @@ pub const TERMINATION_REWARD_FACTOR_DENOM: u32 = 2;
 // * go impl has 75/100 but this is just simplified
 const LOCKED_REWARD_FACTOR_NUM: u32 = 3;
 const LOCKED_REWARD_FACTOR_DENOM: u32 = 4;
+
+/// Used to compute termination fees in the base case by multiplying against initial pledge.
+pub const TERM_FEE_PLEDGE_MULTIPLE_NUM: u32 = 85;
+pub const TERM_FEE_PLEDGE_MULTIPLE_DENOM: u32 = 1000;
+
+/// Used to ensure the termination fee for young sectors is not arbitrarily low.
+pub const TERM_FEE_MIN_PLEDGE_MULTIPLE_NUM: u32 = 2;
+pub const TERM_FEE_MIN_PLEDGE_MULTIPLE_DENOM: u32 = 100;
+
+/// Used to compute termination fees when the termination fee of a sector is less than the fault fee for the same sector.
+pub const TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM: u32 = 105;
+pub const TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM: u32 = 100;
 
 lazy_static! {
     /// Cap on initial pledge requirement for sectors during the Space Race network.
@@ -107,10 +119,6 @@ pub fn expected_reward_for_power(
 pub mod detail {
     use super::*;
 
-    lazy_static! {
-        pub static ref BATCH_BALANCER: TokenAmount = TokenAmount::from_nano(5);
-    }
-
     // BR but zero values are clamped at 1 attofil
     // Some uses of BR (PCD, IP) require a strictly positive value for BR derived values so
     // accounting variables can be used as succinct indicators of miner activity.
@@ -173,42 +181,32 @@ pub fn pledge_penalty_for_termination_lower_bound(
     )
 }
 
-/// Penalty to locked pledge collateral for the termination of a sector before scheduled expiry.
-/// SectorAge is the time between the sector's activation and termination.
-#[allow(clippy::too_many_arguments)]
+/// Calculates termination fee for a given sector. Normally, it's calculated as a fixed percentage
+/// of the initial pledge. However, there are some special cases outlined in the
+/// [FIP-0098](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0098.md).
 pub fn pledge_penalty_for_termination(
-    day_reward: &TokenAmount,
+    initial_pledge: &TokenAmount,
     sector_age: ChainEpoch,
-    twenty_day_reward_at_activation: &TokenAmount,
-    network_qa_power_estimate: &FilterEstimate,
-    qa_sector_power: &StoragePower,
-    reward_estimate: &FilterEstimate,
-    replaced_day_reward: &TokenAmount,
-    replaced_sector_age: ChainEpoch,
+    fault_fee: &TokenAmount,
 ) -> TokenAmount {
-    // max(SP(t), BR(StartEpoch, 20d) + BR(StartEpoch, 1d) * terminationRewardFactor * min(SectorAgeInDays, 140))
-    // and sectorAgeInDays = sectorAge / EpochsInDay
-    let lifetime_cap = TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY;
-    let capped_sector_age = std::cmp::min(sector_age, lifetime_cap);
+    // Use the _percentage of the initial pledge_ strategy to determine the termination fee.
+    let simple_termination_fee =
+        (initial_pledge * TERM_FEE_PLEDGE_MULTIPLE_NUM).div_floor(TERM_FEE_PLEDGE_MULTIPLE_DENOM);
 
-    let mut expected_reward: TokenAmount = day_reward * capped_sector_age;
+    let duration_termination_fee =
+        (sector_age * &simple_termination_fee).div_floor(TERMINATION_LIFETIME_CAP * EPOCHS_IN_DAY);
 
-    let relevant_replaced_age =
-        std::cmp::min(replaced_sector_age, lifetime_cap - capped_sector_age);
+    // Apply the age adjustment for young sectors to arrive at the base termination fee.
+    let base_termination_fee = cmp::min(simple_termination_fee, duration_termination_fee);
 
-    expected_reward += replaced_day_reward * relevant_replaced_age;
+    // Calculate the minimum allowed fee (a lower bound on the termination fee) by comparing the absolute minimum termination fee value against the fault fee. Whatever result is _larger_ sets the lower bound for the termination fee.
+    let minimum_fee_abs = (initial_pledge * TERM_FEE_MIN_PLEDGE_MULTIPLE_NUM)
+        .div_floor(TERM_FEE_MIN_PLEDGE_MULTIPLE_DENOM);
+    let minimum_fee_ff = (fault_fee * TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM)
+        .div_floor(TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM);
+    let minimum_fee = cmp::max(minimum_fee_abs, minimum_fee_ff);
 
-    let penalized_reward = expected_reward * TERMINATION_REWARD_FACTOR_NUM;
-    let penalized_reward = penalized_reward.div_floor(TERMINATION_REWARD_FACTOR_DENOM);
-
-    cmp::max(
-        pledge_penalty_for_termination_lower_bound(
-            reward_estimate,
-            network_qa_power_estimate,
-            qa_sector_power,
-        ),
-        twenty_day_reward_at_activation + (penalized_reward.div_floor(EPOCHS_IN_DAY)),
-    )
+    cmp::max(base_termination_fee, minimum_fee)
 }
 
 // The penalty for optimistically proving a sector with an invalid window PoSt.
@@ -321,36 +319,4 @@ pub fn consensus_fault_penalty(this_epoch_reward: TokenAmount) -> TokenAmount {
 pub fn locked_reward_from_reward(reward: TokenAmount) -> (TokenAmount, &'static VestSpec) {
     let lock_amount = (reward * LOCKED_REWARD_FACTOR_NUM).div_floor(LOCKED_REWARD_FACTOR_DENOM);
     (lock_amount, &REWARD_VESTING_SPEC)
-}
-
-const BATCH_DISCOUNT_NUM: u32 = 1;
-const BATCH_DISCOUNT_DENOM: u32 = 20;
-
-lazy_static! {
-    static ref ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE: BigInt = BigInt::from(49299973);
-    static ref ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE: BigInt = BigInt::from(16433324);
-}
-
-pub fn aggregate_prove_commit_network_fee(
-    aggregate_size: usize,
-    base_fee: &TokenAmount,
-) -> TokenAmount {
-    aggregate_network_fee(aggregate_size, &ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE, base_fee)
-}
-
-pub fn aggregate_pre_commit_network_fee(
-    aggregate_size: usize,
-    base_fee: &TokenAmount,
-) -> TokenAmount {
-    aggregate_network_fee(aggregate_size, &ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE, base_fee)
-}
-
-pub fn aggregate_network_fee(
-    aggregate_size: usize,
-    gas_usage: &BigInt,
-    base_fee: &TokenAmount,
-) -> TokenAmount {
-    let effective_gas_fee = max(base_fee, &*BATCH_BALANCER);
-    let network_fee_num = effective_gas_fee * gas_usage * aggregate_size * BATCH_DISCOUNT_NUM;
-    network_fee_num.div_floor(BATCH_DISCOUNT_DENOM)
 }

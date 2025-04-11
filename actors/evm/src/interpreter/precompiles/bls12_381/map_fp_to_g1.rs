@@ -5,66 +5,53 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    PADDED_FP_LENGTH,
-    encode_g1_point,
-    remove_padding,
-    read_fp,
+    encode_g1_point, read_fp, remove_padding, PADDED_FP_LENGTH, p1_to_affine,
 };
 
-use blst::{
-    blst_map_to_g1,
-    blst_fp,
-    blst_p1,
-    blst_p1_affine,
-    blst_p1_to_affine
-};
+use blst::{blst_fp, blst_map_to_g1, blst_p1, blst_p1_affine};
 
-/// BLS12_MAP_FP_TO_G1 precompile
-/// Implements mapping of field element to G1 point according to EIP-2537
-#[allow(dead_code,unused_variables)]
+/// **BLS12_MAP_FP_TO_G1 Precompile**
+///
+/// Implements mapping of a field element in Fp to a G1 point according to
+/// [EIP-2537](https://eips.ethereum.org/EIPS/eip-2537#abi-for-g1-multiexponentiation).
+///
+/// The input must be exactly **64 bytes** (a padded Fp element). The output is the 128‑byte encoding
+/// of the resulting G1 point.
+#[allow(dead_code, unused_variables)]
 pub fn bls12_map_fp_to_g1<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    // Check input length (should be 64 bytes)
+    // Ensure the input is exactly PADDED_FP_LENGTH (64 bytes).
     if input.len() != PADDED_FP_LENGTH {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
-    // Remove padding and get the field element
-    let input_p0 = remove_padding(input)?;
-    let fp = read_fp(input_p0)?;
+    // Remove padding and obtain the Fp element.
+    let unpadded = remove_padding(input)?;
+    let fp = read_fp(unpadded)?;
 
-    // Map the field element to a G1 point
+    // Map the Fp element to a G1 point.
     let p_aff = map_fp_to_g1(&fp);
 
-    // Encode the result
+    // Encode the resulting G1 point and return.
     Ok(encode_g1_point(&p_aff))
 }
 
-#[inline]
-fn p1_to_affine(p: &blst_p1) -> blst_p1_affine {
-    let mut p_affine = blst_p1_affine::default();
-    // SAFETY: both inputs are valid blst types
-    unsafe { blst_p1_to_affine(&mut p_affine, p) };
-    p_affine
-}
-
-/// Maps a field element to a G1 point
+/// Maps an Fp field element to a G1 point (affine form).
 ///
-/// Takes a field element (blst_fp) and returns the corresponding G1 point in affine form
+/// # Safety
+///
+/// - `fp` is assumed to be a valid Fp element.
+/// - The BLST function `blst_map_to_g1` is called within an unsafe block,
+///   relying on the validity of inputs.
 #[inline]
 pub(super) fn map_fp_to_g1(fp: &blst_fp) -> blst_p1_affine {
-    // Create a new G1 point in Jacobian coordinates
     let mut p = blst_p1::default();
-
-    // Map the field element to a point on the curve
-    // SAFETY: `p` and `fp` are blst values
-    // Third argument is unused if null
+    // SAFETY: `p` is zero-initialized, and `fp` is assumed to be valid.
+    // The third parameter is unused if null.
     unsafe { blst_map_to_g1(&mut p, fp, core::ptr::null()) };
-
-    // Convert to affine coordinates
     p1_to_affine(&p)
 }
 
@@ -147,40 +134,50 @@ mod tests {
         // Test case 1: Empty input
         let empty_input: Vec<u8> = vec![];
         let res = bls12_map_fp_to_g1(&mut system, &empty_input, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Empty input should return IncorrectInputSize error");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Empty input should return IncorrectInputSize error"
+        );
 
         // Test case 2: Short input (48 bytes instead of 64)
         let short_input = hex!(
             "00000000000000000000000000000000156c8a6a2c184569d69a76be144b5cdc5141d2d2ca4fe341f011e25e3969c55ad9e9b9ce2eb833c81a908e5fa4ac5f"
         );
         let res = bls12_map_fp_to_g1(&mut system, &short_input, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Short input should return IncorrectInputSize error");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Short input should return IncorrectInputSize error"
+        );
 
         // Test case 3: Large input (65 bytes instead of 64)
         let large_input = hex!(
             "0000000000000000000000000000000000156c8a6a2c184569d69a76be144b5cdc5141d2d2ca4fe341f011e25e3969c55ad9e9b9ce2eb833c81a908e5fa4ac5f03"
         );
         let res = bls12_map_fp_to_g1(&mut system, &large_input, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Large input should return IncorrectInputSize error");
+        assert!(
+            matches!(res, Err(PrecompileError::IncorrectInputSize)),
+            "Large input should return IncorrectInputSize error"
+        );
 
         // Test case 4: Invalid top bytes (non-zero padding)
         let invalid_top = hex!(
             "1000000000000000000000000000000000156c8a6a2c184569d69a76be144b5cdc5141d2d2ca4fe341f011e25e3969c55ad9e9b9ce2eb833c81a908e5fa4ac5f"
         );
         let res = bls12_map_fp_to_g1(&mut system, &invalid_top, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::InvalidInput)),
-            "Invalid top bytes should return InvalidInput error");
+        assert!(
+            matches!(res, Err(PrecompileError::InvalidInput)),
+            "Invalid top bytes should return InvalidInput error"
+        );
 
         // Test case 5: Invalid field element
         let invalid_field = hex!(
             "000000000000000000000000000000002f6d9c5465982c0421b61e74579709b3b5b91e57bdd4f6015742b4ff301abb7ef895b9cce00c33c7d48f8e5fa4ac09ae"
         );
         let res = bls12_map_fp_to_g1(&mut system, &invalid_field, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
-            "Invalid field element should return CurveError error, instead got {:?}", res);
+        assert!(
+            matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
+            "Invalid field element should return CurveError error, instead got {:?}",
+            res
+        );
     }
-
 }

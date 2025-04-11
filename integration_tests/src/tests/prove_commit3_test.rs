@@ -8,13 +8,13 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
-use num_traits::Zero;
+use num_traits::{Signed, Zero};
 
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
-    max_prove_commit_duration, CompactCommD, DataActivationNotification, PieceActivationManifest,
-    PieceChange, ProveCommitSectors3Params, SectorActivationManifest, SectorChanges,
-    SectorContentChangedParams, SectorOnChainInfoFlags,
+    daily_proof_fee, max_prove_commit_duration, qa_power_for_weight, CompactCommD,
+    DataActivationNotification, PieceActivationManifest, PieceChange, ProveCommitSectors3Params,
+    SectorActivationManifest, SectorChanges, SectorContentChangedParams, SectorOnChainInfoFlags,
 };
 use fil_actor_miner::{Method as MinerMethod, VerifiedAllocationKey};
 use fil_actor_verifreg::{
@@ -190,7 +190,6 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
     precommit_sectors_v2(
         v,
         meta.len(),
-        meta.len(),
         meta.clone(),
         &worker,
         &maddr,
@@ -202,6 +201,8 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
 
     let activation_epoch = v.epoch() + policy.pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &maddr, activation_epoch);
+
+    let circulating_supply_at_commit = v.circulating_supply();
 
     // Prove-commit
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
@@ -391,16 +392,36 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
     }
     let full_sector_weight =
         BigInt::from(full_piece_size.0 * (sector_expiry - activation_epoch) as u64);
+    let full_sector_power =
+        qa_power_for_weight(sector_size, sector_expiry - activation_epoch, &full_sector_weight);
+    let full_sector_daily_fee =
+        daily_proof_fee(&policy, &circulating_supply_at_commit, &full_sector_power);
+
     assert_eq!(BigInt::zero(), sectors[0].deal_weight);
     assert_eq!(BigInt::zero(), sectors[0].verified_deal_weight);
+    assert_eq!(full_sector_daily_fee.div_floor(10), sectors[0].daily_fee);
+
     assert_eq!(full_sector_weight, sectors[1].deal_weight);
     assert_eq!(BigInt::zero(), sectors[1].verified_deal_weight);
+    assert_eq!(full_sector_daily_fee.div_floor(10), sectors[1].daily_fee);
+
     assert_eq!(BigInt::zero(), sectors[2].deal_weight);
     assert_eq!(full_sector_weight, sectors[2].verified_deal_weight);
+    assert_eq!(full_sector_daily_fee, sectors[2].daily_fee);
+
     assert_eq!(full_sector_weight, sectors[3].deal_weight);
     assert_eq!(BigInt::zero(), sectors[3].verified_deal_weight);
+    assert_eq!(full_sector_daily_fee.div_floor(10), sectors[3].daily_fee);
+
     assert_eq!(BigInt::zero(), sectors[4].deal_weight);
     assert_eq!(full_sector_weight / 2, sectors[4].verified_deal_weight);
+    assert!(
+        ((&full_sector_daily_fee * 11).div_floor(20) - &sectors[4].daily_fee).atto().abs()
+            <= BigInt::from(1),
+        "expected: {}, got: {}",
+        (full_sector_daily_fee * 11).div_floor(20),
+        sectors[4].daily_fee
+    );
 
     // Brief checks on state consistency between actors.
     let claims = verifreg_list_claims(v, miner_id);

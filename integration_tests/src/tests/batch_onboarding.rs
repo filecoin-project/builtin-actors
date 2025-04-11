@@ -2,9 +2,7 @@ use export_macro::vm_test;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::{power_for_sector, State as MinerState};
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
-use fil_actors_runtime::runtime::policy_constants::{
-    MAX_AGGREGATED_SECTORS, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
-};
+use fil_actors_runtime::runtime::policy_constants::MAX_AGGREGATED_SECTORS;
 use fil_actors_runtime::runtime::Policy;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
@@ -21,7 +19,6 @@ use crate::util::{
 struct Onboarding {
     epoch_delay: i64,                   // epochs to advance since the prior action
     pre_commit_sector_count: usize,     // sectors to batch pre-commit
-    pre_commit_batch_size: usize,       // batch size (multiple batches if committing more)
     prove_commit_sector_count: usize,   // sectors to aggregate prove-commit
     prove_commit_aggregate_size: usize, // aggregate size (multiple aggregates if proving more)
 }
@@ -30,14 +27,12 @@ impl Onboarding {
     fn new(
         epoch_delay: i64,
         pre_commit_sector_count: usize,
-        pre_commit_batch_size: usize,
         prove_commit_sector_count: usize,
         prove_commit_aggregate_size: usize,
     ) -> Self {
         Self {
             epoch_delay,
             pre_commit_sector_count,
-            pre_commit_batch_size,
             prove_commit_sector_count,
             prove_commit_aggregate_size,
         }
@@ -76,12 +71,12 @@ pub fn batch_onboarding_test(v: &dyn VM) {
     let mut pre_committed_count = 0;
 
     let vec_onboarding = vec![
-        Onboarding::new(0, 10, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE, 0, 0),
-        Onboarding::new(1, 20, 12, 0, 0),
-        Onboarding::new(PRE_COMMIT_CHALLENGE_DELAY + 1, 0, 0, 8, MAX_AGGREGATED_SECTORS as usize),
-        Onboarding::new(1, 0, 0, 8, 4),
-        Onboarding::new(1, 10, 4, 0, 0),
-        Onboarding::new(PRE_COMMIT_CHALLENGE_DELAY + 1, 0, 0, 24, 10),
+        Onboarding::new(0, 10, 0, 0),
+        Onboarding::new(1, 20, 0, 0),
+        Onboarding::new(PRE_COMMIT_CHALLENGE_DELAY + 1, 0, 8, MAX_AGGREGATED_SECTORS as usize),
+        Onboarding::new(1, 0, 8, 4),
+        Onboarding::new(1, 10, 0, 0),
+        Onboarding::new(PRE_COMMIT_CHALLENGE_DELAY + 1, 0, 24, 10),
     ];
 
     let mut precommmits: Vec<SectorPreCommitOnChainInfo> = vec![];
@@ -94,7 +89,6 @@ pub fn batch_onboarding_test(v: &dyn VM) {
             let mut new_precommits = precommit_sectors_v2(
                 v,
                 item.pre_commit_sector_count,
-                item.pre_commit_batch_size,
                 vec![],
                 &worker,
                 &id_addr,

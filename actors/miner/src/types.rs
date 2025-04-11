@@ -444,17 +444,33 @@ pub struct SectorOnChainInfo {
     /// Pledge collected to commit this sector
     pub initial_pledge: TokenAmount,
     /// Expected one day projection of reward for sector computed at activation / update / extension time
-    pub expected_day_reward: TokenAmount,
+    /// This field is no longer used and all new sectors will have this set to zero. It can be
+    /// removed in a future state migration.
+    pub expected_day_reward: Option<TokenAmount>,
     /// Expected twenty day projection of reward for sector computed at activation / update / extension time
-    pub expected_storage_pledge: TokenAmount,
+    /// This field is no longer used and all new sectors will have this set to zero. It can be
+    /// removed in a future state migration.
+    pub expected_storage_pledge: Option<TokenAmount>,
     /// Epoch at which this sector's power was most recently updated
     pub power_base_epoch: ChainEpoch,
     /// Maximum day reward this sector has had in previous iterations (zero for brand new sectors)
-    pub replaced_day_reward: TokenAmount,
+    /// This field is no longer used and all new sectors will have this set to zero. It can be
+    /// removed in a future state migration.
+    pub replaced_day_reward: Option<TokenAmount>,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,
     /// Additional flags, see [`SectorOnChainInfoFlags`]
     pub flags: SectorOnChainInfoFlags,
+    /// The total fee payable per day for this sector. The value of this field is set at the time of
+    /// sector activation, extension and whenever a sector's QAP is changed. This fee is payable for
+    /// the lifetime of the sector and is aggregated in the deadline's `daily_fee` field.
+    ///
+    /// This field is not included in the serialised form of the struct prior to the activation of
+    /// FIP-0100, and is added as the 16th element of the array after that point only for new sectors
+    /// or sectors that are updated after that point. For old sectors, the value of this field will
+    /// always be zero.
+    #[serde(default)]
+    pub daily_fee: TokenAmount,
 }
 
 bitflags::bitflags! {
@@ -678,4 +694,23 @@ pub struct PieceReturn {
     // Indicates whether the receiver accepted the notification.
     // The caller is free to ignore this, but may chose to abort and roll back.
     pub accepted: bool,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct MaxTerminationFeeParams {
+    #[serde(with = "bigint_ser")]
+    pub power: StoragePower,
+    pub initial_pledge: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct MaxTerminationFeeReturn {
+    pub max_fee: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct InitialPledgeReturn {
+    pub initial_pledge: TokenAmount,
 }

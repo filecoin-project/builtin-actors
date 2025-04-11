@@ -1,9 +1,8 @@
-use fil_actor_miner::power_for_sectors;
-use fil_actor_miner::select_sectors;
 use fil_actor_miner::testing::PartitionStateSummary;
 use fil_actor_miner::Partition;
 use fil_actor_miner::QuantSpec;
 use fil_actor_miner::SectorOnChainInfo;
+use fil_actor_miner::{daily_fee_for_sectors, power_for_sectors, select_sectors};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
@@ -20,12 +19,12 @@ use crate::util::*;
 
 fn sectors() -> Vec<SectorOnChainInfo> {
     vec![
-        test_sector(2, 1, 50, 60, 1000),
-        test_sector(3, 2, 51, 61, 1001),
-        test_sector(7, 3, 52, 62, 1002),
-        test_sector(8, 4, 53, 63, 1003),
-        test_sector(11, 5, 54, 64, 1004),
-        test_sector(13, 6, 55, 65, 1005),
+        test_sector(2, 1, 50, 60, 1000, 3000),
+        test_sector(3, 2, 51, 61, 1001, 4000),
+        test_sector(7, 3, 52, 62, 1002, 5000),
+        test_sector(8, 4, 53, 63, 1003, 6000),
+        test_sector(11, 5, 54, 64, 1004, 7000),
+        test_sector(13, 6, 55, 65, 1005, 8000),
     ]
 }
 
@@ -37,9 +36,12 @@ fn setup() -> (MemoryBlockstore, Partition) {
     let store = MemoryBlockstore::default();
     let mut partition = Partition::new(&store).unwrap();
 
-    let power = partition.add_sectors(&store, true, &sectors(), SECTOR_SIZE, QUANT_SPEC).unwrap();
+    let (power, daily_fee) =
+        partition.add_sectors(&store, true, &sectors(), SECTOR_SIZE, QUANT_SPEC).unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &sectors());
+    let expected_daily_fee = daily_fee_for_sectors(&sectors());
     assert_eq!(expected_power, power);
+    assert_eq!(expected_daily_fee, daily_fee);
     (store, partition)
 }
 

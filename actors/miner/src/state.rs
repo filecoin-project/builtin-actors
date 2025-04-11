@@ -5,9 +5,8 @@ use std::borrow::Borrow;
 use std::cmp;
 use std::ops::Neg;
 
-use anyhow::{anyhow, Error};
+use anyhow::anyhow;
 use cid::Cid;
-use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -64,7 +63,7 @@ pub struct State {
     pub locked_funds: TokenAmount,
 
     /// VestingFunds (Vesting Funds schedule for the miner).
-    pub vesting_funds: Cid,
+    pub vesting_funds: VestingFunds,
 
     /// Absolute value of debt this miner owes from unpaid fees.
     pub fee_debt: TokenAmount,
@@ -164,18 +163,13 @@ impl State {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
             })?;
 
-        let empty_vesting_funds_cid =
-            store.put_cbor(&VestingFunds::new(), Code::Blake2b256).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
-            })?;
-
         Ok(Self {
             info: info_cid,
 
             pre_commit_deposits: TokenAmount::default(),
             locked_funds: TokenAmount::default(),
 
-            vesting_funds: empty_vesting_funds_cid,
+            vesting_funds: VestingFunds::new(),
 
             initial_pledge: TokenAmount::default(),
             fee_debt: TokenAmount::default(),
@@ -393,30 +387,6 @@ impl State {
         sectors.get(sector_num)
     }
 
-    pub fn delete_sectors<BS: Blockstore>(
-        &mut self,
-        store: &BS,
-        sector_nos: &BitField,
-    ) -> Result<(), AmtError> {
-        let mut sectors = Sectors::load(store, &self.sectors)?;
-
-        for sector_num in sector_nos.iter() {
-            let deleted_sector = sectors
-                .amt
-                .delete(sector_num)
-                .map_err(|e| e.downcast_wrap("could not delete sector number"))?;
-            if deleted_sector.is_none() {
-                return Err(AmtError::Dynamic(Error::msg(format!(
-                    "sector {} doesn't exist, failed to delete",
-                    sector_num
-                ))));
-            }
-        }
-
-        self.sectors = sectors.amt.flush()?;
-        Ok(())
-    }
-
     pub fn for_each_sector<BS: Blockstore, F>(&self, store: &BS, mut f: F) -> anyhow::Result<()>
     where
         F: FnMut(&SectorOnChainInfo) -> anyhow::Result<()>,
@@ -536,10 +506,13 @@ impl State {
 
             // The power returned from AddSectors is ignored because it's not activated (proven) yet.
             let proven = false;
+            // New sectors, so the deadline has new fees.
+            let new_fees = true;
             deadline.add_sectors(
                 store,
                 partition_size,
                 proven,
+                new_fees,
                 &deadline_sectors,
                 sector_size,
                 quant,
@@ -585,8 +558,9 @@ impl State {
 
         let quant = self.quant_spec_for_deadline(policy, deadline_idx);
         let proven = false;
+        let new_fees = true; // New sectors, so the deadline has new fees.
         deadline
-            .add_sectors(store, partition_size, proven, &sectors, sector_size, quant)
+            .add_sectors(store, partition_size, proven, new_fees, &sectors, sector_size, quant)
             .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                 format!("failed to add sectors to deadline {}", deadline_idx)
             })?;
@@ -760,7 +734,7 @@ impl State {
         store: &BS,
         sectors: &BitField,
     ) -> anyhow::Result<Vec<SectorOnChainInfo>> {
-        Ok(Sectors::load(store, &self.sectors)?.load_sector(sectors)?)
+        Ok(Sectors::load(store, &self.sectors)?.load_sectors(sectors)?)
     }
 
     pub fn load_deadlines<BS: Blockstore>(&self, store: &BS) -> Result<Deadlines, ActorError> {
@@ -780,28 +754,6 @@ impl State {
         deadlines: Deadlines,
     ) -> anyhow::Result<()> {
         self.deadlines = store.put_cbor(&deadlines, Code::Blake2b256)?;
-        Ok(())
-    }
-
-    /// Loads the vesting funds table from the store.
-    pub fn load_vesting_funds<BS: Blockstore>(&self, store: &BS) -> anyhow::Result<VestingFunds> {
-        Ok(store
-            .get_cbor(&self.vesting_funds)
-            .map_err(|e| {
-                e.downcast_wrap(format!("failed to load vesting funds {}", self.vesting_funds))
-            })?
-            .ok_or_else(
-                || actor_error!(not_found; "failed to load vesting funds {:?}", self.vesting_funds),
-            )?)
-    }
-
-    /// Saves the vesting table to the store.
-    pub fn save_vesting_funds<BS: Blockstore>(
-        &mut self,
-        store: &BS,
-        funds: &VestingFunds,
-    ) -> anyhow::Result<()> {
-        self.vesting_funds = store.put_cbor(funds, Code::Blake2b256)?;
         Ok(())
     }
 
@@ -864,11 +816,17 @@ impl State {
         if vesting_sum.is_negative() {
             return Err(anyhow!("negative vesting sum {}", vesting_sum));
         }
+        // add new funds and unlock already vested funds.
+        let amount_unlocked = self.vesting_funds.add_locked_funds(
+            store,
+            current_epoch,
+            vesting_sum,
+            self.proving_period_start,
+            spec,
+        )?;
 
-        let mut vesting_funds = self.load_vesting_funds(store)?;
-
-        // unlock vested funds first
-        let amount_unlocked = vesting_funds.unlock_vested_funds(current_epoch);
+        // We shouldn't unlock any of the new funds, so the locked funds should remain non-negative
+        // when we deduct the amount unlocked.
         self.locked_funds -= &amount_unlocked;
         if self.locked_funds.is_negative() {
             return Err(anyhow!(
@@ -877,20 +835,17 @@ impl State {
                 amount_unlocked
             ));
         }
-        // add locked funds now
-        vesting_funds.add_locked_funds(current_epoch, vesting_sum, self.proving_period_start, spec);
-        self.locked_funds += vesting_sum;
 
-        // save the updated vesting table state
-        self.save_vesting_funds(store, &vesting_funds)?;
+        // Finally, record the new locked-funds total.
+        self.locked_funds += vesting_sum;
 
         Ok(amount_unlocked)
     }
 
     /// Draws from vesting table and unlocked funds to repay up to the fee debt.
-    /// Returns the amount unlocked from the vesting table and the amount taken from
-    /// current balance. If the fee debt exceeds the total amount available for repayment
-    /// the fee debt field is updated to track the remaining debt.  Otherwise it is set to zero.
+    /// Returns the amount to burn and the total amount unlocked from the vesting table (both vested
+    /// and unvested) If the fee debt exceeds the total amount available for repayment the fee debt
+    /// field is updated to track the remaining debt. Otherwise it is set to zero.
     pub fn repay_partial_debt_in_priority_order<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -898,25 +853,26 @@ impl State {
         curr_balance: &TokenAmount,
     ) -> Result<
         (
-            TokenAmount, // from vesting
-            TokenAmount, // from balance
+            TokenAmount, // fee to burn
+            TokenAmount, // total unlocked
         ),
         anyhow::Error,
     > {
-        let unlocked_balance = self.get_unlocked_balance(curr_balance)?;
-
         let fee_debt = self.fee_debt.clone();
-        let from_vesting = self.unlock_unvested_funds(store, current_epoch, &fee_debt)?;
+        let (from_vesting, total_unlocked) =
+            self.unlock_vested_and_unvested_funds(store, current_epoch, &fee_debt)?;
 
         if from_vesting > self.fee_debt {
             return Err(anyhow!("should never unlock more than the debt we need to repay"));
         }
-        self.fee_debt -= &from_vesting;
 
-        let from_balance = cmp::min(&unlocked_balance, &self.fee_debt).clone();
-        self.fee_debt -= &from_balance;
+        // locked unvested funds should now have been moved to unlocked balance if
+        // there was enough to cover the fee debt
+        let unlocked_balance = self.get_unlocked_balance(curr_balance)?;
+        let to_burn = cmp::min(&unlocked_balance, &self.fee_debt).clone();
+        self.fee_debt -= &to_burn;
 
-        Ok((from_vesting, from_balance))
+        Ok((to_burn, total_unlocked))
     }
 
     /// Repays the full miner actor fee debt.  Returns the amount that must be
@@ -937,32 +893,37 @@ impl State {
 
         Ok(std::mem::take(&mut self.fee_debt))
     }
-    /// Unlocks an amount of funds that have *not yet vested*, if possible.
-    /// The soonest-vesting entries are unlocked first.
-    /// Returns the amount actually unlocked.
-    pub fn unlock_unvested_funds<BS: Blockstore>(
+
+    /// Unlocks all vested funds and then unlocks an amount of funds that have *not yet vested*, if
+    /// possible. The soonest-vesting entries are unlocked first.
+    ///
+    /// Returns the amount of unvested funds unlocked, along with the total amount of funds unlocked.
+    pub fn unlock_vested_and_unvested_funds<BS: Blockstore>(
         &mut self,
         store: &BS,
         current_epoch: ChainEpoch,
         target: &TokenAmount,
-    ) -> anyhow::Result<TokenAmount> {
+    ) -> anyhow::Result<(
+        TokenAmount, // unlocked_unvested
+        TokenAmount, // total_unlocked
+    )> {
         if target.is_zero() || self.locked_funds.is_zero() {
-            return Ok(TokenAmount::zero());
+            return Ok((TokenAmount::zero(), TokenAmount::zero()));
         }
 
-        let mut vesting_funds = self.load_vesting_funds(store)?;
-        let amount_unlocked = vesting_funds.unlock_unvested_funds(current_epoch, target);
-        self.locked_funds -= &amount_unlocked;
+        let (unlocked_vested, unlocked_unvested) =
+            self.vesting_funds.unlock_vested_and_unvested_funds(store, current_epoch, target)?;
+        let total_unlocked = &unlocked_vested + &unlocked_unvested;
+        self.locked_funds -= &total_unlocked;
         if self.locked_funds.is_negative() {
             return Err(anyhow!(
                 "negative locked funds {} after unlocking {}",
                 self.locked_funds,
-                amount_unlocked
+                total_unlocked,
             ));
         }
 
-        self.save_vesting_funds(store, &vesting_funds)?;
-        Ok(amount_unlocked)
+        Ok((unlocked_unvested, total_unlocked))
     }
 
     /// Unlocks all vesting funds that have vested before the provided epoch.
@@ -976,8 +937,7 @@ impl State {
             return Ok(TokenAmount::zero());
         }
 
-        let mut vesting_funds = self.load_vesting_funds(store)?;
-        let amount_unlocked = vesting_funds.unlock_vested_funds(current_epoch);
+        let amount_unlocked = self.vesting_funds.unlock_vested_funds(store, current_epoch)?;
         self.locked_funds -= &amount_unlocked;
         if self.locked_funds.is_negative() {
             return Err(anyhow!(
@@ -986,22 +946,7 @@ impl State {
             ));
         }
 
-        self.save_vesting_funds(store, &vesting_funds)?;
         Ok(amount_unlocked)
-    }
-
-    /// CheckVestedFunds returns the amount of vested funds that have vested before the provided epoch.
-    pub fn check_vested_funds<BS: Blockstore>(
-        &self,
-        store: &BS,
-        current_epoch: ChainEpoch,
-    ) -> anyhow::Result<TokenAmount> {
-        let vesting_funds = self.load_vesting_funds(store)?;
-        Ok(vesting_funds
-            .funds
-            .iter()
-            .take_while(|fund| fund.epoch < current_epoch)
-            .fold(TokenAmount::zero(), |acc, fund| acc + &fund.amount))
     }
 
     /// Unclaimed funds that are not locked -- includes funds used to cover initial pledge requirement.
@@ -1040,7 +985,7 @@ impl State {
 
         let min_balance = &self.pre_commit_deposits + &self.locked_funds + &self.initial_pledge;
         if balance < &min_balance {
-            return Err(anyhow!("fee debt is negative: {}", self.fee_debt));
+            return Err(anyhow!("balance {} below minimum {}", balance, min_balance));
         }
 
         Ok(())
@@ -1142,6 +1087,8 @@ impl State {
                 previously_faulty_power: PowerPair::zero(),
                 detected_faulty_power: PowerPair::zero(),
                 total_faulty_power: PowerPair::zero(),
+                daily_fee: TokenAmount::zero(),
+                live_power: PowerPair::zero(),
             });
         }
 
@@ -1163,6 +1110,8 @@ impl State {
                 previously_faulty_power,
                 detected_faulty_power: PowerPair::zero(),
                 total_faulty_power: deadline.faulty_power,
+                daily_fee: TokenAmount::zero(),
+                live_power: PowerPair::zero(),
             });
         }
 
@@ -1206,6 +1155,8 @@ impl State {
             previously_faulty_power,
             detected_faulty_power,
             total_faulty_power,
+            daily_fee: deadline.daily_fee,
+            live_power: deadline.live_power,
         })
     }
 
@@ -1244,6 +1195,10 @@ pub struct AdvanceDeadlineResult {
     /// Note that failed recovery power is included in both PreviouslyFaultyPower and
     /// DetectedFaultyPower, so TotalFaultyPower is not simply their sum.
     pub total_faulty_power: PowerPair,
+    /// Fee payable for the sectors in the deadline being advanced
+    pub daily_fee: TokenAmount,
+    /// Total power for the deadline, including active, faulty, and unproven
+    pub live_power: PowerPair,
 }
 
 /// Static information about miner
@@ -1317,7 +1272,7 @@ impl MinerInfo {
             .map_err(|e| actor_error!(illegal_argument, "invalid sector size: {}", e))?;
 
         let window_post_partition_sectors = window_post_proof_type
-            .window_post_partitions_sector()
+            .window_post_partition_sectors()
             .map_err(|e| actor_error!(illegal_argument, "invalid partition sectors: {}", e))?;
 
         Ok(Self {

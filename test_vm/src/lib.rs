@@ -306,7 +306,7 @@ impl VM for TestVM {
             originator_stable_addr: *from,
             originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
-            circ_supply: TokenAmount::from_whole(1_000_000_000),
+            circ_supply: self.circulating_supply.borrow().clone(),
         };
         let msg = InternalMessage {
             from: from_id.id().unwrap(),

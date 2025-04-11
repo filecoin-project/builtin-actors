@@ -1,11 +1,11 @@
 use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
-    pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair, QuantSpec,
-    SectorOnChainInfo, REWARD_VESTING_SPEC,
+    daily_fee_for_sectors, pledge_penalty_for_continued_fault, power_for_sectors, Deadline,
+    PowerPair, QuantSpec, SectorOnChainInfo, REWARD_VESTING_SPEC,
 };
 use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::MockRuntime;
-use fil_actors_runtime::{MessageAccumulator, EPOCHS_IN_DAY};
+use fil_actors_runtime::{MessageAccumulator, EPOCHS_IN_DAY, EPOCHS_IN_HOUR};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -16,7 +16,7 @@ use std::ops::Neg;
 mod util;
 use crate::util::*;
 
-// an expriration ~10 days greater than effective min expiration taking into account 30 days max
+// an expiration ~10 days greater than effective min expiration taking into account 30 days max
 // between pre and prove commit
 const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
@@ -69,8 +69,8 @@ fn test_vesting_on_cron() {
 
     // --- ASSERT FUNDS TO BE VESTED
     let st = h.get_state(&rt);
-    let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
-    assert_eq!(360, vesting_funds.funds.len());
+    let vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
+    assert_eq!(360, vesting_funds.len());
 
     let q = QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: st.proving_period_start };
 
@@ -78,29 +78,37 @@ fn test_vesting_on_cron() {
         let st = h.get_state(&rt);
         rt.set_epoch(new_epoch);
         let new_deadline_info = st.deadline_info(rt.policy(), new_epoch + 1);
+        let vesting_now = immediately_vesting_funds(&rt, &st);
         let old_locked = st.locked_funds;
         h.on_deadline_cron(
             &rt,
-            CronConfig { expected_enrollment: new_deadline_info.last(), ..CronConfig::default() },
+            CronConfig {
+                pledge_delta: -vesting_now.clone(),
+                expected_enrollment: new_deadline_info.last(),
+                ..CronConfig::default()
+            },
         );
         let new_locked = h.get_state(&rt).locked_funds;
         if should_vest {
+            assert!(vesting_now.is_positive());
             assert_ne!(old_locked, new_locked);
         } else {
+            assert!(vesting_now.is_zero());
             assert_eq!(old_locked, new_locked);
         }
     };
 
-    // move current epoch by a day so funds get vested
-    let new_epoch = q.quantize_up(current_epoch + EPOCHS_IN_DAY + 10);
+    // move current epoch by a day so funds get vested. +1 because rewards are vested at the end of
+    // an epoch.
+    let new_epoch = q.quantize_up(current_epoch + 12 * EPOCHS_IN_HOUR) + 1;
     assert_locked_fn(new_epoch, true);
 
     // no funds get vested if epoch moves by <12 hours
-    let new_epoch = new_epoch + (EPOCHS_IN_DAY / 2) - 100;
+    let new_epoch = new_epoch + (12 * EPOCHS_IN_HOUR) - 100;
     assert_locked_fn(new_epoch, false);
 
     // funds get vested again if epoch is quantised
-    let new_epoch = q.quantize_up(new_epoch);
+    let new_epoch = q.quantize_up(new_epoch) + 1;
     assert_locked_fn(new_epoch, true);
 
     h.check_state(&rt);
@@ -143,8 +151,8 @@ fn sector_expires() {
         &rt,
         CronConfig {
             no_enrollment: true,
-            expired_sectors_power_delta: Some(power_delta),
-            expired_sectors_pledge_delta: initial_pledge.neg(),
+            power_delta: Some(power_delta),
+            pledge_delta: initial_pledge.neg(),
             ..CronConfig::default()
         },
     );
@@ -199,9 +207,9 @@ fn sector_expires_and_repays_fee_debt() {
         &rt,
         CronConfig {
             no_enrollment: true,
-            expired_sectors_power_delta: Some(power_delta),
-            expired_sectors_pledge_delta: initial_pledge.neg(),
-            repaid_fee_debt: initial_pledge.clone(),
+            power_delta: Some(power_delta),
+            burnt_funds: initial_pledge.clone(),
+            pledge_delta: initial_pledge.neg(),
             ..CronConfig::default()
         },
     );
@@ -243,10 +251,16 @@ fn detects_and_penalizes_faults() {
     }
 
     // Skip to end of the deadline, cron detects sectors as faulty
+    let mut fee_payable = daily_fee_for_sectors(&all_sectors);
     let active_power_delta = active_power.neg();
     h.advance_deadline(
         &rt,
-        CronConfig { detected_faults_power_delta: Some(active_power_delta), ..Default::default() },
+        CronConfig {
+            burnt_funds: fee_payable.clone(),
+            pledge_delta: -fee_payable.clone(),
+            power_delta: Some(active_power_delta),
+            ..Default::default()
+        },
     );
 
     // expect faulty power to be added to state
@@ -279,10 +293,15 @@ fn detects_and_penalizes_faults() {
         &h.epoch_qa_power_smooth,
         &ongoing_pwr.qa,
     );
+    fee_payable += ongoing_penalty;
 
     h.advance_deadline(
         &rt,
-        CronConfig { continued_faults_penalty: ongoing_penalty, ..Default::default() },
+        CronConfig {
+            burnt_funds: fee_payable.clone(),
+            pledge_delta: -fee_payable,
+            ..Default::default()
+        },
     );
 
     // recorded faulty power is unchanged
@@ -329,7 +348,7 @@ fn test_cron_run_trigger_faults() {
 
     // run cron and expect all sectors to be detected as faults (no penalty)
     let pwr = power_for_sectors(h.sector_size, &all_sectors);
-
+    let daily_fee = daily_fee_for_sectors(&all_sectors);
     // power for sectors is removed
     let power_delta_claim = PowerPair { raw: pwr.raw.neg(), qa: pwr.qa.neg() };
 
@@ -339,8 +358,10 @@ fn test_cron_run_trigger_faults() {
     h.on_deadline_cron(
         &rt,
         CronConfig {
+            burnt_funds: daily_fee.clone(),
+            pledge_delta: daily_fee.neg(),
+            power_delta: Some(power_delta_claim),
             expected_enrollment: next_cron,
-            detected_faults_power_delta: Some(power_delta_claim),
             ..CronConfig::default()
         },
     );

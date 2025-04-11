@@ -16,8 +16,8 @@ fn repay_debt_in_priority_order() {
 
     let (penalty_from_vesting, penalty_from_balance) =
         h.st.repay_partial_debt_in_priority_order(&h.store, 0, &current_balance).unwrap();
-    assert_eq!(penalty_from_vesting, TokenAmount::zero());
-    assert_eq!(penalty_from_balance, current_balance);
+    assert_eq!(penalty_from_vesting, current_balance);
+    assert_eq!(penalty_from_balance, TokenAmount::zero());
 
     let expected_debt = -(current_balance - fee);
     assert_eq!(expected_debt, h.st.fee_debt);

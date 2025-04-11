@@ -44,7 +44,7 @@ mod sector_assignment {
     #[test]
     fn assign_sectors_to_deadlines() {
         let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1;
-        let partition_sectors = proof_type.window_post_partitions_sector().unwrap();
+        let partition_sectors = proof_type.window_post_partition_sectors().unwrap();
         let sector_size = proof_type.sector_size().unwrap();
 
         let open_deadlines = Policy::default().wpost_period_deadlines - 2;
