@@ -5,12 +5,11 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    encode_g1_point, extract_g1_input, is_infinity, G1_ADD_INPUT_LENGTH, PADDED_G1_LENGTH,
+    encode_g1_point, extract_g1_input, is_infinity, p1_from_affine, p1_to_affine,
+    G1_ADD_INPUT_LENGTH, PADDED_G1_LENGTH,
 };
 
-use blst::{
-    blst_p1, blst_p1_add_or_double_affine, blst_p1_affine, blst_p1_from_affine, blst_p1_to_affine,
-};
+use blst::{blst_p1, blst_p1_add_or_double_affine, blst_p1_affine};
 
 /// **BLS12_G1ADD Precompile**
 ///
@@ -53,30 +52,6 @@ pub(super) fn p1_add_affine(a: &blst_p1_affine, b: &blst_p1_affine) -> blst_p1_a
     let a_jacobian = p1_from_affine(a);
     let sum_jacobian = p1_add_or_double(&a_jacobian, b);
     p1_to_affine(&sum_jacobian)
-}
-
-/// Converts a G1 point from affine form to its Jacobian (projective) form.
-///
-/// # Safety
-///
-/// Both inputs are valid BLST types as ensured by previous validations.
-#[inline]
-pub fn p1_from_affine(p_affine: &blst_p1_affine) -> blst_p1 {
-    let mut p = blst_p1::default();
-    unsafe { blst_p1_from_affine(&mut p, p_affine) };
-    p
-}
-
-/// Converts a G1 point from its Jacobian (projective) form to affine form.
-///
-/// # Safety
-///
-/// The conversion is safe for valid BLST points.
-#[inline]
-fn p1_to_affine(p: &blst_p1) -> blst_p1_affine {
-    let mut p_affine = blst_p1_affine::default();
-    unsafe { blst_p1_to_affine(&mut p_affine, p) };
-    p_affine
 }
 
 /// Adds a G1 point in Jacobian coordinates and a G1 point in affine form.

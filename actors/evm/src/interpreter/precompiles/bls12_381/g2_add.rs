@@ -5,12 +5,11 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    encode_g2_point, extract_g2_input, is_infinity, G2_ADD_INPUT_LENGTH, G2_INPUT_ITEM_LENGTH,
+    encode_g2_point, extract_g2_input, is_infinity, p2_from_affine, p2_to_affine,
+    G2_ADD_INPUT_LENGTH, G2_INPUT_ITEM_LENGTH,
 };
 
-use blst::{
-    blst_p2, blst_p2_add_or_double_affine, blst_p2_affine, blst_p2_from_affine, blst_p2_to_affine,
-};
+use blst::{blst_p2, blst_p2_add_or_double_affine, blst_p2_affine};
 
 /// **BLS12_G2ADD Precompile**
 ///
@@ -46,30 +45,6 @@ pub(super) fn p2_add_affine(a: &blst_p2_affine, b: &blst_p2_affine) -> blst_p2_a
     let a_proj = p2_from_affine(a);
     let sum_proj = p2_add_or_double(&a_proj, b);
     p2_to_affine(&sum_proj)
-}
-
-/// Converts a G2 point from affine form to projective (Jacobian) form.
-///
-/// # Safety
-///
-/// The input is assumed valid.
-#[inline]
-pub fn p2_from_affine(p_affine: &blst_p2_affine) -> blst_p2 {
-    let mut p = blst_p2::default();
-    unsafe { blst_p2_from_affine(&mut p, p_affine) };
-    p
-}
-
-/// Converts a G2 point from projective (Jacobian) form back to affine form.
-///
-/// # Safety
-///
-/// The conversion is safe for valid BLST types.
-#[inline]
-fn p2_to_affine(p: &blst_p2) -> blst_p2_affine {
-    let mut p_affine = blst_p2_affine::default();
-    unsafe { blst_p2_to_affine(&mut p_affine, p) };
-    p_affine
 }
 
 /// Adds a G2 point in projective form with a G2 point in affine form.
