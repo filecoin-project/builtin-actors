@@ -39,7 +39,6 @@ use crate::runtime::{
     EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError, SendError};
-use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 use rand::prelude::*;
 use serde::Serialize;
 use vm_api::MockPrimitives;
@@ -1600,17 +1599,21 @@ pub fn recover_secp_public_key(
     hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
     signature: &[u8; SECP_SIG_LEN],
 ) -> Result<[u8; SECP_PUB_LEN], ()> {
+    use k256::ecdsa::{RecoveryId, Signature as EcdsaSignature, VerifyingKey};
+    let sig_bytes = signature[..64].into();
+    let mut rec_id = signature[64];
+    let mut signature = EcdsaSignature::from_bytes(sig_bytes).map_err(|_| ())?;
+    if let Some(normalized) = signature.normalize_s() {
+        signature = normalized;
+        rec_id ^= 1;
+    }
+
     // generate types to recover key from
-    let rec_id = RecoveryId::parse(signature[64]).map_err(|_| ())?;
-    let message = Message::parse(hash);
+    let rec_id = RecoveryId::try_from(rec_id).map_err(|_| ())?;
 
-    // Signature value without recovery byte
-    let mut s = [0u8; 64];
-    s.copy_from_slice(signature[..64].as_ref());
+    let pk = VerifyingKey::recover_from_prehash(&hash[..], &signature, rec_id).map_err(|_| ())?;
 
-    // generate Signature
-    let sig = EcsdaSignature::parse_standard(&s).map_err(|_| ())?;
-    Ok(recover(&message, &sig, &rec_id).map_err(|_| ())?.serialize())
+    Ok(pk.to_encoded_point(false).as_bytes().try_into().expect("expected the key to be 65 bytes"))
 }
 
 // multihash library doesn't support poseidon hashing, so we fake it

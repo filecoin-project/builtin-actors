@@ -536,10 +536,10 @@ mod tests {
             for (f, name) in tests {
                 let td = std::fs::read_to_string(format!("{TESTDATA_PATH}/{name}.json")).unwrap();
                 let cases: Vec<TestCase> = serde_json::from_str(&td).unwrap();
-                for t in cases {
+                for (i, t) in cases.iter().enumerate() {
                     let res = f(&mut system, &t.input, PrecompileContext::default())
                         .expect("call failed");
-                    assert_eq!(res, t.expected);
+                    assert_eq!(res, t.expected, "{name}:{i} failed");
                 }
             }
         }
