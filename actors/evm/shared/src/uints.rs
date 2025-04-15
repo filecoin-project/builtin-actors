@@ -1,6 +1,6 @@
 // to silence construct_uint! clippy warnings
 // see https://github.com/paritytech/parity-common/issues/660
-#![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern)]
+#![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern, clippy::manual_div_ceil)]
 
 #[doc(inline)]
 pub use uint::byteorder;
@@ -198,7 +198,7 @@ impl<'de> Deserialize<'de> for U256 {
         D: serde::Deserializer<'de>,
     {
         struct Visitor;
-        impl<'de> serde::de::Visitor<'de> for Visitor {
+        impl serde::de::Visitor<'_> for Visitor {
             type Value = U256;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

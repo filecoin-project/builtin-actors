@@ -303,7 +303,7 @@ impl<'invocation> InvocationCtx<'invocation> {
     }
 }
 
-impl<'invocation> Runtime for InvocationCtx<'invocation> {
+impl Runtime for InvocationCtx<'_> {
     type Blockstore = Rc<MemoryBlockstore>;
 
     fn create_actor(
