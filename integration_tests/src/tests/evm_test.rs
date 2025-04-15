@@ -134,9 +134,8 @@ pub fn evm_call_test(v: &dyn VM) {
 
     let BytesDe(return_value) =
         call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-    let (evm_ret,) = Recursive::enterCall::abi_decode_returns(&return_value, true)
-        .expect("failed to decode return")
-        .into();
+    let evm_ret =
+        Recursive::enterCall::abi_decode_returns(&return_value).expect("failed to decode return");
     assert_eq!(0, evm_ret, "expected contract to return 0 on success");
 }
 
@@ -167,7 +166,7 @@ pub fn evm_create_test(v: &dyn VM) {
         create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
     let test_func = |create_func: Factory::FactoryCalls, recursive: bool| {
-        let (child_addr_eth,) = {
+        let child_addr_eth = {
             let call_params = create_func.abi_encode();
             let call_result = v
                 .execute_message(
@@ -185,9 +184,7 @@ pub fn evm_create_test(v: &dyn VM) {
             );
             let BytesDe(return_value) =
                 call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-            Factory::createCall::abi_decode_returns(&return_value, true)
-                .expect("failed to decode return")
-                .into()
+            Factory::createCall::abi_decode_returns(&return_value).expect("failed to decode return")
         };
 
         let child_addr = Address::new_delegated(EAM_ACTOR_ID, &child_addr_eth.0[..]).unwrap();
@@ -211,9 +208,8 @@ pub fn evm_create_test(v: &dyn VM) {
             );
             let BytesDe(return_value) =
                 call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-            let (res,) = FactoryChild::get_valueCall::abi_decode_returns(&return_value, true)
-                .expect("failed to decode return")
-                .into();
+            let res = FactoryChild::get_valueCall::abi_decode_returns(&return_value)
+                .expect("failed to decode return");
             assert_eq!(res, 42);
         }
 
@@ -894,10 +890,9 @@ pub fn evm_transient_nested_test(v: &dyn VM) {
     let BytesDe(return_value) =
         call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
 
-    let (event_emitted,) =
-        TransientStorageTest::testNestedContractsCall::abi_decode_returns(&return_value, true)
-            .expect("failed to decode return")
-            .into();
+    let event_emitted =
+        TransientStorageTest::testNestedContractsCall::abi_decode_returns(&return_value)
+            .expect("failed to decode return");
 
     assert!(event_emitted, "testNestedContracts did not succeed as expected");
 }
@@ -963,10 +958,8 @@ pub fn evm_transient_reentry_test(v: &dyn VM) {
     let BytesDe(return_value) =
         call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
 
-    let (event_emitted,) =
-        TransientStorageTest::testReentryCall::abi_decode_returns(&return_value, true)
-            .expect("failed to decode return")
-            .into();
+    let event_emitted = TransientStorageTest::testReentryCall::abi_decode_returns(&return_value)
+        .expect("failed to decode return");
 
     assert!(event_emitted, "testReentry did not succeed as expected");
 }
