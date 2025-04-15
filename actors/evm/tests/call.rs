@@ -1189,6 +1189,6 @@ impl ContractTester {
             .deserialize()
             .unwrap();
 
-        C::abi_decode_returns(&result, true).unwrap()
+        C::abi_decode_returns(&result).unwrap()
     }
 }
