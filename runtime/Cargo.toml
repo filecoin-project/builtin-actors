@@ -45,11 +45,6 @@ pretty_env_logger = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 multihash-derive = { workspace = true, optional = true }
 
-[dependencies.libsecp256k1]
-workspace = true
-features = ["static-context", "std"]
-optional = true
-
 [dev-dependencies]
 base64 = "0.22.1"
 derive_builder = { workspace = true }
@@ -95,4 +90,4 @@ no-provider-deal-collateral = []
 fake-proofs = []
 
 
-test_utils = ["hex", "multihash-derive", "multihash-codetable/sha2", "multihash-codetable/sha3", "multihash-codetable/ripemd", "libsecp256k1", "blake2b_simd", "rand", "rand/std_rng", "pretty_env_logger"]
+test_utils = ["hex", "multihash-derive", "multihash-codetable/sha2", "multihash-codetable/sha3", "multihash-codetable/ripemd", "blake2b_simd", "rand", "rand/std_rng", "pretty_env_logger", "fvm_shared/crypto"]

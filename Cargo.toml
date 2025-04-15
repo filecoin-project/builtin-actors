@@ -102,7 +102,6 @@ unsigned-varint = "0.8.0"
 rand_chacha = "0.3.1"
 
 # Crypto
-libsecp256k1 = { version = "0.7.1", default-features = false }
 blake2b_simd = "1.0"
 sha2 = "0.10"
 

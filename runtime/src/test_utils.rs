@@ -39,7 +39,6 @@ use crate::runtime::{
     EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError, SendError};
-use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 use rand::prelude::*;
 use serde::Serialize;
 use vm_api::MockPrimitives;
@@ -47,6 +46,7 @@ use vm_api::MockPrimitives;
 use crate::test_blockstores::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::chainid::ChainID;
+use fvm_shared::crypto::signature::ops::recover_secp_public_key;
 use fvm_shared::event::ActorEvent;
 use fvm_shared::sys::SendFlags;
 use integer_encoding::VarInt;
@@ -155,7 +155,7 @@ pub struct MockRuntime {
         dyn Fn(
             &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
             &[u8; SECP_SIG_LEN],
-        ) -> Result<[u8; SECP_PUB_LEN], ()>,
+        ) -> Result<[u8; SECP_PUB_LEN], fvm_shared::crypto::signature::Error>,
     >,
     pub network_version: RefCell<NetworkVersion>,
 
@@ -1595,24 +1595,6 @@ pub fn hash(hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
     (digest, written as usize)
 }
 
-#[allow(clippy::result_unit_err)]
-pub fn recover_secp_public_key(
-    hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
-    signature: &[u8; SECP_SIG_LEN],
-) -> Result<[u8; SECP_PUB_LEN], ()> {
-    // generate types to recover key from
-    let rec_id = RecoveryId::parse(signature[64]).map_err(|_| ())?;
-    let message = Message::parse(hash);
-
-    // Signature value without recovery byte
-    let mut s = [0u8; 64];
-    s.copy_from_slice(signature[..64].as_ref());
-
-    // generate Signature
-    let sig = EcsdaSignature::parse_standard(&s).map_err(|_| ())?;
-    Ok(recover(&message, &sig, &rec_id).map_err(|_| ())?.serialize())
-}
-
 // multihash library doesn't support poseidon hashing, so we fake it
 #[derive(Clone, Copy, Debug, PartialEq, Eq, MultihashDigest)]
 #[mh(alloc_size = 64)]
@@ -1764,7 +1746,7 @@ impl Primitives for FakePrimitives {
             override_fn(hash, signature)
         } else {
             recover_secp_public_key(hash, signature)
-                .map_err(|_| anyhow!("failed to recover pubkey"))
+                .map_err(|e| anyhow!("failed to recover pubkey: {e}"))
         }
     }
 
