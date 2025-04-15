@@ -45,7 +45,7 @@ fvm_ipld_encoding = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
 fvm_shared = { workspace = true }
 hex = { workspace = true }
-hex-literal = { workspace = true } 
+hex-literal = { workspace = true }
 indexmap = { workspace = true }
 integer-encoding = { workspace = true }
 lazy_static = { workspace = true }
@@ -57,7 +57,7 @@ rand_chacha = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-libsecp256k1 = { workspace = true }
+k256 = { workspace = true, features = ["ecdsa"] }
 export_macro = { path = "./macro" }
 ctor = "0.2.5"
 multihash-codetable = { workspace = true }
