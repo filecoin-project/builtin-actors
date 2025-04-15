@@ -96,8 +96,7 @@ impl From<BytecodeHash> for Vec<u8> {
 
 impl From<BytecodeHash> for U256 {
     fn from(bytecode: BytecodeHash) -> Self {
-        let bytes: [u8; 32] = bytecode.into();
-        Self::from(bytes)
+        Self::from_big_endian(bytecode.as_slice())
     }
 }
 

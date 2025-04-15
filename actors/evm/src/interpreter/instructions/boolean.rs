@@ -199,7 +199,7 @@ mod test {
         for i in 0..u8::MAX {
             let mut expect = [0xff; 32];
             expect[31] = !i;
-            assert_eq!(not(U256::from(i)), U256::from(expect))
+            assert_eq!(not(U256::from(i)), U256::from_big_endian(&expect))
         }
 
         assert_eq!(not(U256::MAX), U256::ZERO);

@@ -59,7 +59,7 @@ impl Value for ExitCode {
 impl Value for U256 {
     type Error = FieldError;
     fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
-        Ok(U256::from(reader.read_fixed::<32>()))
+        Ok(U256::from_big_endian(&reader.read_fixed::<32>()))
     }
 }
 

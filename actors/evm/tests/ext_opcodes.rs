@@ -271,7 +271,7 @@ account:
     rt.verify();
     assert_eq!(
         U256::from_big_endian(&result),
-        U256::from(rt.hash(SupportedHashes::Keccak256, &[0xfe]).as_slice())
+        U256::from_big_endian(rt.hash(SupportedHashes::Keccak256, &[0xfe]).as_slice())
     );
     rt.reset();
 

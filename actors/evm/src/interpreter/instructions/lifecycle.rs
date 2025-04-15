@@ -67,7 +67,7 @@ pub fn create2(
     let input_region = get_memory_region(&mut state.memory, offset, size)?;
 
     // BE encoded array
-    let salt: [u8; 32] = salt.into();
+    let salt: [u8; 32] = salt.to_big_endian();
 
     let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
         &state.memory[offset..][..size.get()]

@@ -179,7 +179,7 @@ fn test_call() {
 
     // dest + method 0 with no data
     let mut contract_params = vec![0u8; 36];
-    evm_target_word.to_big_endian(&mut contract_params[..32]);
+    evm_target_word.write_as_big_endian(&mut contract_params[..32]);
 
     let proxy_call_contract_params = vec![0u8; 4];
     let proxy_call_input_data = make_raw_params(proxy_call_contract_params);
@@ -225,7 +225,7 @@ fn test_transfer_nogas() {
 
     // dest with no data
     let mut contract_params = vec![0u8; 32];
-    evm_target_word.to_big_endian(&mut contract_params);
+    evm_target_word.write_as_big_endian(&mut contract_params);
 
     // we don't expected return data
     let return_data = vec![];
@@ -266,7 +266,7 @@ fn test_transfer_2300() {
 
     // dest with no data
     let mut contract_params = vec![0u8; 32];
-    evm_target_word.to_big_endian(&mut contract_params);
+    evm_target_word.write_as_big_endian(&mut contract_params);
 
     // we don't expected return data
     let return_data = vec![];

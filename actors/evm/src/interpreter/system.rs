@@ -53,9 +53,7 @@ pub struct StateHashAlgorithm;
 /// the nibbles to be co-located in the tree.
 impl AsHashedKey<U256, 32> for StateHashAlgorithm {
     fn as_hashed_key(key: &U256) -> Cow<HashedKey<32>> {
-        let mut bs = [0u8; 32];
-        key.to_big_endian(&mut bs);
-        Cow::Owned(bs)
+        Cow::Owned(key.to_big_endian())
     }
 }
 

@@ -94,7 +94,7 @@ mod test {
         let mut buf = EthAddress::from_id(id).as_evm_word().to_bytes();
         // first bytes should be ignored silently
         buf[..12].copy_from_slice(&[0xff; 12]);
-        let addr = U256::from(buf);
+        let addr = U256::from_big_endian(&buf);
 
         evm_unit_test! {
             (rt) {
