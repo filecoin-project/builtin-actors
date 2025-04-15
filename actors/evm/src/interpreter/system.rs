@@ -150,7 +150,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             return Err(actor_error!(forbidden, "can only resurrect a dead contract"));
         }
 
-        return Ok(Self::new(rt, read_only));
+        Ok(Self::new(rt, read_only))
     }
 
     /// Create the contract. This will return a new empty contract if, and only if, the contract
@@ -164,7 +164,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         if state_root != EMPTY_ARR_CID {
             return Err(actor_error!(illegal_state, "can't create over an existing actor"));
         }
-        return Ok(Self::new(rt, read_only));
+        Ok(Self::new(rt, read_only))
     }
 
     /// Load the actor from state.

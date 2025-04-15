@@ -84,7 +84,7 @@ pub(crate) fn current_tombstone(rt: &impl Runtime) -> Tombstone {
 /// Specifically, this lets us mark the contract as "self-destructed" but keep it alive until the
 /// current top-level message finishes executing.
 pub(crate) fn is_dead(rt: &impl Runtime, state: &State) -> bool {
-    state.tombstone.map_or(false, |t| t != current_tombstone(rt))
+    state.tombstone.is_some_and(|t| t != current_tombstone(rt))
 }
 
 fn load_bytecode(bs: &impl Blockstore, cid: &Cid) -> Result<Option<Bytecode>, ActorError> {

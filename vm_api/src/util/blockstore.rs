@@ -5,7 +5,7 @@ use fvm_ipld_blockstore::Blockstore;
 /// accept a generic BS: Blockstore parameter rather than a dyn Blockstore
 pub struct DynBlockstore<'bs>(&'bs dyn Blockstore);
 
-impl<'bs> Blockstore for DynBlockstore<'bs> {
+impl Blockstore for DynBlockstore<'_> {
     fn get(&self, k: &Cid) -> anyhow::Result<Option<Vec<u8>>> {
         self.0.get(k)
     }

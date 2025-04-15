@@ -412,7 +412,7 @@ struct SyscallProvider<'a, RT> {
     rt: &'a RT,
 }
 
-impl<'a, RT> Syscalls for &SyscallProvider<'a, RT>
+impl<RT> Syscalls for &SyscallProvider<'_, RT>
 where
     RT: Runtime,
 {

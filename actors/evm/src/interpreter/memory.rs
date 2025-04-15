@@ -53,7 +53,7 @@ impl Memory {
         // Reserve any new pages.
         let cap = self.0.capacity();
         if new_size > cap {
-            let required_pages = (new_size + PAGE_SIZE - 1) / PAGE_SIZE;
+            let required_pages = new_size.div_ceil(PAGE_SIZE);
             self.reserve_pages(required_pages);
         }
 
