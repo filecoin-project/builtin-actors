@@ -83,7 +83,7 @@ fn test_delegate_call_caller() {
 
     // dest + method 0 + single byte of data
     let mut contract_params = vec![0u8; 37];
-    evm_target_word.to_big_endian(&mut contract_params[..32]);
+    evm_target_word.write_as_big_endian(&mut contract_params[..32]);
     contract_params[36] = 0x01;
 
     // dest 0 in this test has code cid EMPTY_ARR_CID

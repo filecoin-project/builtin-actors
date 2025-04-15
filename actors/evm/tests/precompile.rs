@@ -56,7 +56,7 @@ fn test_precompile_hash() {
         hex_literal::hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");
     assert_eq!(
         U256::from_big_endian(&result),
-        U256::from(expected),
+        U256::from_big_endian(&expected),
         "\n{}\n{}",
         hex::encode(&*result),
         hex::encode(expected)

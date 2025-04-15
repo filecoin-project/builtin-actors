@@ -153,10 +153,7 @@ pub fn mstore(
     value: U256,
 ) -> Result<(), ActorError> {
     let region = get_memory_region(&mut state.memory, index, EVM_WORD_SIZE)?.expect("empty region");
-
-    let mut bytes = [0u8; EVM_WORD_SIZE];
-    value.to_big_endian(&mut bytes);
-    state.memory[region.offset..region.offset + EVM_WORD_SIZE].copy_from_slice(&bytes);
+    value.write_as_big_endian(&mut state.memory[region.offset..region.offset + EVM_WORD_SIZE]);
 
     Ok(())
 }

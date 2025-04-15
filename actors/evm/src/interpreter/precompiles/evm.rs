@@ -45,8 +45,8 @@ fn ec_recover_internal<RT: Runtime>(system: &mut System<RT>, input: &[u8]) -> Pr
     }
 
     let mut sig: [u8; SECP_SIG_LEN] = [0u8; 65];
-    r.to_big_endian(&mut sig[..32]);
-    s.to_big_endian(&mut sig[32..64]);
+    r.write_as_big_endian(&mut sig[..32]);
+    s.write_as_big_endian(&mut sig[32..64]);
     sig[64] = v;
 
     let pubkey = system
@@ -235,9 +235,9 @@ pub(super) fn ec_pairing<RT: Runtime>(
     let accumulated = pairing_batch(&groups);
 
     let paring_success = if accumulated == Gt::one() { U256::one() } else { U256::zero() };
-    let mut ret = [0u8; EVM_WORD_SIZE];
-    paring_success.to_big_endian(&mut ret);
-    Ok(ret.to_vec())
+    let mut ret = vec![0; EVM_WORD_SIZE];
+    paring_success.write_as_big_endian(&mut ret);
+    Ok(ret)
 }
 
 /// https://eips.ethereum.org/EIPS/eip-152

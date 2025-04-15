@@ -108,7 +108,7 @@ sha2 = "0.10"
 
 # EVM
 alloy-core = { version = "0.8.19", default-features = false, features = ["sol-types"] }
-uint = { version = "0.9.3", default-features = false }
+uint = { version = "0.10.0", default-features = false }
 etk-asm = "^0.3.0"
 rlp = { version = "0.5.1", default-features = false }
 substrate-bn = { version = "0.6.0", default-features = false }

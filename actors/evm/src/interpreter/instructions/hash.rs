@@ -59,7 +59,7 @@ mod test {
                 m.step().expect("execution step failed");
                 m.step().expect("execution step failed");
 
-                assert_eq!(m.state.stack.pop().unwrap(), U256::from(expect));
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from_big_endian(expect));
             };
         }
     }
