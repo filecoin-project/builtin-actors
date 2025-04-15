@@ -1158,7 +1158,7 @@ impl Actor {
         if proven_manifests.is_empty() {
             return Err(actor_error!(illegal_argument, "no valid updates"));
         }
-        let proven_batch = proven_batch_gen.gen();
+        let proven_batch = proven_batch_gen.generate();
         if proven_batch.success_count == 0 {
             return Err(actor_error!(illegal_argument, "no valid proofs specified"));
         }
@@ -1845,7 +1845,7 @@ impl Actor {
                 .collect();
             proven_batch_gen.add_successes(proven_activation_inputs.len());
         }
-        let proven_batch = proven_batch_gen.gen();
+        let proven_batch = proven_batch_gen.generate();
         if proven_batch.success_count == 0 {
             return Err(actor_error!(illegal_argument, "no valid proofs specified"));
         }
@@ -4071,7 +4071,7 @@ where
             }
         }
     }
-    Ok((batch.gen(), update_sector_infos))
+    Ok((batch.generate(), update_sector_infos))
 }
 
 fn update_replica_states<BS>(
@@ -4918,7 +4918,7 @@ fn validate_precommits(
             batch.add_success();
         }
     }
-    Ok((batch.gen(), verify_infos))
+    Ok((batch.generate(), verify_infos))
 }
 
 fn validate_ni_sectors(
@@ -5035,7 +5035,7 @@ fn validate_ni_sectors(
         }
     }
 
-    Ok((batch.gen(), verify_infos, sector_numbers))
+    Ok((batch.generate(), verify_infos, sector_numbers))
 }
 
 // Validates a batch of sector sealing proofs.

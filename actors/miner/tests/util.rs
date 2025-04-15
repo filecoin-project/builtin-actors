@@ -1112,7 +1112,7 @@ impl ActorHarness {
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&BatchActivateDealsResult {
                     activations: sector_activations,
-                    activation_results: sector_activation_results.gen(),
+                    activation_results: sector_activation_results.generate(),
                 })
                 .unwrap(),
                 ExitCode::OK,
@@ -1356,7 +1356,7 @@ impl ActorHarness {
                 .unwrap(),
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&ClaimAllocationsReturn {
-                    sector_results: claim_result.gen(),
+                    sector_results: claim_result.generate(),
                     sector_claims: sector_claimed_space,
                 })
                 .unwrap(),
@@ -1556,7 +1556,7 @@ impl ActorHarness {
                 .unwrap(),
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&ClaimAllocationsReturn {
-                    sector_results: claim_result.gen(),
+                    sector_results: claim_result.generate(),
                     sector_claims: sector_claimed_space,
                 })
                 .unwrap(),
@@ -2752,7 +2752,7 @@ impl ActorHarness {
                     .unwrap(),
                     TokenAmount::zero(),
                     IpldBlock::serialize_cbor(&GetClaimsReturn {
-                        batch_info: batch_gen.gen(),
+                        batch_info: batch_gen.generate(),
                         claims,
                     })
                     .unwrap(),

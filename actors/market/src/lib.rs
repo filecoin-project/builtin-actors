@@ -660,7 +660,7 @@ impl Actor {
             st.put_deal_states(rt.store(), &deal_states)?;
             st.put_sector_deal_ids(rt.store(), miner_addr.id().unwrap(), &sectors_deals)?;
             st.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
-            Ok((activations, batch_gen.gen()))
+            Ok((activations, batch_gen.generate()))
         })?;
 
         Ok(BatchActivateDealsResult { activations, activation_results: batch_ret })
@@ -1358,7 +1358,7 @@ impl Actor {
             ))?;
         }
 
-        Ok(SettleDealPaymentsReturn { results: batch_gen.gen(), settlements })
+        Ok(SettleDealPaymentsReturn { results: batch_gen.generate(), settlements })
     }
 }
 

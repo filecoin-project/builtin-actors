@@ -10,38 +10,38 @@ mod serialization {
     fn batch_return() {
         let mut test_cases = vec![];
 
-        let mut gen = BatchReturnGen::new(0);
+        let mut batch = BatchReturnGen::new(0);
         test_cases.push((
-            gen.gen(),
+            batch.generate(),
             // [0,[]]
             &hex!("820080")[..],
         ));
 
-        gen = BatchReturnGen::new(1);
-        gen.add_success();
+        batch = BatchReturnGen::new(1);
+        batch.add_success();
         test_cases.push((
-            gen.gen(),
+            batch.generate(),
             // [1,[]]
             &hex!("820180"),
         ));
 
-        gen = BatchReturnGen::new(1);
-        gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+        batch = BatchReturnGen::new(1);
+        batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
         test_cases.push((
-            gen.gen(),
+            batch.generate(),
             // [0,[[0,16]]]
             &hex!("820081820010"),
         ));
 
-        gen = BatchReturnGen::new(5);
-        gen.add_success();
-        gen.add_fail(ExitCode::SYS_OUT_OF_GAS);
-        gen.add_fail(ExitCode::USR_ILLEGAL_STATE);
-        gen.add_success();
-        gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+        batch = BatchReturnGen::new(5);
+        batch.add_success();
+        batch.add_fail(ExitCode::SYS_OUT_OF_GAS);
+        batch.add_fail(ExitCode::USR_ILLEGAL_STATE);
+        batch.add_success();
+        batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
 
         test_cases.push((
-            gen.gen(),
+            batch.generate(),
             // [2,[[1,7],[2,20],[4,16]]]
             &hex!("820283820107820214820410"),
         ));

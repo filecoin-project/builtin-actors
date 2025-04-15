@@ -84,5 +84,5 @@ where
             info!("allocation/claim references id {} that does not belong to {}", id, owner,);
         }
     }
-    Ok(ret_gen.gen())
+    Ok(ret_gen.generate())
 }

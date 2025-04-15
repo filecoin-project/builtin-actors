@@ -472,7 +472,7 @@ impl Actor {
         })
         .context("state transaction failed")?;
 
-        let batch_info = batch_gen.gen();
+        let batch_info = batch_gen.generate();
         if params.all_or_nothing && !batch_info.all_ok() {
             return Err(ActorError::checked(
                 // Returning the first actual error code from the batch might be better, but
@@ -512,7 +512,7 @@ impl Actor {
             };
         }
 
-        Ok(GetClaimsReturn { batch_info: batch_gen.gen(), claims })
+        Ok(GetClaimsReturn { batch_info: batch_gen.generate(), claims })
     }
 
     /// Extends the maximum term of some claims up to the largest value they could have been
@@ -581,7 +581,7 @@ impl Actor {
             Ok(())
         })
         .context("state transaction failed")?;
-        Ok(batch_gen.gen())
+        Ok(batch_gen.generate())
     }
 
     // A claim may be removed after its maximum term has elapsed (by anyone).
