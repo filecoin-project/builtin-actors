@@ -1,6 +1,6 @@
 use fil_actor_miner::{
-    power_for_sectors, ExpirationQueue, ExpirationSet, PowerPair, QuantSpec, SectorOnChainInfo,
-    NO_QUANTIZATION,
+    ExpirationQueue, ExpirationSet, NO_QUANTIZATION, PowerPair, QuantSpec, SectorOnChainInfo,
+    power_for_sectors,
 };
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::MockRuntime;

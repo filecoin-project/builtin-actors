@@ -1,6 +1,6 @@
 use cid::Cid;
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
-use fil_actors_runtime::{make_map_with_root_and_bitwidth, Keyer, Map, MapMap};
+use fil_actors_runtime::{Keyer, Map, MapMap, make_map_with_root_and_bitwidth};
 use fvm_shared::HAMT_BIT_WIDTH;
 
 #[test]

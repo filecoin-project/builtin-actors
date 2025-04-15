@@ -8,7 +8,7 @@ use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
 use fil_actors_runtime::{
-    actor_error, ActorContext, ActorError, Config, Map2, DEFAULT_HAMT_CONFIG,
+    ActorContext, ActorError, Config, DEFAULT_HAMT_CONFIG, Map2, actor_error,
 };
 
 /// Balance table which handles getting and updating token balances specifically
@@ -37,11 +37,7 @@ where
 
     /// Gets token amount for given address in balance table
     pub fn get(&self, key: &Address) -> Result<TokenAmount, ActorError> {
-        if let Some(v) = self.0.get(key)? {
-            Ok(v.clone())
-        } else {
-            Ok(TokenAmount::zero())
-        }
+        if let Some(v) = self.0.get(key)? { Ok(v.clone()) } else { Ok(TokenAmount::zero()) }
     }
 
     /// Adds token amount to previously initialized account.

@@ -5,11 +5,11 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, clock::ChainEpoch, sector::StoragePower};
 use num_traits::{Signed, Zero};
 
-use fil_actors_runtime::{parse_uint_key, runtime::Policy, MessageAccumulator, Multimap};
+use fil_actors_runtime::{MessageAccumulator, Multimap, parse_uint_key, runtime::Policy};
 
 use crate::{
-    consensus_miner_min_power, Claim, ClaimsMap, CronEvent, State, CLAIMS_CONFIG,
-    CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT_BITWIDTH,
+    CLAIMS_CONFIG, CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT_BITWIDTH, Claim, ClaimsMap, CronEvent,
+    State, consensus_miner_min_power,
 };
 
 pub struct MinerCronEvent {

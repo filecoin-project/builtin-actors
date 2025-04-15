@@ -5,7 +5,7 @@ use fvm_shared::{
     error::ExitCode,
 };
 
-use fil_actor_miner::{max_prove_commit_duration, VestSpec};
+use fil_actor_miner::{VestSpec, max_prove_commit_duration};
 use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::test_utils::expect_abort;
 use util::*;

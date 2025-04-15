@@ -1,16 +1,16 @@
 use fil_actor_account::State as AccountState;
 use fil_actors_integration_tests::util::{assert_invariants, check_invariants};
-use fil_actors_runtime::runtime::{Policy, EMPTY_ARR_CID};
+use fil_actors_runtime::runtime::{EMPTY_ARR_CID, Policy};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID};
+use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
-use test_vm::{TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
+use test_vm::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, TestVM};
 use vm_api::util::{get_state, pk_addrs_from};
-use vm_api::{new_actor, VM};
+use vm_api::{VM, new_actor};
 
 #[test]
 fn state_control() {

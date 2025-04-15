@@ -1,10 +1,10 @@
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
 #[cfg(feature = "fake-proofs")]
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::{Address, Payload};
@@ -13,7 +13,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{
-    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+    SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE, Signature,
 };
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
@@ -29,8 +29,8 @@ use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
 use multihash_codetable::Code;
 use num_traits::FromPrimitive;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 #[cfg(feature = "fake-proofs")]
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
@@ -41,7 +41,7 @@ use crate::runtime::randomness::draw_randomness;
 use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
 };
-use crate::{actor_error, ActorError, AsActorError, Runtime, SendError};
+use crate::{ActorError, AsActorError, Runtime, SendError, actor_error};
 
 /// A runtime that bridges to the FVM environment through the FVM SDK.
 pub struct FvmRuntime<B = ActorBlockstore> {

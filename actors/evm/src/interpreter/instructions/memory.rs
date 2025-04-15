@@ -107,11 +107,7 @@ pub fn copy_to_memory(
 
     #[inline(always)]
     fn min(a: U256, b: usize) -> usize {
-        if a < (b as u64) {
-            a.low_u64() as usize
-        } else {
-            b
-        }
+        if a < (b as u64) { a.low_u64() as usize } else { b }
     }
 
     if let Some(region) = &region {

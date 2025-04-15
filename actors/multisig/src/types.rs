@@ -4,12 +4,12 @@
 use std::fmt::Display;
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{strict_bytes, RawBytes};
+use fvm_ipld_encoding::{RawBytes, strict_bytes};
+use fvm_shared::MethodNum;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::MethodNum;
 use serde::{Deserialize, Serialize};
 
 use fil_actors_runtime::MapKey;

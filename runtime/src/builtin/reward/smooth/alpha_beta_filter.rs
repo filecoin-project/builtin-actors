@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::bigint::{bigint_ser, BigInt, Integer};
+use fvm_shared::bigint::{BigInt, Integer, bigint_ser};
 use fvm_shared::clock::ChainEpoch;
 
 use crate::reward::math::PRECISION;
@@ -69,11 +69,11 @@ mod tests {
     use fvm_shared::sector::StoragePower;
     use num_traits::Signed;
 
-    use crate::reward::math;
     use crate::EPOCHS_IN_DAY;
+    use crate::reward::math;
 
     use super::super::smooth_func::{
-        extrapolated_cum_sum_of_ratio as ecsor, ln, DEFAULT_ALPHA, DEFAULT_BETA,
+        DEFAULT_ALPHA, DEFAULT_BETA, extrapolated_cum_sum_of_ratio as ecsor, ln,
     };
     use super::*;
 

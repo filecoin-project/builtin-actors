@@ -3,8 +3,8 @@
 
 use fvm_ipld_encoding::repr::*;
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::bigint::bigint_ser;
 use fvm_shared::bigint::BigInt;
+use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
@@ -12,7 +12,7 @@ use lazy_static::lazy_static;
 use num_derive::FromPrimitive;
 
 use fil_actors_runtime::builtin::reward::smooth::{
-    AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA,
+    AlphaBetaFilter, DEFAULT_ALPHA, DEFAULT_BETA, FilterEstimate,
 };
 
 /// The unit of spacetime committed to the network

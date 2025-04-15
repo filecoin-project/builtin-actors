@@ -1,6 +1,6 @@
 use fil_actor_miner::{
-    max_prove_commit_duration, pre_commit_deposit_for_power, qa_power_max, DeadlineInfo, State,
-    VestSpec,
+    DeadlineInfo, State, VestSpec, max_prove_commit_duration, pre_commit_deposit_for_power,
+    qa_power_max,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;

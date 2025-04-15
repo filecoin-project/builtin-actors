@@ -3,18 +3,18 @@
 
 use anyhow::anyhow;
 use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::MethodNum;
 use fvm_shared::address::Address;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::error::ExitCode;
-use fvm_shared::MethodNum;
 
 use fil_actor_account::types::AuthenticateMessageParams;
-use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, Method, State};
+use fil_actor_account::{Actor as AccountActor, Method, State, testing::check_state_invariants};
+use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 
 #[test]
 fn construction() {
@@ -119,12 +119,13 @@ fn authenticate_message() {
         result: Ok(()),
     });
 
-    assert!(rt
-        .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone())
-        .unwrap()
-        .unwrap()
-        .deserialize::<bool>()
-        .unwrap());
+    assert!(
+        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone())
+            .unwrap()
+            .unwrap()
+            .deserialize::<bool>()
+            .unwrap()
+    );
 
     rt.verify();
 
@@ -151,12 +152,13 @@ fn authenticate_message() {
         plaintext: vec![],
         result: Ok(()),
     });
-    assert!(rt
-        .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params)
-        .unwrap()
-        .unwrap()
-        .deserialize::<bool>()
-        .unwrap());
+    assert!(
+        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params)
+            .unwrap()
+            .unwrap()
+            .deserialize::<bool>()
+            .unwrap()
+    );
 }
 
 #[test]

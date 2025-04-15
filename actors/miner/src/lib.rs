@@ -7,13 +7,13 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::Neg;
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::Cid;
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{from_slice, BytesDe, CborStore, RawBytes};
+use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes, from_slice};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
@@ -29,7 +29,7 @@ use fvm_shared::sector::{
     SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND, MethodNum};
 use itertools::Itertools;
 use log::{error, info, warn};
 use multihash_codetable::Code::Blake2b256;
@@ -50,11 +50,11 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, extract_send_result, util, ActorContext,
-    ActorDowncast, ActorError, AsActorError, BatchReturn, BatchReturnGen, DealWeight,
-    BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    ActorContext, ActorDowncast, ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR, BatchReturn,
+    BatchReturnGen, DealWeight, EPOCHS_IN_DAY, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR, actor_dispatch, actor_error, deserialize_block,
+    extract_send_result, util,
 };
 pub use monies::*;
 pub use partition_state::*;
@@ -68,7 +68,7 @@ pub use types::*;
 pub use vesting_state::*;
 
 use crate::ext::market::NO_ALLOCATION_ID;
-use crate::notifications::{notify_data_consumers, ActivationNotifications};
+use crate::notifications::{ActivationNotifications, notify_data_consumers};
 
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
@@ -2113,11 +2113,11 @@ impl Actor {
 
         let (needs_cron, fee_to_burn) = rt.transaction(|state: &mut State, rt| {
             let current_balance = rt.current_balance();
-            let available_balance = state
-                .get_unlocked_balance(&current_balance)
-                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    "failed to calculate unlocked balance"
-                })?;
+            let available_balance =
+                state.get_unlocked_balance(&current_balance).with_context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    || "failed to calculate unlocked balance",
+                )?;
             if available_balance < total_pledge {
                 return Err(actor_error!(
                     insufficient_funds,
@@ -2149,11 +2149,10 @@ impl Actor {
                 params.proving_deadline,
             )?;
 
-            state
-                .add_initial_pledge(&total_pledge)
-                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    "failed to add initial pledgs"
-                })?;
+            state.add_initial_pledge(&total_pledge).with_context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                || "failed to add initial pledgs",
+            )?;
 
             let fee_to_burn = repay_debts_or_abort(rt, state)?;
 
@@ -2972,10 +2971,10 @@ impl Actor {
             sectors.delete_sectors(&dead).map_err(|e| {
                 e.wrap("failed to delete sectors removed during partition compaction")
             })?;
-            state.sectors =
-                sectors.amt.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    "failed to save sectors after compaction"
-                })?;
+            state.sectors = sectors.amt.flush().with_context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                || "failed to save sectors after compaction",
+            )?;
 
             deadlines.update_deadline(policy, store, params_deadline, &deadline).map_err(|e| {
                 e.downcast_default(
@@ -3674,17 +3673,38 @@ fn validate_extension_declarations(
             for (i, claim) in claims.iter().enumerate() {
                 // check provider and sector matches
                 if claim.provider != rt.message().receiver().id().unwrap() {
-                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={}, expected claim provider to be {} but found {} ", sc.sector_number, all_claim_ids[i], rt.message().receiver().id().unwrap(), claim.provider));
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "failed to validate declaration sector={}, claim={}, expected claim provider to be {} but found {} ",
+                        sc.sector_number,
+                        all_claim_ids[i],
+                        rt.message().receiver().id().unwrap(),
+                        claim.provider
+                    ));
                 }
                 if claim.sector != sc.sector_number {
-                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={} expected claim sector number to be {} but found {} ", sc.sector_number, all_claim_ids[i], sc.sector_number, claim.sector));
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "failed to validate declaration sector={}, claim={} expected claim sector number to be {} but found {} ",
+                        sc.sector_number,
+                        all_claim_ids[i],
+                        sc.sector_number,
+                        claim.sector
+                    ));
                 }
 
                 // If we are not dropping check expiration does not exceed term max
                 let mut maintain_delta: u64 = 0;
                 if i < first_drop {
                     if decl.new_expiration > claim.term_start + claim.term_max {
-                        return Err(actor_error!(forbidden, "failed to validate declaration sector={}, claim={} claim only allows extension to {} but declared new expiration is {}", sc.sector_number, sc.maintain_claims[i], claim.term_start + claim.term_max, decl.new_expiration));
+                        return Err(actor_error!(
+                            forbidden,
+                            "failed to validate declaration sector={}, claim={} claim only allows extension to {} but declared new expiration is {}",
+                            sc.sector_number,
+                            sc.maintain_claims[i],
+                            claim.term_start + claim.term_max,
+                            decl.new_expiration
+                        ));
                     }
                     maintain_delta = claim.size.0
                 }
@@ -3861,17 +3881,23 @@ fn extend_simple_qap_sector(
         {
             None => {
                 return Err(actor_error!(
-                        illegal_argument,
-                        "claim missing from declaration for sector {} with non-zero verified deal weight {}",
-                        sector.sector_number,
-                        &sector.verified_deal_weight
-                    ));
+                    illegal_argument,
+                    "claim missing from declaration for sector {} with non-zero verified deal weight {}",
+                    sector.sector_number,
+                    &sector.verified_deal_weight
+                ));
             }
             Some(space) => space,
         };
         // claims must be completely accounted for
         if BigInt::from(*expected_verified_deal_space as i64) != old_verified_deal_space {
-            return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, old_verified_deal_space, sector.sector_number));
+            return Err(actor_error!(
+                illegal_argument,
+                "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}",
+                expected_verified_deal_space,
+                old_verified_deal_space,
+                sector.sector_number
+            ));
         }
         // claim dropping is restricted to extensions at the end of a sector's life
 
@@ -4631,13 +4657,13 @@ fn validate_expiration(
     })?;
     if expiration - activation > max_lifetime {
         return Err(actor_error!(
-        illegal_argument,
-        "invalid expiration {}, total sector lifetime ({}) cannot exceed {} after activation {}",
-        expiration,
-        expiration - activation,
-        max_lifetime,
-        activation
-    ));
+            illegal_argument,
+            "invalid expiration {}, total sector lifetime ({}) cannot exceed {} after activation {}",
+            expiration,
+            expiration - activation,
+            max_lifetime,
+            activation
+        ));
     }
 
     Ok(())

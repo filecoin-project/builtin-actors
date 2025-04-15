@@ -1,4 +1,4 @@
-use fil_actors_runtime::{MessageAccumulator, FIRST_NON_SINGLETON_ADDR};
+use fil_actors_runtime::{FIRST_NON_SINGLETON_ADDR, MessageAccumulator};
 use fvm_shared::address::{Address, Protocol};
 
 use crate::State;

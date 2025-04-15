@@ -1,11 +1,11 @@
 use fil_actor_miner::{
-    daily_fee_for_sectors, power_for_sectors, testing::PartitionStateSummary, BitFieldQueue,
-    ExpirationQueue, Partition, PowerPair, QuantSpec, SectorOnChainInfo,
+    BitFieldQueue, ExpirationQueue, Partition, PowerPair, QuantSpec, SectorOnChainInfo,
+    daily_fee_for_sectors, power_for_sectors, testing::PartitionStateSummary,
 };
+use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
@@ -842,9 +842,10 @@ mod miner_actor_test_partitions {
         let err = res.expect_err("expected error, but call succeeded");
         // XXX: This is not a good way to check for specific errors.
         //      See: https://github.com/filecoin-project/builtin-actors/issues/338
-        assert!(err
-            .to_string()
-            .contains("cannot pop expired sectors from a partition with unproven sectors"));
+        assert!(
+            err.to_string()
+                .contains("cannot pop expired sectors from a partition with unproven sectors")
+        );
     }
 
     #[test]

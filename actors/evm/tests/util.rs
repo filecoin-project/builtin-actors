@@ -5,13 +5,13 @@ use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{
-    test_utils::{self, *},
     EAM_ACTOR_ID, INIT_ACTOR_ADDR,
+    test_utils::{self, *},
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, BytesSer};
-use fvm_shared::{address::Address, IDENTITY_HASH, IPLD_RAW};
+use fvm_shared::{IDENTITY_HASH, IPLD_RAW, address::Address};
 use lazy_static::lazy_static;
 
 use std::fmt::Debug;
@@ -50,13 +50,14 @@ pub fn init_construct_and_verify<F: FnOnce(&MockRuntime)>(
         initcode: initcode.into(),
     };
 
-    assert!(rt
-        .call::<evm::EvmContractActor>(
+    assert!(
+        rt.call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap()
-        .is_none());
+        .is_none()
+    );
     let evm_st: State = rt.state().unwrap();
     let evm_code = rt.store.get(&evm_st.bytecode).unwrap().unwrap();
     log::trace!("bytecode constructed: {}", hex::encode(evm_code));

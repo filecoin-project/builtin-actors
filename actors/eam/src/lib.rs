@@ -9,12 +9,12 @@ use ext::{
     init::{Exec4Params, Exec4Return},
 };
 use fil_actors_runtime::{
-    actor_dispatch_unrestricted, actor_error, deserialize_block, extract_send_result, ActorError,
-    AsActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    ActorError, AsActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch_unrestricted, actor_error, deserialize_block, extract_send_result,
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::{error::ExitCode, sys::SendFlags, ActorID, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, error::ExitCode, sys::SendFlags};
 use serde::{Deserialize, Serialize};
 
 pub mod ext;
@@ -22,7 +22,7 @@ pub mod ext;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 
-use fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes};
+use fvm_ipld_encoding::{RawBytes, strict_bytes, tuple::*};
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::crypto::hash::SupportedHashes;
 use num_derive::FromPrimitive;
@@ -310,7 +310,7 @@ mod test {
 
     use crate::compute_address_create2;
 
-    use super::{compute_address_create, create_actor, EthAddress};
+    use super::{EthAddress, compute_address_create, create_actor};
 
     #[test]
     fn test_create_actor_rejects() {

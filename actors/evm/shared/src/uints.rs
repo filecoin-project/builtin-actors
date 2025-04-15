@@ -57,11 +57,7 @@ impl U256 {
     /// turns a i256 value to negative
     #[inline(always)]
     pub fn i256_neg(&self) -> U256 {
-        if self.is_zero() {
-            U256::ZERO
-        } else {
-            !*self + U256::ONE
-        }
+        if self.is_zero() { U256::ZERO } else { !*self + U256::ONE }
     }
 
     #[inline(always)]
@@ -99,11 +95,7 @@ impl U256 {
         let d = first / second;
 
         // Flip the sign back if necessary.
-        if d.is_zero() || first_neg == second_neg {
-            d
-        } else {
-            d.i256_neg()
-        }
+        if d.is_zero() || first_neg == second_neg { d } else { d.i256_neg() }
     }
 
     #[inline]
@@ -129,11 +121,7 @@ impl U256 {
         let r = first % second;
 
         // Restore the sign.
-        if negative && !r.is_zero() {
-            r.i256_neg()
-        } else {
-            r
-        }
+        if negative && !r.is_zero() { r.i256_neg() } else { r }
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
@@ -142,11 +130,7 @@ impl U256 {
 
     /// Returns the low 64 bits, saturating the value to u64 max if it is larger
     pub fn to_u64_saturating(&self) -> u64 {
-        if self.bits() > 64 {
-            u64::MAX
-        } else {
-            self.0[0]
-        }
+        if self.bits() > 64 { u64::MAX } else { self.0[0] }
     }
 }
 

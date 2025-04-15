@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 //! TODO: remove tests for legacy behaviour: https://github.com/filecoin-project/builtin-actors/issues/1389
 
+use fvm_shared::METHOD_SEND;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::METHOD_SEND;
 
 use fil_actor_market::EX_DEAL_EXPIRED;
-use fil_actor_market::{deal_cid, State};
+use fil_actor_market::{State, deal_cid};
+use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use harness::*;
 
 mod harness;

@@ -1,9 +1,9 @@
 use fil_actor_market::{
     BatchActivateDealsParams, BatchActivateDealsResult, DealMetaArray, Method, SectorDeals, State,
 };
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::test_utils::{expect_abort, ACCOUNT_ACTOR_CODE_ID};
 use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, expect_abort};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;

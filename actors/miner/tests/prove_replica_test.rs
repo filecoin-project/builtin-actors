@@ -3,16 +3,16 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::{clock::ChainEpoch, ActorID};
+use fvm_shared::{ActorID, clock::ChainEpoch};
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
-    daily_proof_fee, DataActivationNotification, PieceChange, SectorChanges, State,
+    DataActivationNotification, PieceChange, SectorChanges, State, daily_proof_fee,
 };
 use fil_actor_miner::{ProveReplicaUpdates3Return, SectorOnChainInfo};
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::test_utils::{expect_abort_contains_message, MockRuntime};
-use fil_actors_runtime::{runtime::Runtime, BatchReturn, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR};
+use fil_actors_runtime::test_utils::{MockRuntime, expect_abort_contains_message};
+use fil_actors_runtime::{BatchReturn, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, runtime::Runtime};
 use num_traits::Zero;
 use util::*;
 

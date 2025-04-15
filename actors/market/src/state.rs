@@ -17,8 +17,8 @@ use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use num_traits::Zero;
 
 use fil_actors_runtime::{
-    actor_error, ActorContext, ActorError, Array, AsActorError, Config, Map2, Set, SetMultimap,
-    SetMultimapConfig, DEFAULT_HAMT_CONFIG,
+    ActorContext, ActorError, Array, AsActorError, Config, DEFAULT_HAMT_CONFIG, Map2, Set,
+    SetMultimap, SetMultimapConfig, actor_error,
 };
 
 use crate::balance_table::BalanceTable;

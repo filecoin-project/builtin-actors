@@ -1,7 +1,7 @@
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
-    max_prove_commit_duration, pre_commit_deposit_for_power, qa_power_max,
-    PreCommitSectorBatchParams, PreCommitSectorParams, State,
+    PreCommitSectorBatchParams, PreCommitSectorParams, State, max_prove_commit_duration,
+    pre_commit_deposit_for_power, qa_power_max,
 };
 use fil_actor_power::Method as PowerMethod;
 use fil_actors_runtime::test_utils::*;
@@ -138,8 +138,8 @@ mod miner_actor_precommit_batch {
         SectorDeals, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
     };
     use fil_actor_miner::{
-        new_deadline_info_from_offset_and_epoch, Actor, CompactCommD, Method,
-        PreCommitSectorBatchParams2,
+        Actor, CompactCommD, Method, PreCommitSectorBatchParams2,
+        new_deadline_info_from_offset_and_epoch,
     };
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
     use fvm_ipld_encoding::ipld_block::IpldBlock;

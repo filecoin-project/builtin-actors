@@ -1,8 +1,8 @@
 use crate::uints::U256;
 use fil_actors_runtime::EAM_ACTOR_ID;
 use fvm_ipld_encoding::{serde, strict_bytes};
-use fvm_shared::address::Address;
 use fvm_shared::ActorID;
+use fvm_shared::address::Address;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Eq, Clone, Copy)]

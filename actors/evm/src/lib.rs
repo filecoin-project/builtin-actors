@@ -1,7 +1,7 @@
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_runtime::{
-    actor_dispatch_unrestricted, actor_error, ActorError, AsActorError, WithCodec, EAM_ACTOR_ADDR,
-    INIT_ACTOR_ADDR,
+    ActorError, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR, WithCodec,
+    actor_dispatch_unrestricted, actor_error,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -11,7 +11,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
 use crate::interpreter::Outcome;
-use crate::interpreter::{execute, Bytecode, ExecutionState, System};
+use crate::interpreter::{Bytecode, ExecutionState, System, execute};
 use crate::reader::ValueReader;
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
@@ -92,11 +92,7 @@ fn load_bytecode(bs: &impl Blockstore, cid: &Cid) -> Result<Option<Bytecode>, Ac
         .get(cid)
         .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
         .expect("bytecode not in state tree");
-    if bytecode.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(Bytecode::new(bytecode)))
-    }
+    if bytecode.is_empty() { Ok(None) } else { Ok(Some(Bytecode::new(bytecode))) }
 }
 
 fn initialize_evm_contract(
@@ -307,11 +303,7 @@ impl EvmContractActor {
 
         // return value must be either keccak("") or keccak(bytecode)
         let state: State = rt.state()?;
-        if is_dead(rt, &state) {
-            Ok(BytecodeHash::EMPTY)
-        } else {
-            Ok(state.bytecode_hash)
-        }
+        if is_dead(rt, &state) { Ok(BytecodeHash::EMPTY) } else { Ok(state.bytecode_hash) }
     }
 
     pub fn storage_at<RT>(

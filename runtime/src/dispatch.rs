@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::ActorError;
 
@@ -176,11 +176,7 @@ where
 
 /// Convert the passed value into an IPLD Block, or None if it's `()`.
 fn maybe_into_block<T: Serialize>(v: T, codec: u64) -> Result<Option<IpldBlock>, ActorError> {
-    if cast!(&v, &()).is_ok() {
-        Ok(None)
-    } else {
-        Ok(Some(IpldBlock::serialize(codec, &v)?))
-    }
+    if cast!(&v, &()).is_ok() { Ok(None) } else { Ok(Some(IpldBlock::serialize(codec, &v)?)) }
 }
 
 impl<F, RT> Dispatch<RT> for Dispatcher<F, ()>
@@ -323,8 +319,8 @@ where
 #[test]
 fn test_dispatch() {
     use crate::ActorError;
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_ipld_encoding::DAG_CBOR;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use serde::{Deserialize, Serialize};
 
     #[derive(Clone, Serialize, Deserialize)]

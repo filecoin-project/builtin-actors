@@ -1,23 +1,23 @@
 use fil_actor_miner::{
-    pledge_penalty_for_continued_fault, pledge_penalty_for_termination, power_for_sector,
-    qa_power_for_sector, Actor, CronEventPayload, DeferredCronEventParams, ExpirationExtension2,
-    ExtendSectorExpiration2Params, MaxTerminationFeeParams, MaxTerminationFeeReturn, Method,
-    SectorOnChainInfo, State, TerminateSectorsParams, TerminationDeclaration,
-    CRON_EVENT_PROCESS_EARLY_TERMINATIONS, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM,
-    TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM, TERM_FEE_PLEDGE_MULTIPLE_DENOM,
-    TERM_FEE_PLEDGE_MULTIPLE_NUM,
+    Actor, CRON_EVENT_PROCESS_EARLY_TERMINATIONS, CronEventPayload, DeferredCronEventParams,
+    ExpirationExtension2, ExtendSectorExpiration2Params, MaxTerminationFeeParams,
+    MaxTerminationFeeReturn, Method, SectorOnChainInfo, State,
+    TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM,
+    TERM_FEE_PLEDGE_MULTIPLE_DENOM, TERM_FEE_PLEDGE_MULTIPLE_NUM, TerminateSectorsParams,
+    TerminationDeclaration, pledge_penalty_for_continued_fault, pledge_penalty_for_termination,
+    power_for_sector, qa_power_for_sector,
 };
 use fil_actors_runtime::{
+    BURNT_FUNDS_ACTOR_ADDR, BatchReturn, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
     reward::FilterEstimate,
     runtime::Runtime,
-    test_utils::{expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID},
-    BatchReturn, BURNT_FUNDS_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    test_utils::{ACCOUNT_ACTOR_CODE_ID, MockRuntime, expect_abort_contains_message},
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{
-    bigint::BigInt, econ::TokenAmount, error::ExitCode, sector::StoragePower, MethodNum,
-    METHOD_SEND,
+    METHOD_SEND, MethodNum, bigint::BigInt, econ::TokenAmount, error::ExitCode,
+    sector::StoragePower,
 };
 use std::collections::HashMap;
 
@@ -25,12 +25,12 @@ mod util;
 
 use fil_actor_market::{ActivatedDeal, NO_ALLOCATION_ID};
 use fil_actor_miner::ext::market::{
-    OnMinerSectorsTerminateParams, ON_MINER_SECTORS_TERMINATE_METHOD,
+    ON_MINER_SECTORS_TERMINATE_METHOD, OnMinerSectorsTerminateParams,
 };
 use fil_actor_miner::ext::power::UPDATE_PLEDGE_TOTAL_METHOD;
 use fil_actors_runtime::test_utils::POWER_ACTOR_CODE_ID;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use num_traits::{Signed, Zero};
@@ -338,8 +338,8 @@ fn system_can_terminate_if_market_cron_fails() {
     rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
     let payload = CronEventPayload { event_type: CRON_EVENT_PROCESS_EARLY_TERMINATIONS };
 
-    assert!(rt
-        .call::<Actor>(
+    assert!(
+        rt.call::<Actor>(
             Method::OnDeferredCronEvent as u64,
             IpldBlock::serialize_cbor(&DeferredCronEventParams {
                 event_payload: Vec::from(RawBytes::serialize(payload).unwrap().bytes()),
@@ -349,7 +349,8 @@ fn system_can_terminate_if_market_cron_fails() {
             .unwrap(),
         )
         .unwrap()
-        .is_none());
+        .is_none()
+    );
 
     rt.verify();
 

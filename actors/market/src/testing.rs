@@ -10,11 +10,11 @@ use fvm_ipld_encoding::DAG_CBOR;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{
+    ActorID,
     address::{Address, Protocol},
     clock::{ChainEpoch, EPOCH_UNDEFINED},
     deal::DealID,
     econ::TokenAmount,
-    ActorID,
 };
 use integer_encoding::VarInt;
 use multihash_codetable::{Code, MultihashDigest};
@@ -23,14 +23,14 @@ use num_traits::Zero;
 use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, ActorError, AsActorError, MessageAccumulator,
+    ActorError, AsActorError, MessageAccumulator, make_map_with_root_and_bitwidth,
 };
 
 use crate::ext::verifreg::AllocationID;
 use crate::{
-    balance_table::BalanceTable, DealArray, DealMetaArray, DealOpsByEpoch, DealProposal,
-    PendingProposalsSet, ProviderSectorsMap, SectorDealsMap, State, DEAL_OPS_BY_EPOCH_CONFIG,
-    PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, SECTOR_DEALS_CONFIG,
+    DEAL_OPS_BY_EPOCH_CONFIG, DealArray, DealMetaArray, DealOpsByEpoch, DealProposal,
+    PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, PendingProposalsSet, ProviderSectorsMap,
+    SECTOR_DEALS_CONFIG, SectorDealsMap, State, balance_table::BalanceTable,
 };
 
 #[derive(Clone)]

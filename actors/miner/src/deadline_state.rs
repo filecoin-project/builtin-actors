@@ -8,8 +8,8 @@ use anyhow::anyhow;
 use cid::Cid;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
+use fvm_ipld_encoding::tuple::*;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -18,7 +18,7 @@ use multihash_codetable::Code;
 use num_traits::{Signed, Zero};
 
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array, AsActorError};
+use fil_actors_runtime::{ActorDowncast, ActorError, Array, AsActorError, actor_error};
 
 use crate::SECTORS_AMT_BITWIDTH;
 

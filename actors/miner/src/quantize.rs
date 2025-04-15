@@ -44,10 +44,6 @@ impl QuantSpec {
     pub fn quantize_down(&self, epoch: ChainEpoch) -> ChainEpoch {
         let next = self.quantize_up(epoch);
         // QuantizeDown == QuantizeUp iff epoch is a fixed point of QuantizeUp
-        if epoch == next {
-            next
-        } else {
-            next - self.unit
-        }
+        if epoch == next { next } else { next - self.unit }
     }
 }

@@ -2,16 +2,16 @@ use std::collections::HashMap;
 
 use frc46_token::token::state::decode_actor_id;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::ActorID;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::ActorID;
 use num_traits::Signed;
 
 use fil_actors_runtime::runtime::policy_constants::{
     MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION, MAXIMUM_VERIFIED_ALLOCATION_TERM,
     MINIMUM_VERIFIED_ALLOCATION_SIZE, MINIMUM_VERIFIED_ALLOCATION_TERM,
 };
-use fil_actors_runtime::{Map2, MessageAccumulator, DEFAULT_HAMT_CONFIG};
+use fil_actors_runtime::{DEFAULT_HAMT_CONFIG, Map2, MessageAccumulator};
 
 use crate::{Allocation, AllocationID, Claim, ClaimID, DataCap, State};
 

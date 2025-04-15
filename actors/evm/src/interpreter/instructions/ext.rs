@@ -1,12 +1,12 @@
+use crate::BytecodeHash;
 use crate::interpreter::instructions::memory::copy_to_memory;
 use crate::interpreter::precompiles::Precompiles;
-use crate::BytecodeHash;
 use cid::Cid;
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
-use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::ActorError;
-use fil_actors_runtime::{deserialize_block, AsActorError};
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::{AsActorError, deserialize_block};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
@@ -153,8 +153,8 @@ pub fn get_evm_bytecode(
 
 #[cfg(test)]
 mod tests {
-    use crate::evm_unit_test;
     use crate::BytecodeHash;
+    use crate::evm_unit_test;
     use cid::Cid;
     use fil_actors_evm_shared::uints::U256;
     use fil_actors_runtime::runtime::Primitives;

@@ -10,15 +10,15 @@ use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
 
 use fil_actor_market::{
-    ActivatedDeal, Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams,
-    NO_ALLOCATION_ID,
-};
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, make_piece_cid, ACCOUNT_ACTOR_CODE_ID,
-    MINER_ACTOR_CODE_ID,
+    ActivatedDeal, Actor as MarketActor, Method, NO_ALLOCATION_ID, SectorDeals,
+    VerifyDealsForActivationParams,
 };
 use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::test_utils::{
+    ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, expect_abort, expect_abort_contains_message,
+    make_piece_cid,
+};
 use harness::*;
 
 mod harness;

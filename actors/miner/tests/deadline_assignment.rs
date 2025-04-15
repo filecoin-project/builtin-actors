@@ -1,6 +1,6 @@
-use fil_actor_miner::assign_deadlines;
 use fil_actor_miner::Deadline;
 use fil_actor_miner::SectorOnChainInfo;
+use fil_actor_miner::assign_deadlines;
 use fil_actors_runtime::runtime::Policy;
 
 #[test]

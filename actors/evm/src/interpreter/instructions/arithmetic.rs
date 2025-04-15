@@ -19,11 +19,7 @@ pub fn sub(a: U256, b: U256) -> U256 {
 pub fn div(a: U256, b: U256) -> U256 {
     // TODO shortcut optimizations from go's lib (our doesn't)
     // https://github.com/holiman/uint256/blob/6f8ccba90ce6cba9727ad5aa26bb925a25b50d29/uint256.go#L544
-    if !b.is_zero() {
-        a / b
-    } else {
-        b
-    }
+    if !b.is_zero() { a / b } else { b }
 }
 
 #[inline]
@@ -33,11 +29,7 @@ pub fn sdiv(a: U256, b: U256) -> U256 {
 
 #[inline]
 pub fn modulo(a: U256, b: U256) -> U256 {
-    if !b.is_zero() {
-        a % b
-    } else {
-        b
-    }
+    if !b.is_zero() { a % b } else { b }
 }
 
 #[inline]
@@ -75,11 +67,7 @@ pub fn signextend(a: U256, b: U256) -> U256 {
     if a < 32 {
         let bit_index = 8 * a.low_u32() + 7;
         let mask = U256::MAX >> (U256::BITS - bit_index);
-        if b.bit(bit_index as usize) {
-            b | !mask
-        } else {
-            b & mask
-        }
+        if b.bit(bit_index as usize) { b | !mask } else { b & mask }
     } else {
         b
     }

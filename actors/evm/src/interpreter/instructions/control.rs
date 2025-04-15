@@ -2,9 +2,9 @@ use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{ActorError, AsActorError};
 
 use crate::{
-    interpreter::{memory::Memory, output::Outcome, Output},
     EVM_CONTRACT_BAD_JUMPDEST, EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS,
     EVM_CONTRACT_INVALID_INSTRUCTION,
+    interpreter::{Output, memory::Memory, output::Outcome},
 };
 
 use {

@@ -1,4 +1,4 @@
-use fvm_ipld_encoding::{to_vec, RawBytes};
+use fvm_ipld_encoding::{RawBytes, to_vec};
 use serde::{de, ser};
 
 use crate::ActorError;

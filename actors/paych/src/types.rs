@@ -3,12 +3,12 @@
 
 use fil_actors_runtime::network::EPOCHS_IN_HOUR;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{strict_bytes, to_vec, Error, RawBytes};
+use fvm_ipld_encoding::{Error, RawBytes, strict_bytes, to_vec};
+use fvm_shared::MethodNum;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::MethodNum;
 
 use super::Merge;
 

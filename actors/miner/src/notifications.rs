@@ -1,10 +1,10 @@
 use crate::{
-    PieceActivationManifest, PieceChange, SectorChanges, SectorContentChangedParams,
-    SectorContentChangedReturn, SECTOR_CONTENT_CHANGED,
+    PieceActivationManifest, PieceChange, SECTOR_CONTENT_CHANGED, SectorChanges,
+    SectorContentChangedParams, SectorContentChangedReturn,
 };
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{
-    actor_error, ActorError, AsActorError, SendError, STORAGE_MARKET_ACTOR_ADDR,
+    ActorError, AsActorError, STORAGE_MARKET_ACTOR_ADDR, SendError, actor_error,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 

@@ -2,14 +2,14 @@ mod asm;
 
 use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{
-    test_utils::{new_bls_addr, MockRuntime},
     EAM_ACTOR_ID,
+    test_utils::{MockRuntime, new_bls_addr},
 };
-use fvm_shared::{address::Address as FILAddress, econ::TokenAmount, error::ExitCode, METHOD_SEND};
+use fvm_shared::{METHOD_SEND, address::Address as FILAddress, econ::TokenAmount, error::ExitCode};
 
 mod util;
 
-use util::{id_to_vec, NativePrecompile, PrecompileExit, PrecompileTest};
+use util::{NativePrecompile, PrecompileExit, PrecompileTest, id_to_vec};
 
 #[allow(dead_code)]
 pub fn magic_precompile_contract() -> Vec<u8> {

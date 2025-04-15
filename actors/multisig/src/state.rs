@@ -12,10 +12,10 @@ use fvm_shared::econ::TokenAmount;
 use indexmap::IndexMap;
 use num_traits::Zero;
 
-use fil_actors_runtime::{actor_error, ActorError, Config, Map2, DEFAULT_HAMT_CONFIG};
+use fil_actors_runtime::{ActorError, Config, DEFAULT_HAMT_CONFIG, Map2, actor_error};
 
-use super::types::Transaction;
 use super::TxnID;
+use super::types::Transaction;
 
 pub type PendingTxnMap<BS> = Map2<BS, TxnID, Transaction>;
 pub const PENDING_TXN_CONFIG: Config = DEFAULT_HAMT_CONFIG;

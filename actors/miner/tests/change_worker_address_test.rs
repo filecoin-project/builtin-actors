@@ -3,8 +3,8 @@ use fil_actor_miner::{Actor, ChangeWorkerAddressParams, Method};
 use fil_actors_runtime::{
     runtime::RuntimePolicy,
     test_utils::{
-        expect_abort, expect_abort_contains_message, new_bls_addr, MockRuntime,
-        ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
+        ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, MockRuntime, expect_abort,
+        expect_abort_contains_message, new_bls_addr,
     },
 };
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};

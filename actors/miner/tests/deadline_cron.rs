@@ -1,11 +1,11 @@
-use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
+use fil_actor_miner::testing::{DeadlineStateSummary, check_deadline_state_invariants};
 use fil_actor_miner::{
-    daily_fee_for_sectors, pledge_penalty_for_continued_fault, power_for_sectors, Deadline,
-    PowerPair, QuantSpec, SectorOnChainInfo, REWARD_VESTING_SPEC,
+    Deadline, PowerPair, QuantSpec, REWARD_VESTING_SPEC, SectorOnChainInfo, daily_fee_for_sectors,
+    pledge_penalty_for_continued_fault, power_for_sectors,
 };
 use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::MockRuntime;
-use fil_actors_runtime::{MessageAccumulator, EPOCHS_IN_DAY, EPOCHS_IN_HOUR};
+use fil_actors_runtime::{EPOCHS_IN_DAY, EPOCHS_IN_HOUR, MessageAccumulator};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;

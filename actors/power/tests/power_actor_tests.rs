@@ -1,27 +1,27 @@
-use fil_actor_power::ext::init::{ExecParams, EXEC_METHOD};
+use fil_actor_power::ext::init::{EXEC_METHOD, ExecParams};
 use fil_actor_power::ext::miner::MinerConstructorParams;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
-    MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
+    ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message,
 };
-use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{INIT_ACTOR_ADDR, runtime::Policy};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
+use fvm_shared::MethodNum;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
-use fvm_shared::MethodNum;
 use num_traits::Zero;
 use std::ops::Neg;
 
 use fil_actor_power::{
-    consensus_miner_min_power, Actor as PowerActor, Actor, CreateMinerParams, CreateMinerReturn,
+    Actor as PowerActor, Actor, CONSENSUS_MINER_MIN_MINERS, CreateMinerParams, CreateMinerReturn,
     EnrollCronEventParams, Method, MinerPowerParams, MinerPowerReturn, MinerRawPowerParams,
     MinerRawPowerReturn, NetworkRawPowerReturn, State, UpdateClaimedPowerParams,
-    CONSENSUS_MINER_MIN_MINERS,
+    consensus_miner_min_power,
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -661,7 +661,7 @@ mod cron_tests {
         miner::{DeferredCronEventParams, ON_DEFERRED_CRON_EVENT_METHOD},
         reward::UPDATE_NETWORK_KPI,
     };
-    use fil_actors_runtime::{test_utils::CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR};
+    use fil_actors_runtime::{CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, test_utils::CRON_ACTOR_CODE_ID};
     use fvm_shared::bigint::BigInt;
 
     const OWNER: Address = Address::new_id(103);

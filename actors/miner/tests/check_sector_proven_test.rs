@@ -1,4 +1,4 @@
-use fil_actors_runtime::test_utils::{expect_abort, MockRuntime};
+use fil_actors_runtime::test_utils::{MockRuntime, expect_abort};
 use fvm_shared::error::ExitCode;
 
 mod util;

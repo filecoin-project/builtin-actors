@@ -1,5 +1,5 @@
 use fil_actors_runtime::FIRST_NON_SINGLETON_ADDR;
-use fvm_shared::{address::Address, ActorID};
+use fvm_shared::{ActorID, address::Address};
 
 // TODO: Deduplicate these constants which currently exist both here and in the integration_tests crate.
 // https://github.com/filecoin-project/builtin-actors/issues/1348

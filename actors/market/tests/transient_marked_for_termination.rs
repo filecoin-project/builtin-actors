@@ -7,12 +7,12 @@ mod harness;
 use std::collections::BTreeMap;
 
 use fil_actor_market::{
-    Actor as MarketActor, DealQueryParams, DealSettlementSummary, Method, State, EX_DEAL_EXPIRED,
+    Actor as MarketActor, DealQueryParams, DealSettlementSummary, EX_DEAL_EXPIRED, Method, State,
 };
 use fil_actors_runtime::{
-    runtime::Runtime,
-    test_utils::{expect_abort_contains_message, MockRuntime},
     ActorError, BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY,
+    runtime::Runtime,
+    test_utils::{MockRuntime, expect_abort_contains_message},
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{clock::ChainEpoch, error::ExitCode};
