@@ -3,16 +3,16 @@
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Protocol;
-use fvm_shared::crypto::signature::SignatureType::{Secp256k1, BLS};
+use fvm_shared::crypto::signature::SignatureType::{BLS, Secp256k1};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
+use fvm_shared::{METHOD_CONSTRUCTOR, MethodNum};
 use num_derive::FromPrimitive;
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_dispatch, ActorDowncast, FIRST_EXPORTED_METHOD_NUMBER};
-use fil_actors_runtime::{actor_error, ActorError};
+use fil_actors_runtime::{ActorDowncast, FIRST_EXPORTED_METHOD_NUMBER, actor_dispatch};
+use fil_actors_runtime::{ActorError, actor_error};
 use types::{AuthenticateMessageReturn, ConstructorParams, PubkeyAddressReturn};
 
 use crate::types::AuthenticateMessageParams;

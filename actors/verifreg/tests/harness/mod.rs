@@ -3,12 +3,12 @@ use std::collections::HashMap;
 
 use cid::Cid;
 
-use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
-use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use frc46_token::receiver::{FRC46_TOKEN_TYPE, FRC46TokenReceived};
 use frc46_token::token::TOKEN_PRECISION;
+use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
@@ -20,25 +20,25 @@ use fvm_shared::sys::SendFlags;
 use fvm_shared::{ActorID, MethodNum};
 use num_traits::{ToPrimitive, Zero};
 
-use fil_actor_verifreg::state::{DataCapMap, DATACAP_MAP_CONFIG};
+use fil_actor_verifreg::state::{DATACAP_MAP_CONFIG, DataCapMap};
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
-    ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
+    Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
     AllocationClaim, AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse,
     Claim, ClaimAllocationsParams, ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap,
     ExtendClaimTermsParams, ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
     RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RemoveExpiredClaimsParams,
-    RemoveExpiredClaimsReturn, SectorAllocationClaims, State,
+    RemoveExpiredClaimsReturn, SectorAllocationClaims, State, ext,
 };
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::policy_constants::{
     MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_TERM,
 };
-use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    ActorError, AsActorError, BatchReturn, EventBuilder, DATACAP_TOKEN_ACTOR_ADDR,
+    ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, EventBuilder,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
@@ -268,9 +268,11 @@ impl Harness {
         let mut st: State = rt.get_state();
         let mut allocs = st.load_allocs(rt.store()).unwrap();
         let alloc_id = st.next_allocation_id;
-        assert!(allocs
-            .put_if_absent(alloc.client, alloc_id, alloc.clone())
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
+        assert!(
+            allocs
+                .put_if_absent(alloc.client, alloc_id, alloc.clone())
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?
+        );
         st.next_allocation_id += 1;
         st.allocations = allocs.flush().expect("failed flushing allocation table");
         rt.replace_state(&st);
@@ -527,9 +529,11 @@ impl Harness {
         let mut st: State = rt.get_state();
         let mut claims = st.load_claims(rt.store()).unwrap();
         let id = st.next_allocation_id;
-        assert!(claims
-            .put_if_absent(claim.provider, id, claim.clone())
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
+        assert!(
+            claims
+                .put_if_absent(claim.provider, id, claim.clone())
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?
+        );
         st.next_allocation_id += 1;
         st.claims = claims.flush().expect("failed flushing allocation table");
         rt.replace_state(&st);

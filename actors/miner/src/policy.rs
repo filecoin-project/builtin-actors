@@ -16,7 +16,7 @@ use fvm_shared::version::NetworkVersion;
 use lazy_static::lazy_static;
 
 use super::types::SectorOnChainInfo;
-use super::{PowerPair, BASE_REWARD_FOR_DISPUTED_WINDOW_POST};
+use super::{BASE_REWARD_FOR_DISPUTED_WINDOW_POST, PowerPair};
 
 /// Precision used for making QA power calculations
 pub const SECTOR_QUALITY_PRECISION: i64 = 20;

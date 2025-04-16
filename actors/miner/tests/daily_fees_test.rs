@@ -5,20 +5,20 @@ use num_traits::Signed;
 
 use fil_actor_market::{ActivatedDeal, NO_ALLOCATION_ID};
 use fil_actor_miner::{
+    Actor, ApplyRewardParams, DeadlineInfo, Method, PoStPartition, SectorOnChainInfo,
     daily_fee_for_sectors, daily_proof_fee, expected_reward_for_power,
     pledge_penalty_for_continued_fault, pledge_penalty_for_termination, power_for_sectors,
-    qa_power_for_sector, Actor, ApplyRewardParams, DeadlineInfo, Method, PoStPartition,
-    SectorOnChainInfo,
+    qa_power_for_sector,
 };
 use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::test_utils::{MockRuntime, REWARD_ACTOR_CODE_ID};
 use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, REWARD_ACTOR_ADDR};
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::METHOD_SEND;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::METHOD_SEND;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
 
 use test_case::test_case;

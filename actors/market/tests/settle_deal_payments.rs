@@ -1,10 +1,10 @@
+use fvm_shared::METHOD_SEND;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_SEND;
 
 use fil_actor_market::{DealSettlementSummary, EX_DEAL_EXPIRED};
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
+use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use harness::*;
 
 mod harness;

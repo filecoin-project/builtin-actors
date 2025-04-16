@@ -9,8 +9,8 @@ use std::rc::Rc;
 use anyhow::anyhow;
 use anyhow::{Error, Result};
 use cid::Cid;
-use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::CborStore;
+use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_shared::address::Payload;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
@@ -18,7 +18,7 @@ use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{
-    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+    SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE, Signature,
 };
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
@@ -35,10 +35,10 @@ use multihash_derive::MultihashDigest;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{
-    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    EMPTY_ARR_CID,
+    ActorCode, DomainSeparationTag, EMPTY_ARR_CID, MessageInfo, Policy, Primitives, Runtime,
+    RuntimePolicy,
 };
-use crate::{actor_error, ActorError, SendError};
+use crate::{ActorError, SendError, actor_error};
 use rand::prelude::*;
 use serde::Serialize;
 use vm_api::MockPrimitives;

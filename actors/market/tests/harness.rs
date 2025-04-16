@@ -9,7 +9,7 @@ use fil_actors_runtime::reward::{FilterEstimate, ThisEpochRewardReturn};
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{to_vec, RawBytes};
+use fvm_ipld_encoding::{RawBytes, to_vec};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::crypto::signature::Signature;
@@ -18,40 +18,41 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{
-    address::Address, econ::TokenAmount, error::ExitCode, ActorID, METHOD_CONSTRUCTOR, METHOD_SEND,
+    ActorID, METHOD_CONSTRUCTOR, METHOD_SEND, address::Address, econ::TokenAmount, error::ExitCode,
 };
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 
-use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
+use fil_actor_market::ext::account::{AUTHENTICATE_MESSAGE_METHOD, AuthenticateMessageParams};
 use fil_actor_market::ext::miner::{
     PieceChange, SectorChanges, SectorContentChangedParams, SectorContentChangedReturn,
 };
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
-    deal_cid, deal_get_payment_remaining, BatchActivateDealsParams, BatchActivateDealsResult,
-    DealOpsByEpoch, PendingDealAllocationsMap, PendingProposalsSet, ProviderSectorsMap,
-    SectorDealsMap, SettleDealPaymentsParams, SettleDealPaymentsReturn, PENDING_ALLOCATIONS_CONFIG,
-    PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, SECTOR_DEALS_CONFIG,
+    Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
+    GetBalanceReturn, Label, MARKET_NOTIFY_DEAL_METHOD, MarketNotifyDealParams, Method,
+    NO_ALLOCATION_ID, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
+    PublishStorageDealsReturn, SectorDeals, State, VerifyDealsForActivationParams,
+    VerifyDealsForActivationReturn, WithdrawBalanceParams, WithdrawBalanceReturn, ext,
+    ext::miner::GetControlAddressesReturnParams, next_update_epoch,
+    testing::check_state_invariants,
 };
 use fil_actor_market::{
-    ext, ext::miner::GetControlAddressesReturnParams, next_update_epoch,
-    testing::check_state_invariants, Actor as MarketActor, ClientDealProposal, DealArray,
-    DealMetaArray, DealProposal, DealState, GetBalanceReturn, Label, MarketNotifyDealParams,
-    Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams, PublishStorageDealsReturn,
-    SectorDeals, State, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
-    WithdrawBalanceParams, WithdrawBalanceReturn, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
+    BatchActivateDealsParams, BatchActivateDealsResult, DealOpsByEpoch, PENDING_ALLOCATIONS_CONFIG,
+    PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, PendingDealAllocationsMap,
+    PendingProposalsSet, ProviderSectorsMap, SECTOR_DEALS_CONFIG, SectorDealsMap,
+    SettleDealPaymentsParams, SettleDealPaymentsReturn, deal_cid, deal_get_payment_remaining,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::{
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, BatchReturn, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
+    EventBuilder, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
     network::EPOCHS_IN_DAY,
-    runtime::{builtins::Type, Policy, Runtime},
+    runtime::{Policy, Runtime, builtins::Type},
     test_utils::*,
-    ActorError, BatchReturn, EventBuilder, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
-    DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 // Define common set of actor ids that will be used across all tests.
@@ -133,15 +134,20 @@ pub fn assert_deal_ops_clean(rt: &MockRuntime) {
         .unwrap();
 
     let deal_ops = st.load_deal_ops(rt.store()).unwrap();
-    deal_ops.for_each(|epoch, _| {
-        deal_ops
-            .for_each_in(&epoch, |deal_id| {
-                assert!(proposal_set.contains(&deal_id), "deal op found for deal id {deal_id} with missing proposal at epoch {epoch}");
-                Ok(())
-            })
-            .unwrap();
-        Ok(())
-    }).unwrap();
+    deal_ops
+        .for_each(|epoch, _| {
+            deal_ops
+                .for_each_in(&epoch, |deal_id| {
+                    assert!(
+                        proposal_set.contains(&deal_id),
+                        "deal op found for deal id {deal_id} with missing proposal at epoch {epoch}"
+                    );
+                    Ok(())
+                })
+                .unwrap();
+            Ok(())
+        })
+        .unwrap();
 }
 
 /// Checks internal invariants of market state asserting none of them are broken.
@@ -245,13 +251,14 @@ pub fn add_provider_funds(rt: &MockRuntime, amount: TokenAmount, addrs: &MinerAd
 
     expect_provider_control_address(rt, addrs.provider, addrs.owner, addrs.worker);
 
-    assert!(rt
-        .call::<MarketActor>(
+    assert!(
+        rt.call::<MarketActor>(
             Method::AddBalance as u64,
             IpldBlock::serialize_cbor(&addrs.provider).unwrap(),
         )
         .unwrap()
-        .is_none(),);
+        .is_none(),
+    );
     rt.verify();
     rt.add_balance(amount);
 }
@@ -262,9 +269,13 @@ pub fn add_participant_funds(rt: &MockRuntime, addr: Address, amount: TokenAmoun
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
 
     rt.expect_validate_caller_any();
-    assert!(rt
-        .call::<MarketActor>(Method::AddBalance as u64, IpldBlock::serialize_cbor(&addr).unwrap())
-        .is_ok());
+    assert!(
+        rt.call::<MarketActor>(
+            Method::AddBalance as u64,
+            IpldBlock::serialize_cbor(&addr).unwrap()
+        )
+        .is_ok()
+    );
 
     rt.verify();
 
@@ -571,11 +582,7 @@ pub fn get_sector_deal_ids(
                     }
                 })
                 .collect();
-            if deal_ids.is_empty() {
-                None
-            } else {
-                Some(deal_ids)
-            }
+            if deal_ids.is_empty() { None } else { Some(deal_ids) }
         }
         None => None,
     }

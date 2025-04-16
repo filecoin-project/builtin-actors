@@ -30,13 +30,18 @@ mod serialization {
                     raw_byte_power: StoragePower::from(1 << 20),
                     quality_adj_power: StoragePower::from(1 << 21),
                     pledge_collateral: TokenAmount::from_atto(1 << 22),
-                    quality_adj_power_smoothed: FilterEstimate::new(BigInt::from(1 << 23), BigInt::from(1 << 24)),
+                    quality_adj_power_smoothed: FilterEstimate::new(
+                        BigInt::from(1 << 23),
+                        BigInt::from(1 << 24),
+                    ),
                     ramp_start_epoch: 25,
                     ramp_duration_epochs: 26,
                 },
                 // FilterEstimate BigInts have a precision shift of 128, so they end up larger than the others.
                 // [byte[00100000],byte[00200000],byte[00400000],[byte[0080000000000000000000000000000000000000],byte[000100000000000000000000000000000000000000]],25,26]
-                &hex!("8644001000004400200000440040000082540080000000000000000000000000000000000000550001000000000000000000000000000000000000001819181a"),
+                &hex!(
+                    "8644001000004400200000440040000082540080000000000000000000000000000000000000550001000000000000000000000000000000000000001819181a"
+                ),
             ),
         ];
 

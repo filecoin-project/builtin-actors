@@ -4,14 +4,14 @@
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use cid::multihash::Multihash;
 use cid::Cid;
+use cid::multihash::Multihash;
 use fil_actors_runtime::reward::ThisEpochRewardReturn;
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::{DAG_CBOR, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -33,11 +33,11 @@ use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, ActorContext, ActorDowncast, ActorError,
-    AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorContext, ActorDowncast, ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR, actor_dispatch, actor_error, deserialize_block,
 };
-use fil_actors_runtime::{extract_send_result, BatchReturnGen, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
+use fil_actors_runtime::{BatchReturnGen, FIRST_ACTOR_SPECIFIC_EXIT_CODE, extract_send_result};
 
 use crate::balance_table::BalanceTable;
 use crate::ext::verifreg::{AllocationID, AllocationRequest};
@@ -660,7 +660,7 @@ impl Actor {
             st.put_deal_states(rt.store(), &deal_states)?;
             st.put_sector_deal_ids(rt.store(), miner_addr.id().unwrap(), &sectors_deals)?;
             st.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
-            Ok((activations, batch_gen.gen()))
+            Ok((activations, batch_gen.generate()))
         })?;
 
         Ok(BatchActivateDealsResult { activations, activation_results: batch_ret })
@@ -931,7 +931,7 @@ impl Actor {
                                 "deal {} processed before start epoch {}",
                                 deal_id,
                                 deal_proposal.start_epoch
-                            ))
+                            ));
                         }
                     };
 
@@ -1358,7 +1358,7 @@ impl Actor {
             ))?;
         }
 
-        Ok(SettleDealPaymentsReturn { results: batch_gen.gen(), settlements })
+        Ok(SettleDealPaymentsReturn { results: batch_gen.generate(), settlements })
     }
 }
 

@@ -11,8 +11,8 @@ mod serialization {
         Deadline, ExpirationSet, PowerPair, ProveCommitSectorsNIParams, SectorNIActivationInfo,
         SectorOnChainInfo, SectorOnChainInfoFlags,
     };
-    use fvm_ipld_bitfield::iter::Ranges;
     use fvm_ipld_bitfield::BitField;
+    use fvm_ipld_bitfield::iter::Ranges;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::bigint::BigInt;
     use fvm_shared::econ::TokenAmount;
@@ -80,7 +80,9 @@ mod serialization {
                     require_activation_success: false,
                 },
                 // [[[1,2,bagboea4seaaqa,3,4,5],[6,7,bagboea4seaaqc,8,9,10]],byte[deadbeef],18,1,11,false]
-                &hex!("8682860102d82a49000182e20392200100030405860607d82a49000182e2039220010108090a44deadbeef12010bf4"),
+                &hex!(
+                    "8682860102d82a49000182e20392200100030405860607d82a49000182e2039220010108090a44deadbeef12010bf4"
+                ),
             ),
         ];
 
@@ -96,9 +98,7 @@ mod serialization {
     fn sector_on_chain_info() {
         let test_cases = vec![
             (
-                SectorOnChainInfo {
-                    ..Default::default()
-                },
+                SectorOnChainInfo { ..Default::default() },
                 // [0,-1,{"/":"baeaaaaa"},[],0,0,[],[],[],null,null,0,null,null,0,[]]
                 &hex!("900020d82a450001000000800000404040f6f600f6f60040")[..],
                 // same on write as read
@@ -124,9 +124,13 @@ mod serialization {
                     daily_fee: TokenAmount::from_whole(11),
                 },
                 // '[1,8,{"/":"bagboea4seaaqa"},[],2,3,[AAQ],[AAU],[AFNESDXsWAAA],null,null,9,null,null,0,[AJin2bgxTAAA]]'
-                &hex!("900108d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6f600490098a7d9b8314c0000"),
+                &hex!(
+                    "900108d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6f600490098a7d9b8314c0000"
+                ),
                 // same on write as read
-                &hex!("900108d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6f600490098a7d9b8314c0000"),
+                &hex!(
+                    "900108d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6f600490098a7d9b8314c0000"
+                ),
             ),
             (
                 SectorOnChainInfo {
@@ -148,9 +152,13 @@ mod serialization {
                     daily_fee: TokenAmount::from_whole(11),
                 },
                 // [1,8,{"/":"bagboea4seaaqa"},[],2,3,[AAQ],[AAU],[AFNESDXsWAAA],null,null,9,null,{"/":"baga6ea4seaaqc"},1,[AJin2bgxTAAA]]
-                &hex!("900108d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6d82a49000181e2039220010101490098a7d9b8314c0000"),
+                &hex!(
+                    "900108d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6d82a49000181e2039220010101490098a7d9b8314c0000"
+                ),
                 // same on write as read
-                &hex!("900108d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6d82a49000181e2039220010101490098a7d9b8314c0000"),
+                &hex!(
+                    "900108d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6d82a49000181e2039220010101490098a7d9b8314c0000"
+                ),
             ),
             (
                 // old format stored on chain but materialised as the new format with a default value at the end
@@ -173,10 +181,14 @@ mod serialization {
                     daily_fee: TokenAmount::zero(), // default, not present in the binary
                 },
                 // [1,9,{"/":"bagboea4seaaqa"},[],2,3,[AAQ],[AAU],[AFNESDXsWAAA],null,null,9,null,null,1]
-                &hex!("8f0109d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6f601"),
+                &hex!(
+                    "8f0109d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6f601"
+                ),
                 // extra field at the end on write, zero BigInt (bytes) for daily_fee
                 // [1,9,{"/":"bagboea4seaaqa"},[],2,3,[AAQ],[AAU],[AFNESDXsWAAA],null,null,9,null,null,1,[]]
-                &hex!("900109d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6f60140"),
+                &hex!(
+                    "900109d82a49000182e20392200100800203420004420005490053444835ec580000f6f609f6f60140"
+                ),
             ),
         ];
 
@@ -216,9 +228,13 @@ mod serialization {
                     fee_deduction: TokenAmount::from_whole(7),
                 },
                 // [[DA],[GA],[ABvBbWdOyAAA],[[AAM],[AAQ]],[[AAU],[AAY]],[AGEk/umTvAAA]]
-                &hex!("86410c411849001bc16d674ec80000824200034200048242000542000649006124fee993bc0000"),
+                &hex!(
+                    "86410c411849001bc16d674ec80000824200034200048242000542000649006124fee993bc0000"
+                ),
                 // same on write as read
-                &hex!("86410c411849001bc16d674ec80000824200034200048242000542000649006124fee993bc0000"),
+                &hex!(
+                    "86410c411849001bc16d674ec80000824200034200048242000542000649006124fee993bc0000"
+                ),
             ),
             (
                 ExpirationSet {
@@ -253,34 +269,39 @@ mod serialization {
 
     #[test]
     fn deadline() {
-        let test_cases = vec![(
-            Deadline { ..Default::default() },
-            // [baeaaaaa,baeaaaaa,[],[],0,0,[[],[]],baeaaaaa,baeaaaaa,baeaaaaa,baeaaaaa,[[],[]],[]]
-            &hex!("8dd82a450001000000d82a45000100000040400000824040d82a450001000000d82a450001000000d82a450001000000d82a45000100000082404040")[..],
-        ),
-        (
-            Deadline{
-                partitions: Cid::from_str("bagboea4seaaqa").unwrap(),
-                expirations_epochs: Cid::from_str("bagboea4seaaqc").unwrap(),
-                partitions_posted: BitField::from_ranges(Ranges::new(
-                    iter::once(0..1).collect::<Vec<Range<u64>>>(),
-                )),
-                early_terminations: BitField::from_ranges(Ranges::new(
-                    iter::once(1..2).collect::<Vec<Range<u64>>>(),
-                )),
-                live_sectors: 2,
-                total_sectors: 3,
-                faulty_power: PowerPair::new(BigInt::from(4), BigInt::from(5)),
-                optimistic_post_submissions: Cid::from_str("bagboea4seaaqe").unwrap(),
-                sectors_snapshot: Cid::from_str("bagboea4seaaqg").unwrap(),
-                partitions_snapshot: Cid::from_str("bagboea4seaaqi").unwrap(),
-                optimistic_post_submissions_snapshot: Cid::from_str("bagboea4seaaqk").unwrap(),
-                live_power: PowerPair::new(BigInt::from(6), BigInt::from(7)),
-                daily_fee: TokenAmount::from_whole(8),
-            },
-            // [bagboea4seaaqa,bagboea4seaaqc,[DA],[GA],2,3,[[AAQ],[AAU]],bagboea4seaaqe,bagboea4seaaqg,bagboea4seaaqi,bagboea4seaaqk,[[AAY],[AAc]],[AG8FtZ07IAAA]]
-            &hex!("8dd82a49000182e20392200100d82a49000182e20392200101410c4118020382420004420005d82a49000182e20392200102d82a49000182e20392200103d82a49000182e20392200104d82a49000182e203922001058242000642000749006f05b59d3b200000"),
-        ),
+        let test_cases = vec![
+            (
+                Deadline { ..Default::default() },
+                // [baeaaaaa,baeaaaaa,[],[],0,0,[[],[]],baeaaaaa,baeaaaaa,baeaaaaa,baeaaaaa,[[],[]],[]]
+                &hex!(
+                    "8dd82a450001000000d82a45000100000040400000824040d82a450001000000d82a450001000000d82a450001000000d82a45000100000082404040"
+                )[..],
+            ),
+            (
+                Deadline {
+                    partitions: Cid::from_str("bagboea4seaaqa").unwrap(),
+                    expirations_epochs: Cid::from_str("bagboea4seaaqc").unwrap(),
+                    partitions_posted: BitField::from_ranges(Ranges::new(
+                        iter::once(0..1).collect::<Vec<Range<u64>>>(),
+                    )),
+                    early_terminations: BitField::from_ranges(Ranges::new(
+                        iter::once(1..2).collect::<Vec<Range<u64>>>(),
+                    )),
+                    live_sectors: 2,
+                    total_sectors: 3,
+                    faulty_power: PowerPair::new(BigInt::from(4), BigInt::from(5)),
+                    optimistic_post_submissions: Cid::from_str("bagboea4seaaqe").unwrap(),
+                    sectors_snapshot: Cid::from_str("bagboea4seaaqg").unwrap(),
+                    partitions_snapshot: Cid::from_str("bagboea4seaaqi").unwrap(),
+                    optimistic_post_submissions_snapshot: Cid::from_str("bagboea4seaaqk").unwrap(),
+                    live_power: PowerPair::new(BigInt::from(6), BigInt::from(7)),
+                    daily_fee: TokenAmount::from_whole(8),
+                },
+                // [bagboea4seaaqa,bagboea4seaaqc,[DA],[GA],2,3,[[AAQ],[AAU]],bagboea4seaaqe,bagboea4seaaqg,bagboea4seaaqi,bagboea4seaaqk,[[AAY],[AAc]],[AG8FtZ07IAAA]]
+                &hex!(
+                    "8dd82a49000182e20392200100d82a49000182e20392200101410c4118020382420004420005d82a49000182e20392200102d82a49000182e20392200103d82a49000182e20392200104d82a49000182e203922001058242000642000749006f05b59d3b200000"
+                ),
+            ),
         ];
 
         for (params, expected) in test_cases {

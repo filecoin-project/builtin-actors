@@ -12,7 +12,7 @@ pub mod test_util;
 
 pub use {
     bytecode::Bytecode,
-    execution::{execute, opcodes, ExecutionState},
+    execution::{ExecutionState, execute, opcodes},
     output::{Outcome, Output},
     system::System,
 };

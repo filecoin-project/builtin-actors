@@ -83,17 +83,17 @@ macro_rules! def_ins_raw {
         unsafe fn $ins<'r, 'a, RT: Runtime>(p: *mut Machine<'r, 'a, RT>) -> Result<(), ActorError> {
             // SAFETY: macro ensures that mut pointer is taken directly from a mutable borrow, used
             // once, then goes out of scope immediately after
-            let $arg: &mut Machine<'r, 'a, RT> = &mut *p;
+            let $arg: &mut Machine<'r, 'a, RT> = unsafe { &mut *p };
             $body
         }
     };
 }
 
 pub mod opcodes {
-    use super::instructions;
     use super::Machine;
-    use fil_actors_runtime::runtime::Runtime;
+    use super::instructions;
     use fil_actors_runtime::ActorError;
+    use fil_actors_runtime::runtime::Runtime;
 
     pub(crate) type Instruction<'r, 'a, RT> =
         unsafe fn(*mut Machine<'r, 'a, RT>) -> Result<(), ActorError>;

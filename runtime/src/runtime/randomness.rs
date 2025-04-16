@@ -53,8 +53,8 @@ pub fn draw_randomness(
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime::randomness::draw_randomness;
     use crate::runtime::DomainSeparationTag;
+    use crate::runtime::randomness::draw_randomness;
     use crate::test_utils::blake2b_256;
     use base64::Engine;
 

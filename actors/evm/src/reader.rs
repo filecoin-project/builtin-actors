@@ -2,7 +2,7 @@ use std::{borrow::Cow, fmt::Display};
 
 use fil_actors_evm_shared::uints::U256;
 use fvm_shared::{bigint::BigUint, error::ExitCode};
-use substrate_bn::{AffineG1, CurveError, FieldError, Fq, Fr, Group, G1};
+use substrate_bn::{AffineG1, CurveError, FieldError, Fq, Fr, G1, Group};
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct OverflowError;
@@ -123,11 +123,7 @@ impl<'a> ValueReader<'a> {
         let split = S.min(self.slice.len());
         let (a, b) = self.slice.split_at(split);
         self.slice = b;
-        if a.iter().all(|&i| i == 0) {
-            Ok(())
-        } else {
-            Err(OverflowError)
-        }
+        if a.iter().all(|&i| i == 0) { Ok(()) } else { Err(OverflowError) }
     }
 
     /// Read a single byte, or 0 if there's no remaining input.

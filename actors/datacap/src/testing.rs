@@ -4,7 +4,7 @@ use fvm_shared::address::Protocol;
 
 use fil_actors_runtime::MessageAccumulator;
 
-use crate::{State, DATACAP_GRANULARITY};
+use crate::{DATACAP_GRANULARITY, State};
 
 /// Checks internal invariants of data cap token actor state.
 pub fn check_state_invariants<BS: Blockstore>(

@@ -3,11 +3,11 @@
 use crate::{ActorError, Allocation, AllocationID, Claim};
 use crate::{ClaimID, DataCap};
 use cid::Cid;
-use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::EventBuilder;
+use fil_actors_runtime::runtime::Runtime;
+use fvm_shared::ActorID;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::ActorID;
 
 /// Indicates a new value for a verifier's datacap balance.
 /// Note that receiving this event does not necessarily mean the balance has changed.

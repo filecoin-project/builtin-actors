@@ -14,13 +14,13 @@ pub fn prevrandao_contract() -> Vec<u8> {
 %dispatch(0x00, basic)
 %dispatch(0x01, cache)
 %dispatch_end()
-    
-basic: 
+
+basic:
     jumpdest
     difficulty
     %return_stack_word()
 
-cache: 
+cache:
     jumpdest
     # push store first randomness at 0x00
     difficulty
@@ -64,7 +64,7 @@ fn test_prevrandao() {
 
     // actual random value
     {
-        let expected: [u8; 32] = rand.gen();
+        let expected: [u8; 32] = rand.r#gen();
         rt.expect_get_randomness_from_beacon(
             fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
             101,
@@ -80,7 +80,7 @@ fn test_prevrandao() {
 
     // check cache
     {
-        let expected: [u8; 32] = rand.gen();
+        let expected: [u8; 32] = rand.r#gen();
         rt.expect_get_randomness_from_beacon(
             fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
             101,

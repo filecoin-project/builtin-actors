@@ -1,11 +1,11 @@
 use std::cell::RefCell;
 
 use fil_actor_ethaccount::{EthAccountActor, Method};
-use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
 use fil_actors_runtime::EAM_ACTOR_ID;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
-use fvm_shared::address::Address;
+use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
 use fvm_shared::MethodNum;
+use fvm_shared::address::Address;
 
 pub const EOA: Address = Address::new_id(1000);
 

@@ -1,26 +1,26 @@
 #![allow(clippy::too_many_arguments)]
 
 use fil_actors_evm_shared::{address::EthAddress, uints::U256};
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
-use fvm_shared::{address::Address, sys::SendFlags, MethodNum, IPLD_RAW};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::{IPLD_RAW, MethodNum, address::Address, sys::SendFlags};
 
 use crate::interpreter::{
-    precompiles::{is_reserved_precompile_address, PrecompileContext},
     CallKind,
+    precompiles::{PrecompileContext, is_reserved_precompile_address},
 };
 
-use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
+use super::ext::{ContractType, get_contract_type, get_evm_bytecode_cid};
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
-    crate::interpreter::instructions::memory::MemoryRegion,
-    crate::interpreter::precompiles,
     crate::interpreter::ExecutionState,
     crate::interpreter::System,
+    crate::interpreter::instructions::memory::MemoryRegion,
+    crate::interpreter::precompiles,
     crate::{DelegateCallParams, Method},
-    fil_actors_runtime::runtime::Runtime,
     fil_actors_runtime::ActorError,
+    fil_actors_runtime::runtime::Runtime,
     fvm_shared::econ::TokenAmount,
     fvm_shared::error::ErrorNumber,
 };
@@ -296,7 +296,9 @@ pub fn call_generic<RT: Runtime>(
                         Err(None)
                     }
                     ContractType::Precompile => {
-                        log::error!("reached a precompile address in DelegateCall when a precompile should've been caught earlier in the system");
+                        log::error!(
+                            "reached a precompile address in DelegateCall when a precompile should've been caught earlier in the system"
+                        );
                         Err(None)
                     }
                 },
@@ -345,8 +347,8 @@ mod tests {
     use fil_actors_evm_shared::uints::U256;
     use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
     use fvm_ipld_blockstore::Blockstore;
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_ipld_encoding::IPLD_RAW;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::Address as FilAddress;
     use fvm_shared::error::{ErrorNumber, ExitCode};
     use fvm_shared::sys::SendFlags;

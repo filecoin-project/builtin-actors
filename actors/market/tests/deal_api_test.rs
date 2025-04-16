@@ -6,16 +6,17 @@ use num_traits::Zero;
 use serde::de::DeserializeOwned;
 
 use fil_actor_market::{
-    Actor as MarketActor, DealQueryParams, GetDealActivationReturn, GetDealClientCollateralReturn,
-    GetDealClientReturn, GetDealDataCommitmentReturn, GetDealLabelReturn,
-    GetDealProviderCollateralReturn, GetDealProviderReturn, GetDealSectorReturn, GetDealTermReturn,
-    GetDealTotalPriceReturn, GetDealVerifiedReturn, Method, EX_DEAL_EXPIRED, EX_DEAL_NOT_ACTIVATED,
-};
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID,
+    Actor as MarketActor, DealQueryParams, EX_DEAL_EXPIRED, EX_DEAL_NOT_ACTIVATED,
+    GetDealActivationReturn, GetDealClientCollateralReturn, GetDealClientReturn,
+    GetDealDataCommitmentReturn, GetDealLabelReturn, GetDealProviderCollateralReturn,
+    GetDealProviderReturn, GetDealSectorReturn, GetDealTermReturn, GetDealTotalPriceReturn,
+    GetDealVerifiedReturn, Method,
 };
 use fil_actors_runtime::ActorError;
+use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::test_utils::{
+    ACCOUNT_ACTOR_CODE_ID, MockRuntime, expect_abort, expect_abort_contains_message,
+};
 use harness::*;
 
 mod harness;

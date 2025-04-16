@@ -1,4 +1,4 @@
-use fil_actor_miner::{BitFieldQueue, QuantSpec, NO_QUANTIZATION};
+use fil_actor_miner::{BitFieldQueue, NO_QUANTIZATION, QuantSpec};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_amt::Amt;

@@ -150,8 +150,8 @@ pub fn base_fee(
 #[cfg(test)]
 mod tests {
     use crate::evm_unit_test;
-    use cid::multihash::Multihash;
     use cid::Cid;
+    use cid::multihash::Multihash;
     use fil_actors_evm_shared::uints::U256;
     use fvm_ipld_encoding::{DAG_CBOR, IPLD_RAW};
     use fvm_shared::address::Address as FilAddress;

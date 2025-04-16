@@ -1,16 +1,15 @@
 use fil_actor_market::ActivatedDeal;
 use fil_actor_miner::ext::verifreg::Claim as FILPlusClaim;
 use fil_actor_miner::{
-    daily_proof_fee, power_for_sector, seal_proof_sector_maximum_lifetime, ExpirationExtension,
-    ExpirationExtension2, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
-    PoStPartition, SectorClaim, SectorOnChainInfo, State,
+    ExpirationExtension, ExpirationExtension2, ExtendSectorExpiration2Params,
+    ExtendSectorExpirationParams, PoStPartition, SectorClaim, SectorOnChainInfo, State,
+    daily_proof_fee, power_for_sector, seal_proof_sector_maximum_lifetime,
 };
 use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::{
-    actor_error,
+    EPOCHS_IN_DAY, actor_error,
     runtime::{Runtime, RuntimePolicy},
-    test_utils::{expect_abort_contains_message, make_piece_cid, MockRuntime},
-    EPOCHS_IN_DAY,
+    test_utils::{MockRuntime, expect_abort_contains_message, make_piece_cid},
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::BigInt;
@@ -19,11 +18,11 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{
+    ActorID,
     address::Address,
     clock::ChainEpoch,
     error::ExitCode,
     sector::{RegisteredSealProof, SectorNumber},
-    ActorID,
 };
 
 use num_traits::Zero;

@@ -27,8 +27,8 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
-use fvm_shared::randomness::Randomness;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
+use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, PoStProof, RegisteredAggregateProof, RegisteredPoStProof,
     RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo, SectorID, SectorInfo, SectorNumber,
@@ -43,45 +43,45 @@ use num_traits::Signed;
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
     ActivatedDeal, BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod,
-    OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn, NO_ALLOCATION_ID,
+    NO_ALLOCATION_ID, OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::{
+    ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
+    CRON_EVENT_PROVING_DEADLINE, ChangeBeneficiaryParams, ChangeMultiaddrsParams,
+    ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams, CompactCommD,
+    CompactPartitionsParams, CompactSectorNumbersParams, CronEventPayload,
+    DataActivationNotification, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
+    DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
+    ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
+    FaultDeclaration, GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
+    GetMultiaddrsReturn, GetPeerIDReturn, Method, Method as MinerMethod,
+    MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION, Partition,
+    PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
+    PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
+    ProveCommitAggregateParams, ProveCommitSectorParams, ProveCommitSectors3Params,
+    ProveCommitSectors3Return, QuantSpec, RecoveryDeclaration, ReportConsensusFaultParams,
+    SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH, SectorActivationManifest, SectorChanges,
+    SectorContentChangedParams, SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, SectorReturn, SectorUpdateManifest, Sectors, State,
+    SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
+    VerifiedAllocationKey, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
     consensus_fault_penalty, ext,
     ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
     ext::power::UPDATE_CLAIMED_POWER_METHOD,
     ext::verifreg::{
-        AllocationClaim, AllocationID, ClaimAllocationsParams, ClaimAllocationsReturn,
-        SectorAllocationClaims, SectorClaimSummary, CLAIM_ALLOCATIONS_METHOD,
+        AllocationClaim, AllocationID, CLAIM_ALLOCATIONS_METHOD, ClaimAllocationsParams,
+        ClaimAllocationsReturn, SectorAllocationClaims, SectorClaimSummary,
     },
     ext::verifreg::{Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn},
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
     qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report,
-    testing::{check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary},
-    ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
-    ChangeBeneficiaryParams, ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams,
-    CheckSectorProvenParams, CompactCommD, CompactPartitionsParams, CompactSectorNumbersParams,
-    CronEventPayload, DataActivationNotification, Deadline, DeadlineInfo, Deadlines,
-    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
-    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params,
-    ExtendSectorExpirationParams, FaultDeclaration, GetAvailableBalanceReturn,
-    GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn, GetPeerIDReturn, Method,
-    Method as MinerMethod, MinerConstructorParams as ConstructorParams, MinerInfo, Partition,
-    PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
-    PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitAggregateParams, ProveCommitSectorParams, ProveCommitSectors3Params,
-    ProveCommitSectors3Return, QuantSpec, RecoveryDeclaration, ReportConsensusFaultParams,
-    SectorActivationManifest, SectorChanges, SectorContentChangedParams,
-    SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
-    TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, WindowedPoSt,
-    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, NO_QUANTIZATION,
-    SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
+    testing::{DeadlineStateSummary, check_deadline_state_invariants, check_state_invariants},
 };
 use fil_actor_miner::{
-    raw_power_for_sector, ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn,
-    ProveReplicaUpdates3Params, ProveReplicaUpdates3Return, SectorNIActivationInfo,
+    ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn, ProveReplicaUpdates3Params,
+    ProveReplicaUpdates3Return, SectorNIActivationInfo, raw_power_for_sector,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -90,12 +90,12 @@ use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{DomainSeparationTag, Runtime, RuntimePolicy};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
-use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen, EventBuilder};
 use fil_actors_runtime::{
-    ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    ActorDowncast, ActorError, Array, BURNT_FUNDS_ACTOR_ADDR, DealWeight, INIT_ACTOR_ADDR,
+    MessageAccumulator, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fil_actors_runtime::{BatchReturn, BatchReturnGen, EventBuilder, test_utils::*};
 
 const DEFAULT_PIECE_SIZE: u64 = 128;
 
@@ -1112,7 +1112,7 @@ impl ActorHarness {
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&BatchActivateDealsResult {
                     activations: sector_activations,
-                    activation_results: sector_activation_results.gen(),
+                    activation_results: sector_activation_results.generate(),
                 })
                 .unwrap(),
                 ExitCode::OK,
@@ -1356,7 +1356,7 @@ impl ActorHarness {
                 .unwrap(),
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&ClaimAllocationsReturn {
-                    sector_results: claim_result.gen(),
+                    sector_results: claim_result.generate(),
                     sector_claims: sector_claimed_space,
                 })
                 .unwrap(),
@@ -1556,7 +1556,7 @@ impl ActorHarness {
                 .unwrap(),
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&ClaimAllocationsReturn {
-                    sector_results: claim_result.gen(),
+                    sector_results: claim_result.generate(),
                     sector_claims: sector_claimed_space,
                 })
                 .unwrap(),
@@ -2752,7 +2752,7 @@ impl ActorHarness {
                     .unwrap(),
                     TokenAmount::zero(),
                     IpldBlock::serialize_cbor(&GetClaimsReturn {
-                        batch_info: batch_gen.gen(),
+                        batch_info: batch_gen.generate(),
                         claims,
                     })
                     .unwrap(),

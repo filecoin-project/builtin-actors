@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
-use fil_actors_runtime::{parse_uint_key, u64_key, Multimap};
+use fil_actors_runtime::{Multimap, parse_uint_key, u64_key};
 use fvm_ipld_amt::Amt;
-use fvm_shared::address::Address;
 use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::address::Address;
 
 #[test]
 fn basic_add() {

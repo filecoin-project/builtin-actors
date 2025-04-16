@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actor_miner::{power_for_sectors, Deadline, PoStPartition, PowerPair, SectorOnChainInfo};
+use fil_actor_miner::{Deadline, PoStPartition, PowerPair, SectorOnChainInfo, power_for_sectors};
 use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::BigInt;

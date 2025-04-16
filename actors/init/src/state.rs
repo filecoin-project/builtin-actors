@@ -4,11 +4,11 @@
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::address::{Address, Protocol};
 use fvm_shared::ActorID;
+use fvm_shared::address::{Address, Protocol};
 
 use fil_actors_runtime::{
-    actor_error, ActorError, Map2, DEFAULT_HAMT_CONFIG, FIRST_NON_SINGLETON_ADDR,
+    ActorError, DEFAULT_HAMT_CONFIG, FIRST_NON_SINGLETON_ADDR, Map2, actor_error,
 };
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]

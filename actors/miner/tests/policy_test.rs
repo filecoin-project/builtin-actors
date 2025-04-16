@@ -1,9 +1,9 @@
-use fil_actor_miner::{daily_proof_fee, qa_power_for_weight, quality_for_weight};
 use fil_actor_miner::{
     QUALITY_BASE_MULTIPLIER, SECTOR_QUALITY_PRECISION, VERIFIED_DEAL_WEIGHT_MULTIPLIER,
 };
-use fil_actors_runtime::runtime::Policy;
+use fil_actor_miner::{daily_proof_fee, qa_power_for_weight, quality_for_weight};
 use fil_actors_runtime::DealWeight;
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{EPOCHS_IN_DAY, SECONDS_IN_DAY};
 use fvm_shared::bigint::{BigInt, Integer, Zero};
 use fvm_shared::clock::ChainEpoch;

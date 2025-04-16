@@ -4,17 +4,17 @@
 use fil_actor_market::{
     Actor as MarketActor, ClientDealProposal, Method, PublishStorageDealsParams,
 };
+use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::METHOD_SEND;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_SEND;
 
-use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
+use fil_actor_market::ext::account::{AUTHENTICATE_MESSAGE_METHOD, AuthenticateMessageParams};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::sys::SendFlags;
 use num_traits::Zero;

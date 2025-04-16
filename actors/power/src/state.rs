@@ -6,27 +6,27 @@ use std::ops::Neg;
 use anyhow::anyhow;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_hamt::BytesKey;
+use fvm_shared::ActorID;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
-use fvm_shared::ActorID;
 use integer_encoding::VarInt;
 use lazy_static::lazy_static;
 use num_traits::Signed;
 
 use fil_actors_runtime::builtin::reward::smooth::{
-    AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA,
+    AlphaBetaFilter, DEFAULT_ALPHA, DEFAULT_BETA, FilterEstimate,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    actor_error, ActorContext, ActorDowncast, ActorError, AsActorError, Config, Map2, Multimap,
-    DEFAULT_HAMT_CONFIG,
+    ActorContext, ActorDowncast, ActorError, AsActorError, Config, DEFAULT_HAMT_CONFIG, Map2,
+    Multimap, actor_error,
 };
 
 use super::CONSENSUS_MINER_MIN_MINERS;

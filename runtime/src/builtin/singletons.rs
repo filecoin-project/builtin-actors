@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_shared::address::Address;
 use fvm_shared::ActorID;
+use fvm_shared::address::Address;
 
 /// Singleton Actor IDs
 pub const SYSTEM_ACTOR_ID: ActorID = 0;

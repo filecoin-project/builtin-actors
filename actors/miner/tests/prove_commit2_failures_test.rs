@@ -3,15 +3,15 @@ use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::{clock::ChainEpoch, ActorID};
+use fvm_shared::{ActorID, clock::ChainEpoch};
 
 use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
-    ProveCommitSectors3Params, SectorActivationManifest, ERR_NOTIFICATION_RECEIVER_ABORTED,
-    ERR_NOTIFICATION_REJECTED,
+    ERR_NOTIFICATION_RECEIVER_ABORTED, ERR_NOTIFICATION_REJECTED, ProveCommitSectors3Params,
+    SectorActivationManifest,
 };
-use fil_actors_runtime::test_utils::{expect_abort_contains_message, MockRuntime};
 use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime::test_utils::{MockRuntime, expect_abort_contains_message};
 use util::*;
 
 mod util;

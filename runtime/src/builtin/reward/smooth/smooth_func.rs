@@ -6,7 +6,7 @@ use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use lazy_static::lazy_static;
 
-use super::super::math::{poly_parse, poly_val, PRECISION};
+use super::super::math::{PRECISION, poly_parse, poly_val};
 use super::alpha_beta_filter::*;
 
 lazy_static! {

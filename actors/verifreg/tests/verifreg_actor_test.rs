@@ -30,13 +30,13 @@ mod util {
 
 mod construction {
     use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::MethodNum;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::error::ExitCode;
-    use fvm_shared::MethodNum;
 
     use fil_actor_verifreg::{Actor as VerifregActor, Method};
-    use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
+    use fil_actors_runtime::test_utils::*;
     use harness::*;
 
     use crate::*;
@@ -83,7 +83,7 @@ mod verifiers {
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
-    use fvm_shared::{MethodNum, METHOD_SEND};
+    use fvm_shared::{METHOD_SEND, MethodNum};
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
@@ -244,15 +244,15 @@ mod clients {
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
-    use fvm_shared::{MethodNum, METHOD_SEND};
+    use fvm_shared::{METHOD_SEND, MethodNum};
     use num_traits::ToPrimitive;
     use num_traits::Zero;
 
     use fil_actor_verifreg::{
-        ext, Actor as VerifregActor, AddVerifiedClientParams, DataCap, Method,
+        Actor as VerifregActor, AddVerifiedClientParams, DataCap, Method, ext,
     };
     use fil_actors_runtime::test_utils::*;
-    use fil_actors_runtime::{EventBuilder, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
+    use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, EventBuilder, STORAGE_MARKET_ACTOR_ADDR};
     use harness::*;
     use util::*;
 
@@ -533,14 +533,14 @@ mod allocs_claims {
         State,
     };
     use fil_actor_verifreg::{Claim, ExtendClaimTermsReturn};
+    use fil_actors_runtime::FailCode;
     use fil_actors_runtime::runtime::policy_constants::{
         MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_SIZE,
         MINIMUM_VERIFIED_ALLOCATION_TERM,
     };
     use fil_actors_runtime::test_utils::{
-        expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
+        ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, expect_abort, expect_abort_contains_message,
     };
-    use fil_actors_runtime::FailCode;
     use harness::*;
 
     use crate::*;
@@ -1654,7 +1654,9 @@ mod serialization {
                     all_or_nothing: true,
                 },
                 // [[[101,202,[[303,404,baga6ea4seaaqa,505],[606,707,baga6ea4seaaqc,808]]],[303,404,[]]],true]
-                &hex!("828283186518ca828419012f190194d82a49000181e203922001001901f98419025e1902c3d82a49000181e203922001011903288319012f19019480f5"),
+                &hex!(
+                    "828283186518ca828419012f190194d82a49000181e203922001001901f98419025e1902c3d82a49000181e203922001011903288319012f19019480f5"
+                ),
             ),
         ];
 

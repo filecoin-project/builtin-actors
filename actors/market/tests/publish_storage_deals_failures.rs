@@ -3,8 +3,9 @@
 
 use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
-    ext, Actor as MarketActor, ClientDealProposal, DealProposal, MarketNotifyDealParams, Method,
-    PublishStorageDealsParams, PublishStorageDealsReturn, State, MARKET_NOTIFY_DEAL_METHOD,
+    Actor as MarketActor, ClientDealProposal, DealProposal, MARKET_NOTIFY_DEAL_METHOD,
+    MarketNotifyDealParams, Method, PublishStorageDealsParams, PublishStorageDealsReturn, State,
+    ext,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
@@ -19,7 +20,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 
 use cid::Cid;
-use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
+use fil_actor_market::ext::account::{AUTHENTICATE_MESSAGE_METHOD, AuthenticateMessageParams};
 use fil_actor_market::policy::TOTAL_FILECOIN;
 
 mod harness;

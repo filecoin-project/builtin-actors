@@ -6,27 +6,27 @@ use std::collections::HashMap;
 
 use cid::Cid;
 use derive_builder::Builder;
-use fil_actor_paych::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
+use fil_actor_paych::ext::account::{AUTHENTICATE_MESSAGE_METHOD, AuthenticateMessageParams};
 use fil_actor_paych::testing::check_state_invariants;
 use fil_actor_paych::{
-    Actor as PaychActor, ConstructorParams, LaneState, Merge, Method, ModVerifyParams,
-    SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE, SETTLE_DELAY,
+    Actor as PaychActor, ConstructorParams, LaneState, MAX_LANE, Merge, Method, ModVerifyParams,
+    SETTLE_DELAY, SignedVoucher, State as PState, UpdateChannelStateParams,
 };
 
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::test_utils::*;
 use fvm_ipld_amt::Amt;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::METHOD_CONSTRUCTOR;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
-use fvm_shared::METHOD_CONSTRUCTOR;
 use num_traits::Zero;
 
 const PAYCH_ID: u64 = 100;

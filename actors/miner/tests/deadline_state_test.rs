@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
+use fil_actor_miner::testing::{DeadlineStateSummary, check_deadline_state_invariants};
 use fil_actor_miner::{
-    daily_fee_for_sectors, power_for_sectors, Deadline, PartitionSectorMap, PoStPartition,
-    PowerPair, QuantSpec, SectorOnChainInfo, TerminationResult,
+    Deadline, PartitionSectorMap, PoStPartition, PowerPair, QuantSpec, SectorOnChainInfo,
+    TerminationResult, daily_fee_for_sectors, power_for_sectors,
 };
-use fil_actors_runtime::runtime::{Policy, Runtime};
-use fil_actors_runtime::test_utils::MockRuntime;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime::runtime::{Policy, Runtime};
+use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;
@@ -340,16 +340,18 @@ fn cannot_remove_partitions_with_early_terminations() {
     let store = rt.store();
     let mut sectors_array = sectors_arr(store, sectors.to_owned());
 
-    assert!(deadline
-        .compact_partitions(
-            store,
-            &mut sectors_array,
-            SECTOR_SIZE,
-            PARTITION_SIZE,
-            &bitfield_from_slice(&[0]),
-            QUANT_SPEC,
-        )
-        .is_err());
+    assert!(
+        deadline
+            .compact_partitions(
+                store,
+                &mut sectors_array,
+                SECTOR_SIZE,
+                PARTITION_SIZE,
+                &bitfield_from_slice(&[0]),
+                QUANT_SPEC,
+            )
+            .is_err()
+    );
 }
 
 #[test]
@@ -403,16 +405,18 @@ fn cannot_remove_missing_partition() {
     let store = rt.store();
     let mut sectors_array = sectors_arr(store, sectors.to_owned());
 
-    assert!(deadline
-        .compact_partitions(
-            store,
-            &mut sectors_array,
-            SECTOR_SIZE,
-            PARTITION_SIZE,
-            &bitfield_from_slice(&[2]),
-            QUANT_SPEC,
-        )
-        .is_err());
+    assert!(
+        deadline
+            .compact_partitions(
+                store,
+                &mut sectors_array,
+                SECTOR_SIZE,
+                PARTITION_SIZE,
+                &bitfield_from_slice(&[2]),
+                QUANT_SPEC,
+            )
+            .is_err()
+    );
 }
 
 #[test]
@@ -457,16 +461,18 @@ fn fails_to_remove_partitions_with_faulty_sectors() {
     let store = rt.store();
     let mut sectors_array = sectors_arr(store, sectors.to_owned());
 
-    assert!(deadline
-        .compact_partitions(
-            store,
-            &mut sectors_array,
-            SECTOR_SIZE,
-            PARTITION_SIZE,
-            &bitfield_from_slice(&[1]),
-            QUANT_SPEC,
-        )
-        .is_err());
+    assert!(
+        deadline
+            .compact_partitions(
+                store,
+                &mut sectors_array,
+                SECTOR_SIZE,
+                PARTITION_SIZE,
+                &bitfield_from_slice(&[1]),
+                QUANT_SPEC,
+            )
+            .is_err()
+    );
 }
 
 #[test]
@@ -688,10 +694,11 @@ fn cannot_pop_expired_sectors_before_proving() {
     assert!(ret.is_err());
     let err = ret.expect_err("cannot pop expired sectors from a partition with unproven sectors");
 
-    assert!(err
-        .to_string()
-        .to_lowercase()
-        .contains("cannot pop expired sectors from a partition with unproven sectors"));
+    assert!(
+        err.to_string()
+            .to_lowercase()
+            .contains("cannot pop expired sectors from a partition with unproven sectors")
+    );
 }
 
 #[test]

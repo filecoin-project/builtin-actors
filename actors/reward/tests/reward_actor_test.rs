@@ -4,11 +4,11 @@
 use std::cell::RefCell;
 
 use fil_actor_reward::{
-    ext, Actor as RewardActor, AwardBlockRewardParams, Method, State, ThisEpochRewardReturn,
-    BASELINE_INITIAL_VALUE, PENALTY_MULTIPLIER,
+    Actor as RewardActor, AwardBlockRewardParams, BASELINE_INITIAL_VALUE, Method,
+    PENALTY_MULTIPLIER, State, ThisEpochRewardReturn, ext,
 };
-use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
+use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
@@ -79,9 +79,9 @@ mod construction_tests {
 
 mod test_award_block_reward {
     use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::METHOD_SEND;
     use fvm_shared::error::ExitCode;
     use fvm_shared::sector::StoragePower;
-    use fvm_shared::METHOD_SEND;
     use num::Zero;
 
     use super::*;
@@ -233,15 +233,17 @@ mod test_award_block_reward {
         rt.set_balance(total_payout.clone());
 
         for i in &[1000, 1000, 1000, 500] {
-            assert!(award_block_reward(
-                &rt,
-                *WINNER,
-                TokenAmount::zero(),
-                TokenAmount::zero(),
-                1,
-                TokenAmount::from_atto(*i),
-            )
-            .is_ok());
+            assert!(
+                award_block_reward(
+                    &rt,
+                    *WINNER,
+                    TokenAmount::zero(),
+                    TokenAmount::zero(),
+                    1,
+                    TokenAmount::from_atto(*i),
+                )
+                .is_ok()
+            );
         }
 
         let new_state: State = rt.get_state();

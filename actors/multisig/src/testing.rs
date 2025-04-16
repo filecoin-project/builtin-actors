@@ -5,7 +5,7 @@ use fvm_shared::address::Address;
 
 use fil_actors_runtime::MessageAccumulator;
 
-use crate::{PendingTxnMap, State, TxnID, PENDING_TXN_CONFIG, SIGNERS_MAX};
+use crate::{PENDING_TXN_CONFIG, PendingTxnMap, SIGNERS_MAX, State, TxnID};
 
 pub struct StateSummary {
     pub pending_tx_count: u64,

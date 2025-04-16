@@ -8,16 +8,16 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::Sha256;
 use fvm_ipld_hamt::{BytesKey, Error as HamtError, Hamt};
 use fvm_shared::bigint::BigInt;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use unsigned_varint::decode::Error as UVarintError;
 
-pub use dispatch::{dispatch, dispatch_default, WithCodec};
+pub use dispatch::{WithCodec, dispatch, dispatch_default};
 pub use {fvm_ipld_amt, fvm_ipld_hamt};
 
+use crate::runtime::Runtime;
 #[cfg(feature = "fil-actor")]
 use crate::runtime::hash_algorithm::FvmHashSha256;
-use crate::runtime::Runtime;
 
 pub use self::actor_error::*;
 pub use self::builtin::*;
@@ -35,7 +35,7 @@ pub mod test_utils;
 #[macro_export]
 macro_rules! wasm_trampoline {
     ($target:ty) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn invoke(param: u32) -> u32 {
             $crate::runtime::fvm::trampoline::<$target>(param)
         }

@@ -2,14 +2,14 @@ use std::collections::HashMap;
 
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{
-    address::{Address, Protocol},
     ActorID,
+    address::{Address, Protocol},
 };
 
-use fil_actors_runtime::{MessageAccumulator, DEFAULT_HAMT_CONFIG, FIRST_NON_SINGLETON_ADDR};
+use fil_actors_runtime::{DEFAULT_HAMT_CONFIG, FIRST_NON_SINGLETON_ADDR, MessageAccumulator};
 
-use crate::state::AddressMap;
 use crate::State;
+use crate::state::AddressMap;
 
 pub struct StateSummary {
     pub ids_by_address: HashMap<Address, ActorID>,

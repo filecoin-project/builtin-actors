@@ -5,20 +5,20 @@ use std::fmt::Debug;
 use alloy_core::primitives::{Bytes, Uint};
 use alloy_core::sol;
 use alloy_core::sol_types::SolCall;
-use evm::{Method, EVM_CONTRACT_REVERTED};
+use evm::{EVM_CONTRACT_REVERTED, Method};
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
-use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{EAM_ACTOR_ID, INIT_ACTOR_ADDR, test_utils::*};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, BytesSer, CBOR, IPLD_RAW};
+use fvm_shared::MethodNum;
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
-use fvm_shared::MethodNum;
 
 mod util;
 
@@ -1159,13 +1159,14 @@ impl ContractTester {
         // first actor created is 0
         rt.set_delegated_address(0, Address::new_delegated(EAM_ACTOR_ID, &addr.0).unwrap());
 
-        assert!(rt
-            .call::<evm::EvmContractActor>(
+        assert!(
+            rt.call::<evm::EvmContractActor>(
                 evm::Method::Constructor as u64,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
-            .is_none());
+            .is_none()
+        );
 
         rt.verify();
         rt.reset();
