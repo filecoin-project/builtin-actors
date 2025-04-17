@@ -3,8 +3,8 @@ use blst::{
     // Basic types
     blst_bendian_from_fp,
     blst_fp,
-    blst_fp2,
     blst_fp_from_bendian,
+    blst_fp2,
     blst_p1,
     blst_p1_affine,
     blst_p1_affine_in_g1,

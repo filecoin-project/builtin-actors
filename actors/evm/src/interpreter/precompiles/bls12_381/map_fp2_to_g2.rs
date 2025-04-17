@@ -1,11 +1,11 @@
 use crate::interpreter::{
-    precompiles::{PrecompileContext, PrecompileError, PrecompileResult},
     System,
+    precompiles::{PrecompileContext, PrecompileError, PrecompileResult},
 };
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    encode_g2_point, p2_to_affine, read_fp2, remove_padding, PADDED_FP2_LENGTH, PADDED_FP_LENGTH,
+    PADDED_FP_LENGTH, PADDED_FP2_LENGTH, encode_g2_point, p2_to_affine, read_fp2, remove_padding,
 };
 
 use blst::{blst_fp2, blst_map_to_g2, blst_p2, blst_p2_affine};
@@ -195,7 +195,9 @@ mod tests {
              0000000000000000000000000000000002829ce3c021339ccb5caf3e187f6370e1e2a311dec9b75363117063ab2015603ff52c3d3b98f19c2f65575e99e8b78c"
         );
         let res = bls12_map_fp2_to_g2(&mut system, &input5, PrecompileContext::default());
-        assert!(matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
-            "Test case 'bls_mapg2_invalid_fq_element' failed: expected 'invalid fp.Element encoding'");
+        assert!(
+            matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
+            "Test case 'bls_mapg2_invalid_fq_element' failed: expected 'invalid fp.Element encoding'"
+        );
     }
 }

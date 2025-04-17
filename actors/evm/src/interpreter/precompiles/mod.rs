@@ -16,7 +16,7 @@ mod evm;
 mod fvm;
 
 use bls12_381::{
-    bls12_g1add, bls12_g1msm, bls12_g2add, bls12_g2msm, bls12_map_fp2_to_g2, bls12_map_fp_to_g1,
+    bls12_g1add, bls12_g1msm, bls12_g2add, bls12_g2msm, bls12_map_fp_to_g1, bls12_map_fp2_to_g2,
     bls12_pairing,
 };
 use evm::{blake2f, ec_add, ec_mul, ec_pairing, ec_recover, identity, modexp, ripemd160, sha256};

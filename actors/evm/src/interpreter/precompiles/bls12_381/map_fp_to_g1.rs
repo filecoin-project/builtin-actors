@@ -1,11 +1,11 @@
 use crate::interpreter::{
-    precompiles::{PrecompileContext, PrecompileError, PrecompileResult},
     System,
+    precompiles::{PrecompileContext, PrecompileError, PrecompileResult},
 };
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    encode_g1_point, p1_to_affine, read_fp, remove_padding, PADDED_FP_LENGTH,
+    PADDED_FP_LENGTH, encode_g1_point, p1_to_affine, read_fp, remove_padding,
 };
 
 use blst::{blst_fp, blst_map_to_g1, blst_p1, blst_p1_affine};
