@@ -2,10 +2,10 @@ use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
     PublishStorageDealsReturn,
 };
+use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
-use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -13,8 +13,8 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use num_traits::Zero;
-use vm_api::util::{apply_ok, serialize_ok};
 use vm_api::VM;
+use vm_api::util::{apply_ok, serialize_ok};
 
 #[derive(Clone)]
 pub struct DealOptions {

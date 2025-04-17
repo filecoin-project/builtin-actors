@@ -11,8 +11,8 @@ use fil_actor_market::{
     DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
 };
 use fil_actor_miner::{
-    power_for_sector, Method as MinerMethod, State as MinerState, TerminateSectorsParams,
-    TerminationDeclaration,
+    Method as MinerMethod, State as MinerState, TerminateSectorsParams, TerminationDeclaration,
+    power_for_sector,
 };
 use fil_actor_power::State as PowerState;
 use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
@@ -22,11 +22,11 @@ use fil_actors_runtime::{
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_shared::deal::DealID;
 use fvm_shared::ActorID;
-use vm_api::trace::ExpectInvocation;
-use vm_api::util::{apply_ok, get_state, DynBlockstore};
+use fvm_shared::deal::DealID;
 use vm_api::VM;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{DynBlockstore, apply_ok, get_state};
 
 use crate::expects::Expect;
 use crate::util::{
