@@ -6,8 +6,8 @@ use fil_actors_runtime::runtime::Policy;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{bigint::Zero, sector::RegisteredSealProof};
-use vm_api::util::apply_code;
 use vm_api::VM;
+use vm_api::util::apply_code;
 
 use crate::util::{
     assert_invariants, change_beneficiary, create_accounts, create_miner, get_beneficiary,

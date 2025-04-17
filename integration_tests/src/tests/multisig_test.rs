@@ -1,24 +1,24 @@
 use export_macro::vm_test;
 use fil_actor_init::ExecReturn;
 use fil_actor_multisig::{
-    compute_proposal_hash, Method as MsigMethod, PendingTxnMap, ProposeParams, RemoveSignerParams,
-    State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams, PENDING_TXN_CONFIG,
+    Method as MsigMethod, PENDING_TXN_CONFIG, PendingTxnMap, ProposeParams, RemoveSignerParams,
+    State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams, compute_proposal_hash,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_SEND;
 use std::collections::HashSet;
 use std::iter::FromIterator;
-use vm_api::trace::ExpectInvocation;
-use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{DynBlockstore, apply_code, apply_ok, get_state};
 
 use crate::expects::Expect;
 use crate::util::{assert_invariants, create_accounts};

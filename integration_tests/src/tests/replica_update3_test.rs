@@ -1,6 +1,6 @@
 use cid::Cid;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
@@ -12,10 +12,10 @@ use num_traits::Zero;
 use export_macro::vm_test;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
-    max_prove_commit_duration, CompactCommD, DataActivationNotification, PieceActivationManifest,
-    PieceChange, PowerPair, ProveCommitSectors3Params, ProveReplicaUpdates3Params,
-    SectorActivationManifest, SectorChanges, SectorContentChangedParams, SectorOnChainInfoFlags,
-    SectorUpdateManifest,
+    CompactCommD, DataActivationNotification, PieceActivationManifest, PieceChange, PowerPair,
+    ProveCommitSectors3Params, ProveReplicaUpdates3Params, SectorActivationManifest, SectorChanges,
+    SectorContentChangedParams, SectorOnChainInfoFlags, SectorUpdateManifest,
+    max_prove_commit_duration,
 };
 use fil_actor_miner::{Method as MinerMethod, VerifiedAllocationKey};
 use fil_actor_verifreg::{
@@ -28,18 +28,18 @@ use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fil_actors_runtime::{
     EPOCHS_IN_DAY, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use vm_api::VM;
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::apply_ok;
-use vm_api::VM;
 
 use crate::deals::{DealBatcher, DealOptions};
 use crate::expects::Expect;
 use crate::util::{
-    advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
-    create_accounts, create_miner, datacap_create_allocations, market_add_balance,
-    market_list_deals, market_list_sectors_deals, override_compute_unsealed_sector_cid,
-    precommit_sectors_v2, sector_info, submit_windowed_post, verifreg_add_client,
-    verifreg_add_verifier, verifreg_list_claims, PrecommitMetadata,
+    PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_index,
+    advance_to_proving_deadline, create_accounts, create_miner, datacap_create_allocations,
+    market_add_balance, market_list_deals, market_list_sectors_deals,
+    override_compute_unsealed_sector_cid, precommit_sectors_v2, sector_info, submit_windowed_post,
+    verifreg_add_client, verifreg_add_verifier, verifreg_list_claims,
 };
 
 #[vm_test]

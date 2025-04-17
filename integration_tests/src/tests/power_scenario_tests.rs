@@ -1,7 +1,7 @@
 use export_macro::vm_test;
 use fil_actor_init::Method as InitMethod;
 use fil_actor_miner::{
-    max_prove_commit_duration, Method as MinerMethod, MinerConstructorParams, MIN_SECTOR_EXPIRATION,
+    MIN_SECTOR_EXPIRATION, Method as MinerMethod, MinerConstructorParams, max_prove_commit_duration,
 };
 use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actors_runtime::runtime::Policy;
@@ -10,22 +10,22 @@ use fil_actors_runtime::{
     CRON_ACTOR_ADDR, CRON_ACTOR_ID, INIT_ACTOR_ADDR, INIT_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ID,
 };
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
-use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
+use vm_api::VM;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, serialize_ok};
-use vm_api::VM;
 
 use crate::expects::Expect;
 use crate::util::{
-    assert_invariants, create_accounts, create_miner, expect_invariants,
-    invariant_failure_patterns, miner_dline_info, miner_precommit_one_sector_v2, PrecommitMetadata,
+    PrecommitMetadata, assert_invariants, create_accounts, create_miner, expect_invariants,
+    invariant_failure_patterns, miner_dline_info, miner_precommit_one_sector_v2,
 };
 use crate::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 

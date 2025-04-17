@@ -10,18 +10,18 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber};
 
+use crate::TEST_VM_RAND_ARRAY;
 use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
     create_miner, cron_tick, expect_invariants, get_network_stats, invariant_failure_patterns,
     miner_balance, miner_prove_sector, precommit_sectors_v2, submit_windowed_post,
 };
-use crate::TEST_VM_RAND_ARRAY;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
-    max_prove_commit_duration, power_for_sector, DeadlineInfo, Method as MinerMethod,
-    PoStPartition, ProveCommitAggregateParams, State as MinerState, SubmitWindowedPoStParams,
+    DeadlineInfo, Method as MinerMethod, PoStPartition, ProveCommitAggregateParams,
+    State as MinerState, SubmitWindowedPoStParams, max_prove_commit_duration, power_for_sector,
 };
 use fil_actor_power::{Method as PowerMethod, State as PowerState};
 use fil_actors_runtime::runtime::Policy;
@@ -29,9 +29,9 @@ use fil_actors_runtime::{
     CRON_ACTOR_ADDR, CRON_ACTOR_ID, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ID,
 };
-use vm_api::trace::{EmittedEvent, ExpectInvocation};
-use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
+use vm_api::util::{DynBlockstore, apply_code, apply_ok, get_state};
 
 struct SectorInfo {
     number: SectorNumber,

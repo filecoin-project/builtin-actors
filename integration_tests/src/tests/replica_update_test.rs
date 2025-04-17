@@ -15,20 +15,20 @@ use export_macro::vm_test;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_market::State as MarketState;
 use fil_actor_miner::{
-    power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MinerMethod, PowerPair, ProveReplicaUpdatesParams, ReplicaUpdate, SectorOnChainInfo,
-    SectorOnChainInfoFlags, Sectors, State as MinerState, TerminateSectorsParams,
-    TerminationDeclaration, SECTORS_AMT_BITWIDTH,
+    DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
+    Method as MinerMethod, PowerPair, ProveReplicaUpdatesParams, ReplicaUpdate,
+    SECTORS_AMT_BITWIDTH, SectorOnChainInfo, SectorOnChainInfoFlags, Sectors, State as MinerState,
+    TerminateSectorsParams, TerminationDeclaration, power_for_sector,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
-use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
+use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::{Array, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR};
-use vm_api::trace::ExpectInvocation;
-use vm_api::util::{apply_code, apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{DynBlockstore, apply_code, apply_ok, get_state, mutate_state};
 
 use crate::expects::Expect;
 

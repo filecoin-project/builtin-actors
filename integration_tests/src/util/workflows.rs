@@ -3,16 +3,16 @@ use std::cmp::min;
 
 use fil_actor_market::SettleDealPaymentsParams;
 use fil_actor_market::SettleDealPaymentsReturn;
-use frc46_token::receiver::FRC46TokenReceived;
 use frc46_token::receiver::FRC46_TOKEN_TYPE;
+use frc46_token::receiver::FRC46TokenReceived;
 use frc46_token::token::types::TransferParams;
 use frc46_token::token::types::{TransferFromParams, TransferReturn};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
@@ -34,53 +34,53 @@ use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
 use fil_actor_market::ext::verifreg::AllocationsResponse;
 use fil_actor_market::{
-    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
-    PublishStorageDealsReturn, SectorDeals, State as MarketState, MARKET_NOTIFY_DEAL_METHOD,
+    ClientDealProposal, DealProposal, Label, MARKET_NOTIFY_DEAL_METHOD, Method as MarketMethod,
+    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State as MarketState,
 };
 use fil_actor_miner::{
-    max_prove_commit_duration, ChangeBeneficiaryParams, CompactCommD, DataActivationNotification,
-    DeadlineInfo, DeclareFaultsRecoveredParams, ExpirationExtension2,
-    ExtendSectorExpiration2Params, Method as MinerMethod, PieceActivationManifest, PoStPartition,
-    PowerPair, PreCommitSectorBatchParams2, ProveCommitAggregateParams, ProveCommitSectors3Params,
+    ChangeBeneficiaryParams, CompactCommD, DataActivationNotification, DeadlineInfo,
+    DeclareFaultsRecoveredParams, ExpirationExtension2, ExtendSectorExpiration2Params,
+    Method as MinerMethod, PieceActivationManifest, PoStPartition, PowerPair,
+    PreCommitSectorBatchParams2, ProveCommitAggregateParams, ProveCommitSectors3Params,
     RecoveryDeclaration, SectorActivationManifest, SectorClaim, SectorPreCommitInfo,
     SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
-    VerifiedAllocationKey, WithdrawBalanceParams, WithdrawBalanceReturn,
+    VerifiedAllocationKey, WithdrawBalanceParams, WithdrawBalanceReturn, max_prove_commit_duration,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
-use fil_actor_verifreg::ext::datacap::MintParams;
 use fil_actor_verifreg::ClaimExtensionRequest;
-use fil_actor_verifreg::{state, AllocationRequests};
+use fil_actor_verifreg::ext::datacap::MintParams;
 use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     Method as VerifregMethod, RemoveExpiredAllocationsParams, State as VerifregState,
     VerifierParams,
 };
 use fil_actor_verifreg::{AllocationRequest, DataCap};
-use fil_actors_runtime::cbor::deserialize;
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::policy_constants::{
-    MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
-};
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::make_piece_cid;
-use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::DealWeight;
-use fil_actors_runtime::EventBuilder;
+use fil_actor_verifreg::{AllocationRequests, state};
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
+use fil_actors_runtime::DealWeight;
+use fil_actors_runtime::EventBuilder;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ID;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+use fil_actors_runtime::cbor::deserialize;
+use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::runtime::policy_constants::{
+    MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
+};
+use fil_actors_runtime::test_utils::make_piece_cid;
+use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
-use vm_api::trace::{EmittedEvent, ExpectInvocation};
-use vm_api::util::get_state;
-use vm_api::util::DynBlockstore;
-use vm_api::util::{apply_code, apply_ok, apply_ok_implicit};
 use vm_api::VM;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
+use vm_api::util::DynBlockstore;
+use vm_api::util::get_state;
+use vm_api::util::{apply_code, apply_ok, apply_ok_implicit};
 
 use crate::expects::Expect;
 use crate::*;

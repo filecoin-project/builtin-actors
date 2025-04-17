@@ -1,6 +1,6 @@
 use fil_actors_runtime::runtime::Policy;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -10,14 +10,14 @@ use fvm_shared::sector::{
 use num_traits::Zero;
 
 use export_macro::vm_test;
-use fil_actor_miner::{daily_proof_fee, Method as MinerMethod, SectorOnChainInfoFlags};
+use fil_actor_miner::{Method as MinerMethod, SectorOnChainInfoFlags, daily_proof_fee};
 use fil_actor_miner::{
     ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn, SectorNIActivationInfo,
 };
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use vm_api::trace::{EmittedEvent, ExpectInvocation};
-use vm_api::util::{apply_ok, DynBlockstore};
 use vm_api::VM;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
+use vm_api::util::{DynBlockstore, apply_ok};
 
 use crate::expects::Expect;
 use crate::util::{

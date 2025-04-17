@@ -1,11 +1,11 @@
 use fil_actor_market::DealProposal;
 use fil_actor_miner::{
-    max_prove_commit_duration, power_for_sector, CompactCommD, SectorPreCommitOnChainInfo,
-    State as MinerState,
+    CompactCommD, SectorPreCommitOnChainInfo, State as MinerState, max_prove_commit_duration,
+    power_for_sector,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
-use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -18,15 +18,16 @@ use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use num_traits::Zero;
 
 use export_macro::vm_test;
-use vm_api::util::{apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
+use vm_api::util::{DynBlockstore, apply_ok, get_state};
 
 use crate::deals::{DealBatcher, DealOptions};
 use crate::util::{
-    advance_to_proving_deadline, bf_all, create_accounts, create_miner, get_network_stats,
-    make_bitfield, market_add_balance, market_pending_deal_allocations, miner_balance,
-    precommit_meta_data_from_deals, precommit_sectors_v2, precommit_sectors_v2_expect_code,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, PrecommitMetadata,
+    PrecommitMetadata, advance_to_proving_deadline, bf_all, create_accounts, create_miner,
+    get_network_stats, make_bitfield, market_add_balance, market_pending_deal_allocations,
+    miner_balance, precommit_meta_data_from_deals, precommit_sectors_v2,
+    precommit_sectors_v2_expect_code, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier,
 };
 
 const BATCH_SIZE: usize = 8;

@@ -2,7 +2,7 @@ use export_macro::vm_test;
 use fil_actor_datacap::{
     DestroyParams, Method as DataCapMethod, MintParams, State as DataCapState,
 };
-use fil_actor_verifreg::state::{RemoveDataCapProposalMap, REMOVE_DATACAP_PROPOSALS_CONFIG};
+use fil_actor_verifreg::state::{REMOVE_DATACAP_PROPOSALS_CONFIG, RemoveDataCapProposalMap};
 use fil_actor_verifreg::{
     AddVerifiedClientParams, DataCap, RemoveDataCapParams, RemoveDataCapRequest,
     RemoveDataCapReturn, SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
@@ -11,11 +11,11 @@ use fil_actor_verifreg::{AddrPairKey, Method as VerifregMethod};
 use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State as VerifregState};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ID,
+    DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ID, make_map_with_root_and_bitwidth,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{to_vec, RawBytes};
+use fvm_ipld_encoding::{RawBytes, to_vec};
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -25,9 +25,9 @@ use fvm_shared::sector::StoragePower;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use num_traits::ToPrimitive;
 use std::ops::{Div, Sub};
-use vm_api::trace::ExpectInvocation;
-use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{DynBlockstore, apply_code, apply_ok, get_state};
 
 use crate::expects::Expect;
 
@@ -123,15 +123,19 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     )
     .unwrap();
 
-    assert!(proposal_ids
-        .get(&AddrPairKey::new(verifier1_id_addr, verified_client_id_addr))
-        .unwrap()
-        .is_none());
+    assert!(
+        proposal_ids
+            .get(&AddrPairKey::new(verifier1_id_addr, verified_client_id_addr))
+            .unwrap()
+            .is_none()
+    );
 
-    assert!(proposal_ids
-        .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr))
-        .unwrap()
-        .is_none());
+    assert!(
+        proposal_ids
+            .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr))
+            .unwrap()
+            .is_none()
+    );
 
     // remove half the client's allowance
     let mut verifier1_proposal = RemoveDataCapProposal {

@@ -13,25 +13,25 @@ use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
 use fil_actor_miner::{
-    max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
-    ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
-    ProveReplicaUpdatesParams, ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors,
-    State as MinerState,
+    ExpirationExtension, ExpirationExtension2, ExtendSectorExpiration2Params,
+    ExtendSectorExpirationParams, Method as MinerMethod, PowerPair, ProveReplicaUpdatesParams,
+    ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors, State as MinerState,
+    max_prove_commit_duration, power_for_sector,
 };
 use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
-use vm_api::trace::ExpectInvocation;
-use vm_api::util::{apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{DynBlockstore, apply_ok, get_state, mutate_state};
 
 use crate::expects::Expect;
 use crate::util::{
-    advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
+    PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
     create_miner, cron_tick, expect_invariants, invariant_failure_patterns,
     make_piece_manifests_from_deal_ids, market_add_balance, market_pending_deal_allocations,
     market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
     override_compute_unsealed_sector_cid, precommit_meta_data_from_deals, sector_deadline,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, PrecommitMetadata,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
 #[allow(clippy::too_many_arguments)]

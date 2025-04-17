@@ -5,8 +5,8 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::RegisteredSealProof;
-use vm_api::util::apply_code;
 use vm_api::VM;
+use vm_api::util::apply_code;
 
 use crate::util::{
     assert_invariants, change_beneficiary, change_owner_address, create_accounts, create_miner,

@@ -1,12 +1,12 @@
 use export_macro::vm_test;
 use fil_actor_init::Exec4Return;
 use fil_actors_runtime::{
-    cbor::serialize, runtime::EMPTY_ARR_CID, test_utils::MULTISIG_ACTOR_CODE_ID, EAM_ACTOR_ADDR,
-    EAM_ACTOR_ID, INIT_ACTOR_ADDR,
+    EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR, cbor::serialize, runtime::EMPTY_ARR_CID,
+    test_utils::MULTISIG_ACTOR_CODE_ID,
 };
-use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SEND};
+use fvm_shared::{METHOD_SEND, address::Address, econ::TokenAmount, error::ExitCode};
 use num_traits::Zero;
-use vm_api::{builtin::Type, util::serialize_ok, VM};
+use vm_api::{VM, builtin::Type, util::serialize_ok};
 
 use crate::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 

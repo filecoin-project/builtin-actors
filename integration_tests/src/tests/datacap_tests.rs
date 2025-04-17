@@ -2,8 +2,8 @@ use export_macro::vm_test;
 use fil_actor_datacap::{Method as DataCapMethod, MintParams};
 use fil_actor_verifreg::{AllocationRequest, AllocationRequests};
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE;
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::runtime::policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use frc46_token::token::types::{GetAllowanceParams, TransferFromParams};
@@ -13,8 +13,8 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::RegisteredSealProof;
-use vm_api::util::{apply_code, apply_ok};
 use vm_api::VM;
+use vm_api::util::{apply_code, apply_ok};
 
 use crate::util::{create_accounts, create_miner};
 

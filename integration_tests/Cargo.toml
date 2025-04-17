@@ -4,7 +4,7 @@ description = "Portable integration tests for FVM targets"
 version = "1.0.0"
 license = "MIT OR Apache-2.0"
 authors = ["Protocol Labs", "Filecoin Core Devs"]
-edition = "2021"
+edition.workspace = true
 keywords = ["filecoin", "web3", "wasm"]
 publish = false
 
