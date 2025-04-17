@@ -2,29 +2,17 @@ use fil_actors_evm_shared::uints::U256;
 
 #[inline]
 pub fn byte(i: U256, x: U256) -> U256 {
-    if i >= 32 {
-        U256::ZERO
-    } else {
-        U256::from_u64(x.byte(31 - i.low_u64() as usize) as u64)
-    }
+    if i >= 32 { U256::ZERO } else { U256::from_u64(x.byte(31 - i.low_u64() as usize) as u64) }
 }
 
 #[inline]
 pub fn shl(shift: U256, value: U256) -> U256 {
-    if value.is_zero() || shift >= 256 {
-        U256::ZERO
-    } else {
-        value << shift
-    }
+    if value.is_zero() || shift >= 256 { U256::ZERO } else { value << shift }
 }
 
 #[inline]
 pub fn shr(shift: U256, value: U256) -> U256 {
-    if value.is_zero() || shift >= 256 {
-        U256::ZERO
-    } else {
-        value >> shift
-    }
+    if value.is_zero() || shift >= 256 { U256::ZERO } else { value >> shift }
 }
 
 #[inline]

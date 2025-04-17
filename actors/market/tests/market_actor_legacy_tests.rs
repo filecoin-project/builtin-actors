@@ -4,16 +4,16 @@
 //! The test fixtures replicate this behaviour by adding them explicitly to the deal_op queue upon activation and setting
 //! last_updated to the deal_start epoch.
 
-use fil_actor_market::{next_update_epoch, State};
+use fil_actor_market::{State, next_update_epoch};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Runtime, RuntimePolicy};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_YEAR};
+use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_SEND;
 use regex::Regex;
 
 use num_traits::Zero;

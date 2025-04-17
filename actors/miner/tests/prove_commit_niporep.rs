@@ -143,12 +143,14 @@ fn prove_sectors_max_aggregate_ni() {
     assert_eq!(deadline.live_sectors, rt.policy.max_aggregated_sectors_ni);
 
     // Check if the sectors in partition are the ones we just committed
-    assert!(partition_sectors
-        .iter()
-        .rev()
-        .take(rt.policy.max_aggregated_sectors_ni as usize)
-        .rev()
-        .eq(sector_nums.iter()));
+    assert!(
+        partition_sectors
+            .iter()
+            .rev()
+            .take(rt.policy.max_aggregated_sectors_ni as usize)
+            .rev()
+            .eq(sector_nums.iter())
+    );
 
     let sectors: Vec<SectorOnChainInfo> =
         sector_nums.iter().map(|sector_num| h.get_sector(&rt, *sector_num)).collect();
@@ -391,12 +393,14 @@ fn prove_sectors_multiple_max_aggregate_ni() {
         assert_eq!(deadline.live_sectors, (i + 1) * rt.policy.max_aggregated_sectors_ni);
 
         // Check if the last max_aggregated_sectors_ni sectors in partition are the ones we just committed
-        assert!(partition_sectors
-            .iter()
-            .rev()
-            .take(rt.policy.max_aggregated_sectors_ni as usize)
-            .rev()
-            .eq(sector_nums.iter()));
+        assert!(
+            partition_sectors
+                .iter()
+                .rev()
+                .take(rt.policy.max_aggregated_sectors_ni as usize)
+                .rev()
+                .eq(sector_nums.iter())
+        );
 
         let sectors: Vec<SectorOnChainInfo> =
             sector_nums.iter().map(|sector_num| h.get_sector(&rt, *sector_num)).collect();

@@ -1,7 +1,7 @@
 use fil_actor_evm::{DelegateCallParams, Method};
 use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{runtime::EMPTY_ARR_CID, test_utils::EVM_ACTOR_CODE_ID};
-use fvm_ipld_encoding::{ipld_block::IpldBlock, BytesSer, RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::{BytesSer, DAG_CBOR, RawBytes, ipld_block::IpldBlock};
 use fvm_shared::{
     address::Address as FILAddress, econ::TokenAmount, error::ExitCode, sys::SendFlags,
 };
@@ -83,7 +83,7 @@ fn test_delegate_call_caller() {
 
     // dest + method 0 + single byte of data
     let mut contract_params = vec![0u8; 37];
-    evm_target_word.to_big_endian(&mut contract_params[..32]);
+    evm_target_word.write_as_big_endian(&mut contract_params[..32]);
     contract_params[36] = 0x01;
 
     // dest 0 in this test has code cid EMPTY_ARR_CID

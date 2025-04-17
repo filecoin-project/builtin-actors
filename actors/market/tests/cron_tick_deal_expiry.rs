@@ -162,8 +162,8 @@ fn payment_for_a_deal_if_deal_is_already_expired_before_a_cron_tick() {
 }
 
 #[test]
-fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_after_payment_and_deal_should_be_deleted(
-) {
+fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_after_payment_and_deal_should_be_deleted()
+ {
     let sector_number = 7;
     let rt = setup();
     let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(

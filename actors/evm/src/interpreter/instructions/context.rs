@@ -119,7 +119,7 @@ pub fn prevrandao(
     // NOTE: EVM uses previous RANDAO value in this opcode since the _current_ RANDAO for them runs on the beacon chain's state
     //      and wont be finalized till the end of a block. Filecoin's chain randomness is generated _before_ any contract is run, so we instead
     //      grab randomness from the current epoch.
-    system.get_randomness().map(|v| U256::from(*v))
+    system.get_randomness().map(|v| U256::from_big_endian(v))
 }
 
 #[inline]
@@ -150,8 +150,8 @@ pub fn base_fee(
 #[cfg(test)]
 mod tests {
     use crate::evm_unit_test;
-    use cid::multihash::Multihash;
     use cid::Cid;
+    use cid::multihash::Multihash;
     use fil_actors_evm_shared::uints::U256;
     use fvm_ipld_encoding::{DAG_CBOR, IPLD_RAW};
     use fvm_shared::address::Address as FilAddress;
@@ -199,7 +199,7 @@ mod tests {
                 m.step().expect("execution step failed");
                 m.step().expect("execution step failed");
                 assert_eq!(m.state.stack.len(), 1);
-                assert_eq!(m.state.stack.pop().unwrap(), U256::from(expect), "{}", test);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from_big_endian(&expect), "{}", test);
             };
         }
     }

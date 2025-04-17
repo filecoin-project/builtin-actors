@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
-use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array, AsActorError};
+use fil_actors_runtime::{ActorDowncast, ActorError, Array, AsActorError, actor_error};
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;

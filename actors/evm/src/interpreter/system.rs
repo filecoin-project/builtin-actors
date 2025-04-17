@@ -2,25 +2,25 @@ use std::borrow::Cow;
 
 use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{
-    actor_error, extract_send_result, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID,
+    AsActorError, EAM_ACTOR_ID, actor_error, extract_send_result, runtime::EMPTY_ARR_CID,
 };
 use fvm_ipld_blockstore::Block;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_kamt::HashedKey;
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{MethodNum, Response, IPLD_RAW, METHOD_SEND};
+use fvm_shared::{IPLD_RAW, METHOD_SEND, MethodNum, Response};
 use multihash_codetable::Code;
 
-use crate::state::{State, Tombstone, TransientData, TransientDataLifespan};
 use crate::BytecodeHash;
+use crate::state::{State, Tombstone, TransientData, TransientDataLifespan};
 
 use cid::Cid;
-use fil_actors_runtime::{runtime::Runtime, ActorError};
+use fil_actors_runtime::{ActorError, runtime::Runtime};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_kamt::{AsHashedKey, Config as KamtConfig, Kamt};
 
@@ -53,9 +53,7 @@ pub struct StateHashAlgorithm;
 /// the nibbles to be co-located in the tree.
 impl AsHashedKey<U256, 32> for StateHashAlgorithm {
     fn as_hashed_key(key: &U256) -> Cow<HashedKey<32>> {
-        let mut bs = [0u8; 32];
-        key.to_big_endian(&mut bs);
-        Cow::Owned(bs)
+        Cow::Owned(key.to_big_endian())
     }
 }
 
@@ -150,7 +148,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             return Err(actor_error!(forbidden, "can only resurrect a dead contract"));
         }
 
-        return Ok(Self::new(rt, read_only));
+        Ok(Self::new(rt, read_only))
     }
 
     /// Create the contract. This will return a new empty contract if, and only if, the contract
@@ -164,7 +162,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         if state_root != EMPTY_ARR_CID {
             return Err(actor_error!(illegal_state, "can't create over an existing actor"));
         }
-        return Ok(Self::new(rt, read_only));
+        Ok(Self::new(rt, read_only))
     }
 
     /// Load the actor from state.

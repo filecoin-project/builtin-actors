@@ -1,9 +1,9 @@
 use fil_actor_miner::{Actor, BeneficiaryTerm, GetBeneficiaryReturn, Method};
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, MockRuntime, EVM_ACTOR_CODE_ID,
+    EVM_ACTOR_CODE_ID, MockRuntime, expect_abort, expect_abort_contains_message,
 };
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, MethodNum};
+use fvm_shared::{MethodNum, address::Address, econ::TokenAmount, error::ExitCode};
 use num_traits::Zero;
 
 mod util;
@@ -108,8 +108,8 @@ fn successfully_change_from_not_owner_beneficiary_to_another_address_three_messa
 }
 
 #[test]
-fn successfully_change_from_not_owner_beneficiary_to_another_address_when_beneficiary_inefficient_two_message(
-) {
+fn successfully_change_from_not_owner_beneficiary_to_another_address_when_beneficiary_inefficient_two_message()
+ {
     let (mut h, rt) = setup();
     let first_beneficiary_id = Address::new_id(999);
     let second_beneficiary_id = Address::new_id(1000);

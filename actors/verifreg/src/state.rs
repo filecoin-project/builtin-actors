@@ -13,7 +13,7 @@ use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 
 use fil_actors_runtime::{
-    actor_error, ActorError, AsActorError, Config, Map2, MapMap, DEFAULT_HAMT_CONFIG,
+    ActorError, AsActorError, Config, DEFAULT_HAMT_CONFIG, Map2, MapMap, actor_error,
 };
 
 use crate::{AddrPairKey, AllocationID, ClaimID};

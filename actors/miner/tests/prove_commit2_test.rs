@@ -1,7 +1,7 @@
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::{clock::ChainEpoch, ActorID};
+use fvm_shared::{ActorID, clock::ChainEpoch};
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{

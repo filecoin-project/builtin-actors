@@ -12,10 +12,10 @@ use fil_actor_market::ext::miner::{
     PieceChange, PieceReturn, SectorChanges, SectorContentChangedParams,
 };
 use fil_actor_market::{DealProposal, Method, NO_ALLOCATION_ID};
+use fil_actors_runtime::EPOCHS_IN_DAY;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::test_utils::{expect_abort, MockRuntime, ACCOUNT_ACTOR_CODE_ID};
-use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, MockRuntime, expect_abort};
 use harness::*;
 
 mod harness;

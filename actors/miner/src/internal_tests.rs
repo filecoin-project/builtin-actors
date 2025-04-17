@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use super::*;
-use fil_actors_runtime::{test_utils::blake2b_256, EPOCHS_IN_DAY};
+use fil_actors_runtime::{EPOCHS_IN_DAY, test_utils::blake2b_256};
 
 #[test]
 fn test_assign_proving_period_boundary() {

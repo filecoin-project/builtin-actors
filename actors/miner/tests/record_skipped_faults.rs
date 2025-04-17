@@ -1,11 +1,11 @@
-use fil_actor_miner::testing::PartitionStateSummary;
 use fil_actor_miner::Partition;
 use fil_actor_miner::QuantSpec;
 use fil_actor_miner::SectorOnChainInfo;
+use fil_actor_miner::testing::PartitionStateSummary;
 use fil_actor_miner::{daily_fee_for_sectors, power_for_sectors, select_sectors};
-use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_bitfield::BitField;
 
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;

@@ -3,8 +3,8 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, extract_send_result, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error, extract_send_result,
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;

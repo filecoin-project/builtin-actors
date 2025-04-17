@@ -4,7 +4,7 @@
 use fvm_shared::clock::ChainEpoch;
 
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
-use fil_actors_runtime::{SetMultimap, SetMultimapConfig, DEFAULT_HAMT_CONFIG};
+use fil_actors_runtime::{DEFAULT_HAMT_CONFIG, SetMultimap, SetMultimapConfig};
 
 pub const CONFIG: SetMultimapConfig =
     SetMultimapConfig { outer: DEFAULT_HAMT_CONFIG, inner: DEFAULT_HAMT_CONFIG };

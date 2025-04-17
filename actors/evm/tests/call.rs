@@ -5,20 +5,20 @@ use std::fmt::Debug;
 use alloy_core::primitives::{Bytes, Uint};
 use alloy_core::sol;
 use alloy_core::sol_types::SolCall;
-use evm::{Method, EVM_CONTRACT_REVERTED};
+use evm::{EVM_CONTRACT_REVERTED, Method};
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
-use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{EAM_ACTOR_ID, INIT_ACTOR_ADDR, test_utils::*};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, BytesSer, CBOR, IPLD_RAW};
+use fvm_shared::MethodNum;
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
-use fvm_shared::MethodNum;
 
 mod util;
 
@@ -179,7 +179,7 @@ fn test_call() {
 
     // dest + method 0 with no data
     let mut contract_params = vec![0u8; 36];
-    evm_target_word.to_big_endian(&mut contract_params[..32]);
+    evm_target_word.write_as_big_endian(&mut contract_params[..32]);
 
     let proxy_call_contract_params = vec![0u8; 4];
     let proxy_call_input_data = make_raw_params(proxy_call_contract_params);
@@ -225,7 +225,7 @@ fn test_transfer_nogas() {
 
     // dest with no data
     let mut contract_params = vec![0u8; 32];
-    evm_target_word.to_big_endian(&mut contract_params);
+    evm_target_word.write_as_big_endian(&mut contract_params);
 
     // we don't expected return data
     let return_data = vec![];
@@ -266,7 +266,7 @@ fn test_transfer_2300() {
 
     // dest with no data
     let mut contract_params = vec![0u8; 32];
-    evm_target_word.to_big_endian(&mut contract_params);
+    evm_target_word.write_as_big_endian(&mut contract_params);
 
     // we don't expected return data
     let return_data = vec![];
@@ -1159,13 +1159,14 @@ impl ContractTester {
         // first actor created is 0
         rt.set_delegated_address(0, Address::new_delegated(EAM_ACTOR_ID, &addr.0).unwrap());
 
-        assert!(rt
-            .call::<evm::EvmContractActor>(
+        assert!(
+            rt.call::<evm::EvmContractActor>(
                 evm::Method::Constructor as u64,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
-            .is_none());
+            .is_none()
+        );
 
         rt.verify();
         rt.reset();
@@ -1189,6 +1190,6 @@ impl ContractTester {
             .deserialize()
             .unwrap();
 
-        C::abi_decode_returns(&result, true).unwrap()
+        C::abi_decode_returns(&result).unwrap()
     }
 }

@@ -1,17 +1,17 @@
 use std::ops::Range;
 
-use fil_actors_evm_shared::uints::byteorder::{ByteOrder, LE};
 use fil_actors_evm_shared::uints::U256;
+use fil_actors_evm_shared::uints::byteorder::{ByteOrder, LE};
 
 use fil_actors_runtime::runtime::Runtime;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE};
 use num_traits::{One, Zero};
-use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
+use substrate_bn::{AffineG1, AffineG2, Fq, Fq2, Fr, G1, G2, Group, Gt, pairing_batch};
 
 use crate::{
-    interpreter::{precompiles::PrecompileError, System},
     EVM_WORD_SIZE,
+    interpreter::{System, precompiles::PrecompileError},
 };
 
 use super::{PrecompileContext, PrecompileResult};
@@ -45,8 +45,8 @@ fn ec_recover_internal<RT: Runtime>(system: &mut System<RT>, input: &[u8]) -> Pr
     }
 
     let mut sig: [u8; SECP_SIG_LEN] = [0u8; 65];
-    r.to_big_endian(&mut sig[..32]);
-    s.to_big_endian(&mut sig[32..64]);
+    r.write_as_big_endian(&mut sig[..32]);
+    s.write_as_big_endian(&mut sig[32..64]);
     sig[64] = v;
 
     let pubkey = system
@@ -235,9 +235,9 @@ pub(super) fn ec_pairing<RT: Runtime>(
     let accumulated = pairing_batch(&groups);
 
     let paring_success = if accumulated == Gt::one() { U256::one() } else { U256::zero() };
-    let mut ret = [0u8; EVM_WORD_SIZE];
-    paring_success.to_big_endian(&mut ret);
-    Ok(ret.to_vec())
+    let mut ret = vec![0; EVM_WORD_SIZE];
+    paring_success.write_as_big_endian(&mut ret);
+    Ok(ret)
 }
 
 /// https://eips.ethereum.org/EIPS/eip-152
@@ -447,12 +447,11 @@ mod tests {
         use super::MockRuntime;
 
         use crate::interpreter::{
-            precompiles::{
-                ec_add, ec_mul, ec_pairing,
-                evm::{blake2f, ec_recover, modexp},
-                PrecompileContext, PrecompileError, PrecompileFn,
-            },
             System,
+            precompiles::{
+                PrecompileContext, PrecompileError, PrecompileFn, ec_add, ec_mul, ec_pairing,
+                evm::{blake2f, ec_recover, modexp},
+            },
         };
 
         #[test]
@@ -536,10 +535,10 @@ mod tests {
             for (f, name) in tests {
                 let td = std::fs::read_to_string(format!("{TESTDATA_PATH}/{name}.json")).unwrap();
                 let cases: Vec<TestCase> = serde_json::from_str(&td).unwrap();
-                for t in cases {
+                for (i, t) in cases.iter().enumerate() {
                     let res = f(&mut system, &t.input, PrecompileContext::default())
                         .expect("call failed");
-                    assert_eq!(res, t.expected);
+                    assert_eq!(res, t.expected, "{name}:{i} failed");
                 }
             }
         }
@@ -793,7 +792,9 @@ mod tests {
         // outputs
 
         // T4
-        let expected = hex!("08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b");
+        let expected = hex!(
+            "08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b"
+        );
         let input = &hex!(
             "00000000"
             "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
@@ -807,7 +808,9 @@ mod tests {
         );
 
         // T5
-        let expected = &hex!("ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923");
+        let expected = &hex!(
+            "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923"
+        );
         let input = &hex!(
             "0000000c"
             "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
@@ -821,7 +824,9 @@ mod tests {
         );
 
         // T6
-        let expected = &hex!("75ab69d3190a562c51aef8d88f1c2775876944407270c42c9844252c26d2875298743e7f6d5ea2f2d3e8d226039cd31b4e426ac4f2d3d666a610c2116fde4735");
+        let expected = &hex!(
+            "75ab69d3190a562c51aef8d88f1c2775876944407270c42c9844252c26d2875298743e7f6d5ea2f2d3e8d226039cd31b4e426ac4f2d3d666a610c2116fde4735"
+        );
         let input = &hex!(
             "0000000c"
             "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
@@ -835,7 +840,9 @@ mod tests {
         );
 
         // T7
-        let expected = &hex!("b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421");
+        let expected = &hex!(
+            "b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421"
+        );
         let input = &hex!(
             "00000001"
             "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
@@ -854,7 +861,9 @@ mod tests {
         //  with an expected output of fc59093aafa9ab43daae0e914c57635c5402d8e3d2130eb9b3cc181de7f0ecf9b22bf99a7815ce16419e200e01846e6b5df8cc7703041bbceb571de6631d2615
         //  I ran this successfully while grabbing a cup of coffee, so if you fee like wasting u32::MAX rounds of hash time, (25-ish min on Ryzen5 2600) you can test it as such.
         //  For my and CI's sanity however, we are capping it at 0000ffff.
-        let expected = &hex!("183ed9b1e5594bcdd715a4e4fd7b0dc2eaa2ef9bda48242af64c687081142156621bc94bb2d5aa99d83c2f1a5d9c426e1b6a1755a5e080f6217e2a5f3b9c4624");
+        let expected = &hex!(
+            "183ed9b1e5594bcdd715a4e4fd7b0dc2eaa2ef9bda48242af64c687081142156621bc94bb2d5aa99d83c2f1a5d9c426e1b6a1755a5e080f6217e2a5f3b9c4624"
+        );
         let input = &hex!(
             "0000ffff"
             "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"

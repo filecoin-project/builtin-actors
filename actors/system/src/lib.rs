@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
-use fvm_shared::error::ExitCode;
+use fvm_ipld_encoding::tuple::*;
 use fvm_shared::METHOD_CONSTRUCTOR;
+use fvm_shared::error::ExitCode;
 use num_derive::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+    ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error,
 };
 
 #[cfg(feature = "fil-actor")]
@@ -82,8 +82,8 @@ mod tests {
 
     use fvm_shared::MethodNum;
 
-    use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
+    use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
 
     use crate::{Actor, Method, State};
 

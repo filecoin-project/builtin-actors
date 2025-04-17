@@ -33,7 +33,7 @@ mod test {
     use fil_actors_evm_shared::uints::U256;
     use fil_actors_runtime::runtime::Primitives;
 
-    use crate::{evm_unit_test, BytecodeHash};
+    use crate::{BytecodeHash, evm_unit_test};
 
     #[test]
     fn keccak256_large() {
@@ -59,7 +59,7 @@ mod test {
                 m.step().expect("execution step failed");
                 m.step().expect("execution step failed");
 
-                assert_eq!(m.state.stack.pop().unwrap(), U256::from(expect));
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from_big_endian(expect));
             };
         }
     }

@@ -1,10 +1,10 @@
 use fvm_shared::address::Address;
 use lazy_static::lazy_static;
 
-use fil_actors_runtime::test_utils::MockRuntime;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+use fil_actors_runtime::test_utils::MockRuntime;
 
-use crate::harness::{new_runtime, Harness};
+use crate::harness::{Harness, new_runtime};
 
 mod harness;
 
@@ -16,7 +16,7 @@ lazy_static! {
 
 mod construction {
     use crate::*;
-    use fil_actor_datacap::{Actor, GranularityReturn, Method, DATACAP_GRANULARITY};
+    use fil_actor_datacap::{Actor, DATACAP_GRANULARITY, GranularityReturn, Method};
     use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
     use fvm_shared::MethodNum;
 
@@ -60,15 +60,15 @@ mod construction {
 }
 
 mod mint {
+    use fvm_shared::MethodNum;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
-    use fvm_shared::MethodNum;
 
-    use fil_actor_datacap::{Actor, Method, MintParams, INFINITE_ALLOWANCE};
-    use fil_actors_runtime::test_utils::{expect_abort_contains_message, MARKET_ACTOR_CODE_ID};
+    use fil_actor_datacap::{Actor, INFINITE_ALLOWANCE, Method, MintParams};
+    use fil_actors_runtime::test_utils::{MARKET_ACTOR_CODE_ID, expect_abort_contains_message};
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_ipld_encoding::RawBytes;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use std::ops::Sub;
 
     use crate::*;
@@ -157,7 +157,7 @@ mod mint {
 mod transfer {
     // Tests for the specific transfer restrictions of the datacap token.
 
-    use crate::{make_harness, ALICE, BOB, CARLA};
+    use crate::{ALICE, BOB, CARLA, make_harness};
     use fil_actors_runtime::test_utils::expect_abort_contains_message;
     use fvm_ipld_encoding::RawBytes;
     use fvm_shared::econ::TokenAmount;
@@ -221,12 +221,12 @@ mod transfer {
 }
 
 mod destroy {
-    use crate::{make_harness, ALICE, BOB};
+    use crate::{ALICE, BOB, make_harness};
     use fil_actor_datacap::DestroyParams;
-    use fil_actors_runtime::test_utils::{expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID};
     use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
-    use fvm_shared::econ::TokenAmount;
+    use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, expect_abort_contains_message};
     use fvm_shared::MethodNum;
+    use fvm_shared::econ::TokenAmount;
 
     use fil_actor_datacap::{Actor, Method};
     use fvm_ipld_encoding::ipld_block::IpldBlock;

@@ -6,8 +6,8 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, extract_send_result, ActorContext, ActorError, AsActorError,
-    EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    ActorContext, ActorError, AsActorError, EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, actor_dispatch,
+    actor_error, extract_send_result,
 };
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;

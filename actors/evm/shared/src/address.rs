@@ -1,8 +1,8 @@
 use crate::uints::U256;
 use fil_actors_runtime::EAM_ACTOR_ID;
 use fvm_ipld_encoding::{serde, strict_bytes};
-use fvm_shared::address::Address;
 use fvm_shared::ActorID;
+use fvm_shared::address::Address;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Eq, Clone, Copy)]
@@ -13,8 +13,7 @@ pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 /// Per the EVM spec, this simply discards the high bytes.
 impl From<U256> for EthAddress {
     fn from(v: U256) -> Self {
-        let mut bytes = [0u8; 32];
-        v.to_big_endian(&mut bytes);
+        let bytes = v.to_big_endian();
         Self(bytes[12..].try_into().unwrap())
     }
 }
@@ -131,7 +130,7 @@ mod tests {
             #[test]
             fn $name() {
                 let evm_bytes = $input.concat();
-                let evm_addr = EthAddress::from(U256::from(evm_bytes.as_slice()));
+                let evm_addr = EthAddress::from(U256::from_big_endian(evm_bytes.as_slice()));
                 assert_eq!(
                     evm_addr.as_id(),
                     $expectation

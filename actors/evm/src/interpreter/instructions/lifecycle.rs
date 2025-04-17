@@ -3,18 +3,18 @@ use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fil_actors_runtime::{deserialize_block, extract_send_result};
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
-use fvm_shared::sys::SendFlags;
-use fvm_shared::MethodNum;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::METHOD_SEND;
+use fvm_shared::MethodNum;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{address::Address, econ::TokenAmount};
 
+use crate::EVM_CONTRACT_SELFDESTRUCT_FAILED;
 use crate::ext::eam;
 use crate::interpreter::Output;
-use crate::EVM_CONTRACT_SELFDESTRUCT_FAILED;
 
-use super::memory::{get_memory_region, MemoryRegion};
+use super::memory::{MemoryRegion, get_memory_region};
 use {
     crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
@@ -67,7 +67,7 @@ pub fn create2(
     let input_region = get_memory_region(&mut state.memory, offset, size)?;
 
     // BE encoded array
-    let salt: [u8; 32] = salt.into();
+    let salt: [u8; 32] = salt.to_big_endian();
 
     let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
         &state.memory[offset..][..size.get()]
@@ -192,16 +192,16 @@ pub fn selfdestruct(
 #[cfg(test)]
 mod tests {
     use crate::ext::eam;
-    use crate::{evm_unit_test, EVM_CONTRACT_REVERTED};
+    use crate::{EVM_CONTRACT_REVERTED, evm_unit_test};
 
     use fil_actors_evm_shared::uints::U256;
     use fil_actors_runtime::EAM_ACTOR_ADDR;
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_ipld_encoding::BytesSer;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::METHOD_SEND;
     use fvm_shared::address::Address as FilAddress;
     use fvm_shared::error::{ErrorNumber, ExitCode};
     use fvm_shared::sys::SendFlags;
-    use fvm_shared::METHOD_SEND;
 
     #[test]
     fn test_create() {

@@ -4,14 +4,14 @@
 use cid::Cid;
 use fil_actors_runtime::{BatchReturn, MapKey};
 use fvm_ipld_encoding::tuple::*;
+use fvm_shared::ActorID;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{bigint_ser, BigInt};
+use fvm_shared::bigint::{BigInt, bigint_ser};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::ActorID;
 use std::fmt::{Debug, Formatter};
 
 use crate::Claim;

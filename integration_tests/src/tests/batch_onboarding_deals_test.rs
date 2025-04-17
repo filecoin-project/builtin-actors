@@ -210,7 +210,7 @@ fn publish_deals(
     let ret = batcher.publish_ok(worker);
     let good_inputs = bf_all(ret.valid_deals);
     assert_eq!((0..count as u64).collect::<Vec<u64>>(), good_inputs);
-    return ret.ids.into_iter().zip(batcher.proposals().iter().cloned()).collect();
+    ret.ids.into_iter().zip(batcher.proposals().iter().cloned()).collect()
 }
 
 // This method doesn't check any trace expectations.

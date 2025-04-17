@@ -1,7 +1,7 @@
 use std::mem;
 
-use cid::multihash::Multihash;
 use cid::Cid;
+use cid::multihash::Multihash;
 use fvm_ipld_encoding::DAG_CBOR;
 use fvm_shared::crypto::hash::SupportedHashes;
 

@@ -4,7 +4,7 @@ use fil_actor_miner::{
     SectorPreCommitOnChainInfo, State, VestSpec,
 };
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
-use fil_actors_runtime::{runtime::Policy, ActorError};
+use fil_actors_runtime::{ActorError, runtime::Policy};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::CborStore;

@@ -10,14 +10,14 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 pub use self::actor_code::*;
 pub use self::policy::*;
 pub use self::randomness::DomainSeparationTag;
 use crate::runtime::builtins::Type;
-use crate::{actor_error, ActorError, SendError};
+use crate::{ActorError, SendError, actor_error};
 
 mod actor_code;
 pub mod builtins;

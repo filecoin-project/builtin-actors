@@ -3,8 +3,8 @@ use std::ops::Range;
 use fil_actor_miner::DeadlineSectorMap;
 use fil_actor_miner::PartitionSectorMap;
 use fil_actors_runtime::runtime::Policy;
-use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::BitField;
+use fvm_ipld_bitfield::iter::Ranges;
 use itertools::Itertools;
 
 mod util;
@@ -73,13 +73,15 @@ fn deadline_sector_map() {
     let mut map_copy = create_deadline_sector_map(&policy, deadline_count, partition_count);
 
     for (deadline_index, partitions_map) in deadline_sector_map.iter() {
-        assert!(map_copy
-            .iter()
-            .find(|(index, _)| index == &deadline_index)
-            .unwrap()
-            .1
-            .partitions()
-            .eq(partitions_map.partitions()));
+        assert!(
+            map_copy
+                .iter()
+                .find(|(index, _)| index == &deadline_index)
+                .unwrap()
+                .1
+                .partitions()
+                .eq(partitions_map.partitions())
+        );
         for (partition_index, sector) in partitions_map.iter() {
             let validated = sector;
             assert_eq!(
@@ -101,9 +103,11 @@ fn deadline_sector_map() {
     assert!(deadline_sector_map.check(1, 1).is_err());
     assert!(deadline_sector_map.check(100, 1).is_err());
     assert!(deadline_sector_map.check(1, 100).is_err());
-    assert!(deadline_sector_map
-        .check(partition_count * deadline_count, partition_count * deadline_count)
-        .is_ok());
+    assert!(
+        deadline_sector_map
+            .check(partition_count * deadline_count, partition_count * deadline_count)
+            .is_ok()
+    );
 
     // merge a sector in
     deadline_sector_map.add_values(&policy, 0, 0, &[1000]).unwrap();
@@ -111,12 +115,16 @@ fn deadline_sector_map() {
         sector_from_deadline_sector_map(&mut deadline_sector_map, 0, 0),
         &[0, 1000],
     );
-    assert!(deadline_sector_map
-        .check(partition_count * deadline_count, partition_count * deadline_count)
-        .is_err());
-    assert!(deadline_sector_map
-        .check(partition_count * deadline_count, partition_count * deadline_count + 1)
-        .is_ok());
+    assert!(
+        deadline_sector_map
+            .check(partition_count * deadline_count, partition_count * deadline_count)
+            .is_err()
+    );
+    assert!(
+        deadline_sector_map
+            .check(partition_count * deadline_count, partition_count * deadline_count + 1)
+            .is_ok()
+    );
 }
 
 #[test]

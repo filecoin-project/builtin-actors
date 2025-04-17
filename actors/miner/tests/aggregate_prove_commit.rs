@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use fil_actor_miner::{
-    initial_pledge_for_power, qa_power_for_weight, PowerPair, QUALITY_BASE_MULTIPLIER,
-    VERIFIED_DEAL_WEIGHT_MULTIPLIER,
+    PowerPair, QUALITY_BASE_MULTIPLIER, VERIFIED_DEAL_WEIGHT_MULTIPLIER, initial_pledge_for_power,
+    qa_power_for_weight,
 };
 use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_bitfield::BitField;

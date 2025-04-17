@@ -7,7 +7,7 @@ use std::ops::Add;
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{to_vec, RawBytes};
+use fvm_ipld_encoding::{RawBytes, to_vec};
 use fvm_shared::address::Address;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::crypto::signature::Signature;
@@ -17,29 +17,29 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND, MethodNum};
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 
 use fil_actor_market::balance_table::BalanceTable;
-use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
+use fil_actor_market::ext::account::{AUTHENTICATE_MESSAGE_METHOD, AuthenticateMessageParams};
 use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationsResponse};
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
-    ext, Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal, DealArray,
-    DealMetaArray, DealOpsByEpoch, Label, MarketNotifyDealParams, Method,
-    PendingDealAllocationsMap, PendingProposalsSet, PublishStorageDealsParams,
-    PublishStorageDealsReturn, SectorDeals, State, WithdrawBalanceParams, DEAL_OPS_BY_EPOCH_CONFIG,
-    EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, PENDING_ALLOCATIONS_CONFIG,
-    PENDING_PROPOSALS_CONFIG, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal, DEAL_OPS_BY_EPOCH_CONFIG,
+    DealArray, DealMetaArray, DealOpsByEpoch, EX_DEAL_EXPIRED, Label, MARKET_NOTIFY_DEAL_METHOD,
+    MarketNotifyDealParams, Method, PENDING_ALLOCATIONS_CONFIG, PENDING_PROPOSALS_CONFIG,
+    PROPOSALS_AMT_BITWIDTH, PendingDealAllocationsMap, PendingProposalsSet,
+    PublishStorageDealsParams, PublishStorageDealsReturn, STATES_AMT_BITWIDTH, SectorDeals, State,
+    WithdrawBalanceParams, ext,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    ActorError, BatchReturn, SetMultimap, SetMultimapConfig, BURNT_FUNDS_ACTOR_ADDR,
-    DATACAP_TOKEN_ACTOR_ADDR, DEFAULT_HAMT_CONFIG, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, DEFAULT_HAMT_CONFIG,
+    SYSTEM_ACTOR_ADDR, SetMultimap, SetMultimapConfig, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use harness::*;
 
@@ -202,13 +202,14 @@ fn adds_to_provider_escrow_funds() {
             rt.expect_validate_caller_any();
             expect_provider_control_address(&rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-            assert!(rt
-                .call::<MarketActor>(
+            assert!(
+                rt.call::<MarketActor>(
                     Method::AddBalance as u64,
                     IpldBlock::serialize_cbor(&PROVIDER_ADDR).unwrap(),
                 )
                 .unwrap()
-                .is_none());
+                .is_none()
+            );
 
             rt.verify();
 
@@ -394,13 +395,14 @@ fn adds_to_non_provider_funds() {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
             rt.set_received(TokenAmount::from_atto(tc.delta));
             rt.expect_validate_caller_any();
-            assert!(rt
-                .call::<MarketActor>(
+            assert!(
+                rt.call::<MarketActor>(
                     Method::AddBalance as u64,
                     IpldBlock::serialize_cbor(caller_addr).unwrap(),
                 )
                 .unwrap()
-                .is_none());
+                .is_none()
+            );
 
             rt.verify();
 
@@ -776,8 +778,8 @@ fn deal_expires() {
 }
 
 #[test]
-fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_to_verigreg_actor_for_a_verified_deal(
-) {
+fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_to_verigreg_actor_for_a_verified_deal()
+ {
     use fvm_shared::address::BLS_PUB_LEN;
 
     // provider addresses
@@ -810,12 +812,13 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     rt.set_received(amount.clone());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client_resolved);
     rt.expect_validate_caller_any();
-    assert!(rt
-        .call::<MarketActor>(
+    assert!(
+        rt.call::<MarketActor>(
             Method::AddBalanceExported as u64,
             IpldBlock::serialize_cbor(&client_bls).unwrap(),
         )
-        .is_ok());
+        .is_ok()
+    );
     rt.verify();
     rt.add_balance(amount);
 
@@ -827,13 +830,14 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     rt.expect_validate_caller_any();
     expect_provider_control_address(&rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
 
-    assert!(rt
-        .call::<MarketActor>(
+    assert!(
+        rt.call::<MarketActor>(
             Method::AddBalance as u64,
             IpldBlock::serialize_cbor(&provider_bls).unwrap(),
         )
         .unwrap()
-        .is_none());
+        .is_none()
+    );
     rt.verify();
     rt.add_balance(deal.provider_collateral.clone());
     assert_eq!(deal.provider_collateral, get_balance(&rt, &provider_resolved).balance);
@@ -1876,13 +1880,14 @@ fn insufficient_client_balance_in_a_batch() {
     rt.expect_validate_caller_any();
     expect_provider_control_address(&rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-    assert!(rt
-        .call::<MarketActor>(
+    assert!(
+        rt.call::<MarketActor>(
             Method::AddBalance as u64,
             IpldBlock::serialize_cbor(&PROVIDER_ADDR).unwrap(),
         )
         .unwrap()
-        .is_none());
+        .is_none()
+    );
 
     rt.verify();
 
@@ -2020,13 +2025,14 @@ fn insufficient_provider_balance_in_a_batch() {
     rt.expect_validate_caller_any();
     expect_provider_control_address(&rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-    assert!(rt
-        .call::<MarketActor>(
+    assert!(
+        rt.call::<MarketActor>(
             Method::AddBalance as u64,
             IpldBlock::serialize_cbor(&PROVIDER_ADDR).unwrap(),
         )
         .unwrap()
-        .is_none());
+        .is_none()
+    );
 
     rt.verify();
 
@@ -2185,13 +2191,14 @@ fn psd_restricted_correctly() {
     rt.expect_validate_caller_any();
     expect_provider_control_address(&rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-    assert!(rt
-        .call::<MarketActor>(
+    assert!(
+        rt.call::<MarketActor>(
             Method::AddBalance as u64,
             IpldBlock::serialize_cbor(&PROVIDER_ADDR).unwrap(),
         )
         .unwrap()
-        .is_none());
+        .is_none()
+    );
 
     rt.verify();
 

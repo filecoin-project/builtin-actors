@@ -134,9 +134,8 @@ pub fn evm_call_test(v: &dyn VM) {
 
     let BytesDe(return_value) =
         call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-    let (evm_ret,) = Recursive::enterCall::abi_decode_returns(&return_value, true)
-        .expect("failed to decode return")
-        .into();
+    let evm_ret =
+        Recursive::enterCall::abi_decode_returns(&return_value).expect("failed to decode return");
     assert_eq!(0, evm_ret, "expected contract to return 0 on success");
 }
 
@@ -167,7 +166,7 @@ pub fn evm_create_test(v: &dyn VM) {
         create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
     let test_func = |create_func: Factory::FactoryCalls, recursive: bool| {
-        let (child_addr_eth,) = {
+        let child_addr_eth = {
             let call_params = create_func.abi_encode();
             let call_result = v
                 .execute_message(
@@ -185,9 +184,7 @@ pub fn evm_create_test(v: &dyn VM) {
             );
             let BytesDe(return_value) =
                 call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-            Factory::createCall::abi_decode_returns(&return_value, true)
-                .expect("failed to decode return")
-                .into()
+            Factory::createCall::abi_decode_returns(&return_value).expect("failed to decode return")
         };
 
         let child_addr = Address::new_delegated(EAM_ACTOR_ID, &child_addr_eth.0[..]).unwrap();
@@ -211,9 +208,8 @@ pub fn evm_create_test(v: &dyn VM) {
             );
             let BytesDe(return_value) =
                 call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-            let (res,) = FactoryChild::get_valueCall::abi_decode_returns(&return_value, true)
-                .expect("failed to decode return")
-                .into();
+            let res = FactoryChild::get_valueCall::abi_decode_returns(&return_value)
+                .expect("failed to decode return");
             assert_eq!(res, 42);
         }
 
@@ -712,6 +708,94 @@ pub fn evm_staticcall_delegatecall_test(v: &dyn VM) {
     }
 }
 
+#[allow(non_snake_case)]
+#[vm_test]
+pub fn evm_constructor_delegatecall_regression_test(v: &dyn VM) {
+    const IMP_INITCODE: &str =
+        include_str!("../../../actors/evm/tests/contracts/recall_contract/implementation.hex");
+    const PROXY_INITCODE: &str =
+        include_str!("../../../actors/evm/tests/contracts/recall_contract/proxy.hex");
+
+    // Create accounts for deployment
+    let deployer = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
+
+    // 1. Deploy the implementation contract
+    let imp_bytecode = hex::decode(IMP_INITCODE).unwrap();
+    let imp_deploy_result = v
+        .execute_message(
+            &deployer,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
+            fil_actor_eam::Method::CreateExternal as u64,
+            Some(serialize_ok(&fil_actor_eam::CreateExternalParams(imp_bytecode))),
+        )
+        .unwrap();
+
+    assert!(
+        imp_deploy_result.code.is_success(),
+        "Failed to deploy implementation contract: {}",
+        imp_deploy_result.message
+    );
+
+    let imp_return: fil_actor_eam::CreateExternalReturn = imp_deploy_result
+        .ret
+        .unwrap()
+        .deserialize()
+        .expect("Failed to decode implementation deployment results");
+
+    // Make sure we deployed an EVM actor
+    assert_eq!(&v.actor(&Address::new_id(imp_return.actor_id)).unwrap().code, &*EVM_ACTOR_CODE_ID);
+
+    // 2. Deploy the proxy contract with implementation address in constructor, replacing the
+    // mainnet implementation address.
+    let proxy_initcode_fixed = PROXY_INITCODE.replace(
+        "1835374384aa51b169c0705da26a84bb760f2b37",
+        &hex::encode(imp_return.eth_address.0),
+    );
+    let proxy_initcode = hex::decode(proxy_initcode_fixed).unwrap();
+
+    let proxy_deploy_result = v
+        .execute_message(
+            &deployer,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
+            fil_actor_eam::Method::CreateExternal as u64,
+            Some(serialize_ok(&fil_actor_eam::CreateExternalParams(proxy_initcode))),
+        )
+        .unwrap();
+
+    assert!(
+        proxy_deploy_result.code.is_success(),
+        "Failed to deploy proxy contract: {}",
+        proxy_deploy_result.message
+    );
+
+    let proxy_return: fil_actor_eam::CreateExternalReturn = proxy_deploy_result
+        .ret
+        .unwrap()
+        .deserialize()
+        .expect("Failed to decode proxy deployment results");
+
+    let proxy_robust_addr = proxy_return.robust_address.unwrap();
+
+    // Try to mint:
+    const PARAMS: &str = "40c10f1900000000000000000000000090f79bf6eb2c4f870365e785982e1f101e93b9060000000000000000000000000000000000000000000000008ac7230489e80000";
+    let params = hex::decode(PARAMS).unwrap();
+
+    let mint_result = v
+        .execute_message(
+            &deployer,
+            &proxy_robust_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(serialize_ok(&ContractParams(params))),
+        )
+        .unwrap();
+
+    assert!(mint_result.code.is_success(), "Failed to mint: {}", mint_result.message);
+}
+
+#[allow(non_snake_case)]
 #[vm_test]
 pub fn evm_init_revert_data_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
@@ -806,10 +890,9 @@ pub fn evm_transient_nested_test(v: &dyn VM) {
     let BytesDe(return_value) =
         call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
 
-    let (event_emitted,) =
-        TransientStorageTest::testNestedContractsCall::abi_decode_returns(&return_value, true)
-            .expect("failed to decode return")
-            .into();
+    let event_emitted =
+        TransientStorageTest::testNestedContractsCall::abi_decode_returns(&return_value)
+            .expect("failed to decode return");
 
     assert!(event_emitted, "testNestedContracts did not succeed as expected");
 }
@@ -875,10 +958,8 @@ pub fn evm_transient_reentry_test(v: &dyn VM) {
     let BytesDe(return_value) =
         call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
 
-    let (event_emitted,) =
-        TransientStorageTest::testReentryCall::abi_decode_returns(&return_value, true)
-            .expect("failed to decode return")
-            .into();
+    let event_emitted = TransientStorageTest::testReentryCall::abi_decode_returns(&return_value)
+        .expect("failed to decode return");
 
     assert!(event_emitted, "testReentry did not succeed as expected");
 }

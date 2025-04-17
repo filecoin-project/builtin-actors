@@ -1,7 +1,7 @@
 use crate::{
-    daily_fee_for_sectors, power_for_sectors, BitFieldQueue, Deadline, ExpirationQueue, MinerInfo,
+    BitFieldQueue, Deadline, ExpirationQueue, MinerInfo, NO_QUANTIZATION, PRECOMMIT_CONFIG,
     Partition, PowerPair, PreCommitMap, QuantSpec, SectorOnChainInfo, SectorOnChainInfoFlags,
-    Sectors, State, NO_QUANTIZATION, PRECOMMIT_CONFIG,
+    Sectors, State, daily_fee_for_sectors, power_for_sectors,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{DealWeight, MessageAccumulator};

@@ -1,8 +1,8 @@
 mod asm;
 mod util;
 
-use cid::multihash::Multihash;
 use cid::Cid;
+use cid::multihash::Multihash;
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
 use fvm_ipld_encoding::DAG_CBOR;

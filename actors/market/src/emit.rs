@@ -1,7 +1,7 @@
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{ActorError, EventBuilder};
-use fvm_shared::deal::DealID;
 use fvm_shared::ActorID;
+use fvm_shared::deal::DealID;
 
 /// Indicates a deal has been published.
 pub fn deal_published(

@@ -19,14 +19,14 @@ use multihash_codetable::Code;
 
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
-    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    EMPTY_ARR_CID,
+    ActorCode, DomainSeparationTag, EMPTY_ARR_CID, MessageInfo, Policy, Primitives, Runtime,
+    RuntimePolicy,
 };
-use fil_actors_runtime::{actor_error, SendError};
-use fil_actors_runtime::{test_utils::*, SYSTEM_ACTOR_ID};
 use fil_actors_runtime::{ActorError, INIT_ACTOR_ADDR};
-use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fil_actors_runtime::{SYSTEM_ACTOR_ID, test_utils::*};
+use fil_actors_runtime::{SendError, actor_error};
 use fvm_ipld_encoding::CborStore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 use fvm_shared::address::Address;
 use fvm_shared::address::Payload;
@@ -36,7 +36,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{
-    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+    SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE, Signature,
 };
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -51,20 +51,20 @@ use fvm_shared::sector::{
 
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum, Response, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND, MethodNum, Response};
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::cell::{RefCell, RefMut};
 use vm_api::trace::{EmittedEvent, InvocationTrace};
 use vm_api::util::get_state;
-use vm_api::{new_actor, ActorState, VM};
+use vm_api::{ActorState, VM, new_actor};
 
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use std::ops::Add;
 use std::rc::Rc;
 
-use crate::{TestVM, TEST_VM_INVALID_POST, TEST_VM_RAND_ARRAY};
+use crate::{TEST_VM_INVALID_POST, TEST_VM_RAND_ARRAY, TestVM};
 
 #[derive(Clone)]
 pub struct TopCtx {
@@ -303,7 +303,7 @@ impl<'invocation> InvocationCtx<'invocation> {
     }
 }
 
-impl<'invocation> Runtime for InvocationCtx<'invocation> {
+impl Runtime for InvocationCtx<'_> {
     type Blockstore = Rc<MemoryBlockstore>;
 
     fn create_actor(

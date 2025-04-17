@@ -1,12 +1,12 @@
-use crate::{make_empty_map, make_map_with_root_and_bitwidth, Keyer, Map};
+use crate::{Keyer, Map, make_empty_map, make_map_with_root_and_bitwidth};
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::{BytesKey, Error};
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use serde::__private::PhantomData;
-use std::collections::btree_map::Entry::{Occupied, Vacant};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry::{Occupied, Vacant};
 
 // MapMap stores multiple values per key in a Hamt of Hamts
 // Every element stored has a primary and secondary key

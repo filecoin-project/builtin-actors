@@ -1,23 +1,23 @@
 use fil_actor_multisig::testing::check_state_invariants;
 use fil_actor_multisig::{
-    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeReturn, State,
-    Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
+    Actor as MultisigActor, ConstructorParams, Method, ProposeReturn, SIGNERS_MAX, State,
+    Transaction, TxnID, TxnIDParams, compute_proposal_hash,
 };
+use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{RawBytes, CBOR};
+use fvm_ipld_encoding::{CBOR, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, METHOD_SEND};
+use fvm_shared::{METHOD_SEND, MethodNum};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -139,13 +139,14 @@ mod constructor_tests {
         };
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
-        assert!(rt
-            .call::<MultisigActor>(
+        assert!(
+            rt.call::<MultisigActor>(
                 Method::Constructor as u64,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
-            .is_none());
+            .is_none()
+        );
 
         let st: State = rt.get_state();
         assert_eq!(params.signers, st.signers);
@@ -362,8 +363,8 @@ mod vesting_tests {
     }
 
     #[test]
-    fn partial_vesting_propose_to_send_half_the_actor_balance_when_the_epoch_is_half_the_unlock_duration(
-    ) {
+    fn partial_vesting_propose_to_send_half_the_actor_balance_when_the_epoch_is_half_the_unlock_duration()
+     {
         let rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
@@ -1804,8 +1805,8 @@ mod approval_tests {
     }
 
     #[test]
-    fn approve_tx_if_num_approvers_has_already_crossed_threshold_but_non_signatory_cannot_approve_tx(
-    ) {
+    fn approve_tx_if_num_approvers_has_already_crossed_threshold_but_non_signatory_cannot_approve_tx()
+     {
         let msig = Address::new_id(100);
         let anne = Address::new_id(101);
         let bob = Address::new_id(102);

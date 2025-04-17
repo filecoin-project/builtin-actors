@@ -8,20 +8,20 @@ use fil_actor_power::{Method as MethodPower, State as PowerState};
 use fil_actor_reward::State as RewardState;
 use fil_actor_system::State as SystemState;
 use fil_actor_verifreg::State as VerifRegState;
+use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::{Policy, Primitives, EMPTY_ARR_CID};
+use fil_actors_runtime::runtime::{EMPTY_ARR_CID, Policy, Primitives};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
-use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
-use fil_actors_runtime::{test_utils::*, Map2, DEFAULT_HAMT_CONFIG};
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fil_actors_runtime::{DEFAULT_HAMT_CONFIG, Map2, test_utils::*};
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -30,14 +30,14 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{MethodNum, METHOD_SEND};
+use fvm_shared::{METHOD_SEND, MethodNum};
 use multihash_codetable::Code;
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use vm_api::trace::InvocationTrace;
-use vm_api::{new_actor, ActorState, MessageResult, MockPrimitives, VMError, VM};
+use vm_api::{ActorState, MessageResult, MockPrimitives, VM, VMError, new_actor};
 
 use vm_api::util::{get_state, serialize_ok};
 

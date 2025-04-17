@@ -46,8 +46,8 @@ fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precomm
 }
 
 #[test]
-fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precommit_after_falling_out_of_date(
-) {
+fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precommit_after_falling_out_of_date()
+ {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());

@@ -4,25 +4,25 @@ use frc46_token::token::types::{
     GetAllowanceParams, IncreaseAllowanceParams, MintReturn, RevokeAllowanceParams,
     TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
 };
-use frc46_token::token::{Token, TokenError, TOKEN_PRECISION};
+use frc46_token::token::{TOKEN_PRECISION, Token, TokenError};
 use fvm_actor_utils::receiver::ReceiverHookError;
 use fvm_actor_utils::syscalls::{NoStateError, Syscalls};
 use fvm_actor_utils::util::ActorRuntime;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::Response;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
-use fvm_shared::Response;
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, MethodNum};
 use lazy_static::lazy_static;
 use log::info;
 use num_derive::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, extract_send_result, ActorContext, ActorError, AsActorError,
-    SYSTEM_ACTOR_ADDR,
+    ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error,
+    extract_send_result,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
@@ -412,7 +412,7 @@ struct SyscallProvider<'a, RT> {
     rt: &'a RT,
 }
 
-impl<'a, RT> Syscalls for &SyscallProvider<'a, RT>
+impl<RT> Syscalls for &SyscallProvider<'_, RT>
 where
     RT: Runtime,
 {

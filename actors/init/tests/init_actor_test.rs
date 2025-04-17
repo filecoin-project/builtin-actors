@@ -10,12 +10,12 @@ use fil_actor_init::{
     Method, State,
 };
 use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ADDR, EAM_ACTOR_ID};
 use fil_actors_runtime::{
-    ActorError, Multimap, FIRST_NON_SINGLETON_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    ActorError, FIRST_NON_SINGLETON_ADDR, Multimap, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fil_actors_runtime::{EAM_ACTOR_ADDR, EAM_ACTOR_ID, test_utils::*};
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;

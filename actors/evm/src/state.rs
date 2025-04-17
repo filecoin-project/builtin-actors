@@ -96,8 +96,7 @@ impl From<BytecodeHash> for Vec<u8> {
 
 impl From<BytecodeHash> for U256 {
     fn from(bytecode: BytecodeHash) -> Self {
-        let bytes: [u8; 32] = bytecode.into();
-        Self::from(bytes)
+        Self::from_big_endian(bytecode.as_slice())
     }
 }
 
@@ -156,7 +155,7 @@ pub struct State {
 
 #[cfg(test)]
 mod test {
-    use fvm_ipld_encoding::{from_slice, to_vec, BytesDe};
+    use fvm_ipld_encoding::{BytesDe, from_slice, to_vec};
 
     use crate::BytecodeHash;
 

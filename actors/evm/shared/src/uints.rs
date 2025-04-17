@@ -1,6 +1,6 @@
 // to silence construct_uint! clippy warnings
 // see https://github.com/paritytech/parity-common/issues/660
-#![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern)]
+#![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern, clippy::manual_div_ceil)]
 
 #[doc(inline)]
 pub use uint::byteorder;
@@ -57,11 +57,7 @@ impl U256 {
     /// turns a i256 value to negative
     #[inline(always)]
     pub fn i256_neg(&self) -> U256 {
-        if self.is_zero() {
-            U256::ZERO
-        } else {
-            !*self + U256::ONE
-        }
+        if self.is_zero() { U256::ZERO } else { !*self + U256::ONE }
     }
 
     #[inline(always)]
@@ -99,11 +95,7 @@ impl U256 {
         let d = first / second;
 
         // Flip the sign back if necessary.
-        if d.is_zero() || first_neg == second_neg {
-            d
-        } else {
-            d.i256_neg()
-        }
+        if d.is_zero() || first_neg == second_neg { d } else { d.i256_neg() }
     }
 
     #[inline]
@@ -129,26 +121,16 @@ impl U256 {
         let r = first % second;
 
         // Restore the sign.
-        if negative && !r.is_zero() {
-            r.i256_neg()
-        } else {
-            r
-        }
+        if negative && !r.is_zero() { r.i256_neg() } else { r }
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
-        let mut buf = [0u8; 32];
-        self.to_big_endian(&mut buf);
-        buf
+        self.to_big_endian()
     }
 
     /// Returns the low 64 bits, saturating the value to u64 max if it is larger
     pub fn to_u64_saturating(&self) -> u64 {
-        if self.bits() > 64 {
-            u64::MAX
-        } else {
-            self.0[0]
-        }
+        if self.bits() > 64 { u64::MAX } else { self.0[0] }
     }
 }
 
@@ -162,7 +144,7 @@ impl U512 {
 impl From<&TokenAmount> for U256 {
     fn from(amount: &TokenAmount) -> U256 {
         let (_, bytes) = amount.atto().to_bytes_be();
-        U256::from(bytes.as_slice())
+        U256::from_big_endian(bytes.as_slice())
     }
 }
 
@@ -175,9 +157,8 @@ impl From<U256> for U512 {
 
 impl From<&U256> for TokenAmount {
     fn from(ui: &U256) -> TokenAmount {
-        let mut bits = [0u8; 32];
-        ui.to_big_endian(&mut bits);
-        TokenAmount::from_atto(BigInt::from_bytes_be(fvm_shared::bigint::Sign::Plus, &bits))
+        let bytes = ui.to_big_endian();
+        TokenAmount::from_atto(BigInt::from_bytes_be(fvm_shared::bigint::Sign::Plus, &bytes))
     }
 }
 
@@ -186,8 +167,7 @@ impl Serialize for U256 {
     where
         S: serde::Serializer,
     {
-        let mut bytes = [0u8; 32];
-        self.to_big_endian(&mut bytes);
+        let bytes = self.to_big_endian();
         serializer.serialize_bytes(zeroless_view(&bytes))
     }
 }
@@ -198,7 +178,7 @@ impl<'de> Deserialize<'de> for U256 {
         D: serde::Deserializer<'de>,
     {
         struct Visitor;
-        impl<'de> serde::de::Visitor<'de> for Visitor {
+        impl serde::de::Visitor<'_> for Visitor {
             type Value = U256;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -304,7 +284,7 @@ mod tests {
         let one = U256::ONE.i256_neg();
         assert!(one.i256_is_negative());
 
-        let neg_one = U256::from(&[0xff; 32]);
+        let neg_one = U256::from_big_endian(&[0xff; 32]);
         let pos_one = neg_one.i256_neg();
         assert_eq!(pos_one, U256::ONE);
     }

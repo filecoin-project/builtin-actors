@@ -1,10 +1,10 @@
 use fil_actor_miner::{
-    new_deadline_info, pledge_penalty_for_continued_fault, pledge_penalty_for_termination,
-    qa_power_for_sector, State,
+    State, new_deadline_info, pledge_penalty_for_continued_fault, pledge_penalty_for_termination,
+    qa_power_for_sector,
 };
 use fil_actors_runtime::{
     runtime::{Runtime, RuntimePolicy},
-    test_utils::{expect_abort, expect_abort_contains_message, MockRuntime},
+    test_utils::{MockRuntime, expect_abort, expect_abort_contains_message},
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, error::ExitCode, sector::SectorNumber};
@@ -47,8 +47,8 @@ fn assert_sectors_not_found(rt: &MockRuntime, sector_number: SectorNumber) {
 }
 
 #[test]
-fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_retains_live_sectors(
-) {
+fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_retains_live_sectors()
+ {
     let (mut h, rt) = setup();
     rt.set_epoch(200);
 
@@ -128,7 +128,11 @@ fn fail_to_compact_partitions_with_faults() {
     let deadline_id = 0;
 
     let result = h.compact_partitions(&rt, deadline_id, bitfield_from_slice(&[partition_id]));
-    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to remove partitions from deadline 0: while removing partitions: cannot remove partition 0: has faults", result);
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "failed to remove partitions from deadline 0: while removing partitions: cannot remove partition 0: has faults",
+        result,
+    );
 
     h.check_state(&rt);
 }
@@ -158,7 +162,11 @@ fn fails_to_compact_partitions_with_unproven_sectors() {
     let deadline_id = 0;
 
     let result = h.compact_partitions(&rt, deadline_id, bitfield_from_slice(&[partition_id]));
-    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to remove partitions from deadline 0: while removing partitions: cannot remove partition 0: has unproven sectors", result);
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "failed to remove partitions from deadline 0: while removing partitions: cannot remove partition 0: has unproven sectors",
+        result,
+    );
 
     h.check_state(&rt);
 }
