@@ -307,7 +307,7 @@ mod tests {
 
     impl Default for PrecompileContext {
         fn default() -> Self {
-            Self { call_type: CallKind::Call, gas_limit: u64::MAX, value: U256::ZERO }
+            Self { call_type: CallKind::Call, gas: U256::MAX, value: U256::ZERO }
         }
     }
 
