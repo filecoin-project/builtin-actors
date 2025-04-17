@@ -172,11 +172,7 @@ pub fn call_generic<RT: Runtime>(
 
         let dst: EthAddress = dst.into();
         if is_reserved_precompile_address(&dst) {
-            let context = PrecompileContext {
-                call_type: kind,
-                gas_limit: effective_gas_limit(system, gas),
-                value,
-            };
+            let context = PrecompileContext { call_type: kind, gas, value };
 
             if log::log_enabled!(log::Level::Info) {
                 // log input to the precompile, but make sure we dont log _too_ much.
@@ -204,7 +200,6 @@ pub fn call_generic<RT: Runtime>(
                         // We provide enough gas for the transfer to succeed in all case.
                         gas = TRANSFER_GAS_LIMIT;
                     }
-                    let gas_limit = Some(effective_gas_limit(system, gas));
                     let params = if input_data.is_empty() {
                         None
                     } else {
@@ -225,7 +220,7 @@ pub fn call_generic<RT: Runtime>(
                         Method::InvokeContract as MethodNum,
                         params,
                         value,
-                        gas_limit,
+                        Some(system.call_gas_limit(gas)),
                         send_flags,
                     )? {
                         Ok(resp) => {
@@ -278,7 +273,7 @@ pub fn call_generic<RT: Runtime>(
                                     Method::InvokeContractDelegate as u64,
                                     IpldBlock::serialize_dag_cbor(&params)?,
                                     TokenAmount::from(&value),
-                                    Some(effective_gas_limit(system, gas)),
+                                    Some(system.call_gas_limit(gas)),
                                     SendFlags::default(),
                                 )
                                 .map_err(|mut ae| ae.take_data())
@@ -332,12 +327,6 @@ pub fn call_generic<RT: Runtime>(
     copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
 
     Ok(U256::from(call_result))
-}
-
-fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> u64 {
-    let gas_rsvp = (63 * system.rt.gas_available()) / 64;
-    let gas = gas.to_u64_saturating();
-    std::cmp::min(gas, gas_rsvp)
 }
 
 #[cfg(test)]
@@ -704,7 +693,6 @@ mod tests {
         evm_unit_test! {
             (rt) {
                 rt.in_call.replace(true);
-                rt.expect_gas_available(10_000_000_000);
             }
             (m) {
                 // input data

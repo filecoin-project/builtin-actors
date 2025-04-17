@@ -517,6 +517,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
 
     if valid_call_input {
         // We only get to the send_generalized if the call params were valid
+        rt.expect_gas_available(10_000_000_000);
         rt.expect_send(
             target,
             method_num,
@@ -552,7 +553,6 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
         expected_exit_code: expected_exit,
         precompile_address: util::NativePrecompile::CallActor.eth_address(),
         output_size: 32,
-        gas_avaliable: 10_000_000_000u64,
         expected_return: expected_out,
         call_op: util::PrecompileCallOpcode::DelegateCall,
         input: contract_params,
@@ -591,12 +591,12 @@ fn call_actor_weird_offset() {
         expected_exit_code: util::PrecompileExit::Success,
         precompile_address: util::NativePrecompile::CallActor.eth_address(),
         output_size: 32,
-        gas_avaliable: 10_000_000_000u64,
         expected_return: vec![],
         call_op: util::PrecompileCallOpcode::DelegateCall,
         input,
     };
 
+    rt.expect_gas_available(10_000_000_000);
     rt.expect_send(
         addr,
         0,
@@ -640,7 +640,6 @@ fn call_actor_overlapping() {
     let mut test = util::PrecompileTest {
         precompile_address: util::NativePrecompile::CallActor.eth_address(),
         output_size: 32,
-        gas_avaliable: 10_000_000_000u64,
         call_op: util::PrecompileCallOpcode::DelegateCall,
         // overwritten in tests
         expected_return: vec![],
@@ -648,6 +647,7 @@ fn call_actor_overlapping() {
         input: call_params.clone().into(),
     };
 
+    rt.expect_gas_available(10_000_000_000);
     rt.expect_send(
         addr,
         0,
@@ -683,7 +683,6 @@ fn call_actor_id_with_full_address() {
     let mut test = util::PrecompileTest {
         precompile_address: util::NativePrecompile::CallActorId.eth_address(),
         output_size: 32,
-        gas_avaliable: 10_000_000_000u64,
         call_op: util::PrecompileCallOpcode::DelegateCall,
         // overwritten in tests
         expected_return: vec![],
@@ -691,6 +690,7 @@ fn call_actor_id_with_full_address() {
         input: call_params.clone().into(),
     };
 
+    rt.expect_gas_available(10_000_000_000);
     rt.expect_send(
         Address::new_id(actual_id_addr),
         0,
@@ -722,7 +722,6 @@ fn call_actor_syscall_error() {
     let mut test = util::PrecompileTest {
         precompile_address: util::NativePrecompile::CallActor.eth_address(),
         output_size: 32,
-        gas_avaliable: 10_000_000_000u64,
         call_op: util::PrecompileCallOpcode::DelegateCall,
         // overwritten in tests
         expected_return: vec![],
@@ -737,6 +736,7 @@ fn call_actor_syscall_error() {
         ..Default::default()
     };
 
+    rt.expect_gas_available(10_000_000_000);
     rt.expect_send(
         addr,
         0,
@@ -767,7 +767,6 @@ mod call_actor_invalid {
         let mut test = util::PrecompileTest {
             precompile_address: util::NativePrecompile::CallActor.eth_address(),
             output_size: 32,
-            gas_avaliable: 10_000_000_000u64,
             call_op: util::PrecompileCallOpcode::DelegateCall,
             // overwritten in tests
             expected_return: vec![],

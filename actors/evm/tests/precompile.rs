@@ -50,7 +50,6 @@ fn test_precompile_hash() {
     // invoke contract
     let contract_params = vec![0u8; 32];
 
-    rt.expect_gas_available(10_000_000_000u64);
     let result = util::invoke_contract(&rt, &contract_params);
     let expected =
         hex_literal::hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");
@@ -137,7 +136,6 @@ fn test_native_lookup_delegated_address() {
             precompile_address: NativePrecompile::LookupDelegatedAddress.eth_address(),
             output_size: 32,
             expected_exit_code: PrecompileExit::Success,
-            gas_avaliable: 10_000_000_000,
             call_op: util::PrecompileCallOpcode::Call(0),
             expected_return: expected,
             input: id_to_vec(&id),
@@ -185,7 +183,6 @@ fn test_resolve_delegated() {
     rt.add_id_address(bls, bls_target);
 
     fn test_resolve(rt: &MockRuntime, addr: FILAddress, expected: Vec<u8>) {
-        rt.expect_gas_available(10_000_000_000u64);
         let input = addr.to_bytes();
         let result = util::invoke_contract(rt, &input);
         rt.verify();
@@ -202,14 +199,12 @@ fn test_resolve_delegated() {
     test_resolve(&rt, unbound_del, vec![]);
 
     // invalid first param fails
-    rt.expect_gas_available(10_000_000_000u64);
     let result = util::invoke_contract(&rt, &[0xff; 1]);
     rt.verify();
     assert_eq!(&[0u8], result.as_slice());
     rt.reset();
 
     // invalid second param fails
-    rt.expect_gas_available(10_000_000_000u64);
     let input = {
         // first word is len
         let mut v = U256::from(5).to_bytes().to_vec();
@@ -237,7 +232,6 @@ fn test_precompile_randomness() {
             precompile_address: NativePrecompile::GetRandomness.eth_address(),
             output_size: 32,
             expected_exit_code: PrecompileExit::Success,
-            gas_avaliable: 10_000_000_000,
             call_op: util::PrecompileCallOpcode::StaticCall,
             input: rand_epoch_u256.to_bytes().to_vec(),
             expected_return: result.to_vec(),
@@ -251,7 +245,6 @@ fn test_precompile_randomness() {
             precompile_address: NativePrecompile::GetRandomness.eth_address(),
             output_size: 32,
             expected_exit_code: PrecompileExit::Reverted, // Precompile reverts due to syscall failure
-            gas_avaliable: 10_000_000_000,
             call_op: util::PrecompileCallOpcode::StaticCall,
             input: rand_epoch_u256.to_bytes().to_vec(),
             expected_return: vec![],
@@ -275,7 +268,6 @@ fn test_precompile_transfer() {
             precompile_address: addr,
             output_size: 32,
             expected_exit_code: PrecompileExit::Success,
-            gas_avaliable: 10_000_000_000,
             call_op: util::PrecompileCallOpcode::Call(1),
             input: vec![0xff; 32],
             expected_return: vec![],
@@ -308,7 +300,6 @@ fn test_precompile_transfer_nothing() {
             precompile_address: addr,
             output_size: 32,
             expected_exit_code: PrecompileExit::Success,
-            gas_avaliable: 10_000_000_000,
             call_op: util::PrecompileCallOpcode::Call(0),
             input: vec![0xff; 32],
             expected_return: vec![],
@@ -324,14 +315,12 @@ fn test_precompile_failure() {
     let rt = util::construct_and_verify(bytecode);
 
     // invalid input fails
-    rt.expect_gas_available(10_000_000_000u64);
     let result = util::invoke_contract(&rt, &[0xff; 32]);
     rt.verify();
     assert_eq!(&[0u8], result.as_slice());
     rt.reset();
 
     // not found succeeds with empty
-    rt.expect_gas_available(10_000_000_000u64);
     let input = FILAddress::new_delegated(111, b"foo").unwrap().to_bytes();
     let result = util::invoke_contract(&rt, &input);
     rt.verify();
