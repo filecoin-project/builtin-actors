@@ -5,15 +5,16 @@ use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{
     ipld_block::IpldBlock,
-    tuple::{serde_tuple, Deserialize_tuple, Serialize_tuple},
+    tuple::{Deserialize_tuple, Serialize_tuple, serde_tuple},
 };
 use fvm_shared::{
+    MethodNum,
     address::Address,
     clock::ChainEpoch,
     consensus::ConsensusFault,
     crypto::{
         hash::SupportedHashes,
-        signature::{Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
+        signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE, Signature},
     },
     econ::TokenAmount,
     error::ExitCode,
@@ -22,7 +23,6 @@ use fvm_shared::{
         AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
         WindowPoStVerifyInfo,
     },
-    MethodNum,
 };
 
 use builtin::*;
