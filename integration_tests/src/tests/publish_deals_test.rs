@@ -1,5 +1,5 @@
-use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::Method as AccountMethod;
+use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
 };
@@ -9,7 +9,7 @@ use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    test_utils::*, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR, test_utils::*,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
@@ -20,18 +20,18 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use vm_api::VM;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, serialize_ok};
-use vm_api::VM;
 
 use crate::deals::{DealBatcher, DealOptions};
 use crate::expects::Expect;
 
+use crate::TEST_FAUCET_ADDR;
 use crate::util::{
     assert_invariants, bf_all, create_accounts, create_accounts_seeded, create_miner,
     verifreg_add_verifier,
 };
-use crate::TEST_FAUCET_ADDR;
 use export_macro::vm_test;
 
 struct Addrs {

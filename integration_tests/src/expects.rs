@@ -1,10 +1,10 @@
 use cid::Cid;
-use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
+use frc46_token::receiver::{FRC46_TOKEN_TYPE, FRC46TokenReceived};
 use frc46_token::token::types::BurnParams;
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
@@ -24,7 +24,7 @@ use fil_actor_miner::{IsControllingAddressParam, PowerPair};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
 use fil_actor_verifreg::GetClaimsParams;
 use fil_actors_runtime::{
-    EventBuilder, BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ID,
+    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ID, EventBuilder,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID,
     STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ID,

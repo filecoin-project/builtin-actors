@@ -11,11 +11,11 @@ use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use fil_actor_datacap::State as DatacapState;
 use fil_actor_market::{DealArray, DealMetaArray, DealSettlementSummary};
 use fil_actor_market::{
-    PendingDealAllocationsMap, State as MarketState, PENDING_ALLOCATIONS_CONFIG,
+    PENDING_ALLOCATIONS_CONFIG, PendingDealAllocationsMap, State as MarketState,
 };
 use fil_actor_miner::{
-    max_prove_commit_duration, PowerPair, ProveCommitSectors3Params, SectorActivationManifest,
-    SectorClaim, State as MinerState,
+    PowerPair, ProveCommitSectors3Params, SectorActivationManifest, SectorClaim,
+    State as MinerState, max_prove_commit_duration,
 };
 use fil_actor_power::State as PowerState;
 use fil_actor_verifreg::{
@@ -23,18 +23,18 @@ use fil_actor_verifreg::{
     State as VerifregState,
 };
 use fil_actors_runtime::cbor::deserialize;
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::runtime::policy_constants::{
     DEAL_UPDATES_INTERVAL, MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
 };
-use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
-    DealWeight, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use vm_api::trace::ExpectInvocation;
-use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{DynBlockstore, apply_code, apply_ok, get_state};
 
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,

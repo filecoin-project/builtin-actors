@@ -1,25 +1,25 @@
-use alloy_core::sol_types::{decode_revert_reason, SolCall, SolInterface};
+use alloy_core::sol_types::{SolCall, SolInterface, decode_revert_reason};
 use alloy_core::{primitives::Address as EthAddress, sol};
 
 use export_macro::vm_test;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{
-    test_utils::ETHACCOUNT_ACTOR_CODE_ID, test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR,
-    EAM_ACTOR_ID,
+    EAM_ACTOR_ADDR, EAM_ACTOR_ID, test_utils::ETHACCOUNT_ACTOR_CODE_ID,
+    test_utils::EVM_ACTOR_CODE_ID,
 };
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
-use fvm_ipld_encoding::{strict_bytes, BytesDe};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{BytesDe, strict_bytes};
 use fvm_shared::ActorID;
 use fvm_shared::METHOD_SEND;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
-use vm_api::util::{apply_ok, serialize_ok};
 use vm_api::VM;
+use vm_api::util::{apply_ok, serialize_ok};
 
-use crate::util::create_accounts;
 use crate::TEST_FAUCET_ADDR;
+use crate::util::create_accounts;
 
 // Generate a statically typed interface for the contracts.
 sol!("../actors/evm/tests/contracts/Recursive.sol");

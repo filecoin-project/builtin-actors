@@ -1,7 +1,7 @@
 use cid::Cid;
 use export_macro::vm_test;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
@@ -12,9 +12,9 @@ use num_traits::{Signed, Zero};
 
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
-    daily_proof_fee, max_prove_commit_duration, qa_power_for_weight, CompactCommD,
-    DataActivationNotification, PieceActivationManifest, PieceChange, ProveCommitSectors3Params,
-    SectorActivationManifest, SectorChanges, SectorContentChangedParams, SectorOnChainInfoFlags,
+    CompactCommD, DataActivationNotification, PieceActivationManifest, PieceChange,
+    ProveCommitSectors3Params, SectorActivationManifest, SectorChanges, SectorContentChangedParams,
+    SectorOnChainInfoFlags, daily_proof_fee, max_prove_commit_duration, qa_power_for_weight,
 };
 use fil_actor_miner::{Method as MinerMethod, VerifiedAllocationKey};
 use fil_actor_verifreg::{
@@ -27,17 +27,17 @@ use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
     EPOCHS_IN_DAY, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use vm_api::VM;
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::apply_ok;
-use vm_api::VM;
 
 use crate::deals::{DealBatcher, DealOptions};
 use crate::expects::Expect;
 use crate::util::{
-    advance_by_deadline_to_epoch, create_accounts, create_miner, datacap_create_allocations,
-    market_add_balance, market_list_deals, market_list_sectors_deals,
+    PrecommitMetadata, advance_by_deadline_to_epoch, create_accounts, create_miner,
+    datacap_create_allocations, market_add_balance, market_list_deals, market_list_sectors_deals,
     override_compute_unsealed_sector_cid, precommit_sectors_v2, sector_info, verifreg_add_client,
-    verifreg_add_verifier, verifreg_list_claims, PrecommitMetadata,
+    verifreg_add_verifier, verifreg_list_claims,
 };
 
 #[vm_test]
