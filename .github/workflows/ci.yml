@@ -37,8 +37,12 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
     - name: Installing the toolchain
       run: make toolchain
+    - name: Install cargo-nextest
+      uses: taiki-e/install-action@07a34f8347b1eeb5f5469cdfa451b0a5db2ae4e8 # 2.38.4
+      with:
+        tool: cargo-nextest
     - name: Running tests
-      run: cargo test --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
+      run: cargo nextest run --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
 
   build:
     runs-on: ubuntu-latest
