@@ -42,7 +42,7 @@ jobs:
       with:
         tool: cargo-nextest
     - name: Running tests
-      run: cargo nextest run --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
+      run: make test
 
   build:
     runs-on: ubuntu-latest
