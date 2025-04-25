@@ -25,9 +25,12 @@ check: toolchain
 	cargo clippy --all --all-targets -- -D warnings
 	cargo clippy --all -- -D warnings
 
+# NOTE: nextest doesn't run doctests https://github.com/nextest-rs/nextest/issues/16,
+# enable once doc tests are added: `cargo test --doc`
+
 # Run cargo test
 test: toolchain install-nextest
-	cargo nextest run test --workspace
+	cargo nextest run --workspace --no-fail-fast
 
 docker-builder:
 	$(DOCKER) buildx build $(DOCKER_PLATFORM) . -t $(DOCKER_IMAGE_NAME); \
