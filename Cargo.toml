@@ -46,6 +46,7 @@ fil_actor_power = { workspace = true, features = ["fil-actor"] }
 fil_actor_reward = { workspace = true, features = ["fil-actor"] }
 fil_actor_system = { workspace = true, features = ["fil-actor"] }
 fil_actor_verifreg = { workspace = true, features = ["fil-actor"] }
+fil_actor_sealer = { workspace = true, features = ["fil-actor"] }
 
 [build-dependencies]
 fil_actor_bundler = "8.0.0"
@@ -156,6 +157,7 @@ fil_actor_power = { path = "actors/power" }
 fil_actor_reward = { path = "actors/reward" }
 fil_actor_system = { path = "actors/system" }
 fil_actor_verifreg = { path = "actors/verifreg" }
+fil_actor_sealer = { path = "actors/sealer" }
 fil_actors_evm_shared = { path = "actors/evm/shared" }
 fil_actors_runtime = { path = "runtime" }
 fil_builtin_actors_state = { path = "state" }

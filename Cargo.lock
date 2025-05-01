@@ -955,6 +955,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_sealer"
+version = "16.0.1"
+dependencies = [
+ "fil_actors_runtime",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "lazy_static",
+ "log",
+ "num",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_system"
 version = "16.0.1"
 dependencies = [
@@ -1123,6 +1139,7 @@ dependencies = [
  "fil_actor_placeholder",
  "fil_actor_power",
  "fil_actor_reward",
+ "fil_actor_sealer",
  "fil_actor_system",
  "fil_actor_verifreg",
  "fil_actors_runtime",
