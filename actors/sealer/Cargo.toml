@@ -23,6 +23,12 @@ lazy_static = { workspace = true }
 serde = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
+cid = { workspace = true }
+fvm_ipld_bitfield = { workspace = true }
+multihash-codetable = { workspace = true }
+anyhow = { workspace = true }
+frc42_dispatch = { workspace = true }
+
 
 [dev-dependencies]
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }

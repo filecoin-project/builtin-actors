@@ -4,7 +4,7 @@ use fvm_shared::address::Address;
 use crate::State;
 
 pub struct StateSummary {
-    pub id_addr: Address,
+    pub validator: Address,
 }
 
 pub fn check_state_invariants(
@@ -13,5 +13,5 @@ pub fn check_state_invariants(
 ) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
     // TODO: Add invariants as needed
-    (StateSummary { id_addr: state.id_addr }, acc)
+    (StateSummary { validator: state.validator }, acc)
 } 
