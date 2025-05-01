@@ -39,7 +39,7 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     
-    ActivateSector = frc42_dispatch::method_hash!("ActivateSector"),
+    ActivateSectors = frc42_dispatch::method_hash!("ActivateSectors"),
     CompactSectorNumbers = frc42_dispatch::method_hash!("CompactSectorNumbers"),
 }
 
@@ -64,7 +64,7 @@ impl Actor {
         Ok(())
     }
 
-    pub fn activate_sector(rt: &impl Runtime, params: ActivateSectorParams) -> Result<ActivateSectorReturn, ActorError> {
+    pub fn activate_sectors(rt: &impl Runtime, params: ActivateSectorParams) -> Result<ActivateSectorReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         rt.transaction(|state: &mut State, rt| {
@@ -167,7 +167,7 @@ impl ActorCode for Actor {
 
     actor_dispatch! {
         Constructor => constructor,
-        ActivateSector => activate_sector,
+        ActivateSectors => activate_sectors,
         CompactSectorNumbers => compact_sector_numbers,
         _ => fallback,
     }
