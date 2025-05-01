@@ -2057,7 +2057,7 @@ impl Actor {
             &params.aggregate_proof,
         )?;
 
-        if params.sealer_id_actor.is_some() {
+        if let Some(sealer_id_actor) = params.sealer_id_actor {
             let Some(sig) = params.sealer_id_verifier_signature else {
                 return Err(actor_error!(illegal_argument, "sealer id verifier signature is required when using Sealer ID"));
             };
@@ -2065,7 +2065,7 @@ impl Actor {
                 return Err(actor_error!(illegal_argument, "sealer numbers are required when using Sealer ID"));
             };
 
-            validate_sealer_id_numbers(rt, &params.sealer_id_actor.unwrap(), sig, &sealer_numbers)?;
+            validate_sealer_id_numbers(rt, sealer_id_actor, sig, &sealer_numbers)?;
         }
 
         // With no data, QA power = raw power
@@ -4964,7 +4964,7 @@ fn validate_ni_sectors(
     sectors: &[SectorNIActivationInfo],
     seal_proof_type: RegisteredSealProof,
     all_or_nothing: bool,
-    sealer_id_actor: Option<Address>,
+    sealer_id_actor: Option<ActorID>,
 ) -> Result<(BatchReturn, Vec<SectorSealProofInput>, BitField, Option<BitField>), ActorError> {
     let receiver = rt.message().receiver();
     let curr_epoch = rt.curr_epoch();
@@ -4974,9 +4974,9 @@ fn validate_ni_sectors(
     let entropy = serialize(&receiver, "address for get verify info")?;
 
     let expected_sealer_id = match sealer_id_actor {
-        Some(sealer_id) => sealer_id.id(),
-        None => receiver.id(),
-    }.unwrap();
+        Some(sealer_id) => sealer_id,
+        None => receiver.id().unwrap(),
+    };
 
     if sectors.is_empty() {
         return Ok((BatchReturn::empty(), vec![], BitField::new(), None));
@@ -5187,7 +5187,7 @@ fn verify_aggregate_seal(
 
 fn validate_sealer_id_numbers(
     rt: &impl Runtime,
-    sealer_id_actor: &Address,
+    sealer_id_actor: ActorID,
     sealer_id_verifier_signature: Vec<u8>,
     sector_numbers: &BitField,
 ) -> Result<(), ActorError> {
@@ -5197,7 +5197,7 @@ fn validate_sealer_id_numbers(
     };
 
     let result = rt.send_simple(
-        &sealer_id_actor,
+        &Address::new_id(sealer_id_actor),
         ext::sealer::ACTIVATE_SECTORS_METHOD,
         IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
