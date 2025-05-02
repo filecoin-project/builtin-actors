@@ -155,6 +155,9 @@ pub struct ProveCommitSectorsNIParams {
     pub aggregate_proof_type: RegisteredAggregateProof, // Proof type for aggregation
     pub proving_deadline: u64, // The Window PoST deadline index at which to schedule the new sectors
     pub require_activation_success: bool, // Whether to abort if any sector activation fails
+
+    pub sealer_id_actor: Option<ActorID>, // Optional sealer ID actor from which the sector numbers are derived from
+    pub sealer_id_verifier_signature: Option<Vec<u8>>, // Verifier signature
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
