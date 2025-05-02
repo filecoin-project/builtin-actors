@@ -5189,12 +5189,14 @@ fn validate_sealer_id_numbers(
     rt: &impl Runtime,
     sealer_id_actor: ActorID,
     sealer_id_verifier_signature: Vec<u8>,
-    sector_numbers: &BitField,
+    sealer_numbers: &BitField,
 ) -> Result<(), ActorError> {
     let params = ext::sealer::ActivateSectorParams {
-        sector_numbers: sector_numbers.clone(),
+        sector_numbers: sealer_numbers.clone(),
         verifier_signature: sealer_id_verifier_signature,
     };
+
+    assert_eq(rt.get_code_cid_for_type(Type::Sealer), rt.get_actor_code_cid(sealer_id_actor)).
 
     let result = rt.send_simple(
         &Address::new_id(sealer_id_actor),
