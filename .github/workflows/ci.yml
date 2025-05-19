@@ -48,6 +48,8 @@ jobs:
     steps:
     - name: Checking out
       uses: actions/checkout@v3
+    - name: Install Clang
+      run: sudo apt update && sudo apt install -y clang
     - name: Writing bundle
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
