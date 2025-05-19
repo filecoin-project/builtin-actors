@@ -70,16 +70,18 @@ pub fn bls12_pairing<RT: Runtime>(
 
 /// Helper function to perform the pairing check
 fn pairing_check(pairs: &[(blst_p1_affine, blst_p2_affine)]) -> bool {
-    if pairs.is_empty() {
-        return true;
-    }
+
+    // Use split_first to cleanly handle empty input without indexing
+    // This pattern avoids panics and makes it clear we're separating the head and tail
+    let Some(((g1_head, g2_head), rest)) = pairs.split_first() else {
+        return true; // An empty pairing input is considered valid
+    };
 
     // Compute the miller loop for the first pair
-    let (first_g1, first_g2) = &pairs[0];
-    let mut acc = compute_miller_loop(first_g1, first_g2);
+    let mut acc = compute_miller_loop(g1_head, g2_head);
 
     // For the remaining pairs, compute miller loop and multiply with the accumulated result
-    for (g1, g2) in pairs.iter().skip(1) {
+    for (g1, g2) in rest {
         let ml = compute_miller_loop(g1, g2);
         acc = multiply_fp12(&acc, &ml);
     }
