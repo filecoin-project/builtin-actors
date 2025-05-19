@@ -25,7 +25,7 @@ pub fn bls12_g2msm<RT: Runtime>(
 ) -> PrecompileResult {
     // Validate input length: must be non-zero and an exact multiple of G2_MSM_INPUT_LENGTH.
     let input_len = input.len();
-    if input_len == 0 || input_len % G2_MSM_INPUT_LENGTH != 0 {
+    if input.is_empty() || input_len % G2_MSM_INPUT_LENGTH != 0 {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
@@ -34,10 +34,8 @@ pub fn bls12_g2msm<RT: Runtime>(
     let mut scalars: Vec<blst_scalar> = Vec::with_capacity(k);
 
     // Process each (point, scalar) pair.
-    for i in 0..k {
-        let offset = i * G2_MSM_INPUT_LENGTH;
-        let encoded_point = &input[offset..offset + PADDED_G2_LENGTH];
-        let encoded_scalar = &input[offset + PADDED_G2_LENGTH..offset + G2_MSM_INPUT_LENGTH];
+    for chunk in input.chunks_exact(G2_MSM_INPUT_LENGTH) {
+        let (encoded_point, encoded_scalar) = chunk.split_at(PADDED_G2_LENGTH);
 
         // Deserialize the point (performing subgroup check).
         let point_aff = extract_g2_input(encoded_point, true)?;
