@@ -70,7 +70,6 @@ pub fn bls12_pairing<RT: Runtime>(
 
 /// Helper function to perform the pairing check
 fn pairing_check(pairs: &[(blst_p1_affine, blst_p2_affine)]) -> bool {
-
     // Use split_first to cleanly handle empty input without indexing
     // This pattern avoids panics and makes it clear we're separating the head and tail
     let Some(((g1_head, g2_head), rest)) = pairs.split_first() else {
