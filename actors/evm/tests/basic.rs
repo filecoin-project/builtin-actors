@@ -37,7 +37,7 @@ fn simplecoin_test(bytecode: Vec<u8>) {
 
     let mut solidity_params = vec![];
     solidity_params.append(&mut hex::decode("f8b2cb4f").unwrap()); // function selector
-    // caller id address in U256 form
+                                                                   // caller id address in U256 form
     let mut arg0 = vec![0u8; 32];
     solidity_params.append(&mut arg0);
 
@@ -48,7 +48,7 @@ fn simplecoin_test(bytecode: Vec<u8>) {
     // now we invoke with the owner address, which should have a balance of 10k
     let mut solidity_params = vec![];
     solidity_params.append(&mut hex::decode("f8b2cb4f").unwrap()); // function selector
-    // caller id address in U256 form
+                                                                   // caller id address in U256 form
     let mut arg0 = vec![0u8; 32];
     arg0[12] = 0xff; // it's an ID address, so we enable the flag
     arg0[31] = 100; // the owner address
@@ -224,8 +224,8 @@ fn transient_storage_test(transient_storage_bytecode: Vec<u8>) {
     // Setup for testing that the transient storage data clears when a new transaction occurs
     let mut solidity_params_test_cleared = vec![];
     solidity_params_test_cleared.extend_from_slice(&hex::decode("54e84d1b").unwrap()); // function selector, "testLifecycleValidationSubsequentTransaction()"
-    //
-    // We expect this to fail because no changes are made
+                                                                                       //
+                                                                                       // We expect this to fail because no changes are made
     util::invoke_contract_expect_fail(&rt, &solidity_params_test_cleared);
 
     // use a new address for our calling context; this will cause the transient storage
@@ -261,4 +261,25 @@ fn mcopy_test(bytecode: Vec<u8>) {
 
     let result = util::invoke_contract(&rt, &solidity_params);
     assert_eq!(&*result, &*encoded_testdata);
+}
+
+#[test]
+fn bls_precompile() {
+    let bytecode = hex::decode(include_str!("contracts/BLSPrecompileCheck.bin")).unwrap();
+    bls_precompile_test(bytecode);
+}
+
+fn bls_precompile_test(bytecode: Vec<u8>) {
+    let contract = Address::new_id(100);
+    let rt = util::init_construct_and_verify(bytecode, |rt| {
+        rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
+        rt.set_origin(contract);
+    });
+
+    let mut solidity_params = vec![];
+    solidity_params.extend_from_slice(&hex::decode("fa17c461").unwrap()); // function selector, "testG1Add()"
+
+    rt.expect_gas_available(10_000_000_000u64);
+    rt.expect_gas_available(10_000_000_000u64);
+    util::invoke_contract(&rt, &solidity_params);
 }
