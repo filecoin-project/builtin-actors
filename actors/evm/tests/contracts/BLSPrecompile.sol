@@ -6,7 +6,7 @@ contract BLSPrecompileCheck {
     address constant G1_ADD_PRECOMPILE = address(0x0B);
 
     /// @notice Asserts that G1 addition precompile at 0x0B correctly computes 2·P
-    function testG1Add() public view returns ( ) {
+    function testG1Add() public view {
         
         // G1 generator coordinates
         uint256 x1 = 0x17F1D3A73197D7942695638C4FA9AC0FC3688C4F9774B905A14E3A3F171BAC58;

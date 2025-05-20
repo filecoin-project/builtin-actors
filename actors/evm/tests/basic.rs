@@ -265,7 +265,7 @@ fn mcopy_test(bytecode: Vec<u8>) {
 
 #[test]
 fn bls_precompile() {
-    let bytecode = hex::decode(include_str!("contracts/BLSPrecompileCheck.bin")).unwrap();
+    let bytecode = hex::decode(include_str!("contracts/BLSPrecompile.hex")).unwrap();
     bls_precompile_test(bytecode);
 }
 
