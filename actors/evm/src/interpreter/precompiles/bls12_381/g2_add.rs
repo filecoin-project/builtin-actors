@@ -24,8 +24,9 @@ pub fn bls12_g2add<RT: Runtime>(
     }
 
     // Split the input into two segments corresponding to the two G2 points.
-    let a_aff = extract_g2_input(&input[..G2_INPUT_ITEM_LENGTH], false)?;
-    let b_aff = extract_g2_input(&input[G2_INPUT_ITEM_LENGTH..], false)?;
+    let (encoded_a, encoded_b) = input.split_at(G2_INPUT_ITEM_LENGTH);
+    let a_aff = extract_g2_input(encoded_a, false)?;
+    let b_aff = extract_g2_input(encoded_b, false)?;
 
     // If either point is at infinity, return the other point.
     if is_infinity(&a_aff) {

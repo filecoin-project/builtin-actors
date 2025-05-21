@@ -262,3 +262,24 @@ fn mcopy_test(bytecode: Vec<u8>) {
     let result = util::invoke_contract(&rt, &solidity_params);
     assert_eq!(&*result, &*encoded_testdata);
 }
+
+#[test]
+fn bls_precompile() {
+    let bytecode = hex::decode(include_str!("contracts/BLSPrecompile.hex")).unwrap();
+    bls_precompile_test(bytecode);
+}
+
+fn bls_precompile_test(bytecode: Vec<u8>) {
+    let contract = Address::new_id(100);
+    let rt = util::init_construct_and_verify(bytecode, |rt| {
+        rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
+        rt.set_origin(contract);
+    });
+
+    let mut solidity_params = vec![];
+    solidity_params.extend_from_slice(&hex::decode("fa17c461").unwrap()); // function selector, "testG1Add()"
+
+    rt.expect_gas_available(10_000_000_000u64);
+    rt.expect_gas_available(10_000_000_000u64);
+    util::invoke_contract(&rt, &solidity_params);
+}

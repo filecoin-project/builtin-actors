@@ -24,8 +24,7 @@ pub fn bls12_g1add<RT: Runtime>(
     }
 
     // Split the input bytes into two segments representing each G1 point.
-    let a_bytes = &input[..PADDED_G1_LENGTH];
-    let b_bytes = &input[PADDED_G1_LENGTH..];
+    let (a_bytes, b_bytes) = input.split_at(PADDED_G1_LENGTH);
 
     // Convert the input bytes to their corresponding BLST affine representations.
     let a_aff = extract_g1_input(a_bytes, false)?;
