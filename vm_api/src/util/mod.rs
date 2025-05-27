@@ -1,9 +1,9 @@
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_shared::MethodNum;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::MethodNum;
 use multihash_codetable::Code;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;

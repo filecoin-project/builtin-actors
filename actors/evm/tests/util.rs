@@ -187,7 +187,6 @@ pub struct PrecompileTest {
     pub expected_exit_code: PrecompileExit,
     pub precompile_address: EthAddress,
     pub output_size: u32,
-    pub gas_avaliable: u64,
     pub call_op: PrecompileCallOpcode,
     pub input: Vec<u8>,
     pub expected_return: Vec<u8>,
@@ -202,7 +201,6 @@ impl Debug for PrecompileTest {
             .field("output_size", &self.output_size)
             .field("input", &hex::encode(&self.input))
             .field("expected_output", &hex::encode(&self.expected_return))
-            .field("gas_avaliable", &self.gas_avaliable)
             .finish()
     }
 }
@@ -210,7 +208,6 @@ impl Debug for PrecompileTest {
 impl PrecompileTest {
     #[allow(dead_code)]
     pub fn run_test(&self, rt: &MockRuntime) {
-        rt.expect_gas_available(self.gas_avaliable);
         log::trace!("{:#?}", &self);
         // first byte is precompile number, second is output buffer size, rest is input to precompile
         let result = invoke_contract(

@@ -534,6 +534,14 @@ impl<'r, RT: Runtime> System<'r, RT> {
         self.saved_state_root = None;
         self.tombstone = Some(crate::current_tombstone(self.rt));
     }
+
+    /// Return the gas limit for a call given the requested gas limit, ensuring that it's no more than
+    /// 63/64 of the remaining gas.
+    pub fn call_gas_limit(&self, gas: U256) -> u64 {
+        let gas_rsvp = (63 * self.rt.gas_available()) / 64;
+        let gas = gas.to_u64_saturating();
+        std::cmp::min(gas, gas_rsvp)
+    }
 }
 
 /// Returns the current transient data lifespan based on the execution environment.

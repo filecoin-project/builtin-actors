@@ -183,7 +183,7 @@ impl From<GroupError> for PrecompileError {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PrecompileContext {
     pub call_type: CallKind,
-    pub gas_limit: u64,
+    pub gas: U256,
     pub value: U256,
 }
 
