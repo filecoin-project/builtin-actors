@@ -9,6 +9,10 @@ toolchain:
 	rustup show active-toolchain || rustup toolchain install
 .PHONY: toolchain
 
+install-nextest:
+	@command -v cargo-nextest >/dev/null 2>&1 || cargo install cargo-nextest --locked
+.PHONY: install-nextest
+
 # Run cargo fmt
 rustfmt: toolchain
 	cargo fmt --all --check
@@ -21,9 +25,12 @@ check: toolchain
 	cargo clippy --all --all-targets -- -D warnings
 	cargo clippy --all -- -D warnings
 
+# NOTE: nextest doesn't run doctests https://github.com/nextest-rs/nextest/issues/16,
+# enable once doc tests are added: `cargo test --doc`
+
 # Run cargo test
-test: toolchain
-	cargo test --workspace
+test: toolchain install-nextest
+	cargo nextest run --workspace --no-fail-fast
 
 docker-builder:
 	$(DOCKER) buildx build $(DOCKER_PLATFORM) . -t $(DOCKER_IMAGE_NAME); \

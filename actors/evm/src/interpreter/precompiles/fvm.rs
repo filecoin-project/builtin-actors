@@ -181,7 +181,7 @@ pub(super) fn call_actor_shared<RT: Runtime>(
             method,
             params,
             TokenAmount::from(&value),
-            Some(ctx.gas_limit),
+            Some(system.call_gas_limit(ctx.gas)),
             flags,
         )?
     };

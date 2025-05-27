@@ -1,14 +1,14 @@
 use export_macro::vm_test;
-use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::Method::AuthenticateMessageExported;
+use fil_actor_account::types::AuthenticateMessageParams;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
 use crate::util::{create_accounts, generate_deal_proposal};
-use vm_api::util::{apply_code, apply_ok};
 use vm_api::VM;
+use vm_api::util::{apply_code, apply_ok};
 
 /// Using a deal proposal as a serialized message, we confirm that:
 /// - calls to Account::authenticate_message with valid signatures succeed
