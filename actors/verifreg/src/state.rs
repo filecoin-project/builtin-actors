@@ -93,7 +93,7 @@ impl State {
     ) -> Result<Option<DataCap>, ActorError> {
         let verifiers = self.load_verifiers(store)?;
         let allowance = verifiers.get(verifier)?;
-        Ok(Some(allowance.map(|a| a.clone().0)))
+        Ok(allowance.map(|a| a.clone().0))
     }
 
     pub fn load_verifiers<BS: Blockstore>(&self, store: BS) -> Result<DataCapMap<BS>, ActorError> {
