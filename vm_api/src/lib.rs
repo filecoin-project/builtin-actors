@@ -32,7 +32,6 @@ use trace::*;
 pub mod builtin;
 mod error;
 pub mod trace;
-#[cfg(feature = "testing")]
 pub mod util;
 
 /// An abstract VM that is injected into integration tests
