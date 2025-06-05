@@ -27,13 +27,13 @@ pub fn check_state_invariants<BS: Blockstore>(
     store: BS,
     prior_epoch: ChainEpoch,
 ) -> (StateSummary, MessageAccumulator) {
-    let acc = MessageAccumulator::default();
+    let acc: MessageAccumulator = MessageAccumulator::default();
 
     // Load and check verifiers
-    let mut all_verifiers = HashMap::new();
+    let mut all_verifiers: HashMap<Address, fvm_shared::bigint::BigInt> = HashMap::new();
     match state.load_verifiers(&store) {
         Ok(verifiers) => {
-            let ret = verifiers.for_each(|verifier, cap| {
+            let ret: Result<_, _> = verifiers.for_each(|verifier: Address, cap| {
                 acc.require(
                     verifier.protocol() == Protocol::ID,
                     format!("verifier {verifier} should have ID protocol"),
@@ -52,12 +52,12 @@ pub fn check_state_invariants<BS: Blockstore>(
     }
 
     // Load and check allocations
-    let mut all_allocations = HashMap::new();
+    let mut all_allocations: HashMap<u64, _> = HashMap::new();
     match state.load_allocs(&store) {
         Ok(allocations) => {
-            let ret = allocations.for_each(|client_key, inner_root| {
-                let client_id = decode_actor_id(client_key).unwrap();
-                let inner = Map2::<&BS, AllocationID, Allocation>::load(
+            let ret: Result<_, _> = allocations.for_each(|client_key, inner_root| {
+                let client_id: u64 = decode_actor_id(client_key).unwrap();
+                let inner: Result<_, _> = Map2::<&BS, AllocationID, Allocation>::load(
                     &store,
                     inner_root,
                     DEFAULT_HAMT_CONFIG,
@@ -65,7 +65,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                 );
                 match inner {
                     Ok(allocations) => {
-                        let ret = allocations.for_each(|allocation_id, allocation: &Allocation| {
+                        let ret: Result<(), fil_actors_runtime::ActorError> = allocations.for_each(|allocation_id: u64, allocation: &Allocation| {
                             check_allocation_state(
                                 allocation_id,
                                 allocation,
@@ -93,12 +93,12 @@ pub fn check_state_invariants<BS: Blockstore>(
         Err(e) => acc.add(format!("error loading allocations from {e}")),
     }
 
-    let mut all_claims = HashMap::new();
+    let mut all_claims: HashMap<u64, _> = HashMap::new();
     match state.load_claims(&store) {
         Ok(claims) => {
-            let ret = claims.for_each(|provider_key, inner_root| {
-                let provider_id = decode_actor_id(provider_key).unwrap();
-                let inner = Map2::<&BS, ClaimID, Claim>::load(
+            let ret: Result<_, _> = claims.for_each(|provider_key: &fvm_ipld_hamt::BytesKey, inner_root| {
+                let provider_id: u64 = decode_actor_id(provider_key).unwrap();
+                let inner: Result<_, _> = Map2::<&BS, ClaimID, Claim>::load(
                     &store,
                     inner_root,
                     DEFAULT_HAMT_CONFIG,
@@ -106,7 +106,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                 );
                 match inner {
                     Ok(claims) => {
-                        let ret = claims.for_each(|claim_id, claim: &Claim| {
+                        let ret: Result<(), fil_actors_runtime::ActorError> = claims.for_each(|claim_id: u64, claim: &Claim| {
                             check_claim_state(
                                 claim_id,
                                 claim,
