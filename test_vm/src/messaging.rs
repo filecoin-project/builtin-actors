@@ -615,7 +615,7 @@ impl Runtime for InvocationCtx<'_> {
     }
 
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
-        ACTOR_TYPES.get(code_id).cloned()
+        Some(ACTOR_TYPES.get(code_id).cloned())
     }
 
     fn get_code_cid_for_type(&self, typ: Type) -> Cid {
@@ -633,7 +633,7 @@ impl Runtime for InvocationCtx<'_> {
     }
 
     fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
-        self.v.actor(&Address::new_id(id)).map(|act| act.balance)
+        Some(self.v.actor(&Address::new_id(id)).map(|act| act.balance))
     }
 
     fn gas_available(&self) -> u64 {
