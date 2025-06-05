@@ -65,7 +65,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                 );
                 match inner {
                     Ok(allocations) => {
-                        let ret: Result<(), fil_actors_runtime::ActorError> = allocations.for_each(|allocation_id: u64, allocation: &Allocation| {
+                        let ret: Result<(), fil_actors_runtime::ActorError> = Ok(allocations.for_each(|allocation_id: u64, allocation: &Allocation| {
                             check_allocation_state(
                                 allocation_id,
                                 allocation,
@@ -77,7 +77,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 
                             all_allocations.insert(allocation_id, allocation.clone());
                             Ok(())
-                        });
+                        }).expect("allocations"));
                         acc.require_no_error(
                             ret,
                             format!("error iterating allocations inner for {client_id}"),
@@ -106,7 +106,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                 );
                 match inner {
                     Ok(claims) => {
-                        let ret: Result<(), fil_actors_runtime::ActorError> = claims.for_each(|claim_id: u64, claim: &Claim| {
+                        let ret: Result<(), fil_actors_runtime::ActorError> = Ok(claims.for_each(|claim_id: u64, claim: &Claim| {
                             check_claim_state(
                                 claim_id,
                                 claim,
@@ -117,7 +117,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                             );
                             all_claims.insert(claim_id, claim.clone());
                             Ok(())
-                        });
+                        }).expect("claims"));
                         acc.require_no_error(
                             ret,
                             format!("error iterating allocations inner for {provider_id}"),
