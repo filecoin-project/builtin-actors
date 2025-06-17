@@ -279,7 +279,6 @@ fn bls_precompile_test(bytecode: Vec<u8>) {
     let mut solidity_params = vec![];
     solidity_params.extend_from_slice(&hex::decode("fa17c461").unwrap()); // function selector for "testG1Add()"
 
-    // rt.expect_gas_available(10_000_000_000u64);
     rt.expect_gas_available(10_000_000_000u64);
     util::invoke_contract(&rt, &solidity_params);
 
@@ -287,7 +286,6 @@ fn bls_precompile_test(bytecode: Vec<u8>) {
     let mut failure_params = vec![];
     failure_params.extend_from_slice(&hex::decode("3e6a10bc").unwrap()); // function selector for "testG1AddFailure()"
 
-    // rt.expect_gas_available(10_000_000_000u64);
     rt.expect_gas_available(10_000_000_000u64);
     util::invoke_contract(&rt, &failure_params);
 
@@ -327,11 +325,52 @@ fn bls_precompile_test(bytecode: Vec<u8>) {
     rt.expect_gas_available(10_000_000_000u64);
     util::invoke_contract(&rt, &map_fp2_to_g2_params);
 
+    // Test G2 Addition Failure
+    let mut g2_failure_params = vec![];
+    g2_failure_params.extend_from_slice(&hex::decode("ab7fa435").unwrap()); // function selector for "testG2AddFailure()"
+
+    rt.expect_gas_available(10_000_000_000u64);
+    util::invoke_contract(&rt, &g2_failure_params);
+
+    // Test G1 MSM Failure
+    let mut g1_msm_failure_params = vec![];
+    g1_msm_failure_params.extend_from_slice(&hex::decode("0244cd8b").unwrap()); // function selector for "testG1MSMFailure()"
+
+    rt.expect_gas_available(10_000_000_000u64);
+    util::invoke_contract(&rt, &g1_msm_failure_params);
+
+    // Test G2 MSM Failure
+    let mut g2_msm_failure_params = vec![];
+    g2_msm_failure_params.extend_from_slice(&hex::decode("0842daaf").unwrap()); // function selector for "testG2MSMFailure()"
+
+    rt.expect_gas_available(10_000_000_000u64);
+    util::invoke_contract(&rt, &g2_msm_failure_params);
+
+    // Test Map Fp to G1 Failure  
+    let mut map_fp_to_g1_failure_params = vec![];
+    map_fp_to_g1_failure_params.extend_from_slice(&hex::decode("df238759").unwrap()); // function selector for "testMapFpToG1Failure()"
+
+    rt.expect_gas_available(10_000_000_000u64);
+    util::invoke_contract(&rt, &map_fp_to_g1_failure_params);
+
+    // Test Map Fp2 to G2 Failure
+    let mut map_fp2_to_g2_failure_params = vec![];
+    map_fp2_to_g2_failure_params.extend_from_slice(&hex::decode("1819ce68").unwrap()); // function selector for "testMapFp2ToG2Failure()"
+
+    rt.expect_gas_available(10_000_000_000u64);
+    util::invoke_contract(&rt, &map_fp2_to_g2_failure_params);
+
+    // // Test Pairing Failure
+    // let mut pairing_failure_params = vec![];
+    // pairing_failure_params.extend_from_slice(&hex::decode("513dc8b3").unwrap()); // function selector for "testPairingFailure()"
+
+    // // rt.expect_gas_available(10_000_000_000u64);
+    // util::invoke_contract(&rt, &pairing_failure_params);
+
     // // Test Pairing
     // let mut pairing_params = vec![];
     // pairing_params.extend_from_slice(&hex::decode("25a753ef").unwrap()); // function selector for "testPairing()"
 
-    // rt.expect_gas_available(10_000_000_000u64);
     // rt.expect_gas_available(10_000_000_000u64);
     // util::invoke_contract(&rt, &pairing_params);
 }
