@@ -352,7 +352,7 @@ fn bls_precompile_test(bytecode: Vec<u8>) {
     rt.expect_gas_available(10_000_000_000u64);
     util::invoke_contract(&rt, &g2_msm_failure_params);
 
-    // Test Map Fp to G1 Failure  
+    // Test Map Fp to G1 Failure
     let mut map_fp_to_g1_failure_params = vec![];
     map_fp_to_g1_failure_params.extend_from_slice(&hex::decode("df238759").unwrap()); // function selector for "testMapFpToG1Failure()"
 
