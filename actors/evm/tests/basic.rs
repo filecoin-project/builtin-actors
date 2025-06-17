@@ -282,13 +282,6 @@ fn bls_precompile_test(bytecode: Vec<u8>) {
     rt.expect_gas_available(10_000_000_000u64);
     util::invoke_contract(&rt, &solidity_params);
 
-    // Test G1 Addition Failure
-    let mut failure_params = vec![];
-    failure_params.extend_from_slice(&hex::decode("3e6a10bc").unwrap()); // function selector for "testG1AddFailure()"
-
-    rt.expect_gas_available(10_000_000_000u64);
-    util::invoke_contract(&rt, &failure_params);
-
     // Test G1 MSM
     let mut g1_msm_params = vec![];
     g1_msm_params.extend_from_slice(&hex::decode("6a3eee08").unwrap()); // function selector for "testG1MSM()"
@@ -300,7 +293,6 @@ fn bls_precompile_test(bytecode: Vec<u8>) {
     let mut g2_params = vec![];
     g2_params.extend_from_slice(&hex::decode("4660d8a1").unwrap()); // function selector for "testG2Add()"
 
-    // Reset expectations for the next call
     rt.expect_gas_available(10_000_000_000u64);
     util::invoke_contract(&rt, &g2_params);
 
@@ -324,6 +316,20 @@ fn bls_precompile_test(bytecode: Vec<u8>) {
 
     rt.expect_gas_available(10_000_000_000u64);
     util::invoke_contract(&rt, &map_fp2_to_g2_params);
+
+    // Test Pairing
+    let mut pairing_params = vec![];
+    pairing_params.extend_from_slice(&hex::decode("25a753ef").unwrap()); // function selector for "testPairing()"
+
+    rt.expect_gas_available(10_000_000_000u64);
+    util::invoke_contract(&rt, &pairing_params);
+
+    // Test G1 Addition Failure
+    let mut failure_params = vec![];
+    failure_params.extend_from_slice(&hex::decode("3e6a10bc").unwrap()); // function selector for "testG1AddFailure()"
+
+    rt.expect_gas_available(10_000_000_000u64);
+    util::invoke_contract(&rt, &failure_params);
 
     // Test G2 Addition Failure
     let mut g2_failure_params = vec![];
@@ -360,17 +366,10 @@ fn bls_precompile_test(bytecode: Vec<u8>) {
     rt.expect_gas_available(10_000_000_000u64);
     util::invoke_contract(&rt, &map_fp2_to_g2_failure_params);
 
-    // // Test Pairing Failure
-    // let mut pairing_failure_params = vec![];
-    // pairing_failure_params.extend_from_slice(&hex::decode("513dc8b3").unwrap()); // function selector for "testPairingFailure()"
+    // Test Pairing Failure
+    let mut pairing_failure_params = vec![];
+    pairing_failure_params.extend_from_slice(&hex::decode("513dc8b3").unwrap()); // function selector for "testPairingFailure()"
 
-    // // rt.expect_gas_available(10_000_000_000u64);
-    // util::invoke_contract(&rt, &pairing_failure_params);
-
-    // // Test Pairing
-    // let mut pairing_params = vec![];
-    // pairing_params.extend_from_slice(&hex::decode("25a753ef").unwrap()); // function selector for "testPairing()"
-
-    // rt.expect_gas_available(10_000_000_000u64);
-    // util::invoke_contract(&rt, &pairing_params);
+    rt.expect_gas_available(10_000_000_000u64);
+    util::invoke_contract(&rt, &pairing_failure_params);
 }
