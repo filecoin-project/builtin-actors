@@ -19,6 +19,7 @@ use fil_actor_paych::State as PaychState;
 use fil_actor_power::State as PowerState;
 use fil_actor_power::testing::MinerCronEvent;
 use fil_actor_reward::State as RewardState;
+use fil_actor_sealer::State as SealerState;
 use fil_actor_verifreg::{DataCap, State as VerifregState};
 use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::MessageAccumulator;
@@ -44,6 +45,7 @@ use fil_actor_multisig::testing as multisig;
 use fil_actor_paych::testing as paych;
 use fil_actor_power::testing as power;
 use fil_actor_reward::testing as reward;
+use fil_actor_sealer::testing as sealer;
 use fil_actor_verifreg::testing as verifreg;
 use fil_actors_runtime::runtime::builtins::Type;
 use vm_api::ActorState;
@@ -161,6 +163,12 @@ pub fn check_state_invariants<BS: Blockstore>(
                 let (summary, msgs) = datacap::check_state_invariants(&state, store);
                 acc.with_prefix("datacap: ").add_all(&msgs);
                 datacap_summary = Some(summary);
+            }
+            Some(Type::Sealer) => {
+                let state = get_state!(store, actor, SealerState);
+                let (_summary, msgs) = sealer::check_state_invariants(&state, key);
+                acc.with_prefix("sealer: ").add_all(&msgs);
+                // Note: sealer summaries could be collected if needed for cross-actor checks
             }
             Some(Type::Placeholder) => {}
             Some(Type::EVM) => {}

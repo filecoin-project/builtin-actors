@@ -5196,7 +5196,7 @@ fn validate_sealer_id_numbers(
         verifier_signature: sealer_id_verifier_signature,
     };
 
-    assert_eq(rt.get_code_cid_for_type(Type::Sealer), rt.get_actor_code_cid(sealer_id_actor)).
+    assert_eq!(Some(rt.get_code_cid_for_type(Type::Sealer)), rt.get_actor_code_cid(&sealer_id_actor));
 
     let result = rt.send_simple(
         &Address::new_id(sealer_id_actor),

@@ -24,6 +24,7 @@ fil_actor_power = { workspace = true }
 fil_actor_market = { workspace = true }
 fil_actor_verifreg = { workspace = true }
 fil_actor_miner = { workspace = true }
+fil_actor_sealer = { workspace = true }
 fil_actor_datacap = { workspace = true }
 fil_actor_evm = { workspace = true }
 fil_actor_eam = { workspace = true }

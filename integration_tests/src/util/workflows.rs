@@ -46,6 +46,8 @@ use fil_actor_miner::{
     SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
     VerifiedAllocationKey, WithdrawBalanceParams, WithdrawBalanceReturn, max_prove_commit_duration,
 };
+use fil_actor_sealer::types::ConstructorParams as SealerConstructorParams;
+use fil_actor_init;
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
@@ -62,6 +64,7 @@ use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::EventBuilder;
+use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ID;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
@@ -1372,4 +1375,28 @@ pub fn make_piece_manifests_from_deal_ids(
         });
     }
     piece_manifests
+}
+
+pub fn create_sealer(v: &dyn VM, validator: &Address) -> Address {
+    let params = SealerConstructorParams {
+        validator: *validator,
+    };
+
+    let create_params = fil_actor_init::ExecParams {
+        code_cid: v.actor_manifest().iter().find(|(_, t)| **t == vm_api::builtin::Type::Sealer).unwrap().0.clone(),
+        constructor_params: serialize(&params, "sealer constructor params").unwrap(),
+    };
+
+    let res: fil_actor_init::ExecReturn = apply_ok(
+        v,
+        validator,
+        &INIT_ACTOR_ADDR,
+        &TokenAmount::zero(),
+        fil_actor_init::Method::Exec as u64,
+        Some(create_params),
+    )
+    .deserialize()
+    .unwrap();
+
+    res.id_address
 }

@@ -24,6 +24,7 @@ fil_actor_paych = { workspace = true}
 fil_actor_power = { workspace = true}
 fil_actor_miner = { workspace = true}
 fil_actor_reward = { workspace = true}
+fil_actor_sealer = { workspace = true}
 fil_actor_system = { workspace = true}
 fil_actor_init = { workspace = true}
 fil_actors_runtime = { workspace = true}

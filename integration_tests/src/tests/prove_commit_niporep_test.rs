@@ -17,13 +17,13 @@ use fil_actor_miner::{
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use vm_api::VM;
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
-use vm_api::util::{DynBlockstore, apply_ok};
+use vm_api::util::{DynBlockstore, apply_ok, apply_code};
 
 use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, create_accounts, create_miner,
-    deadline_state, declare_recovery, override_compute_unsealed_sector_cid, sector_info,
-    submit_windowed_post, try_sector_info,
+    create_sealer, deadline_state, declare_recovery, override_compute_unsealed_sector_cid, 
+    sector_info, submit_windowed_post, try_sector_info,
 };
 
 #[vm_test]
@@ -79,6 +79,8 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
         aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
         proving_deadline,
         require_activation_success: true,
+        sealer_id_actor: None,
+        sealer_id_verifier_signature: None,
     };
 
     v.set_epoch(activation_epoch);
@@ -213,6 +215,8 @@ pub fn prove_commit_ni_partial_success_not_required_test(v: &dyn VM) {
         aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
         proving_deadline,
         require_activation_success: false,
+        sealer_id_actor: None,
+        sealer_id_verifier_signature: None,
     };
 
     v.set_epoch(activation_epoch);
@@ -412,6 +416,8 @@ pub fn prove_commit_ni_next_deadline_post_required_test(v: &dyn VM) {
         aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
         proving_deadline,
         require_activation_success: true,
+        sealer_id_actor: None,
+        sealer_id_verifier_signature: None,
     };
 
     v.set_epoch(activation_epoch);
@@ -517,4 +523,257 @@ pub fn prove_commit_ni_next_deadline_post_required_test(v: &dyn VM) {
     let deadline = deadline_state(v, &maddr, proving_deadline);
     let submissions = deadline.optimistic_proofs_amt(store).unwrap();
     assert_eq!(submissions.count(), 1);
+}
+
+#[vm_test]
+pub fn prove_commit_ni_with_sealer_id_success_test(v: &dyn VM) {
+    override_compute_unsealed_sector_cid(v);
+    let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
+    let seal_proof_type = RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep;
+    let (owner, worker, validator, _) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let worker_id = worker.id().unwrap();
+    
+    // Create miner
+    let (maddr, _) = create_miner(
+        v,
+        &owner,
+        &worker,
+        seal_proof_type.registered_window_post_proof().unwrap(),
+        &TokenAmount::from_whole(8_000),
+    );
+    let miner_id = maddr.id().unwrap();
+    
+    // Create sealer actor
+    let sealer_addr = create_sealer(v, &validator);
+    let sealer_id = sealer_addr.id().unwrap();
+    
+    let policy = Policy::default();
+    let seal_rand_epoch = v.epoch();
+    let activation_epoch = seal_rand_epoch + policy.max_prove_commit_ni_randomness_lookback / 2;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
+    let proving_deadline = 7;
+    
+    // Define sectors with different sealing numbers
+    let sector_numbers = [100, 101, 102];
+    let sealing_numbers = [1000, 1001, 1002]; // Different from sector numbers
+    
+    let sectors_info: Vec<SectorNIActivationInfo> = sector_numbers
+        .iter()
+        .zip(sealing_numbers.iter())
+        .map(|(&sector_number, &sealing_number)| SectorNIActivationInfo {
+            sealing_number,
+            sealer_id,
+            sector_number,
+            sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
+            seal_rand_epoch,
+            expiration,
+        })
+        .collect();
+    
+    let aggregate_proof = RawBytes::new(vec![1, 2, 3, 4]);
+    let mock_signature = vec![0x01, 0x02, 0x03, 0x04]; // Mock verifier signature
+    
+    let params = ProveCommitSectorsNIParams {
+        sectors: sectors_info.clone(),
+        seal_proof_type,
+        aggregate_proof,
+        aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+        proving_deadline,
+        require_activation_success: true,
+        sealer_id_actor: Some(sealer_id),
+        sealer_id_verifier_signature: Some(mock_signature),
+    };
+    
+    v.set_epoch(activation_epoch);
+    
+    let pcsni_ret: ProveCommitSectorsNIReturn = apply_ok(
+        v,
+        &worker,
+        &maddr,
+        &TokenAmount::zero(),
+        MinerMethod::ProveCommitSectorsNI as u64,
+        Some(params.clone()),
+    )
+    .deserialize()
+    .unwrap();
+    
+    assert_eq!(pcsni_ret.activation_results.size(), 3);
+    assert!(pcsni_ret.activation_results.all_ok());
+    assert_eq!(pcsni_ret.activation_results.codes(), [ExitCode::OK].repeat(3));
+    
+    // Verify sectors were committed properly
+    for &sector_number in &sector_numbers {
+        let sector = sector_info(v, &maddr, sector_number);
+        assert_eq!(sector.sector_number, sector_number);
+        assert_eq!(sector.activation, activation_epoch);
+    }
+    
+    let deadline = deadline_state(v, &maddr, proving_deadline);
+    assert_eq!(deadline.live_sectors, sector_numbers.len() as u64);
+}
+
+#[vm_test]
+pub fn prove_commit_ni_with_sealer_id_missing_signature_test(v: &dyn VM) {
+    override_compute_unsealed_sector_cid(v);
+    let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
+    let seal_proof_type = RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep;
+    let (owner, worker, validator, _) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    
+    let (maddr, _) = create_miner(
+        v,
+        &owner,
+        &worker,
+        seal_proof_type.registered_window_post_proof().unwrap(),
+        &TokenAmount::from_whole(8_000),
+    );
+    
+    let sealer_addr = create_sealer(v, &validator);
+    let sealer_id = sealer_addr.id().unwrap();
+    
+    let policy = Policy::default();
+    let seal_rand_epoch = v.epoch();
+    let activation_epoch = seal_rand_epoch + policy.max_prove_commit_ni_randomness_lookback / 2;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
+    
+    let sectors_info = vec![SectorNIActivationInfo {
+        sealing_number: 1000,
+        sealer_id,
+        sector_number: 100,
+        sealed_cid: make_sealed_cid(b"sealed"),
+        seal_rand_epoch,
+        expiration,
+    }];
+    
+    let params = ProveCommitSectorsNIParams {
+        sectors: sectors_info,
+        seal_proof_type,
+        aggregate_proof: RawBytes::new(vec![1, 2, 3, 4]),
+        aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+        proving_deadline: 7,
+        require_activation_success: true,
+        sealer_id_actor: Some(sealer_id),
+        sealer_id_verifier_signature: None, // Missing signature
+    };
+    
+    v.set_epoch(activation_epoch);
+    
+    apply_code(
+        v,
+        &worker,
+        &maddr,
+        &TokenAmount::zero(),
+        MinerMethod::ProveCommitSectorsNI as u64,
+        Some(params),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
+}
+
+#[vm_test]
+pub fn prove_commit_ni_with_sealer_id_wrong_sealer_test(v: &dyn VM) {
+    override_compute_unsealed_sector_cid(v);
+    let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
+    let seal_proof_type = RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep;
+    let (owner, worker, validator, _) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    
+    let (maddr, _) = create_miner(
+        v,
+        &owner,
+        &worker,
+        seal_proof_type.registered_window_post_proof().unwrap(),
+        &TokenAmount::from_whole(8_000),
+    );
+    
+    let sealer_addr = create_sealer(v, &validator);
+    let sealer_id = sealer_addr.id().unwrap();
+    
+    let policy = Policy::default();
+    let seal_rand_epoch = v.epoch();
+    let activation_epoch = seal_rand_epoch + policy.max_prove_commit_ni_randomness_lookback / 2;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
+    
+    let sectors_info = vec![SectorNIActivationInfo {
+        sealing_number: 1000,
+        sealer_id: 999, // Wrong sealer ID
+        sector_number: 100,
+        sealed_cid: make_sealed_cid(b"sealed"),
+        seal_rand_epoch,
+        expiration,
+    }];
+    
+    let params = ProveCommitSectorsNIParams {
+        sectors: sectors_info,
+        seal_proof_type,
+        aggregate_proof: RawBytes::new(vec![1, 2, 3, 4]),
+        aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+        proving_deadline: 7,
+        require_activation_success: true,
+        sealer_id_actor: Some(sealer_id),
+        sealer_id_verifier_signature: Some(vec![1, 2, 3, 4]),
+    };
+    
+    v.set_epoch(activation_epoch);
+    
+    apply_code(
+        v,
+        &worker,
+        &maddr,
+        &TokenAmount::zero(),
+        MinerMethod::ProveCommitSectorsNI as u64,
+        Some(params),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
+}
+
+#[vm_test]
+pub fn prove_commit_ni_without_sealer_id_sealing_number_mismatch_test(v: &dyn VM) {
+    override_compute_unsealed_sector_cid(v);
+    let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
+    let seal_proof_type = RegisteredSealProof::StackedDRG32GiBV1P2_Feat_NiPoRep;
+    let (owner, worker, _) = (addrs[0], addrs[0], addrs[1]);
+    
+    let (maddr, _) = create_miner(
+        v,
+        &owner,
+        &worker,
+        seal_proof_type.registered_window_post_proof().unwrap(),
+        &TokenAmount::from_whole(8_000),
+    );
+    let miner_id = maddr.id().unwrap();
+    
+    let policy = Policy::default();
+    let seal_rand_epoch = v.epoch();
+    let activation_epoch = seal_rand_epoch + policy.max_prove_commit_ni_randomness_lookback / 2;
+    let expiration = activation_epoch + policy.min_sector_expiration + 1;
+    
+    let sectors_info = vec![SectorNIActivationInfo {
+        sealing_number: 1000, // Different from sector_number
+        sealer_id: miner_id,
+        sector_number: 100,
+        sealed_cid: make_sealed_cid(b"sealed"),
+        seal_rand_epoch,
+        expiration,
+    }];
+    
+    let params = ProveCommitSectorsNIParams {
+        sectors: sectors_info,
+        seal_proof_type,
+        aggregate_proof: RawBytes::new(vec![1, 2, 3, 4]),
+        aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+        proving_deadline: 7,
+        require_activation_success: true,
+        sealer_id_actor: None, // No sealer ID
+        sealer_id_verifier_signature: None,
+    };
+    
+    v.set_epoch(activation_epoch);
+    
+    apply_code(
+        v,
+        &worker,
+        &maddr,
+        &TokenAmount::zero(),
+        MinerMethod::ProveCommitSectorsNI as u64,
+        Some(params),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
 }
