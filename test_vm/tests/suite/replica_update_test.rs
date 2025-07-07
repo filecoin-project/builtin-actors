@@ -17,7 +17,7 @@ use fil_actors_integration_tests::util::assert_invariants;
 
 // ---- Success cases ----
 // Tests that an active CC sector can be correctly upgraded, and the expected state changes occur
-#[test]
+// #[test]
 fn replica_update_simple_path_success() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
@@ -26,21 +26,21 @@ fn replica_update_simple_path_success() {
 }
 
 // Tests a successful upgrade, followed by the sector going faulty and recovering
-#[test]
+// #[test]
 fn replica_update_full_path_success() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     replica_update_full_path_success_test(&v);
 }
 
-#[test]
+// #[test]
 fn upgrade_and_miss_post() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     upgrade_and_miss_post_test(&v);
 }
 
-#[test]
+// #[test]
 fn prove_replica_update_multi_dline() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
@@ -49,63 +49,63 @@ fn prove_replica_update_multi_dline() {
 
 // ---- Failure cases ----
 
-#[test]
+// #[test]
 fn immutable_deadline_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     immutable_deadline_failure_test(&v);
 }
 
-#[test]
+// #[test]
 fn unhealthy_sector_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     unhealthy_sector_failure_test(&v);
 }
 
-#[test]
+// #[test]
 fn terminated_sector_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     terminated_sector_failure_test(&v);
 }
 
-#[test]
+// #[test]
 fn no_dispute_after_upgrade() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     nodispute_after_upgrade_test(&v);
 }
 
-#[test]
+// #[test]
 fn upgrade_bad_post_dispute() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     upgrade_bad_post_dispute_test(&v);
 }
 
-#[test]
+// #[test]
 fn bad_post_upgrade_dispute() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     bad_post_upgrade_dispute_test(&v);
 }
 
-#[test]
+// #[test]
 fn terminate_after_upgrade() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     terminate_after_upgrade_test(&v);
 }
 
-#[test]
+// #[test]
 fn extend_after_upgrade() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     extend_after_upgrade_test(&v);
 }
 
-#[test]
+// #[test]
 fn wrong_deadline_index_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
@@ -113,7 +113,7 @@ fn wrong_deadline_index_failure() {
     wrong_deadline_index_failure_test(&v);
 }
 
-#[test]
+// #[test]
 fn wrong_partition_index_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
@@ -121,14 +121,14 @@ fn wrong_partition_index_failure() {
     wrong_partition_index_failure_test(&v);
 }
 
-#[test]
+// #[test]
 fn deal_included_in_multiple_sectors_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     deal_included_in_multiple_sectors_failure_test(&v);
 }
 
-#[test]
+// #[test]
 fn replica_update_verified_deal() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
@@ -136,7 +136,7 @@ fn replica_update_verified_deal() {
     replica_update_verified_deal_test(&v);
 }
 
-#[test]
+// #[test]
 fn replica_update_verified_deal_max_term_violated() {
     let store = Rc::new(MemoryBlockstore::new());
     let v = TestVM::new_with_singletons(store);

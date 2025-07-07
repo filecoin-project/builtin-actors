@@ -131,7 +131,7 @@ pub enum Method {
     DisputeWindowedPoSt = 24,
     //PreCommitSectorBatch = 25, // Deprecated
     ProveCommitAggregate = 26,
-    ProveReplicaUpdates = 27,
+    //ProveReplicaUpdates = 27, // Deprecated
     PreCommitSectorBatch2 = 28,
     //ProveReplicaUpdates2 = 29, // Deprecated
     ChangeBeneficiary = 30,
@@ -852,163 +852,6 @@ impl Actor {
         }
 
         Ok(())
-    }
-
-    fn prove_replica_updates<RT>(
-        rt: &RT,
-        params: ProveReplicaUpdatesParams,
-    ) -> Result<BitField, ActorError>
-    where
-        // + Clone because we messed up and need to keep a copy around between transactions.
-        // https://github.com/filecoin-project/builtin-actors/issues/133
-        RT::Blockstore: Clone,
-        RT: Runtime,
-    {
-        // In this entry point, the unsealed CID is computed from deals via the market actor.
-        // A future entry point will take the unsealed CID as parameter
-        let updates = params
-            .updates
-            .into_iter()
-            .map(|ru| ReplicaUpdateInner {
-                sector_number: ru.sector_number,
-                deadline: ru.deadline,
-                partition: ru.partition,
-                new_sealed_cid: ru.new_sealed_cid,
-                deals: ru.deals,
-                update_proof_type: ru.update_proof_type,
-                replica_proof: ru.replica_proof,
-            })
-            .collect();
-        Self::prove_replica_updates_inner(rt, updates)
-    }
-
-    fn prove_replica_updates_inner<RT>(
-        rt: &RT,
-        updates: Vec<ReplicaUpdateInner>,
-    ) -> Result<BitField, ActorError>
-    where
-        RT::Blockstore: Blockstore,
-        RT: Runtime,
-    {
-        let state: State = rt.state()?;
-        let store = rt.store();
-        let info = get_miner_info(store, &state)?;
-
-        rt.validate_immediate_caller_is(
-            info.control_addresses.iter().chain(&[info.owner, info.worker]),
-        )?;
-
-        let mut sectors = Sectors::load(&store, &state.sectors)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
-        let mut sector_infos = Vec::with_capacity(updates.len());
-        for update in &updates {
-            sector_infos.push(sectors.must_get(update.sector_number)?);
-        }
-
-        // Validate inputs
-        let require_deals = true; // Legacy PRU requires deals to be specified in the update.
-        let all_or_nothing = false; // Skip invalid updates.
-        let (batch_return, update_sector_infos) = validate_replica_updates(
-            &updates,
-            &sector_infos,
-            &state,
-            info.sector_size,
-            rt.policy(),
-            rt.curr_epoch(),
-            store,
-            require_deals,
-            all_or_nothing,
-        )?;
-        // Drop invalid inputs.
-        let update_sector_infos: Vec<UpdateAndSectorInfo> =
-            batch_return.successes(&update_sector_infos).into_iter().cloned().collect();
-
-        let data_activation_inputs: Vec<DealsActivationInput> =
-            update_sector_infos.iter().map_into().collect();
-
-        /*
-           - no CommD was specified on input so it must be computed for the first time here
-        */
-        let compute_commd = true;
-        let (batch_return, data_activations) =
-            activate_sectors_deals(rt, &data_activation_inputs, compute_commd)?;
-
-        // associate the successfully activated sectors with the ReplicaUpdateInner and SectorOnChainInfo
-        let validated_updates: Vec<(&UpdateAndSectorInfo, DataActivationOutput)> = batch_return
-            .successes(&update_sector_infos)
-            .into_iter()
-            .zip(data_activations)
-            .collect();
-
-        if validated_updates.is_empty() {
-            return Err(actor_error!(illegal_argument, "no valid updates"));
-        }
-
-        // Errors past this point cause the prove_replica_updates call to fail (no more skipping sectors)
-        // Group inputs by deadline
-        let mut updated_sectors: Vec<SectorNumber> = Vec::new();
-        let mut decls_by_deadline = BTreeMap::<u64, Vec<ReplicaUpdateStateInputs>>::new();
-        let mut deadlines_to_load = Vec::<u64>::new();
-        for (usi, data_activation) in &validated_updates {
-            updated_sectors.push(usi.update.sector_number);
-            let dl = usi.update.deadline;
-            if !decls_by_deadline.contains_key(&dl) {
-                deadlines_to_load.push(dl);
-            }
-
-            let computed_commd = CompactCommD::new(data_activation.unsealed_cid)
-                .get_cid(usi.sector_info.seal_proof)?;
-            let proof_inputs = ReplicaUpdateInfo {
-                update_proof_type: usi.update.update_proof_type,
-                new_sealed_cid: usi.update.new_sealed_cid,
-                old_sealed_cid: usi.sector_info.sealed_cid,
-                new_unsealed_cid: computed_commd,
-                proof: usi.update.replica_proof.clone().into(),
-            };
-            rt.verify_replica_update(&proof_inputs).with_context_code(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                || {
-                    format!(
-                        "failed to verify replica proof for sector {}",
-                        usi.sector_info.sector_number
-                    )
-                },
-            )?;
-
-            let activated_data = ReplicaUpdateActivatedData {
-                seal_cid: usi.update.new_sealed_cid,
-                unverified_space: data_activation.unverified_space.clone(),
-                verified_space: data_activation.verified_space.clone(),
-            };
-            decls_by_deadline.entry(dl).or_default().push(ReplicaUpdateStateInputs {
-                deadline: usi.update.deadline,
-                partition: usi.update.partition,
-                sector_info: usi.sector_info,
-                activated_data,
-            });
-
-            emit::sector_updated(
-                rt,
-                usi.update.sector_number,
-                data_activation.unsealed_cid,
-                &data_activation.pieces,
-            )?;
-        }
-
-        let (power_delta, pledge_delta) = update_replica_states(
-            rt,
-            &decls_by_deadline,
-            validated_updates.len(),
-            &mut sectors,
-            info.sector_size,
-        )?;
-
-        notify_pledge_changed(rt, &pledge_delta)?;
-        request_update_power(rt, power_delta)?;
-
-        let updated_bitfield = BitField::try_from_bits(updated_sectors)
-            .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "invalid sector number")?;
-        Ok(updated_bitfield)
     }
 
     fn prove_replica_updates3(
@@ -6002,7 +5845,6 @@ impl ActorCode for Actor {
         ChangeOwnerAddress|ChangeOwnerAddressExported => change_owner_address,
         DisputeWindowedPoSt => dispute_windowed_post,
         ProveCommitAggregate => prove_commit_aggregate,
-        ProveReplicaUpdates => prove_replica_updates,
         PreCommitSectorBatch2 => pre_commit_sector_batch2,
         ChangeBeneficiary|ChangeBeneficiaryExported => change_beneficiary,
         GetBeneficiary|GetBeneficiaryExported => get_beneficiary,

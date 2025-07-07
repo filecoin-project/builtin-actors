@@ -264,7 +264,7 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
         &worker,
         &maddr,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] }),
     )
     .deserialize()
@@ -335,7 +335,7 @@ pub fn immutable_deadline_failure_test(v: &dyn VM) {
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -388,7 +388,7 @@ pub fn unhealthy_sector_failure_test(v: &dyn VM) {
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -457,7 +457,7 @@ pub fn terminated_sector_failure_test(v: &dyn VM) {
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -555,7 +555,7 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
     )
     .deserialize()
@@ -720,7 +720,7 @@ pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(ProveReplicaUpdatesParams { updates }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -775,7 +775,7 @@ pub fn wrong_partition_index_failure_test(v: &dyn VM) {
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(ProveReplicaUpdatesParams { updates }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -882,7 +882,7 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
         &worker,
         &maddr,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] }),
     )
     .deserialize()
@@ -969,7 +969,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
     )
     .deserialize()
@@ -1002,7 +1002,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     ExpectInvocation {
         from: worker_id,
         to: maddr,
-        method: MinerMethod::ProveReplicaUpdates as u64,
+        method: MinerMethod::ProveReplicaUpdates3 as u64,
         subinvocs: Some(vec![
             Expect::market_activate_deals(
                 miner_id,
@@ -1103,7 +1103,7 @@ pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -1286,7 +1286,7 @@ pub fn create_miner_and_upgrade_sector(
             &worker,
             &robust,
             &TokenAmount::zero(),
-            MinerMethod::ProveReplicaUpdates as u64,
+            MinerMethod::ProveReplicaUpdates3 as u64,
             Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         )
     }

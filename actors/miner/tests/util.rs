@@ -1633,6 +1633,36 @@ impl ActorHarness {
         Ok((result, expected_sector_claims, expected_sector_notifications))
     }
 
+    pub fn build_replica_updates3_params(
+        &self,
+        // rt: &MockRuntime,
+        sector_updates: &[SectorUpdateManifest],
+        require_activation_success: bool,
+        require_notification_success: bool,
+        cfg: ProveReplicaUpdatesConfig,
+    ) -> Result<ProveReplicaUpdates3Params, ActorError> {
+        fn make_proof(i: u8) -> RawBytes {
+            RawBytes::new(vec![i, i, i, i])
+        }
+        // rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, cfg.caller.unwrap_or(self.worker));
+        // rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let mut params = ProveReplicaUpdates3Params {
+            sector_updates: sector_updates.into(),
+            sector_proofs: sector_updates.iter().map(|su| make_proof(su.sector as u8)).collect(),
+            aggregate_proof: RawBytes::default(),
+            update_proofs_type: self.seal_proof_type.registered_update_proof().unwrap(),
+            aggregate_proof_type: None,
+            require_activation_success,
+            require_notification_success,
+        };
+        if let Some(param_twiddle) = cfg.param_twiddle {
+            param_twiddle(&mut params);
+        }
+
+        Ok(params)
+    }
+
     pub fn get_sector(&self, rt: &MockRuntime, sector_number: SectorNumber) -> SectorOnChainInfo {
         let state = self.get_state(rt);
         state.get_sector(&rt.store, sector_number).unwrap().unwrap()
