@@ -14,10 +14,11 @@ use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
 use fil_actor_miner::{
     ExpirationExtension, ExpirationExtension2, ExtendSectorExpiration2Params,
-    ExtendSectorExpirationParams, Method as MinerMethod, PowerPair, ProveReplicaUpdatesParams,
-    ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors, State as MinerState,
-    max_prove_commit_duration, power_for_sector,
+    ExtendSectorExpirationParams, Method as MinerMethod, PieceChange, PowerPair, SectorClaim,
+    SectorOnChainInfoFlags, Sectors, State as MinerState, max_prove_commit_duration,
+    power_for_sector,
 };
+use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 use vm_api::VM;
 use vm_api::trace::ExpectInvocation;
@@ -655,9 +656,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         deadline: u64,
         partition: u64,
         new_sealed_cid: Cid,
-        pieces: Vec<fil_actor_miner::PieceActivationManifest>, // client: fvm_shared::ActorID,
-                                                               // alloc: fil_actor_verifreg::AllocationID,
-                                                               // deal: fvm_shared::deal::DealID,
+        pieces: Vec<fil_actor_miner::PieceActivationManifest>,
     ) -> Vec<fil_actor_miner::SectorUpdateManifest> {
         vec![fil_actor_miner::SectorUpdateManifest {
             sector: sector,
@@ -730,59 +729,63 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let end_epoch = deal_start + deal_lifetime;
     let claim_term = end_epoch - start_epoch;
 
-    /*
-        // check for the expected subcalls
-        ExpectInvocation {
-            from: worker_id,
-            to: miner_addr,
-            method: MinerMethod::ProveReplicaUpdates3 as u64,
-            subinvocs: Some(vec![
-                Expect::market_activate_deals(
-                    miner_id,
-                    deal_ids,
+    // Compute piece change
+    let piece_change = PieceChange {
+        data: piece_cid,
+        size: piece_size,
+        payload: serialize(&deal_ids[0], "deal id").unwrap(),
+    };
+
+    // check for the expected subcalls
+    ExpectInvocation {
+        from: worker_id,
+        to: miner_addr,
+        method: MinerMethod::ProveReplicaUpdates3 as u64,
+        subinvocs: Some(vec![
+            ExpectInvocation {
+                from: miner_id,
+                to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                method: VerifregMethod::ClaimAllocations as u64,
+                events: Some(vec![Expect::build_verifreg_claim_event(
+                    "claim",
+                    claim_id,
                     verified_client.id().unwrap(),
-                    sector_number,
-                    initial_sector_info.expiration,
-                    initial_sector_info.seal_proof,
-                    true,
-                ),
-                ExpectInvocation {
-                    from: miner_id,
-                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                    method: VerifregMethod::ClaimAllocations as u64,
-                    events: Some(vec![Expect::build_verifreg_claim_event(
-                        "claim",
-                        claim_id,
-                        verified_client.id().unwrap(),
-                        miner_id,
-                        &piece_cid,
-                        piece_size.0,
-                        claim_term,
-                        claim_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
-                        v.epoch(),
-                        sector_number,
-                    )]),
-                    ..Default::default()
-                },
-                Expect::reward_this_epoch(miner_id),
-                Expect::power_current_total(miner_id),
-                Expect::power_update_pledge(miner_id, None),
-                Expect::power_update_claim(
                     miner_id,
-                    PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
-                ),
-            ]),
-            events: Some(vec![Expect::build_sector_activation_event(
-                "sector-updated",
+                    &piece_cid,
+                    piece_size.0,
+                    claim_term,
+                    claim_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
+                    v.epoch(),
+                    sector_number,
+                )]),
+                ..Default::default()
+            },
+            Expect::reward_this_epoch(miner_id),
+            Expect::power_current_total(miner_id),
+            Expect::power_update_pledge(miner_id, None),
+            Expect::power_update_claim(
                 miner_id,
+                PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
+            ),
+            Expect::market_content_changed(
+                miner_id,
+                deal_ids,
+                verified_client.id().unwrap(),
                 sector_number,
-                Some(unsealed_cid),
-                &pieces,
-            )]),
-            ..Default::default()
-        }
-        .matches(v.take_invocations().last().unwrap());
-    */
+                initial_sector_info.expiration,
+                vec![piece_change],
+            ),
+        ]),
+        events: Some(vec![Expect::build_sector_activation_event(
+            "sector-updated",
+            miner_id,
+            sector_number,
+            Some(unsealed_cid),
+            &pieces,
+        )]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 
     // inspect sector info
 

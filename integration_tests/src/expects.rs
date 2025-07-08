@@ -21,6 +21,7 @@ use fil_actor_market::{
 };
 use fil_actor_miner::ext::verifreg::ClaimID;
 use fil_actor_miner::{IsControllingAddressParam, PowerPair};
+use fil_actor_miner::{PieceChange, SectorChanges, SectorContentChangedParams};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
 use fil_actor_verifreg::GetClaimsParams;
 use fil_actors_runtime::{
@@ -71,6 +72,39 @@ impl Expect {
             from,
             to: STORAGE_MARKET_ACTOR_ADDR,
             method: fil_actor_market::Method::BatchActivateDeals as u64,
+            params: Some(params),
+            value: Some(TokenAmount::zero()),
+            subinvocs: Some(vec![]),
+            events: Some(events),
+            ..Default::default()
+        }
+    }
+    pub fn market_content_changed(
+        from: ActorID,
+        deals: Vec<DealID>,
+        client_id: ActorID,
+        sector_number: SectorNumber,
+        sector_expiry: ChainEpoch,
+        pieces_changes: Vec<PieceChange>,
+    ) -> ExpectInvocation {
+        let params = IpldBlock::serialize_cbor(&SectorContentChangedParams {
+            sectors: vec![SectorChanges {
+                sector: sector_number,
+                minimum_commitment_epoch: sector_expiry,
+                added: pieces_changes,
+            }],
+        })
+        .unwrap();
+
+        let events: Vec<EmittedEvent> = deals
+            .iter()
+            .map(|deal_id| Expect::build_market_event("deal-activated", *deal_id, client_id, from))
+            .collect();
+
+        ExpectInvocation {
+            from,
+            to: STORAGE_MARKET_ACTOR_ADDR,
+            method: fil_actor_market::Method::SectorContentChangedExported as u64,
             params: Some(params),
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),
