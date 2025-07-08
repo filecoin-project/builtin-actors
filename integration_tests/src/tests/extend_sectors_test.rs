@@ -681,11 +681,10 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         &miner_addr,
         &TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates3 as u64,
-        Some(params.clone()),
+        Some(params),
     )
     .deserialize()
     .unwrap();
-
     // assert_eq!(vec![sector_number], bf_all(updated_sectors));
     assert!(ret.activation_results.all_ok());
 
