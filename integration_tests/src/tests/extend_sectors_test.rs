@@ -14,11 +14,10 @@ use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
 use fil_actor_miner::{
     ExpirationExtension, ExpirationExtension2, ExtendSectorExpiration2Params,
-    ExtendSectorExpirationParams, Method as MinerMethod, PieceChange, PowerPair, SectorClaim,
+    ExtendSectorExpirationParams, Method as MinerMethod, PowerPair, SectorClaim,
     SectorOnChainInfoFlags, Sectors, State as MinerState, max_prove_commit_duration,
     power_for_sector,
 };
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 use vm_api::VM;
 use vm_api::trace::ExpectInvocation;
@@ -27,12 +26,12 @@ use vm_api::util::{DynBlockstore, apply_ok, get_state, mutate_state};
 use crate::expects::Expect;
 use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
-    create_miner, cron_tick, expect_invariants, invariant_failure_patterns,
-    make_piece_manifests_from_deal_ids, market_add_balance, market_pending_deal_allocations,
-    market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
-    override_compute_unsealed_sector_cid, precommit_meta_data_from_deals, sector_deadline,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    advance_by_deadline_to_index, advance_to_proving_deadline, create_accounts, create_miner,
+    cron_tick, expect_invariants, invariant_failure_patterns, make_piece_manifests_from_deal_ids,
+    market_add_balance, market_pending_deal_allocations, market_publish_deal,
+    miner_precommit_one_sector_v2, miner_prove_sector, override_compute_unsealed_sector_cid,
+    piece_change, precommit_meta_data_from_deals, sector_deadline, submit_windowed_post,
+    verifreg_add_client, verifreg_add_verifier,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -636,7 +635,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         &worker,
         &verified_client,
         &miner_addr,
-        deal_label,
+        deal_label.clone(),
         piece_size,
         true,
         deal_start,
@@ -730,11 +729,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let claim_term = end_epoch - start_epoch;
 
     // Compute piece change
-    let piece_change = PieceChange {
-        data: piece_cid,
-        size: piece_size,
-        payload: serialize(&deal_ids[0], "deal id").unwrap(),
-    };
+    let change = piece_change(deal_label.as_bytes(), piece_size, &deal_ids);
 
     // check for the expected subcalls
     ExpectInvocation {
@@ -773,7 +768,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 verified_client.id().unwrap(),
                 sector_number,
                 initial_sector_info.expiration,
-                vec![piece_change],
+                vec![change],
             ),
         ]),
         events: Some(vec![Expect::build_sector_activation_event(
