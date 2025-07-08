@@ -2,6 +2,7 @@ use cid::Cid;
 use export_macro::vm_test;
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_ipld_bitfield::BitField;
@@ -12,13 +13,14 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
+use fvm_ipld_encoding::RawBytes;
+
 use fil_actor_miner::{
     ExpirationExtension, ExpirationExtension2, ExtendSectorExpiration2Params,
-    ExtendSectorExpirationParams, Method as MinerMethod, PowerPair, SectorClaim,
-    SectorOnChainInfoFlags, Sectors, State as MinerState, max_prove_commit_duration,
-    power_for_sector,
+    ExtendSectorExpirationParams, Method as MinerMethod, PowerPair, ProveReplicaUpdates3Params,
+    ProveReplicaUpdates3Return, SectorClaim, SectorOnChainInfoFlags, SectorUpdateManifest, Sectors,
+    State as MinerState, max_prove_commit_duration, power_for_sector,
 };
-use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 use vm_api::VM;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{DynBlockstore, apply_ok, get_state, mutate_state};
@@ -650,31 +652,17 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     let (d_idx, p_idx) = sector_deadline(v, &miner_addr, sector_number);
 
-    pub fn setup(
-        sector: u64,
-        deadline: u64,
-        partition: u64,
-        new_sealed_cid: Cid,
-        pieces: Vec<fil_actor_miner::PieceActivationManifest>,
-    ) -> Vec<fil_actor_miner::SectorUpdateManifest> {
-        vec![fil_actor_miner::SectorUpdateManifest {
-            sector: sector,
-            deadline,
-            partition,
-            new_sealed_cid,
-            pieces,
-        }]
-    }
-
     let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
 
-    let manifests = setup(sector_number, d_idx, p_idx, new_sealed_cid, piece_manifests);
+    let manifests = vec![SectorUpdateManifest {
+        sector: sector_number,
+        deadline: d_idx,
+        partition: p_idx,
+        new_sealed_cid,
+        pieces: piece_manifests,
+    }];
 
     let update_proof = seal_proof.registered_update_proof().unwrap();
-
-    use fil_actor_miner::ProveReplicaUpdates3Params;
-    use fil_actor_miner::ProveReplicaUpdates3Return;
-    use fvm_ipld_encoding::RawBytes;
 
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -687,23 +675,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         require_notification_success: true,
     };
 
-    // let replica_update = ReplicaUpdate {
-    //     sector_number,
-    //     deadline: d_idx,
-    //     partition: p_idx,
-    //     new_sealed_cid,
-    //     deals: deal_ids.clone(),
-    //     update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-    //     replica_proof: vec![].into(),
-    // };
-    // apply_ok(
-    //     v,
-    //     &worker,
-    //     &maddr,
-    //     &TokenAmount::zero(),
-    //     MinerMethod::ProveReplicaUpdates3 as u64,
-    //     Some(params.clone()),
-    // );
     let ret: ProveReplicaUpdates3Return = apply_ok(
         v,
         &worker,
