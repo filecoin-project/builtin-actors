@@ -1,5 +1,6 @@
 use cid::Cid;
 use fvm_ipld_bitfield::BitField;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::clock::ChainEpoch;
@@ -16,8 +17,9 @@ use fil_actor_market::Method as MarketMethod;
 use fil_actor_market::State as MarketState;
 use fil_actor_miner::{
     DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MinerMethod, PowerPair, ProveReplicaUpdatesParams, ReplicaUpdate,
-    SECTORS_AMT_BITWIDTH, SectorOnChainInfo, SectorOnChainInfoFlags, Sectors, State as MinerState,
+    Method as MinerMethod, PowerPair, ProveReplicaUpdates3Params, ProveReplicaUpdates3Return,
+    ProveReplicaUpdatesParams, ReplicaUpdate, SECTORS_AMT_BITWIDTH, SectorOnChainInfo,
+    SectorOnChainInfoFlags, SectorUpdateManifest, Sectors, State as MinerState,
     TerminateSectorsParams, TerminationDeclaration, power_for_sector,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
@@ -36,10 +38,11 @@ use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
     create_miner, cron_tick, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
-    get_network_stats, invariant_failure_patterns, make_bitfield, market_publish_deal,
-    miner_balance, miner_power, miner_prove_sector, override_compute_unsealed_sector_cid,
-    precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    get_network_stats, invariant_failure_patterns, make_bitfield,
+    make_piece_manifests_from_deal_ids, market_publish_deal, miner_balance, miner_power,
+    miner_prove_sector, override_compute_unsealed_sector_cid, precommit_sectors_v2,
+    prove_commit_sectors, sector_info, submit_invalid_post, submit_windowed_post,
+    verifreg_add_client, verifreg_add_verifier,
 };
 
 #[vm_test]
@@ -1251,7 +1254,7 @@ pub fn create_miner_and_upgrade_sector(
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-    let (maddr, robust) = create_miner(
+    let (maddr, _) = create_miner(
         v,
         &owner,
         &worker,
@@ -1271,28 +1274,63 @@ pub fn create_miner_and_upgrade_sector(
 
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    let updated_sectors: BitField = {
-        let replica_update = ReplicaUpdate {
-            sector_number,
-            deadline: d_idx,
-            partition: p_idx,
-            new_sealed_cid,
-            deals: deal_ids.clone(),
-            update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-            replica_proof: vec![].into(),
-        };
-        apply_ok(
-            v,
-            &worker,
-            &robust,
-            &TokenAmount::zero(),
-            MinerMethod::ProveReplicaUpdates3 as u64,
-            Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
-        )
-    }
+    // let updated_sectors: BitField = {
+    //     let replica_update = ReplicaUpdate {
+    //         sector_number,
+    //         deadline: d_idx,
+    //         partition: p_idx,
+    //         new_sealed_cid,
+    //         deals: deal_ids.clone(),
+    //         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
+    //         replica_proof: vec![].into(),
+    //     };
+    //     apply_ok(
+    //         v,
+    //         &worker,
+    //         &robust,
+    //         &TokenAmount::zero(),
+    //         MinerMethod::ProveReplicaUpdates3 as u64,
+    //         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
+    //     )
+    // }
+    // .deserialize()
+    // .unwrap();
+
+    let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
+
+    let manifests = vec![SectorUpdateManifest {
+        sector: sector_number,
+        deadline: d_idx,
+        partition: p_idx,
+        new_sealed_cid,
+        pieces: piece_manifests,
+    }];
+
+    let update_proof = seal_proof.registered_update_proof().unwrap();
+
+    let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
+    let params = ProveReplicaUpdates3Params {
+        sector_updates: manifests.clone(),
+        sector_proofs: proofs,
+        aggregate_proof: RawBytes::default(),
+        update_proofs_type: update_proof,
+        aggregate_proof_type: None,
+        require_activation_success: true,
+        require_notification_success: true,
+    };
+
+    let ret: ProveReplicaUpdates3Return = apply_ok(
+        v,
+        &worker,
+        &maddr,
+        &TokenAmount::zero(),
+        MinerMethod::ProveReplicaUpdates3 as u64,
+        Some(params),
+    )
     .deserialize()
     .unwrap();
-    assert_eq!(vec![100], bf_all(updated_sectors));
+    // assert_eq!(vec![100], bf_all(updated_sectors));
+    assert!(ret.activation_results.all_ok());
 
     // sanity check the sector after update
     let new_sector_info = sector_info(v, &maddr, sector_number);

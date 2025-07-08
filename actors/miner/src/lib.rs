@@ -5515,6 +5515,7 @@ struct DataActivationOutput {
     pub unverified_space: BigInt,
     pub verified_space: BigInt,
     // None indicates either no deals or computation was not requested.
+    #[allow(dead_code)]
     pub unsealed_cid: Option<Cid>,
     pub pieces: Vec<(Cid, u64)>,
 }

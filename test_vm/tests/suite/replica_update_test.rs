@@ -17,7 +17,7 @@ use fil_actors_integration_tests::util::assert_invariants;
 
 // ---- Success cases ----
 // Tests that an active CC sector can be correctly upgraded, and the expected state changes occur
-// #[test]
+#[test]
 fn replica_update_simple_path_success() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
