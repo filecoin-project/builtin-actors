@@ -718,6 +718,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     .unwrap();
 
     // assert_eq!(vec![sector_number], bf_all(updated_sectors));
+    assert!(ret.activation_results.all_ok());
 
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &initial_sector_info);
 
