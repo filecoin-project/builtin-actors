@@ -77,7 +77,7 @@ fn no_dispute_after_upgrade() {
     nodispute_after_upgrade_test(&v);
 }
 
-// #[test]
+#[test]
 fn upgrade_bad_post_dispute() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
@@ -91,14 +91,14 @@ fn bad_post_upgrade_dispute() {
     bad_post_upgrade_dispute_test(&v);
 }
 
-// #[test]
+#[test]
 fn terminate_after_upgrade() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     terminate_after_upgrade_test(&v);
 }
 
-// #[test]
+#[test]
 fn extend_after_upgrade() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
