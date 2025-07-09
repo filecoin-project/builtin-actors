@@ -113,7 +113,7 @@ fn wrong_deadline_index_failure() {
     wrong_deadline_index_failure_test(&v);
 }
 
-// #[test]
+#[test]
 fn wrong_partition_index_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
@@ -136,7 +136,7 @@ fn replica_update_verified_deal() {
     replica_update_verified_deal_test(&v);
 }
 
-// #[test]
+#[test]
 fn replica_update_verified_deal_max_term_violated() {
     let store = Rc::new(MemoryBlockstore::new());
     let v = TestVM::new_with_singletons(store);
