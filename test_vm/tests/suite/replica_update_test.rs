@@ -105,7 +105,7 @@ fn extend_after_upgrade() {
     extend_after_upgrade_test(&v);
 }
 
-// #[test]
+#[test]
 fn wrong_deadline_index_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);

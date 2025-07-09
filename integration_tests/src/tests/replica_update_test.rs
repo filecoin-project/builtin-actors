@@ -766,19 +766,31 @@ pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
 
     // fail to replicaUpdate more sectors than batch size
     let new_cid = make_sealed_cid(b"replica1");
-    let mut updates = vec![];
+    let mut manifests = vec![];
+
+    let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
 
     for _ in 0..256 + 1 {
-        updates.push(ReplicaUpdate {
-            sector_number,
+        manifests.push(SectorUpdateManifest {
+            sector: sector_number,
             deadline: d_idx + 1,
             partition: p_idx,
             new_sealed_cid: new_cid,
-            deals: deal_ids.clone(),
-            update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-            replica_proof: vec![].into(),
+            pieces: piece_manifests.clone(),
         });
     }
+    // Replica update
+    let update_proof = seal_proof.registered_update_proof().unwrap();
+    let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
+    let params = ProveReplicaUpdates3Params {
+        sector_updates: manifests.clone(),
+        sector_proofs: proofs,
+        aggregate_proof: RawBytes::default(),
+        update_proofs_type: update_proof,
+        aggregate_proof_type: None,
+        require_activation_success: true,
+        require_notification_success: true,
+    };
 
     apply_code(
         v,
@@ -786,7 +798,7 @@ pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
         &robust,
         &TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates3 as u64,
-        Some(ProveReplicaUpdatesParams { updates }),
+        Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
