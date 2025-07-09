@@ -241,41 +241,51 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     let deal_ids = create_deals(2, v, worker, worker, maddr);
 
     let new_sealed_cid1 = make_sealed_cid(b"replica1");
-    let replica_update_1 = ReplicaUpdate {
-        sector_number: first_sector_number_p1,
-        deadline: 0,
-        partition: 0,
-        new_sealed_cid: new_sealed_cid1,
-        deals: deal_ids[0..1].to_vec(),
-        update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![].into(),
-    };
 
     let new_sealed_cid2 = make_sealed_cid(b"replica2");
-    let replica_update_2 = ReplicaUpdate {
-        sector_number: first_sector_number_p2,
-        deadline: 1,
-        partition: 0,
-        new_sealed_cid: new_sealed_cid2,
-        deals: deal_ids[1..].to_vec(),
-        update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![].into(),
-    };
 
-    let ret_bf: BitField = apply_ok(
+    let manifests = vec![
+        SectorUpdateManifest {
+            sector: first_sector_number_p1,
+            deadline: 0,
+            partition: 0,
+            new_sealed_cid: new_sealed_cid1,
+            pieces: make_piece_manifests_from_deal_ids(v, deal_ids[0..1].to_vec()),
+        },
+        SectorUpdateManifest {
+            sector: first_sector_number_p2,
+            deadline: 1,
+            partition: 0,
+            new_sealed_cid: new_sealed_cid2,
+            pieces: make_piece_manifests_from_deal_ids(v, deal_ids[1..].to_vec()),
+        },
+    ];
+
+    // Replica update
+    let update_proof = seal_proof.registered_update_proof().unwrap();
+    let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
+    let params = ProveReplicaUpdates3Params {
+        sector_updates: manifests.clone(),
+        sector_proofs: proofs,
+        aggregate_proof: RawBytes::default(),
+        update_proofs_type: update_proof,
+        aggregate_proof_type: None,
+        require_activation_success: true,
+        require_notification_success: true,
+    };
+    let ret: ProveReplicaUpdates3Return = apply_ok(
         v,
         &worker,
         &maddr,
         &TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates3 as u64,
-        Some(ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] }),
+        Some(params),
     )
     .deserialize()
     .unwrap();
 
-    assert_eq!(ret_bf.len(), 2);
-    assert!(ret_bf.get(first_sector_number_p1));
-    assert!(ret_bf.get(first_sector_number_p2));
+    assert!(ret.activation_results.all_ok());
+    assert_eq!(ret.activation_results.success_count, 2);
 
     let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number_p1);
     let duration = new_sector_info_p1.expiration - new_sector_info_p1.power_base_epoch;

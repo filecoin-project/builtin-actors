@@ -26,21 +26,21 @@ fn replica_update_simple_path_success() {
 }
 
 // Tests a successful upgrade, followed by the sector going faulty and recovering
-// #[test]
+#[test]
 fn replica_update_full_path_success() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     replica_update_full_path_success_test(&v);
 }
 
-// #[test]
+#[test]
 fn upgrade_and_miss_post() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     upgrade_and_miss_post_test(&v);
 }
 
-// #[test]
+#[test]
 fn prove_replica_update_multi_dline() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
