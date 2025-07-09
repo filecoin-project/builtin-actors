@@ -13,8 +13,8 @@ use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 
 use export_macro::vm_test;
-use fil_actor_market::Method as MarketMethod;
 use fil_actor_market::State as MarketState;
+use fil_actor_market::{Label, Method as MarketMethod};
 use fil_actor_miner::{
     DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
     Method as MinerMethod, PowerPair, ProveReplicaUpdates3Params, ProveReplicaUpdates3Return,
@@ -36,11 +36,11 @@ use crate::expects::Expect;
 
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
-    assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
-    create_miner, cron_tick, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
+    assert_invariants, check_sector_active, check_sector_faulty, create_accounts, create_miner,
+    cron_tick, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
     get_network_stats, invariant_failure_patterns, make_bitfield,
     make_piece_manifests_from_deal_ids, market_publish_deal, miner_balance, miner_power,
-    miner_prove_sector, override_compute_unsealed_sector_cid, precommit_sectors_v2,
+    miner_prove_sector, override_compute_unsealed_sector_cid, piece_change, precommit_sectors_v2,
     prove_commit_sectors, sector_info, submit_invalid_post, submit_windowed_post,
     verifreg_add_client, verifreg_add_verifier,
 };
@@ -1042,29 +1042,41 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     let store = DynBlockstore::wrap(v.blockstore());
     let proposal = st.get_proposal(&store, deal_ids[0]).unwrap();
 
-    // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
-    let replica_update = ReplicaUpdate {
-        sector_number,
+    let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
+
+    let manifests = vec![SectorUpdateManifest {
+        sector: sector_number,
         deadline: d_idx,
         partition: p_idx,
         new_sealed_cid,
-        deals: deal_ids.clone(),
-        update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![].into(),
+        pieces: piece_manifests,
+    }];
+
+    // Replica update
+    let update_proof = seal_proof.registered_update_proof().unwrap();
+    let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
+    let params = ProveReplicaUpdates3Params {
+        sector_updates: manifests.clone(),
+        sector_proofs: proofs,
+        aggregate_proof: RawBytes::default(),
+        update_proofs_type: update_proof,
+        aggregate_proof_type: None,
+        require_activation_success: true,
+        require_notification_success: true,
     };
-    let updated_sectors: BitField = apply_ok(
+    let ret: ProveReplicaUpdates3Return = apply_ok(
         v,
         &worker,
         &robust,
         &TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates3 as u64,
-        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
+        Some(params),
     )
     .deserialize()
     .unwrap();
-    assert_eq!(vec![100], bf_all(updated_sectors));
+    assert!(ret.activation_results.all_ok());
 
     let claim_id = 1_u64;
     let deal_term = proposal.end_epoch - proposal.start_epoch;
@@ -1088,21 +1100,19 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         vec![PieceInfo { cid: proposal.piece_cid, size: proposal.piece_size }];
     let unsealed_cid = v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
 
+    // Compute piece change
+    let seed = match &proposal.label {
+        Label::String(s) => s.as_bytes(),
+        Label::Bytes(b) => b,
+    };
+    let change = piece_change(seed, proposal.piece_size, &deal_ids);
+
     // check for the expected subcalls
     ExpectInvocation {
         from: worker_id,
         to: maddr,
         method: MinerMethod::ProveReplicaUpdates3 as u64,
         subinvocs: Some(vec![
-            Expect::market_activate_deals(
-                miner_id,
-                deal_ids.clone(),
-                client.id().unwrap(),
-                sector_number,
-                old_sector_info.expiration,
-                old_sector_info.seal_proof,
-                true,
-            ),
             ExpectInvocation {
                 from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -1117,6 +1127,15 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 miner_id,
                 // sector now fully qap, 10x - x = 9x
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
+            ),
+            // Market notifications.
+            Expect::market_content_changed(
+                miner_id,
+                deal_ids.clone(),
+                client.id().unwrap(),
+                sector_number,
+                old_sector_info.expiration,
+                vec![change],
             ),
         ]),
         events: Some(vec![Expect::build_sector_activation_event(

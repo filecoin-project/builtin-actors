@@ -128,7 +128,7 @@ fn deal_included_in_multiple_sectors_failure() {
     deal_included_in_multiple_sectors_failure_test(&v);
 }
 
-// #[test]
+#[test]
 fn replica_update_verified_deal() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
