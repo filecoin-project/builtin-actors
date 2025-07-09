@@ -732,6 +732,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 miner_id,
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
+            // Market notifications.
             Expect::market_content_changed(
                 miner_id,
                 deal_ids,

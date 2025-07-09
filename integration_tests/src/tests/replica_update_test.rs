@@ -1272,29 +1272,7 @@ pub fn create_miner_and_upgrade_sector(
     // make some deals
     let deal_ids = create_deals(1, v, worker, worker, maddr);
 
-    // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    // let updated_sectors: BitField = {
-    //     let replica_update = ReplicaUpdate {
-    //         sector_number,
-    //         deadline: d_idx,
-    //         partition: p_idx,
-    //         new_sealed_cid,
-    //         deals: deal_ids.clone(),
-    //         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-    //         replica_proof: vec![].into(),
-    //     };
-    //     apply_ok(
-    //         v,
-    //         &worker,
-    //         &robust,
-    //         &TokenAmount::zero(),
-    //         MinerMethod::ProveReplicaUpdates3 as u64,
-    //         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
-    //     )
-    // }
-    // .deserialize()
-    // .unwrap();
 
     let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
 
@@ -1306,8 +1284,8 @@ pub fn create_miner_and_upgrade_sector(
         pieces: piece_manifests,
     }];
 
+    // Replica update
     let update_proof = seal_proof.registered_update_proof().unwrap();
-
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
         sector_updates: manifests.clone(),
