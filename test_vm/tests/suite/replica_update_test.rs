@@ -84,7 +84,7 @@ fn upgrade_bad_post_dispute() {
     upgrade_bad_post_dispute_test(&v);
 }
 
-// #[test]
+#[test]
 fn bad_post_upgrade_dispute() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);

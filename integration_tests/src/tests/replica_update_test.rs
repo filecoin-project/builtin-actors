@@ -590,29 +590,42 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
     // make some deals
     let deal_ids = create_deals(1, v, worker, worker, maddr);
 
-    // replicaUpdate the sector -- it succeeds
-    let new_cid = make_sealed_cid(b"replica1");
-    let replica_update = ReplicaUpdate {
-        sector_number,
+    let new_sealed_cid = make_sealed_cid(b"replica1");
+
+    let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
+
+    let manifests = vec![SectorUpdateManifest {
+        sector: sector_number,
         deadline: d_idx,
         partition: p_idx,
-        new_sealed_cid: new_cid,
-        deals: deal_ids.clone(),
-        update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![].into(),
+        new_sealed_cid,
+        pieces: piece_manifests,
+    }];
+
+    // Replica update
+    let update_proof = seal_proof.registered_update_proof().unwrap();
+    let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
+    let params = ProveReplicaUpdates3Params {
+        sector_updates: manifests,
+        sector_proofs: proofs,
+        aggregate_proof: RawBytes::default(),
+        update_proofs_type: update_proof,
+        aggregate_proof_type: None,
+        require_activation_success: true,
+        require_notification_success: true,
     };
 
-    let updated_sectors: BitField = apply_ok(
+    let ret: ProveReplicaUpdates3Return = apply_ok(
         v,
         &worker,
         &robust,
         &TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates3 as u64,
-        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
+        Some(params),
     )
     .deserialize()
     .unwrap();
-    assert_eq!(vec![100], bf_all(updated_sectors));
+    assert!(ret.activation_results.all_ok());
 
     // sanity check the sector after update
     let new_sector_info = sector_info(v, &maddr, sector_number);
@@ -621,7 +634,7 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
     assert_eq!(weights.0, new_sector_info.deal_weight);
     assert_eq!(weights.1, new_sector_info.verified_deal_weight);
     assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
-    assert_eq!(new_cid, new_sector_info.sealed_cid);
+    assert_eq!(new_sealed_cid, new_sector_info.sealed_cid);
 
     // BUT, I can still dispute your evil PoSt
 
