@@ -63,14 +63,14 @@ fn unhealthy_sector_failure() {
     unhealthy_sector_failure_test(&v);
 }
 
-// #[test]
+#[test]
 fn terminated_sector_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     terminated_sector_failure_test(&v);
 }
 
-// #[test]
+#[test]
 fn no_dispute_after_upgrade() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);

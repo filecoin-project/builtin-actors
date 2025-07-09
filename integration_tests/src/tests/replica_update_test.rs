@@ -480,16 +480,29 @@ pub fn terminated_sector_failure_test(v: &dyn VM) {
         Some(terminate_parms),
     );
 
-    // replicaUpdate the sector
-    let new_cid = make_sealed_cid(b"replica1");
-    let replica_update = ReplicaUpdate {
-        sector_number,
+    let new_sealed_cid = make_sealed_cid(b"replica1");
+
+    let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
+
+    let manifests = vec![SectorUpdateManifest {
+        sector: sector_number,
         deadline: d_idx,
         partition: p_idx,
-        new_sealed_cid: new_cid,
-        deals: deal_ids,
-        update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![].into(),
+        new_sealed_cid,
+        pieces: piece_manifests,
+    }];
+
+    // Replica update
+    let update_proof = seal_proof.registered_update_proof().unwrap();
+    let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
+    let params = ProveReplicaUpdates3Params {
+        sector_updates: manifests,
+        sector_proofs: proofs,
+        aggregate_proof: RawBytes::default(),
+        update_proofs_type: update_proof,
+        aggregate_proof_type: None,
+        require_activation_success: true,
+        require_notification_success: true,
     };
     apply_code(
         v,
@@ -497,7 +510,7 @@ pub fn terminated_sector_failure_test(v: &dyn VM) {
         &robust,
         &TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates3 as u64,
-        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
+        Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
