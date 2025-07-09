@@ -49,7 +49,7 @@ fn prove_replica_update_multi_dline() {
 
 // ---- Failure cases ----
 
-// #[test]
+#[test]
 fn immutable_deadline_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
