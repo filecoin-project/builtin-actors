@@ -56,7 +56,7 @@ fn immutable_deadline_failure() {
     immutable_deadline_failure_test(&v);
 }
 
-// #[test]
+#[test]
 fn unhealthy_sector_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
