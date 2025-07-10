@@ -36,7 +36,7 @@ use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     assert_invariants, check_sector_active, check_sector_faulty, create_accounts, create_miner,
     cron_tick, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
-    get_network_stats, invariant_failure_patterns, make_bitfield, make_piece_change,
+    get_network_stats, invariant_failure_patterns, make_bitfield, piece_change,
     make_piece_manifests_from_deal_ids, market_publish_deal, miner_balance, miner_power,
     miner_prove_sector, override_compute_unsealed_sector_cid, precommit_sectors_v2,
     prove_commit_sectors, sector_info, submit_invalid_post, submit_windowed_post,
@@ -1111,7 +1111,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         Label::String(s) => s.as_bytes(),
         Label::Bytes(b) => b,
     };
-    let change = make_piece_change(seed, proposal.piece_size, &deal_ids);
+    let change = piece_change(seed, proposal.piece_size, &deal_ids);
 
     // check for the expected subcalls
     ExpectInvocation {

@@ -313,7 +313,7 @@ pub fn deal_cid_for_testing(proposal: &DealProposal) -> Cid {
     Cid::new_v1(DAG_CBOR, hash)
 }
 
-pub fn make_piece_change(
+pub fn piece_change(
     cid_seed: &[u8],
     piece_size: PaddedPieceSize,
     deal_ids: &[DealID],

@@ -29,11 +29,11 @@ use crate::expects::Expect;
 use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, create_accounts, create_miner,
-    cron_tick, expect_invariants, invariant_failure_patterns, make_piece_change,
-    make_piece_manifests_from_deal_ids, market_add_balance, market_pending_deal_allocations,
-    market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
-    override_compute_unsealed_sector_cid, precommit_meta_data_from_deals, sector_deadline,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    cron_tick, expect_invariants, invariant_failure_patterns, make_piece_manifests_from_deal_ids,
+    market_add_balance, market_pending_deal_allocations, market_publish_deal,
+    miner_precommit_one_sector_v2, miner_prove_sector, override_compute_unsealed_sector_cid,
+    piece_change, precommit_meta_data_from_deals, sector_deadline, submit_windowed_post,
+    verifreg_add_client, verifreg_add_verifier,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -697,7 +697,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let claim_term = end_epoch - start_epoch;
 
     // compute piece change
-    let change = make_piece_change(deal_label.as_bytes(), piece_size, &deal_ids);
+    let change = piece_change(deal_label.as_bytes(), piece_size, &deal_ids);
 
     // check for the expected subcalls
     ExpectInvocation {
