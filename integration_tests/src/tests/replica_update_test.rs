@@ -36,9 +36,9 @@ use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     assert_invariants, check_sector_active, check_sector_faulty, create_accounts, create_miner,
     cron_tick, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
-    get_network_stats, invariant_failure_patterns, make_bitfield, piece_change,
+    get_network_stats, invariant_failure_patterns, make_bitfield,
     make_piece_manifests_from_deal_ids, market_publish_deal, miner_balance, miner_power,
-    miner_prove_sector, override_compute_unsealed_sector_cid, precommit_sectors_v2,
+    miner_prove_sector, override_compute_unsealed_sector_cid, piece_change, precommit_sectors_v2,
     prove_commit_sectors, sector_info, submit_invalid_post, submit_windowed_post,
     verifreg_add_client, verifreg_add_verifier,
 };
@@ -330,6 +330,7 @@ pub fn immutable_deadline_failure_test(v: &dyn VM) {
     // Advance back into the sector's deadline
     advance_to_proving_deadline(v, &maddr, sector_number);
 
+    // replicaUpdate the sector
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
     let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
@@ -342,7 +343,6 @@ pub fn immutable_deadline_failure_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -396,6 +396,7 @@ pub fn unhealthy_sector_failure_test(v: &dyn VM) {
     assert!(!check_sector_active(v, &maddr, sector_number));
     assert!(check_sector_faulty(v, &maddr, d_idx, p_idx, sector_number));
 
+    // replicaUpdate the sector
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
     let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
@@ -408,7 +409,6 @@ pub fn unhealthy_sector_failure_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -478,6 +478,7 @@ pub fn terminated_sector_failure_test(v: &dyn VM) {
         Some(terminate_parms),
     );
 
+    // replicaUpdate the sector
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
     let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
@@ -490,7 +491,6 @@ pub fn terminated_sector_failure_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -588,6 +588,7 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
     // make some deals
     let deal_ids = create_deals(1, v, worker, worker, maddr);
 
+    // replicaUpdate the sector -- it succeeds
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
     let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
@@ -600,7 +601,6 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -844,7 +844,6 @@ pub fn wrong_partition_index_failure_test(v: &dyn VM) {
             pieces: piece_manifests.clone(),
         });
     }
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -941,6 +940,7 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     // make some unverified deals
     let deal_ids = create_deals_frac(2, v, worker, worker, maddr, 2, false, 180 * EPOCHS_IN_DAY);
 
+    // replicaUpdate the sector
     let new_sealed_cid1 = make_sealed_cid(b"replica1");
 
     let new_sealed_cid2 = make_sealed_cid(b"replica2");
@@ -964,7 +964,6 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
         },
     ];
 
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -1048,6 +1047,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     let store = DynBlockstore::wrap(v.blockstore());
     let proposal = st.get_proposal(&store, deal_ids[0]).unwrap();
 
+    // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
     let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
@@ -1060,7 +1060,6 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -1202,6 +1201,7 @@ pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
         sector_lifetime - policy.market_default_allocation_term_buffer - 1,
     );
 
+    // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
     let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
@@ -1214,7 +1214,6 @@ pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -1397,6 +1396,7 @@ pub fn create_miner_and_upgrade_sector(
     // make some deals
     let deal_ids = create_deals(1, v, worker, worker, maddr);
 
+    // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
     let piece_manifests = make_piece_manifests_from_deal_ids(v, deal_ids.clone());
@@ -1409,7 +1409,6 @@ pub fn create_miner_and_upgrade_sector(
         pieces: piece_manifests,
     }];
 
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -1432,7 +1431,6 @@ pub fn create_miner_and_upgrade_sector(
     )
     .deserialize()
     .unwrap();
-    // assert_eq!(vec![100], bf_all(updated_sectors));
     assert!(ret.activation_results.all_ok());
 
     // sanity check the sector after update
