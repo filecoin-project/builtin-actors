@@ -5514,9 +5514,6 @@ impl From<&UpdateAndSectorInfo<'_>> for DealsActivationInput {
 struct DataActivationOutput {
     pub unverified_space: BigInt,
     pub verified_space: BigInt,
-    // None indicates either no deals or computation was not requested.
-    #[allow(dead_code)]
-    pub unsealed_cid: Option<Cid>,
     pub pieces: Vec<(Cid, u64)>,
 }
 
@@ -5623,7 +5620,6 @@ fn activate_sectors_pieces(
             DataActivationOutput {
                 unverified_space: unverified_space.clone(),
                 verified_space: sector_claim.claimed_space.clone(),
-                unsealed_cid: None,
                 pieces,
             }
         })
@@ -5734,7 +5730,6 @@ fn activate_sectors_deals(
             DataActivationOutput {
                 unverified_space: unverified_deal_space,
                 verified_space: sector_claim.claimed_space,
-                unsealed_cid: sector_deals.unsealed_cid,
                 pieces: sector_pieces,
             }
         })

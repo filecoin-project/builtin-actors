@@ -1,5 +1,4 @@
 use cid::Cid;
-use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Zero};
@@ -18,9 +17,8 @@ use fil_actor_market::{Label, Method as MarketMethod};
 use fil_actor_miner::{
     DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
     Method as MinerMethod, PowerPair, ProveReplicaUpdates3Params, ProveReplicaUpdates3Return,
-    ProveReplicaUpdatesParams, ReplicaUpdate, SECTORS_AMT_BITWIDTH, SectorOnChainInfo,
-    SectorOnChainInfoFlags, SectorUpdateManifest, Sectors, State as MinerState,
-    TerminateSectorsParams, TerminationDeclaration, power_for_sector,
+    SECTORS_AMT_BITWIDTH, SectorOnChainInfo, SectorOnChainInfoFlags, SectorUpdateManifest, Sectors,
+    State as MinerState, TerminateSectorsParams, TerminationDeclaration, power_for_sector,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
