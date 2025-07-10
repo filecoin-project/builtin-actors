@@ -1106,7 +1106,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         vec![PieceInfo { cid: proposal.piece_cid, size: proposal.piece_size }];
     let unsealed_cid = v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
 
-    // Compute piece change
+    // compute piece change
     let seed = match &proposal.label {
         Label::String(s) => s.as_bytes(),
         Label::Bytes(b) => b,

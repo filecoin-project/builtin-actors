@@ -647,6 +647,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     let claim_id = market_pending_deal_allocations(v, &deal_ids)[0];
 
+    // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
     let (d_idx, p_idx) = sector_deadline(v, &miner_addr, sector_number);
@@ -661,7 +662,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -696,7 +696,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let end_epoch = deal_start + deal_lifetime;
     let claim_term = end_epoch - start_epoch;
 
-    // Compute piece change
+    // compute piece change
     let change = make_piece_change(deal_label.as_bytes(), piece_size, &deal_ids);
 
     // check for the expected subcalls
