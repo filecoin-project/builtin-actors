@@ -37,7 +37,7 @@ use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_index,
     advance_to_proving_deadline, create_accounts, create_miner, datacap_create_allocations,
     market_add_balance, market_list_deals, market_list_sectors_deals,
-    override_compute_unsealed_sector_cid, piece_change, precommit_sectors_v2, sector_info,
+    override_compute_unsealed_sector_cid, make_piece_change, precommit_sectors_v2, sector_info,
     submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_list_claims,
 };
 
@@ -405,12 +405,12 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
                             SectorChanges {
                                 sector: first_sector_number + 3,
                                 minimum_commitment_epoch: sector_expiry,
-                                added: vec![piece_change(b"s3p1", full_piece_size, &deal_ids_s3)],
+                                added: vec![make_piece_change(b"s3p1", full_piece_size, &deal_ids_s3)],
                             },
                             SectorChanges {
                                 sector: first_sector_number + 4,
                                 minimum_commitment_epoch: sector_expiry,
-                                added: vec![piece_change(b"s4p1", half_piece_size, &deal_ids_s4)],
+                                added: vec![make_piece_change(b"s4p1", half_piece_size, &deal_ids_s4)],
                             },
                         ],
                     })
