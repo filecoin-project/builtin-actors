@@ -121,7 +121,7 @@ fn wrong_partition_index_failure() {
     wrong_partition_index_failure_test(&v);
 }
 
-// #[test]
+#[test]
 fn deal_included_in_multiple_sectors_failure() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
