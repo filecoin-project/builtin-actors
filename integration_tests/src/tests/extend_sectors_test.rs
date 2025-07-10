@@ -647,7 +647,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     let claim_id = market_pending_deal_allocations(v, &deal_ids)[0];
 
-    // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
     let (d_idx, p_idx) = sector_deadline(v, &miner_addr, sector_number);
@@ -662,8 +661,8 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
-
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
         sector_updates: manifests.clone(),
@@ -685,7 +684,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     )
     .deserialize()
     .unwrap();
-    // assert_eq!(vec![sector_number], bf_all(updated_sectors));
     assert!(ret.activation_results.all_ok());
 
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &initial_sector_info);

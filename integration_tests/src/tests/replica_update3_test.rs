@@ -285,7 +285,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         first_sector_number + 4,
     );
 
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {

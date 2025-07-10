@@ -259,7 +259,7 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
         },
     ];
 
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -342,7 +342,7 @@ pub fn immutable_deadline_failure_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -408,7 +408,7 @@ pub fn unhealthy_sector_failure_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -490,7 +490,7 @@ pub fn terminated_sector_failure_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -600,7 +600,7 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -777,7 +777,7 @@ pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
             pieces: piece_manifests.clone(),
         });
     }
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -844,7 +844,7 @@ pub fn wrong_partition_index_failure_test(v: &dyn VM) {
             pieces: piece_manifests.clone(),
         });
     }
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -965,7 +965,7 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
         },
     ];
 
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -1061,7 +1061,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -1215,7 +1215,7 @@ pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
         pieces: piece_manifests,
     }];
 
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -1410,7 +1410,7 @@ pub fn create_miner_and_upgrade_sector(
         pieces: piece_manifests,
     }];
 
-    // Replica update
+    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
