@@ -259,7 +259,6 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
         },
     ];
 
-    // Replica updates
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -282,8 +281,8 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     .deserialize()
     .unwrap();
 
-    assert!(ret.activation_results.all_ok());
     assert_eq!(ret.activation_results.success_count, 2);
+    assert!(ret.activation_results.all_ok());
 
     let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number_p1);
     let duration = new_sector_info_p1.expiration - new_sector_info_p1.power_base_epoch;
@@ -612,7 +611,6 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
         require_activation_success: true,
         require_notification_success: true,
     };
-
     let ret: ProveReplicaUpdates3Return = apply_ok(
         v,
         &worker,
@@ -777,7 +775,7 @@ pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
             pieces: piece_manifests.clone(),
         });
     }
-    // Replica updates
+
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
     let params = ProveReplicaUpdates3Params {
@@ -1420,7 +1418,6 @@ pub fn create_miner_and_upgrade_sector(
         require_activation_success: true,
         require_notification_success: true,
     };
-
     let ret: ProveReplicaUpdates3Return = apply_ok(
         v,
         &worker,

@@ -673,7 +673,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         require_activation_success: true,
         require_notification_success: true,
     };
-
     let ret: ProveReplicaUpdates3Return = apply_ok(
         v,
         &worker,
