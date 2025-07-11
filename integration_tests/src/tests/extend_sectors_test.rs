@@ -13,10 +13,9 @@ use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
 use fil_actor_miner::{
-    ExpirationExtension, ExpirationExtension2, ExtendSectorExpiration2Params,
-    ExtendSectorExpirationParams, Method as MinerMethod, PowerPair, ProveReplicaUpdatesParams,
-    ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors, State as MinerState,
-    max_prove_commit_duration, power_for_sector,
+    ExpirationExtension2, ExtendSectorExpiration2Params, Method as MinerMethod, PowerPair,
+    ProveReplicaUpdatesParams, ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors,
+    State as MinerState, max_prove_commit_duration, power_for_sector,
 };
 use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 use vm_api::VM;
@@ -46,53 +45,21 @@ pub fn extend(
     power_delta: PowerPair,
     v2: bool,
 ) {
-    let extension_method = match v2 {
-        false => MinerMethod::ExtendSectorExpiration as u64,
-        true => MinerMethod::ExtendSectorExpiration2 as u64,
-    };
+    let extension_method = MinerMethod::ExtendSectorExpiration2 as u64;
 
     let miner_id = v.resolve_id_address(&maddr).unwrap().id().unwrap();
     let worker_id = v.resolve_id_address(&worker).unwrap().id().unwrap();
 
-    match v2 {
-        false => {
-            let extension_params = ExtendSectorExpirationParams {
-                extensions: vec![ExpirationExtension {
-                    deadline: deadline_index,
-                    partition: partition_index,
-                    sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-                    new_expiration,
-                }],
-            };
-            apply_ok(
-                v,
-                &worker,
-                &maddr,
-                &TokenAmount::zero(),
-                extension_method,
-                Some(extension_params),
-            );
-        }
-        true => {
-            let extension_params = ExtendSectorExpiration2Params {
-                extensions: vec![ExpirationExtension2 {
-                    deadline: deadline_index,
-                    partition: partition_index,
-                    sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-                    new_expiration,
-                    sectors_with_claims: vec![],
-                }],
-            };
-            apply_ok(
-                v,
-                &worker,
-                &maddr,
-                &TokenAmount::zero(),
-                extension_method,
-                Some(extension_params),
-            );
-        }
+    let extension_params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
+            new_expiration,
+            sectors_with_claims: vec![],
+        }],
     };
+    apply_ok(v, &worker, &maddr, &TokenAmount::zero(), extension_method, Some(extension_params));
 
     let mut expect_invoke = vec![];
 

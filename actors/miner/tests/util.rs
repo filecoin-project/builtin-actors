@@ -53,8 +53,8 @@ use fil_actor_miner::{
     CompactPartitionsParams, CompactSectorNumbersParams, CronEventPayload,
     DataActivationNotification, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
-    ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
-    FaultDeclaration, GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
+    ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, FaultDeclaration,
+    GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
     GetMultiaddrsReturn, GetPeerIDReturn, Method, Method as MinerMethod,
     MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION, Partition,
     PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
@@ -2669,48 +2669,10 @@ impl ActorHarness {
     pub fn extend_sectors_versioned(
         &self,
         rt: &MockRuntime,
-        params: ExtendSectorExpirationParams,
-        v2: bool,
+        params: ExtendSectorExpiration2Params,
     ) -> Result<Option<IpldBlock>, ActorError> {
-        match v2 {
-            false => self.extend_sectors(rt, params),
-            true => {
-                let params2 = ExtendSectorExpiration2Params {
-                    extensions: params.extensions.iter().map(|x| x.into()).collect(),
-                };
-                self.extend_sectors2(rt, params2, HashMap::new())
-            }
-        }
-    }
-
-    pub fn extend_sectors(
-        &self,
-        rt: &MockRuntime,
-        mut params: ExtendSectorExpirationParams,
-    ) -> Result<Option<IpldBlock>, ActorError> {
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        rt.expect_validate_caller_addr(self.caller_addrs());
-
-        let mut qa_delta = BigInt::zero();
-        for extension in params.extensions.iter_mut() {
-            for sector_nr in extension.sectors.validate().unwrap().iter() {
-                let sector = self.get_sector(&rt, sector_nr);
-                let mut new_sector = sector.clone();
-                new_sector.expiration = extension.new_expiration;
-                qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
-                    - qa_power_for_sector(self.sector_size, &sector);
-            }
-        }
-
-        expect_update_power(rt, PowerPair::new(BigInt::zero(), qa_delta));
-
-        let ret = rt.call::<Actor>(
-            Method::ExtendSectorExpiration as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-
-        rt.verify();
-        Ok(ret)
+        let params2 = ExtendSectorExpiration2Params { extensions: params.extensions };
+        self.extend_sectors2(rt, params2, HashMap::new())
     }
 
     pub fn extend_sectors2(

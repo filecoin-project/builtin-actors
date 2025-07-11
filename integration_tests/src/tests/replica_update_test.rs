@@ -659,7 +659,7 @@ pub fn extend_after_upgrade_test(v: &dyn VM) {
         &worker,
         &miner_id,
         &TokenAmount::zero(),
-        MinerMethod::ExtendSectorExpiration as u64,
+        MinerMethod::ExtendSectorExpiration2 as u64,
         Some(extension_params),
     );
 
