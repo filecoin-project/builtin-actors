@@ -263,8 +263,8 @@ pub fn prove_commit_aggregate(
 
     apply_ok(
         v,
-        &worker,
-        &miner,
+        worker,
+        miner,
         &TokenAmount::zero(),
         MinerMethod::ProveCommitSectors3 as u64,
         Some(params),

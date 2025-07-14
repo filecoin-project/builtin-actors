@@ -193,7 +193,7 @@ fn reject_aggregate_proof_too_big() {
 
 #[test]
 fn reject_aggregate_invalid_proof_type() {
-    let (h, rt, activations) = setup_precommits(&vec![(0, 0, 0)]);
+    let (h, rt, activations) = setup_precommits(&[(0, 0, 0)]);
     let big_proof_cfg = ProveCommitSectors3Config {
         param_twiddle: Some(Box::new(|p: &mut ProveCommitSectors3Params| {
             p.aggregate_proof_type = Some(RegisteredAggregateProof::SnarkPackV1)
