@@ -31,7 +31,7 @@ fn commit_batch() {
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    // Prove them in batch, each with a single piece.
+    // Prove them in a batch, each with a single piece.
 
     let manifests = vec![
         make_activation_manifest(snos[0], &[(piece_size, 0, 0, 0)]), // No alloc or deal

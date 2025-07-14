@@ -2,7 +2,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::SectorNumber;
+use fvm_shared::sector::{RegisteredAggregateProof, SectorNumber};
 use fvm_shared::{ActorID, clock::ChainEpoch};
 
 use fil_actor_miner::ext::verifreg::AllocationID;
@@ -11,6 +11,11 @@ use fil_actor_miner::{
     SectorActivationManifest,
 };
 use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::policy_constants;
+use fil_actors_runtime::runtime::policy_constants::{
+    MAX_AGGREGATED_PROOF_SIZE, MAX_AGGREGATED_SECTORS, MIN_AGGREGATED_SECTORS,
+};
+
 use fil_actors_runtime::test_utils::{MockRuntime, expect_abort_contains_message};
 use util::*;
 
@@ -114,6 +119,91 @@ fn reject_expired_precommit() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "no valid precommits",
         h.prove_commit_sectors3(&rt, &activations, false, false, false, cfg),
+    );
+    h.check_state(&rt);
+}
+
+#[test]
+fn reject_sector_number_out_of_bounds() {
+    let (h, rt, activations) = setup_precommits(&[(0, 0, 0)]);
+    // This sector number is invalid and can never be pre-committed, so an attempt to load
+    // it for proof will fail.
+    let cfg = ProveCommitSectors3Config {
+        param_twiddle: Some(Box::new(|p: &mut ProveCommitSectors3Params| {
+            p.sector_activations.push(SectorActivationManifest {
+                sector_number: policy_constants::MAX_SECTOR_NUMBER + 1,
+                pieces: vec![],
+            })
+        })),
+        ..Default::default()
+    };
+
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "sector number greater than maximum",
+        h.prove_commit_sectors3(&rt, &activations, true, false, false, cfg),
+    );
+    h.check_state(&rt);
+}
+
+#[test]
+fn reject_aggregate_too_many_sectors() {
+    // 1. Too many sectors
+    let oversized_count = (MAX_AGGREGATED_SECTORS + 1) as usize;
+    let (h, rt, activations) = setup_precommits(&vec![(0, 0, 0); oversized_count]);
+    let cfg = ProveCommitSectors3Config::default();
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "too many sectors addressed",
+        h.prove_commit_sectors3(&rt, &activations, false, false, true, cfg),
+    );
+    h.check_state(&rt);
+}
+
+#[test]
+fn reject_aggregate_too_few_sectors() {
+    let undersized_count = (MIN_AGGREGATED_SECTORS - 1) as usize;
+    let (h, rt, activations) = setup_precommits(&vec![(0, 0, 0); undersized_count]);
+    let cfg = ProveCommitSectors3Config::default();
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "too few sectors addressed",
+        h.prove_commit_sectors3(&rt, &activations, false, false, true, cfg),
+    );
+    h.check_state(&rt);
+}
+
+#[test]
+fn reject_aggregate_proof_too_big() {
+    let valid_count = MAX_AGGREGATED_SECTORS as usize;
+    let (h, rt, activations) = setup_precommits(&vec![(0, 0, 0); valid_count]);
+    let big_proof_cfg = ProveCommitSectors3Config {
+        param_twiddle: Some(Box::new(|p: &mut ProveCommitSectors3Params| {
+            p.aggregate_proof = vec![0; MAX_AGGREGATED_PROOF_SIZE + 1].into();
+        })),
+        ..Default::default()
+    };
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "exceeds max size",
+        h.prove_commit_sectors3(&rt, &activations, false, false, true, big_proof_cfg),
+    );
+    h.check_state(&rt);
+}
+
+#[test]
+fn reject_aggregate_invalid_proof_type() {
+    let (h, rt, activations) = setup_precommits(&vec![(0, 0, 0)]);
+    let big_proof_cfg = ProveCommitSectors3Config {
+        param_twiddle: Some(Box::new(|p: &mut ProveCommitSectors3Params| {
+            p.aggregate_proof_type = Some(RegisteredAggregateProof::SnarkPackV1)
+        })),
+        ..Default::default()
+    };
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "aggregate proof type must be SnarkPackV2",
+        h.prove_commit_sectors3(&rt, &activations, false, false, true, big_proof_cfg),
     );
     h.check_state(&rt);
 }
