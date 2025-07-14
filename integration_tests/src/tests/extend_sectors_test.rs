@@ -77,7 +77,7 @@ pub fn extend(
 }
 
 #[vm_test]
-pub fn extend_legacy_sector_with_deals_extend2(v: &dyn VM) {
+pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);

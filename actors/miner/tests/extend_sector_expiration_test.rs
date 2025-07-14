@@ -352,7 +352,7 @@ fn updates_expiration_and_daily_fee(nv: u32) {
 
     // Verify fees - first sector has divided fee in both versions
     assert_eq!(full_verified_fee.div_floor(10), new_sectors[0].daily_fee);
-    // Second sector fee is full_verified_fee for nv >= 25, otherwise divided fee
+    // Second sector fee depends on version
     let expected_fee = full_verified_fee;
     assert_eq!(expected_fee, new_sectors[1].daily_fee);
 
