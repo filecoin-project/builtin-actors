@@ -43,7 +43,6 @@ pub fn extend(
     sector_number: SectorNumber,
     new_expiration: ChainEpoch,
     power_delta: PowerPair,
-    v2: bool,
 ) {
     let extension_method = MinerMethod::ExtendSectorExpiration2 as u64;
 
@@ -77,7 +76,8 @@ pub fn extend(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
+#[vm_test]
+pub fn extend_legacy_sector_with_deals_extend2(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -232,7 +232,6 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         sector_number,
         new_expiration,
         expected_power_delta,
-        do_extend2,
     );
 
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
@@ -276,7 +275,6 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         sector_number,
         new_expiration,
         expected_power_delta,
-        do_extend2,
     );
 
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
@@ -296,16 +294,6 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
         None,
     );
-}
-
-#[vm_test]
-pub fn extend_legacy_sector_with_deals_extend2(v: &dyn VM) {
-    extend_legacy_sector_with_deals_test(v, true);
-}
-
-#[vm_test]
-pub fn extend_legacy_sector_with_deals(v: &dyn VM) {
-    extend_legacy_sector_with_deals_test(v, false);
 }
 
 #[vm_test]
@@ -488,7 +476,6 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
         sector_number,
         new_expiration,
         expected_power_delta,
-        false,
     );
 
     miner_state = get_state(v, &miner_id).unwrap();
