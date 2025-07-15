@@ -15,7 +15,7 @@ use export_macro::vm_test;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_market::State as MarketState;
 use fil_actor_miner::{
-    DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
+    DisputeWindowedPoStParams, ExpirationExtension2, ExtendSectorExpiration2Params,
     Method as MinerMethod, PowerPair, ProveReplicaUpdatesParams, ReplicaUpdate,
     SECTORS_AMT_BITWIDTH, SectorOnChainInfo, SectorOnChainInfoFlags, Sectors, State as MinerState,
     TerminateSectorsParams, TerminationDeclaration, power_for_sector,
@@ -645,11 +645,12 @@ pub fn extend_after_upgrade_test(v: &dyn VM) {
     });
 
     let extension_epoch = v.epoch();
-    let extension_params = ExtendSectorExpirationParams {
-        extensions: vec![ExpirationExtension {
+    let extension_params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
             deadline: deadline_index,
             partition: partition_index,
             sectors: make_bitfield(&[sector_number]),
+            sectors_with_claims: vec![],
             new_expiration: extension_epoch + policy.max_sector_expiration_extension - 1,
         }],
     };
