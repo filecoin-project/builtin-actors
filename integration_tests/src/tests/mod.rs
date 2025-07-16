@@ -20,6 +20,8 @@ mod market_miner_withdrawal_test;
 pub use market_miner_withdrawal_test::*;
 mod multisig_test;
 pub use multisig_test::*;
+mod nested_multisig_test;
+pub use nested_multisig_test::*;
 mod init_test;
 pub use init_test::*;
 mod power_scenario_tests;
