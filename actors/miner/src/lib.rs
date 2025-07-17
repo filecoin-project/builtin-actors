@@ -2245,17 +2245,12 @@ impl Actor {
         params: ExtendSectorExpiration2Params,
     ) -> Result<(), ActorError> {
         let extend_expiration_inner = validate_extension_declarations(rt, params.extensions)?;
-        Self::extend_sector_expiration_inner(
-            rt,
-            extend_expiration_inner,
-            ExtensionKind::ExtendCommittment,
-        )
+        Self::extend_sector_expiration_inner(rt, extend_expiration_inner)
     }
 
     fn extend_sector_expiration_inner(
         rt: &impl Runtime,
         inner: ExtendExpirationsInner,
-        kind: ExtensionKind,
     ) -> Result<(), ActorError> {
         let curr_epoch = rt.curr_epoch();
         let circulating_supply = rt.total_fil_circ_supply();
@@ -2332,23 +2327,21 @@ impl Actor {
                         .map_err(|e| e.wrap("failed to load sectors"))?;
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
-                        .map(|sector| match kind {
-                            ExtensionKind::ExtendCommittment => match &inner.claims {
-                                None => Err(actor_error!(
-                                    unspecified,
-                                    "extend2 always specifies (potentially empty) claim mapping"
-                                )),
-                                Some(claim_space_by_sector) => extend_sector_committment(
-                                    rt.policy(),
-                                    rt.network_version(),
-                                    curr_epoch,
-                                    &circulating_supply,
-                                    decl.new_expiration,
-                                    sector,
-                                    info.sector_size,
-                                    claim_space_by_sector,
-                                ),
-                            },
+                        .map(|sector| match &inner.claims {
+                            None => Err(actor_error!(
+                                unspecified,
+                                "extend2 always specifies (potentially empty) claim mapping"
+                            )),
+                            Some(claim_space_by_sector) => extend_sector_committment(
+                                rt.policy(),
+                                rt.network_version(),
+                                curr_epoch,
+                                &circulating_supply,
+                                decl.new_expiration,
+                                sector,
+                                info.sector_size,
+                                claim_space_by_sector,
+                            ),
                         })
                         .collect::<Result<_, _>>()?;
 
@@ -2425,8 +2418,7 @@ impl Actor {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
                                 format!(
-                                    "failed to add expiration partitions to \
-                                        deadline {} epoch {}",
+                                    "failed to add expiration partitions to \\n                                        deadline {} epoch {}",
                                     deadline_idx, epoch
                                 ),
                             )
@@ -3545,11 +3537,6 @@ pub struct ReplicaUpdateInner {
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
     pub replica_proof: RawBytes,
-}
-
-enum ExtensionKind {
-    // handle both Simple QAP and legacy sectors
-    ExtendCommittment,
 }
 
 struct ExtendExpirationsInner {
