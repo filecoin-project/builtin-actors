@@ -36,6 +36,8 @@ mod verified_claim_test;
 pub use verified_claim_test::*;
 mod verifreg_remove_datacap_test;
 pub use verifreg_remove_datacap_test::*;
+mod verifreg_multisig_root_test;
+pub use verifreg_multisig_root_test::*;
 mod withdraw_balance_test;
 pub use withdraw_balance_test::*;
 mod prove_commit3_test;
