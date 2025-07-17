@@ -1,20 +1,20 @@
 use export_macro::vm_test;
 use fil_actor_init::ExecReturn;
 use fil_actor_multisig::{
-    Method as MsigMethod, ProposeParams, State as MsigState, TxnIDParams, 
-    PENDING_TXN_CONFIG, PendingTxnMap, Transaction, TxnID,
+    Method as MsigMethod, PENDING_TXN_CONFIG, PendingTxnMap, ProposeParams, State as MsigState,
+    Transaction, TxnID, TxnIDParams,
 };
+use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use vm_api::VM;
-use vm_api::util::{apply_ok, get_state, DynBlockstore};
+use vm_api::util::{DynBlockstore, apply_ok, get_state};
 
 use crate::util::{assert_invariants, create_accounts};
 
@@ -56,10 +56,10 @@ pub fn nested_multisig_test(v: &dyn VM) {
     let charlie = addrs[2];
     let dave = addrs[3];
     let recipient = addrs[4];
-    
+
     // Create an inner multisig with Alice and Bob as signers, threshold 2
     let inner_msig_addr = create_msig(v, &[alice, bob], 2);
-    
+
     // Fund the inner multisig
     apply_ok(
         v,
@@ -69,10 +69,10 @@ pub fn nested_multisig_test(v: &dyn VM) {
         METHOD_SEND,
         None::<RawBytes>,
     );
-    
+
     // Create the main multisig with inner multisig and Charlie as signers, threshold 2
     let main_msig_addr = create_msig(v, &[inner_msig_addr, charlie], 2);
-    
+
     // Fund the main multisig
     apply_ok(
         v,
@@ -82,12 +82,12 @@ pub fn nested_multisig_test(v: &dyn VM) {
         METHOD_SEND,
         None::<RawBytes>,
     );
-    
+
     // Verify the main multisig has the correct signers
     let main_st: MsigState = get_state(v, &main_msig_addr).unwrap();
     assert_eq!(vec![inner_msig_addr, charlie], main_st.signers);
     assert_eq!(2, main_st.num_approvals_threshold);
-    
+
     // Now let's test sending money from the main multisig
     // Step 1: Inner multisig proposes to the main multisig
     let send_amount = TokenAmount::from_whole(50);
@@ -97,7 +97,7 @@ pub fn nested_multisig_test(v: &dyn VM) {
         method: METHOD_SEND,
         params: RawBytes::default(),
     };
-    
+
     // Alice proposes in the inner multisig to propose in the main multisig
     let propose_to_main_params = ProposeParams {
         to: main_msig_addr,
@@ -105,7 +105,7 @@ pub fn nested_multisig_test(v: &dyn VM) {
         method: MsigMethod::Propose as u64,
         params: serialize(&send_to_recipient_params, "propose params").unwrap(),
     };
-    
+
     apply_ok(
         v,
         &alice,
@@ -114,13 +114,13 @@ pub fn nested_multisig_test(v: &dyn VM) {
         MsigMethod::Propose as u64,
         Some(propose_to_main_params),
     );
-    
+
     // Bob approves in the inner multisig (this should execute the proposal to main multisig)
     let inner_approve_params = TxnIDParams {
         id: fil_actor_multisig::TxnID(0),
         proposal_hash: vec![], // hash optional
     };
-    
+
     apply_ok(
         v,
         &bob,
@@ -129,25 +129,32 @@ pub fn nested_multisig_test(v: &dyn VM) {
         MsigMethod::Approve as u64,
         Some(inner_approve_params),
     );
-    
+
     // Now the inner multisig has proposed to the main multisig
     // Check that the main multisig has a pending transaction
-    check_txs(v, main_msig_addr, vec![(TxnID(0), Transaction {
-        to: recipient,
-        value: send_amount.clone(),
-        method: METHOD_SEND,
-        params: RawBytes::default(),
-        approved: vec![inner_msig_addr],
-    })]);
-    
+    check_txs(
+        v,
+        main_msig_addr,
+        vec![(
+            TxnID(0),
+            Transaction {
+                to: recipient,
+                value: send_amount.clone(),
+                method: METHOD_SEND,
+                params: RawBytes::default(),
+                approved: vec![inner_msig_addr],
+            },
+        )],
+    );
+
     // Step 2: Charlie approves in the main multisig (this should execute the send)
     let recipient_balance_before = v.actor(&recipient).unwrap().balance;
-    
+
     let main_approve_params = TxnIDParams {
         id: fil_actor_multisig::TxnID(0),
         proposal_hash: vec![], // hash optional
     };
-    
+
     apply_ok(
         v,
         &charlie,
@@ -156,7 +163,7 @@ pub fn nested_multisig_test(v: &dyn VM) {
         MsigMethod::Approve as u64,
         Some(main_approve_params),
     );
-    
+
     // Verify the recipient received the funds
     let recipient_balance_after = v.actor(&recipient).unwrap().balance;
     assert_eq!(
@@ -164,10 +171,10 @@ pub fn nested_multisig_test(v: &dyn VM) {
         recipient_balance_after,
         "Recipient should have received the funds"
     );
-    
+
     // Verify the main multisig has no pending transactions
     check_txs(v, main_msig_addr, vec![]);
-    
+
     assert_invariants(v, &Policy::default(), None);
 }
 
@@ -196,13 +203,13 @@ pub fn nested_multisig_direct_proposal_test(v: &dyn VM) {
     let charlie = addrs[2];
     let dave = addrs[3];
     let recipient = addrs[4];
-    
+
     // Create inner multisig
     let inner_msig_addr = create_msig(v, &[alice, bob], 2);
-    
+
     // Create main multisig with inner multisig, Charlie, and Dave as signers, threshold 2
     let main_msig_addr = create_msig(v, &[inner_msig_addr, charlie, dave], 2);
-    
+
     // Fund the main multisig
     apply_ok(
         v,
@@ -212,7 +219,7 @@ pub fn nested_multisig_direct_proposal_test(v: &dyn VM) {
         METHOD_SEND,
         None::<RawBytes>,
     );
-    
+
     // Dave proposes directly to send funds
     let send_amount = TokenAmount::from_whole(25);
     let send_params = ProposeParams {
@@ -221,7 +228,7 @@ pub fn nested_multisig_direct_proposal_test(v: &dyn VM) {
         method: METHOD_SEND,
         params: RawBytes::default(),
     };
-    
+
     apply_ok(
         v,
         &dave,
@@ -230,15 +237,12 @@ pub fn nested_multisig_direct_proposal_test(v: &dyn VM) {
         MsigMethod::Propose as u64,
         Some(send_params),
     );
-    
+
     // Charlie approves (should execute since threshold is 2)
-    let approve_params = TxnIDParams {
-        id: fil_actor_multisig::TxnID(0),
-        proposal_hash: vec![],
-    };
-    
+    let approve_params = TxnIDParams { id: fil_actor_multisig::TxnID(0), proposal_hash: vec![] };
+
     let recipient_balance_before = v.actor(&recipient).unwrap().balance;
-    
+
     apply_ok(
         v,
         &charlie,
@@ -247,7 +251,7 @@ pub fn nested_multisig_direct_proposal_test(v: &dyn VM) {
         MsigMethod::Approve as u64,
         Some(approve_params),
     );
-    
+
     // Verify the recipient received the funds
     let recipient_balance_after = v.actor(&recipient).unwrap().balance;
     assert_eq!(
@@ -255,6 +259,6 @@ pub fn nested_multisig_direct_proposal_test(v: &dyn VM) {
         recipient_balance_after,
         "Recipient should have received the funds"
     );
-    
+
     assert_invariants(v, &Policy::default(), None);
 }
