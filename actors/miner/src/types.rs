@@ -233,19 +233,6 @@ pub struct CheckSectorProvenParams {
     pub sector_number: SectorNumber,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ExtendSectorExpirationParams {
-    pub extensions: Vec<ExpirationExtension>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ExpirationExtension {
-    pub deadline: u64,
-    pub partition: u64,
-    pub sectors: BitField,
-    pub new_expiration: ChainEpoch,
-}
-
 #[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ExtendSectorExpiration2Params {
     pub extensions: Vec<ExpirationExtension2>,
@@ -266,19 +253,6 @@ pub struct ExpirationExtension2 {
     pub sectors: BitField,
     pub sectors_with_claims: Vec<SectorClaim>,
     pub new_expiration: ChainEpoch,
-}
-
-// From is straightforward when there are no claim bearing sectors
-impl From<&ExpirationExtension> for ExpirationExtension2 {
-    fn from(e: &ExpirationExtension) -> Self {
-        ExpirationExtension2 {
-            deadline: e.deadline,
-            partition: e.partition,
-            sectors: e.sectors.clone(),
-            sectors_with_claims: vec![],
-            new_expiration: e.new_expiration,
-        }
-    }
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
