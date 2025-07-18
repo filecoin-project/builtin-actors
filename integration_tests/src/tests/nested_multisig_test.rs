@@ -7,7 +7,7 @@ use fil_actor_multisig::{
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::test_utils::MULTISIG_ACTOR_CODE_ID;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
@@ -54,7 +54,7 @@ pub fn nested_multisig_test(v: &dyn VM) {
     let alice = addrs[0];
     let bob = addrs[1];
     let charlie = addrs[2];
-    let dave = addrs[3];
+    let _dave = addrs[3];
     let recipient = addrs[4];
 
     // Create an inner multisig with Alice and Bob as signers, threshold 2

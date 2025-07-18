@@ -6,7 +6,7 @@ use fil_actor_verifreg::{
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::test_utils::MULTISIG_ACTOR_CODE_ID;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
