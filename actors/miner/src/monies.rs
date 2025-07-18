@@ -235,7 +235,7 @@ pub fn pre_commit_deposit_for_power(
 }
 
 /// Computes the pledge requirement for committing new quality-adjusted power to the network, given
-/// the current network total and baseline power, per-epoch  reward, and circulating token supply.
+/// the current network total and baseline power, per-epoch, reward, and circulating token supply.
 /// The pledge comprises two parts:
 /// - storage pledge, aka IP base: a multiple of the reward expected to be earned by newly-committed power
 /// - consensus pledge, aka additional IP: a pro-rata fraction of the circulating money supply

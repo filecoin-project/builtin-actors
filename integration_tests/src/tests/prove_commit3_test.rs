@@ -41,7 +41,7 @@ use crate::util::{
 };
 
 #[vm_test]
-pub fn prove_commit_sectors2_test(v: &dyn VM) {
+pub fn prove_commit_sectors3_test(v: &dyn VM) {
     // Expectations depend on the correct unsealed CID for empty sector.
     override_compute_unsealed_sector_cid(v);
     let policy = Policy::default();

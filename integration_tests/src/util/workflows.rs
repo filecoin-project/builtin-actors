@@ -41,10 +41,10 @@ use fil_actor_miner::{
     ChangeBeneficiaryParams, CompactCommD, DataActivationNotification, DeadlineInfo,
     DeclareFaultsRecoveredParams, ExpirationExtension2, ExtendSectorExpiration2Params,
     Method as MinerMethod, PieceActivationManifest, PoStPartition, PowerPair,
-    PreCommitSectorBatchParams2, ProveCommitAggregateParams, ProveCommitSectors3Params,
-    RecoveryDeclaration, SectorActivationManifest, SectorClaim, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
-    VerifiedAllocationKey, WithdrawBalanceParams, WithdrawBalanceReturn, max_prove_commit_duration,
+    PreCommitSectorBatchParams2, ProveCommitSectors3Params, RecoveryDeclaration,
+    SectorActivationManifest, SectorClaim, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
+    State as MinerState, SubmitWindowedPoStParams, VerifiedAllocationKey, WithdrawBalanceParams,
+    WithdrawBalanceReturn, max_prove_commit_duration,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
@@ -85,7 +85,6 @@ use vm_api::util::{apply_code, apply_ok, apply_ok_implicit};
 use crate::expects::Expect;
 use crate::*;
 
-use super::make_bitfield;
 use super::market_pending_deal_allocations_raw;
 use super::miner_dline_info;
 use super::sector_deadline;
@@ -377,23 +376,36 @@ pub fn prove_commit_sectors(
         let batch_size = min(aggregate_size, precommit_infos.len());
         let to_prove = &precommit_infos[0..batch_size];
         precommit_infos = &precommit_infos[batch_size..];
-        let b: Vec<u64> = to_prove.iter().map(|p| p.info.sector_number).collect();
 
-        let prove_commit_aggregate_params = ProveCommitAggregateParams {
-            sector_numbers: make_bitfield(b.as_slice()),
+        let sector_activations: Vec<SectorActivationManifest> = to_prove
+            .iter()
+            .map(|p| SectorActivationManifest {
+                sector_number: p.info.sector_number,
+                pieces: vec![],
+            })
+            .collect();
+
+        let prove_commit_params = ProveCommitSectors3Params {
+            sector_activations: sector_activations.clone(),
+            sector_proofs: sector_activations
+                .iter()
+                .map(|sa| RawBytes::new(vec![sa.sector_number as u8; 4]))
+                .collect(),
             aggregate_proof: vec![].into(),
+            aggregate_proof_type: None,
+            require_activation_success: true,
+            require_notification_success: false,
         };
 
-        let prove_commit_aggregate_params_ser =
-            IpldBlock::serialize_cbor(&prove_commit_aggregate_params).unwrap();
+        let prove_commit_params_ser = IpldBlock::serialize_cbor(&prove_commit_params).unwrap();
 
         apply_ok(
             v,
             worker,
             maddr,
             &TokenAmount::zero(),
-            MinerMethod::ProveCommitAggregate as u64,
-            Some(prove_commit_aggregate_params),
+            MinerMethod::ProveCommitSectors3 as u64,
+            Some(prove_commit_params),
         );
 
         let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
@@ -421,8 +433,8 @@ pub fn prove_commit_sectors(
         ExpectInvocation {
             from: worker_id,
             to: *maddr,
-            method: MinerMethod::ProveCommitAggregate as u64,
-            params: Some(prove_commit_aggregate_params_ser),
+            method: MinerMethod::ProveCommitSectors3 as u64,
+            params: Some(prove_commit_params_ser),
             subinvocs: Some(vec![
                 Expect::reward_this_epoch(miner_id),
                 Expect::power_current_total(miner_id),

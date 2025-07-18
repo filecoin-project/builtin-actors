@@ -1,12 +1,15 @@
 use fil_actor_market::DealProposal;
+use fil_actor_miner::Method as MinerMethod;
 use fil_actor_miner::{
-    CompactCommD, SectorPreCommitOnChainInfo, State as MinerState, max_prove_commit_duration,
-    power_for_sector,
+    CompactCommD, DataActivationNotification, PieceActivationManifest, ProveCommitSectors3Params,
+    SectorActivationManifest, SectorPreCommitOnChainInfo, State as MinerState,
+    VerifiedAllocationKey, max_prove_commit_duration, power_for_sector,
 };
-use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
+use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
 use fil_actors_runtime::test_utils::make_piece_cid;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -14,21 +17,22 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof, StoragePower};
 use num_traits::Zero;
 
 use export_macro::vm_test;
+use fil_actor_miner::ext::verifreg::AllocationID;
 use vm_api::VM;
 use vm_api::util::{DynBlockstore, apply_ok, get_state};
 
 use crate::deals::{DealBatcher, DealOptions};
 use crate::util::{
     PrecommitMetadata, advance_to_proving_deadline, bf_all, create_accounts, create_miner,
-    get_network_stats, make_bitfield, market_add_balance, market_pending_deal_allocations,
-    miner_balance, precommit_meta_data_from_deals, precommit_sectors_v2,
-    precommit_sectors_v2_expect_code, submit_windowed_post, verifreg_add_client,
-    verifreg_add_verifier,
+    get_network_stats, market_add_balance, market_pending_deal_allocations, miner_balance,
+    precommit_meta_data_from_deals, precommit_sectors_v2, precommit_sectors_v2_expect_code,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
+use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 
 const BATCH_SIZE: usize = 8;
 const SEAL_PROOF: RegisteredSealProof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -140,13 +144,13 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
     let alloc_ids = market_pending_deal_allocations(v, &deal_keys);
     assert_eq!(BATCH_SIZE, alloc_ids.len());
 
-    // Associate deals with sectors.
-    let sector_precommit_data = deals
-        .into_iter()
-        .map(|(id, _)| precommit_meta_data_from_deals(v, &[id], SEAL_PROOF, true))
+    // Associate deals with sectors, but don't include deal IDs in the pre-commit itself.
+    let sector_precommit_data: Vec<PrecommitMetadata> = deals
+        .iter()
+        .map(|(id, _)| precommit_meta_data_from_deals(v, &[*id], SEAL_PROOF, false))
         .collect();
 
-    // Pre-commit as single batch.
+    // Pre-commit as a single batch.
     let precommits = precommit_sectors_v2(
         v,
         BATCH_SIZE,
@@ -162,8 +166,7 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
 
     // Prove-commit as a single aggregate.
     v.set_epoch(v.epoch() + PRE_COMMIT_CHALLENGE_DELAY + 1);
-    prove_commit_aggregate(v, &worker, &miner, precommits);
-
+    prove_commit_aggregate(v, &worker, deals, alloc_ids, &miner, &client, precommits);
     // Submit Window PoST to activate power.
     let (dline_info, p_idx) = advance_to_proving_deadline(v, &miner, 0);
 
@@ -221,21 +224,49 @@ fn publish_deals(
 pub fn prove_commit_aggregate(
     v: &dyn VM,
     worker: &Address,
-    maddr: &Address,
+    deals: Vec<(DealID, DealProposal)>,
+    alloc_ids: Vec<AllocationID>,
+    miner: &Address,
+    client: &Address,
     precommits: Vec<SectorPreCommitOnChainInfo>,
 ) {
-    let sector_nos: Vec<u64> = precommits.iter().map(|p| p.info.sector_number).collect();
-    let prove_commit_aggregate_params = ProveCommitAggregateParams {
-        sector_numbers: make_bitfield(sector_nos.as_slice()),
-        aggregate_proof: vec![].into(),
+    let client_id = client.id().unwrap();
+    let sector_activations: Vec<SectorActivationManifest> = precommits
+        .iter()
+        .zip(deals.iter())
+        .zip(alloc_ids.iter())
+        .map(|((pc, (deal_id, deal_proposal)), alloc_id)| SectorActivationManifest {
+            sector_number: pc.info.sector_number,
+            pieces: vec![PieceActivationManifest {
+                cid: deal_proposal.piece_cid,
+                size: deal_proposal.piece_size,
+                verified_allocation_key: Some(VerifiedAllocationKey {
+                    client: client_id,
+                    id: *alloc_id,
+                }),
+                notify: vec![DataActivationNotification {
+                    address: STORAGE_MARKET_ACTOR_ADDR,
+                    payload: serialize(deal_id, "deal id").unwrap(),
+                }],
+            }],
+        })
+        .collect();
+
+    let params = ProveCommitSectors3Params {
+        sector_activations,
+        sector_proofs: vec![],
+        aggregate_proof: RawBytes::new(vec![0; 192]),
+        aggregate_proof_type: Some(RegisteredAggregateProof::SnarkPackV2),
+        require_activation_success: true,
+        require_notification_success: true,
     };
 
     apply_ok(
         v,
         worker,
-        maddr,
+        miner,
         &TokenAmount::zero(),
-        MinerMethod::ProveCommitAggregate as u64,
-        Some(prove_commit_aggregate_params),
+        MinerMethod::ProveCommitSectors3 as u64,
+        Some(params),
     );
 }
