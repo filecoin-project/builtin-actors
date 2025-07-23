@@ -2665,16 +2665,6 @@ impl ActorHarness {
         Ok(ret.unwrap().deserialize::<GetBeneficiaryReturn>().unwrap())
     }
 
-    // extend sectors without verified deals using either legacy or updated sector extension
-    pub fn extend_sectors_versioned(
-        &self,
-        rt: &MockRuntime,
-        params: ExtendSectorExpiration2Params,
-    ) -> Result<Option<IpldBlock>, ActorError> {
-        let params2 = ExtendSectorExpiration2Params { extensions: params.extensions };
-        self.extend_sectors2(rt, params2, HashMap::new())
-    }
-
     pub fn extend_sectors2(
         &self,
         rt: &MockRuntime,

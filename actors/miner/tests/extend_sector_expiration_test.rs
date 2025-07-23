@@ -83,7 +83,7 @@ fn rejects_negative_extensions() {
         }],
     };
 
-    let res = h.extend_sectors_versioned(&rt, params);
+    let res = h.extend_sectors2(&rt, params, HashMap::new());
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         &format!("cannot reduce sector {} expiration", sector.sector_number),
@@ -117,7 +117,7 @@ fn rejects_extension_too_far_in_future() {
         }],
     };
 
-    let res = h.extend_sectors_versioned(&rt, params);
+    let res = h.extend_sectors2(&rt, params, HashMap::new());
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         &format!(
@@ -157,7 +157,7 @@ fn rejects_extension_past_max_for_seal_proof() {
                 sectors_with_claims: vec![],
             }],
         };
-        h.extend_sectors_versioned(&rt, params).unwrap();
+        h.extend_sectors2(&rt, params, HashMap::new()).unwrap();
         sector.expiration = expiration;
 
         expiration += extension;
@@ -174,7 +174,7 @@ fn rejects_extension_past_max_for_seal_proof() {
         }],
     };
 
-    let res = h.extend_sectors_versioned(&rt, params);
+    let res = h.extend_sectors2(&rt, params, HashMap::new());
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "total sector lifetime", res);
     h.check_state(&rt);
 }
@@ -207,7 +207,7 @@ fn updates_expiration_with_valid_params() {
     // Change the circulating supply so we can detect fee changes (that shouldn't happen).
     rt.set_circulating_supply(rt.total_fil_circ_supply() * 2);
 
-    h.extend_sectors_versioned(&rt, params).unwrap();
+    h.extend_sectors2(&rt, params, HashMap::new()).unwrap();
 
     // assert sector expiration is set to the new value
     let new_sector = h.get_sector(&rt, old_sector.sector_number);
@@ -424,7 +424,7 @@ fn updates_many_sectors() {
     assert!(extensions.len() >= 2, "test error: this test should touch more than one partition");
     let params = ExtendSectorExpiration2Params { extensions };
 
-    h.extend_sectors_versioned(&rt, params).unwrap();
+    h.extend_sectors2(&rt, params, HashMap::new()).unwrap();
     let state: State = rt.get_state();
     let deadlines = state.load_deadlines(rt.store()).unwrap();
 
@@ -479,7 +479,7 @@ fn supports_extensions_off_deadline_boundary() {
         }],
     };
 
-    h.extend_sectors_versioned(&rt, params).unwrap();
+    h.extend_sectors2(&rt, params, HashMap::new()).unwrap();
 
     // assert sector expiration is set to the new value
     let mut state: State = rt.get_state();
