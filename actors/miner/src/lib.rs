@@ -112,7 +112,7 @@ pub enum Method {
     SubmitWindowedPoSt = 5,
     //PreCommitSector = 6, // Deprecated
     //ProveCommitSector = 7, // Deprecated
-    ExtendSectorExpiration = 8,
+    //ExtendSectorExpiration = 8, // Deprecated
     TerminateSectors = 9,
     DeclareFaults = 10,
     DeclareFaultsRecovered = 11,
@@ -2146,23 +2146,6 @@ impl Actor {
         }
     }
 
-    /// Changes the expiration epoch for a sector to a new, later one.
-    /// The sector must not be terminated or faulty.
-    /// The sector's power is recomputed for the new expiration.
-    /// This method is legacy and should be replaced with calls to extend_sector_expiration2
-    fn extend_sector_expiration(
-        rt: &impl Runtime,
-        params: ExtendSectorExpirationParams,
-    ) -> Result<(), ActorError> {
-        let extend_expiration_inner =
-            validate_legacy_extension_declarations(&params.extensions, rt.policy())?;
-        Self::extend_sector_expiration_inner(
-            rt,
-            extend_expiration_inner,
-            ExtensionKind::ExtendCommittmentLegacy,
-        )
-    }
-
     // Up to date version of extend_sector_expiration that correctly handles simple qap sectors
     // with FIL+ claims. Extension is only allowed if all claim max terms extend past new expiration
     // or claims are dropped.  Power only changes when claims are dropped.
@@ -2171,17 +2154,12 @@ impl Actor {
         params: ExtendSectorExpiration2Params,
     ) -> Result<(), ActorError> {
         let extend_expiration_inner = validate_extension_declarations(rt, params.extensions)?;
-        Self::extend_sector_expiration_inner(
-            rt,
-            extend_expiration_inner,
-            ExtensionKind::ExtendCommittment,
-        )
+        Self::extend_sector_expiration_inner(rt, extend_expiration_inner)
     }
 
     fn extend_sector_expiration_inner(
         rt: &impl Runtime,
         inner: ExtendExpirationsInner,
-        kind: ExtensionKind,
     ) -> Result<(), ActorError> {
         let curr_epoch = rt.curr_epoch();
         let circulating_supply = rt.total_fil_circ_supply();
@@ -2258,34 +2236,21 @@ impl Actor {
                         .map_err(|e| e.wrap("failed to load sectors"))?;
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
-                        .map(|sector| match kind {
-                            ExtensionKind::ExtendCommittmentLegacy => {
-                                extend_sector_committment_legacy(
-                                    rt.policy(),
-                                    rt.network_version(),
-                                    curr_epoch,
-                                    &circulating_supply,
-                                    decl.new_expiration,
-                                    sector,
-                                    info.sector_size,
-                                )
-                            }
-                            ExtensionKind::ExtendCommittment => match &inner.claims {
-                                None => Err(actor_error!(
-                                    unspecified,
-                                    "extend2 always specifies (potentially empty) claim mapping"
-                                )),
-                                Some(claim_space_by_sector) => extend_sector_committment(
-                                    rt.policy(),
-                                    rt.network_version(),
-                                    curr_epoch,
-                                    &circulating_supply,
-                                    decl.new_expiration,
-                                    sector,
-                                    info.sector_size,
-                                    claim_space_by_sector,
-                                ),
-                            },
+                        .map(|sector| match &inner.claims {
+                            None => Err(actor_error!(
+                                unspecified,
+                                "extend2 always specifies (potentially empty) claim mapping"
+                            )),
+                            Some(claim_space_by_sector) => extend_sector_committment(
+                                rt.policy(),
+                                rt.network_version(),
+                                curr_epoch,
+                                &circulating_supply,
+                                decl.new_expiration,
+                                sector,
+                                info.sector_size,
+                                claim_space_by_sector,
+                            ),
                         })
                         .collect::<Result<_, _>>()?;
 
@@ -2362,8 +2327,7 @@ impl Actor {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
                                 format!(
-                                    "failed to add expiration partitions to \
-                                        deadline {} epoch {}",
+                                    "failed to add expiration partitions to \\n                                        deadline {} epoch {}",
                                     deadline_idx, epoch
                                 ),
                             )
@@ -3484,14 +3448,6 @@ pub struct ReplicaUpdateInner {
     pub replica_proof: RawBytes,
 }
 
-enum ExtensionKind {
-    // handle only legacy sectors
-    ExtendCommittmentLegacy,
-    // handle both Simple QAP and legacy sectors
-    ExtendCommittment,
-}
-
-// ExtendSectorExpiration param
 struct ExtendExpirationsInner {
     extensions: Vec<ValidatedExpirationExtension>,
     // Map from sector being extended to (check, maintain)
@@ -3524,34 +3480,6 @@ impl From<ExpirationExtension2> for ValidatedExpirationExtension {
             new_expiration: e2.new_expiration,
         }
     }
-}
-
-fn validate_legacy_extension_declarations(
-    extensions: &[ExpirationExtension],
-    policy: &Policy,
-) -> Result<ExtendExpirationsInner, ActorError> {
-    let vec_validated = extensions
-        .iter()
-        .map(|decl| {
-            if decl.deadline >= policy.wpost_period_deadlines {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "deadline {} not in range 0..{}",
-                    decl.deadline,
-                    policy.wpost_period_deadlines
-                ));
-            }
-
-            Ok(ValidatedExpirationExtension {
-                deadline: decl.deadline,
-                partition: decl.partition,
-                sectors: decl.sectors.clone(),
-                new_expiration: decl.new_expiration,
-            })
-        })
-        .collect::<Result<_, _>>()?;
-
-    Ok(ExtendExpirationsInner { extensions: vec_validated, claims: None })
 }
 
 fn validate_extension_declarations(
@@ -3680,42 +3608,6 @@ fn extend_sector_committment(
         }
     }
     Ok(new_sector_info)
-}
-
-fn extend_sector_committment_legacy(
-    policy: &Policy,
-    curr_nv: NetworkVersion,
-    curr_epoch: ChainEpoch,
-    circulating_supply: &TokenAmount,
-    new_expiration: ChainEpoch,
-    sector: &SectorOnChainInfo,
-    sector_size: SectorSize,
-) -> Result<SectorOnChainInfo, ActorError> {
-    validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
-
-    // it is an error to do legacy sector expiration on simple-qa power sectors with deal weight
-    if sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER)
-        && (sector.verified_deal_weight > BigInt::zero() || sector.deal_weight > BigInt::zero())
-    {
-        return Err(actor_error!(
-            forbidden,
-            "cannot use legacy sector extension for simple qa power with deal weight {}",
-            sector.sector_number
-        ));
-    }
-    let mut sector = extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)?;
-
-    // adjust daily fee only if this is a legacy sector and we're not in the grace period; no need
-    // to handle the QAP change case here as QAP can only change with ExtendSectorExpiration2
-    if curr_nv >= FIP_0100_GRACE_PERIOD_END_VERSION && sector.daily_fee.is_zero() {
-        let power = qa_power_for_weight(
-            sector_size,
-            sector.expiration - sector.power_base_epoch,
-            &sector.verified_deal_weight,
-        );
-        sector.daily_fee = daily_proof_fee(policy, circulating_supply, &power);
-    }
-    Ok(sector)
 }
 
 fn validate_extended_expiration(
@@ -5893,7 +5785,6 @@ impl ActorCode for Actor {
         ChangeWorkerAddress|ChangeWorkerAddressExported => change_worker_address,
         ChangePeerID|ChangePeerIDExported => change_peer_id,
         SubmitWindowedPoSt => submit_windowed_post,
-        ExtendSectorExpiration => extend_sector_expiration,
         TerminateSectors => terminate_sectors,
         DeclareFaults => declare_faults,
         DeclareFaultsRecovered => declare_faults_recovered,
