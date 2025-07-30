@@ -12,7 +12,7 @@ publish = false
 
 [dependencies]
 fil_builtin_actors_state = { workspace = true }
-fil_actors_runtime = { workspace = true, features = [ "test_utils" ] }
+fil_actors_runtime = { workspace = true, features = ["test_utils"] }
 fil_actor_init = { workspace = true }
 fil_actor_cron = { workspace = true }
 fil_actor_system = { workspace = true }

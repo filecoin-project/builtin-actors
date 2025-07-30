@@ -3,7 +3,6 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
@@ -12,7 +11,7 @@ use num_traits::Zero;
 use export_macro::vm_test;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
-    CompactCommD, DataActivationNotification, PieceActivationManifest, PieceChange, PowerPair,
+    CompactCommD, DataActivationNotification, PieceActivationManifest, PowerPair,
     ProveCommitSectors3Params, ProveReplicaUpdates3Params, SectorActivationManifest, SectorChanges,
     SectorContentChangedParams, SectorOnChainInfoFlags, SectorUpdateManifest,
     max_prove_commit_duration,
@@ -38,8 +37,8 @@ use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_index,
     advance_to_proving_deadline, create_accounts, create_miner, datacap_create_allocations,
     market_add_balance, market_list_deals, market_list_sectors_deals,
-    override_compute_unsealed_sector_cid, precommit_sectors_v2, sector_info, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier, verifreg_list_claims,
+    override_compute_unsealed_sector_cid, piece_change, precommit_sectors_v2, sector_info,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_list_claims,
 };
 
 #[vm_test]
@@ -485,12 +484,4 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
 
 fn no_claims(sector: SectorNumber, expiry: ChainEpoch) -> SectorAllocationClaims {
     SectorAllocationClaims { sector, expiry, claims: vec![] }
-}
-
-fn piece_change(cid_seed: &[u8], piece_size: PaddedPieceSize, deal_ids: &[DealID]) -> PieceChange {
-    PieceChange {
-        data: make_piece_cid(cid_seed),
-        size: piece_size,
-        payload: serialize(&deal_ids[0], "deal id").unwrap(),
-    }
 }
