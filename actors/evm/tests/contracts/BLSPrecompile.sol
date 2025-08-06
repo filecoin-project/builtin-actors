@@ -6,7 +6,7 @@ contract BLSPrecompileCheck {
     address constant G1_ADD_PRECOMPILE = address(0x0B);
     address constant G1_MSM_PRECOMPILE = address(0x0C); // G1 MSM is at 0x0C
     address constant G2_ADD_PRECOMPILE = address(0x0D);
-    address constant G2_MSM_PRECOMPILE = address(0x0E);  // G2 MSM is at address 0x13
+    address constant G2_MSM_PRECOMPILE = address(0x0E);
     address constant MAP_FP_TO_G1_PRECOMPILE = address(0x10);
     address constant MAP_FP2_TO_G2_PRECOMPILE = address(0x11);
     address constant PAIRING_CHECK_PRECOMPILE = address(0x0F);
