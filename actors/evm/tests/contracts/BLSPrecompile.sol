@@ -71,12 +71,12 @@ contract BLSPrecompileCheck {
     
     /// @notice Tests G2 multi-scalar multiplication precompile at 0x0E
     function testG2MSM() public view {
-        // Format for G2 MSM input: 
-        // - First 32 bytes: value k (number of pairs)
-        // - For each pair:
+        // Format for G2 MSM input (per EIP-2537):
+        // - Input is a concatenation of (scalar, point) pairs.
+        // - Each pair consists of:
         //   - 32 bytes scalar
         //   - 128 bytes G2 point (x.a, x.b, y.a, y.b)
-        
+        // - The number of pairs is inferred from the input length.
         bytes memory input = hex"00000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be0000000000000000000000000000000000000000000000000000000000000002";
         
         // Expected output for this specific input
