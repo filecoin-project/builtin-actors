@@ -69,7 +69,7 @@ contract BLSPrecompileCheck {
         require(actualHash == expectedHash, "Unexpected G1 MSM output");
     }
     
-    /// @notice Tests G2 multi-scalar multiplication precompile at 0x13
+    /// @notice Tests G2 multi-scalar multiplication precompile at 0x0E
     function testG2MSM() public view {
         // Format for G2 MSM input: 
         // - First 32 bytes: value k (number of pairs)
