@@ -13,10 +13,9 @@ use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
 use fil_actor_miner::{
-    ExpirationExtension, ExpirationExtension2, ExtendSectorExpiration2Params,
-    ExtendSectorExpirationParams, Method as MinerMethod, PowerPair, ProveReplicaUpdatesParams,
-    ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors, State as MinerState,
-    max_prove_commit_duration, power_for_sector,
+    ExpirationExtension2, ExtendSectorExpiration2Params, Method as MinerMethod, PowerPair,
+    ProveReplicaUpdatesParams, ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors,
+    State as MinerState, max_prove_commit_duration, power_for_sector,
 };
 use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 use vm_api::VM;
@@ -44,55 +43,22 @@ pub fn extend(
     sector_number: SectorNumber,
     new_expiration: ChainEpoch,
     power_delta: PowerPair,
-    v2: bool,
 ) {
-    let extension_method = match v2 {
-        false => MinerMethod::ExtendSectorExpiration as u64,
-        true => MinerMethod::ExtendSectorExpiration2 as u64,
-    };
+    let extension_method = MinerMethod::ExtendSectorExpiration2 as u64;
 
     let miner_id = v.resolve_id_address(&maddr).unwrap().id().unwrap();
     let worker_id = v.resolve_id_address(&worker).unwrap().id().unwrap();
 
-    match v2 {
-        false => {
-            let extension_params = ExtendSectorExpirationParams {
-                extensions: vec![ExpirationExtension {
-                    deadline: deadline_index,
-                    partition: partition_index,
-                    sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-                    new_expiration,
-                }],
-            };
-            apply_ok(
-                v,
-                &worker,
-                &maddr,
-                &TokenAmount::zero(),
-                extension_method,
-                Some(extension_params),
-            );
-        }
-        true => {
-            let extension_params = ExtendSectorExpiration2Params {
-                extensions: vec![ExpirationExtension2 {
-                    deadline: deadline_index,
-                    partition: partition_index,
-                    sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-                    new_expiration,
-                    sectors_with_claims: vec![],
-                }],
-            };
-            apply_ok(
-                v,
-                &worker,
-                &maddr,
-                &TokenAmount::zero(),
-                extension_method,
-                Some(extension_params),
-            );
-        }
+    let extension_params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
+            new_expiration,
+            sectors_with_claims: vec![],
+        }],
     };
+    apply_ok(v, &worker, &maddr, &TokenAmount::zero(), extension_method, Some(extension_params));
 
     let mut expect_invoke = vec![];
 
@@ -110,7 +76,8 @@ pub fn extend(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
+#[vm_test]
+pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -265,7 +232,6 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         sector_number,
         new_expiration,
         expected_power_delta,
-        do_extend2,
     );
 
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
@@ -309,7 +275,6 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         sector_number,
         new_expiration,
         expected_power_delta,
-        do_extend2,
     );
 
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
@@ -329,16 +294,6 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
         None,
     );
-}
-
-#[vm_test]
-pub fn extend_legacy_sector_with_deals_extend2(v: &dyn VM) {
-    extend_legacy_sector_with_deals_test(v, true);
-}
-
-#[vm_test]
-pub fn extend_legacy_sector_with_deals(v: &dyn VM) {
-    extend_legacy_sector_with_deals_test(v, false);
 }
 
 #[vm_test]
@@ -521,7 +476,6 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
         sector_number,
         new_expiration,
         expected_power_delta,
-        false,
     );
 
     miner_state = get_state(v, &miner_id).unwrap();

@@ -19,5 +19,6 @@ mod replica_update_test;
 mod terminate_test;
 mod test_vm_test;
 mod verified_claim_test;
+mod verifreg_multisig_root_test;
 mod verifreg_remove_datacap_test;
 mod withdraw_balance_test;
