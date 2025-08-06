@@ -48,11 +48,11 @@ contract BLSPrecompileCheck {
     
     /// @notice Tests G1 multi-scalar multiplication precompile at 0x0C
     function testG1MSM() public view {
-        // Format for G1 MSM input:
-        // - First 32 bytes: value k (number of pairs)
-        // - For each pair:
+        // Format for G1 MSM input (per EIP-2537):
+        // - Concatenation of (scalar, point) pairs:
         //   - 32 bytes scalar
         //   - 64 bytes G1 point (x, y)
+        // The number of pairs is inferred from the input length.
         
         bytes memory input = hex"0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e10000000000000000000000000000000000000000000000000000000000000002";
         
