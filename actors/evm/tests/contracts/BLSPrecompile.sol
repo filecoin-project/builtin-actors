@@ -27,7 +27,7 @@ contract BLSPrecompileCheck {
         require(actualHash == expectedHash, "Unexpected output");
     }
                                     
-    /// @notice Tests G2 addition precompile at 0x0C
+    /// @notice Tests G2 addition precompile at 0x0D
     function testG2Add() public view {
         // Encode input as two G2 points
         // Format: (x1_real, x1_imaginary, y1_real, y1_imaginary, x2_real, x2_imaginary, y2_real, y2_imaginary)
