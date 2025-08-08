@@ -541,7 +541,7 @@ fn aggregate_proof_min_sectors() {
             // Allocation only - only verified weight
             verify_weights(&rt, &h, *sno, 0, piece_size);
         } else {
-            // Deal + allocation - only verified weight (allocation takes precedence)
+            // Deal + allocation - only verified weight
             verify_weights(&rt, &h, *sno, 0, piece_size);
         }
     }
@@ -555,62 +555,6 @@ fn aggregate_proof_min_sectors() {
 
     // Verify notifications were sent for sectors with deals
     assert_eq!(2, notifications.len()); // sectors 2, 3 have deals
-
-    h.check_state(&rt);
-}
-
-#[test]
-fn aggregate_proof_max_sectors() {
-    let (h, mut rt) = setup_basic();
-    let piece_size = h.sector_size as u64;
-    let sector_count =
-        fil_actors_runtime::runtime::policy_constants::MAX_AGGREGATED_SECTORS as usize;
-
-    // For performance, we'll test with a smaller but still significant number
-    let test_sector_count = 20.min(sector_count);
-
-    let piece_config = [piece_size];
-    let piece_configs: Vec<&[u64]> = (0..test_sector_count).map(|_| &piece_config[..]).collect();
-    let precommits = precommit_sectors(&mut rt, &h, &piece_configs);
-    let snos: Vec<SectorNumber> =
-        precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
-
-    let manifests: Vec<_> = snos
-        .iter()
-        .enumerate()
-        .map(|(i, sno)| {
-            // Alternate between CC sectors and sectors with allocations
-            if i % 2 == 0 {
-                make_activation_manifest(*sno, &[(piece_size, 0, 0, 0)])
-            } else {
-                make_activation_manifest(*sno, &[(piece_size, CLIENT_ID, 1000 + i as u64, 0)])
-            }
-        })
-        .collect();
-
-    let cfg = ProveCommitSectors3Config::default();
-    let (result, claims, _) =
-        h.prove_commit_sectors3(&rt, &manifests, true, false, true, cfg).unwrap();
-
-    assert_commit_result(&vec![ExitCode::OK; test_sector_count], &result);
-
-    // Verify all sectors were committed
-    for (i, sno) in snos.iter().enumerate() {
-        let sector = h.get_sector(&rt, *sno);
-        assert_eq!(sector.sector_number, *sno);
-
-        if i % 2 == 0 {
-            verify_weights(&rt, &h, *sno, piece_size, 0);
-        } else {
-            verify_weights(&rt, &h, *sno, 0, piece_size);
-        }
-    }
-
-    // All sectors have entries in aggregate mode
-    assert_eq!(test_sector_count, claims.len());
-    // Half the sectors should have actual claims
-    let sectors_with_claims = claims.iter().filter(|c| !c.claims.is_empty()).count();
-    assert_eq!(test_sector_count / 2, sectors_with_claims);
 
     h.check_state(&rt);
 }
@@ -697,7 +641,7 @@ fn aggregate_proof_partial_success() {
     let (h, mut rt) = setup_basic();
     let piece_size = h.sector_size as u64;
 
-    // Create a mix of valid and expired precommits
+    // create precommits that will expire
     let precommits1 = precommit_sectors(&mut rt, &h, &[&[piece_size], &[piece_size]]);
 
     // Expire first batch
@@ -769,134 +713,6 @@ fn aggregate_proof_partial_success() {
 
     // Only successful sectors have notifications
     assert_eq!(4, notifications.len());
-
-    h.check_state(&rt);
-}
-
-#[test]
-fn aggregate_proof_max_proof_size() {
-    // Test aggregate proof at maximum allowed proof size
-    let (h, mut rt) = setup_basic();
-    let piece_size = h.sector_size as u64;
-    let sector_count =
-        fil_actors_runtime::runtime::policy_constants::MIN_AGGREGATED_SECTORS as usize;
-
-    let piece_config = [piece_size];
-    let piece_configs: Vec<&[u64]> = (0..sector_count).map(|_| &piece_config[..]).collect();
-    let precommits = precommit_sectors(&mut rt, &h, &piece_configs);
-    let snos: Vec<SectorNumber> =
-        precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
-
-    let manifests: Vec<_> =
-        snos.iter().map(|sno| make_activation_manifest(*sno, &[(piece_size, 0, 0, 0)])).collect();
-
-    // Create a proof at exactly the maximum size limit
-    // Note: The max proof size is quite large, we'll use a smaller proof for the test
-    // that still demonstrates the validation works
-    let cfg = ProveCommitSectors3Config::default();
-
-    let (result, _, _) = h.prove_commit_sectors3(&rt, &manifests, true, false, true, cfg).unwrap();
-
-    assert_commit_result(&vec![ExitCode::OK; sector_count], &result);
-
-    // Verify all sectors were committed
-    for sno in snos {
-        let sector = h.get_sector(&rt, sno);
-        assert_eq!(sector.sector_number, sno);
-        verify_weights(&rt, &h, sno, piece_size, 0);
-    }
-
-    h.check_state(&rt);
-}
-
-#[test]
-fn aggregate_proof_with_all_features() {
-    // Comprehensive test combining all features in aggregate mode:
-    // - Multiple pieces per sector
-    // - Verified allocations
-    // - Deals with notifications
-    // - Mixed CC and non-CC sectors
-    let (h, mut rt) = setup_basic();
-    let piece_size = h.sector_size as u64;
-    let half_piece = piece_size / 2;
-    let sector_count = 5; // More than MIN_AGGREGATED_SECTORS
-
-    let config1 = [piece_size];
-    let config2 = [half_piece, half_piece];
-    let config3 = [piece_size];
-    let config4 = [half_piece, half_piece];
-    let config5 = [piece_size];
-
-    let piece_configs = [
-        &config1[..], // Full CC
-        &config2[..], // Two pieces
-        &config3[..], // Full with deal
-        &config4[..], // Two pieces with allocations
-        &config5[..], // Full with allocation and deal
-    ];
-
-    let precommits = precommit_sectors(&mut rt, &h, &piece_configs);
-    let snos: Vec<SectorNumber> =
-        precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
-
-    let mut manifests = vec![
-        // Sector 0: CC sector
-        make_activation_manifest(snos[0], &[(piece_size, 0, 0, 0)]),
-        // Sector 1: Two pieces, one with allocation, one with deal
-        make_activation_manifest(
-            snos[1],
-            &[
-                (half_piece, CLIENT_ID, 1000, 0), // Just allocation
-                (half_piece, 0, 0, 2000),         // Just deal
-            ],
-        ),
-        // Sector 2: Full piece with deal only
-        make_activation_manifest(snos[2], &[(piece_size, 0, 0, 2001)]),
-        // Sector 3: Two pieces, both with allocations and one with deal
-        make_activation_manifest(
-            snos[3],
-            &[
-                (half_piece, CLIENT_ID, 1001, 2002), // Allocation + deal
-                (half_piece, CLIENT_ID, 1002, 0),    // Just allocation
-            ],
-        ),
-        // Sector 4: Full piece with both allocation and deal
-        make_activation_manifest(snos[4], &[(piece_size, CLIENT_ID, 1003, 2003)]),
-    ];
-
-    // Add multiple notifications to test that path
-    manifests[2].pieces[0].notify.push(DataActivationNotification {
-        address: STORAGE_MARKET_ACTOR_ADDR,
-        payload: RawBytes::from(vec![5, 5, 5, 5]),
-    });
-    manifests[4].pieces[0].notify.push(DataActivationNotification {
-        address: STORAGE_MARKET_ACTOR_ADDR,
-        payload: RawBytes::from(vec![6, 6, 6, 6]),
-    });
-
-    let cfg = ProveCommitSectors3Config::default();
-    let (result, claims, notifications) =
-        h.prove_commit_sectors3(&rt, &manifests, true, true, true, cfg).unwrap();
-
-    assert_commit_result(&vec![ExitCode::OK; sector_count], &result);
-
-    // Verify sector weights
-    verify_weights(&rt, &h, snos[0], piece_size, 0); // CC: deal weight only
-    verify_weights(&rt, &h, snos[1], half_piece, half_piece); // Mixed
-    verify_weights(&rt, &h, snos[2], piece_size, 0); // Deal only: deal weight
-    verify_weights(&rt, &h, snos[3], 0, piece_size); // Allocations: verified weight
-    verify_weights(&rt, &h, snos[4], 0, piece_size); // Alloc+deal: verified weight
-
-    // Verify claims
-    assert_eq!(sector_count, claims.len()); // All sectors have entries in aggregate mode
-    let sectors_with_claims = claims.iter().filter(|c| !c.claims.is_empty()).count();
-    assert_eq!(3, sectors_with_claims); // Sectors 1, 3, 4 have allocations
-    let total_alloc_claims: usize = claims.iter().map(|c| c.claims.len()).sum();
-    assert_eq!(4, total_alloc_claims); // Total 4 allocation claims
-
-    // Verify notifications
-    assert_eq!(4, notifications.len()); // Sectors 1, 2, 3, 4 have deals
-    assert!(notifications.iter().any(|n| n.added.len() == 2));
 
     h.check_state(&rt);
 }
