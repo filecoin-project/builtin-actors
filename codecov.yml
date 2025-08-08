@@ -1,2 +1,4 @@
 ignore:
 - (?s:.*/tests/.*)\Z
+comment:
+  require_base: false
