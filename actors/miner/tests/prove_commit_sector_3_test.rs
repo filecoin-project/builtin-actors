@@ -496,7 +496,7 @@ fn aggregate_proof_min_sectors() {
     let sector_count =
         fil_actors_runtime::runtime::policy_constants::MIN_AGGREGATED_SECTORS as usize;
 
-    let piece_config = vec![piece_size];
+    let piece_config = [piece_size];
     let piece_configs: Vec<&[u64]> = (0..sector_count).map(|_| &piece_config[..]).collect();
     let precommits = precommit_sectors(&mut rt, &h, &piece_configs);
     let snos: Vec<SectorNumber> =
@@ -569,7 +569,7 @@ fn aggregate_proof_max_sectors() {
     // For performance, we'll test with a smaller but still significant number
     let test_sector_count = 20.min(sector_count);
 
-    let piece_config = vec![piece_size];
+    let piece_config = [piece_size];
     let piece_configs: Vec<&[u64]> = (0..test_sector_count).map(|_| &piece_config[..]).collect();
     let precommits = precommit_sectors(&mut rt, &h, &piece_configs);
     let snos: Vec<SectorNumber> =
@@ -624,12 +624,12 @@ fn aggregate_proof_multi_piece_sectors() {
     let sector_count =
         fil_actors_runtime::runtime::policy_constants::MIN_AGGREGATED_SECTORS as usize;
 
-    let config1 = vec![half_piece_size, half_piece_size];
-    let config2 = vec![quarter_piece_size, quarter_piece_size, half_piece_size];
-    let config3 = vec![half_piece_size, quarter_piece_size, quarter_piece_size];
-    let config4 = vec![h.sector_size as u64];
+    let config1 = [half_piece_size, half_piece_size];
+    let config2 = [quarter_piece_size, quarter_piece_size, half_piece_size];
+    let config3 = [half_piece_size, quarter_piece_size, quarter_piece_size];
+    let config4 = [h.sector_size as u64];
 
-    let piece_configs = vec![
+    let piece_configs = [
         &config1[..], // Two half pieces
         &config2[..], // Mixed sizes
         &config3[..], // Mixed sizes
@@ -781,7 +781,7 @@ fn aggregate_proof_max_proof_size() {
     let sector_count =
         fil_actors_runtime::runtime::policy_constants::MIN_AGGREGATED_SECTORS as usize;
 
-    let piece_config = vec![piece_size];
+    let piece_config = [piece_size];
     let piece_configs: Vec<&[u64]> = (0..sector_count).map(|_| &piece_config[..]).collect();
     let precommits = precommit_sectors(&mut rt, &h, &piece_configs);
     let snos: Vec<SectorNumber> =
@@ -821,13 +821,13 @@ fn aggregate_proof_with_all_features() {
     let half_piece = piece_size / 2;
     let sector_count = 5; // More than MIN_AGGREGATED_SECTORS
 
-    let config1 = vec![piece_size];
-    let config2 = vec![half_piece, half_piece];
-    let config3 = vec![piece_size];
-    let config4 = vec![half_piece, half_piece];
-    let config5 = vec![piece_size];
+    let config1 = [piece_size];
+    let config2 = [half_piece, half_piece];
+    let config3 = [piece_size];
+    let config4 = [half_piece, half_piece];
+    let config5 = [piece_size];
 
-    let piece_configs = vec![
+    let piece_configs = [
         &config1[..], // Full CC
         &config2[..], // Two pieces
         &config3[..], // Full with deal
