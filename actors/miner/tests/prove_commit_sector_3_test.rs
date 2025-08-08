@@ -31,7 +31,7 @@ fn commit_batch() {
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    // Prove them in batch, each with a single piece.
+    // Prove them in a batch, each with a single piece.
 
     let manifests = vec![
         make_activation_manifest(snos[0], &[(piece_size, 0, 0, 0)]), // No alloc or deal
@@ -487,6 +487,234 @@ fn rejected_notification_dropped() {
     // All power activated anyway.
     verify_weights(&rt, &h, snos[0], 0, piece_size);
     verify_weights(&rt, &h, snos[1], 0, piece_size);
+}
+
+#[test]
+fn aggregate_proof_min_sectors() {
+    let (h, mut rt) = setup_basic();
+    let piece_size = h.sector_size as u64;
+    let sector_count =
+        fil_actors_runtime::runtime::policy_constants::MIN_AGGREGATED_SECTORS as usize;
+
+    let piece_config = [piece_size];
+    let piece_configs: Vec<&[u64]> = (0..sector_count).map(|_| &piece_config[..]).collect();
+    let precommits = precommit_sectors(&mut rt, &h, &piece_configs);
+    let snos: Vec<SectorNumber> =
+        precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
+
+    let manifests: Vec<_> = snos
+        .iter()
+        .enumerate()
+        .map(|(i, sno)| {
+            // Mix of CC sectors and sectors with deals/allocations
+            if i == 0 {
+                // CC sector
+                make_activation_manifest(*sno, &[(piece_size, 0, 0, 0)])
+            } else if i == 1 {
+                // With allocation only
+                make_activation_manifest(*sno, &[(piece_size, CLIENT_ID, 1000 + i as u64, 0)])
+            } else {
+                // With deal and allocation
+                make_activation_manifest(
+                    *sno,
+                    &[(piece_size, CLIENT_ID, 1000 + i as u64, 2000 + i as u64)],
+                )
+            }
+        })
+        .collect();
+
+    let cfg = ProveCommitSectors3Config::default();
+    let (result, claims, notifications) =
+        h.prove_commit_sectors3(&rt, &manifests, true, true, true, cfg).unwrap();
+
+    assert_commit_result(&vec![ExitCode::OK; sector_count], &result);
+
+    // Verify sectors were committed
+    for (i, sno) in snos.iter().enumerate() {
+        let sector = h.get_sector(&rt, *sno);
+        assert_eq!(sector.sector_number, *sno);
+
+        if i == 0 {
+            // CC sector - only deal weight
+            verify_weights(&rt, &h, *sno, piece_size, 0);
+        } else if i == 1 {
+            // Allocation only - only verified weight
+            verify_weights(&rt, &h, *sno, 0, piece_size);
+        } else {
+            // Deal + allocation - only verified weight
+            verify_weights(&rt, &h, *sno, 0, piece_size);
+        }
+    }
+
+    // Verify claims were made for sectors with allocations
+    // In aggregate mode, all sectors get entries in claims even if empty
+    assert_eq!(sector_count, claims.len());
+    // Count sectors that actually have allocation claims
+    let sectors_with_claims = claims.iter().filter(|c| !c.claims.is_empty()).count();
+    assert_eq!(3, sectors_with_claims); // sectors 1, 2, 3 have allocations
+
+    // Verify notifications were sent for sectors with deals
+    assert_eq!(2, notifications.len()); // sectors 2, 3 have deals
+
+    h.check_state(&rt);
+}
+
+// Test aggregate proof with sectors containing multiple pieces
+#[test]
+fn aggregate_proof_multi_piece_sectors() {
+    let (h, mut rt) = setup_basic();
+    let half_piece_size = h.sector_size as u64 / 2;
+    let quarter_piece_size = h.sector_size as u64 / 4;
+    let sector_count =
+        fil_actors_runtime::runtime::policy_constants::MIN_AGGREGATED_SECTORS as usize;
+
+    let config1 = [half_piece_size, half_piece_size];
+    let config2 = [quarter_piece_size, quarter_piece_size, half_piece_size];
+    let config3 = [half_piece_size, quarter_piece_size, quarter_piece_size];
+    let config4 = [h.sector_size as u64];
+
+    let piece_configs = [
+        &config1[..], // Two half pieces
+        &config2[..], // Mixed sizes
+        &config3[..], // Mixed sizes
+        &config4[..], // Single full piece
+    ];
+
+    let precommits = precommit_sectors(&mut rt, &h, &piece_configs);
+    let snos: Vec<SectorNumber> =
+        precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
+
+    let manifests = vec![
+        // Sector 0: Two half pieces, both with allocations and deals
+        make_activation_manifest(
+            snos[0],
+            &[(half_piece_size, CLIENT_ID, 1000, 2000), (half_piece_size, CLIENT_ID, 1001, 2001)],
+        ),
+        // Sector 1: Three pieces with mixed allocations
+        make_activation_manifest(
+            snos[1],
+            &[
+                (quarter_piece_size, CLIENT_ID, 1002, 0), // Allocation only
+                (quarter_piece_size, 0, 0, 2002),         // Deal only
+                (half_piece_size, CLIENT_ID, 1003, 2003), // Both
+            ],
+        ),
+        // Sector 2: Three pieces, one CC
+        make_activation_manifest(
+            snos[2],
+            &[
+                (half_piece_size, CLIENT_ID, 1004, 2004),
+                (quarter_piece_size, 0, 0, 0), // CC piece
+                (quarter_piece_size, CLIENT_ID, 1005, 0),
+            ],
+        ),
+        // Sector 3: Single full piece with allocation
+        make_activation_manifest(snos[3], &[(h.sector_size as u64, CLIENT_ID, 1006, 2005)]),
+    ];
+
+    let cfg = ProveCommitSectors3Config::default();
+    let (result, claims, notifications) =
+        h.prove_commit_sectors3(&rt, &manifests, true, true, true, cfg).unwrap();
+
+    assert_commit_result(&vec![ExitCode::OK; sector_count], &result);
+
+    // Verify sectors and their weights
+    verify_weights(&rt, &h, snos[0], 0, h.sector_size as u64); // Full verified weight
+    verify_weights(&rt, &h, snos[1], quarter_piece_size, quarter_piece_size * 3); // Mixed
+    verify_weights(&rt, &h, snos[2], quarter_piece_size, quarter_piece_size * 3); // Mixed
+    verify_weights(&rt, &h, snos[3], 0, h.sector_size as u64); // Full verified weight
+
+    // Verify claims - all sectors have entries in aggregate mode
+    assert_eq!(sector_count, claims.len()); // All 4 sectors have entries
+    // Count total allocation claims across all sectors
+    assert_eq!(7, claims.iter().map(|c| c.claims.len()).sum::<usize>()); // Total 7 allocation claims
+
+    // Verify notifications - count deal notifications
+    assert_eq!(4, notifications.len()); // All 4 sectors have deals
+    assert_eq!(6, notifications.iter().map(|n| n.added.len()).sum::<usize>()); // Total 6 deals
+
+    h.check_state(&rt);
+}
+
+#[test]
+fn aggregate_proof_partial_success() {
+    let (h, mut rt) = setup_basic();
+    let piece_size = h.sector_size as u64;
+
+    // create precommits that will expire
+    let precommits1 = precommit_sectors(&mut rt, &h, &[&[piece_size], &[piece_size]]);
+
+    // Expire first batch
+    let epoch = *rt.epoch.borrow();
+    rt.set_epoch(epoch + 31 * EPOCHS_IN_DAY);
+
+    // Create fresh precommits
+    let precommits2 = precommit_sectors_from(
+        &mut rt,
+        &h,
+        precommits1[1].sector_number + 1,
+        &[&[piece_size], &[piece_size], &[piece_size], &[piece_size]],
+        false,
+    );
+
+    let all_precommits = [&precommits1[..], &precommits2[..]].concat();
+    let snos: Vec<SectorNumber> =
+        all_precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
+
+    let manifests: Vec<_> = snos
+        .iter()
+        .enumerate()
+        .map(|(i, sno)| {
+            make_activation_manifest(
+                *sno,
+                &[(piece_size, CLIENT_ID, 1000 + i as u64, 2000 + i as u64)],
+            )
+        })
+        .collect();
+
+    // Set validation failures for expired precommits
+    let cfg = ProveCommitSectors3Config {
+        validation_failure: vec![0, 1], // The first two are expired
+        ..Default::default()
+    };
+
+    // With require_activation_success=false, partial success is allowed
+    let (result, claims, notifications) =
+        h.prove_commit_sectors3(&rt, &manifests, false, false, true, cfg).unwrap();
+
+    // First two fail, rest succeed
+    assert_commit_result(
+        &[
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            ExitCode::OK,
+            ExitCode::OK,
+            ExitCode::OK,
+            ExitCode::OK,
+        ],
+        &result,
+    );
+
+    // Verify only successful sectors were committed
+    let st = h.get_state(&rt);
+    assert!(st.get_sector(&rt.store, snos[0]).unwrap().is_none());
+    assert!(st.get_sector(&rt.store, snos[1]).unwrap().is_none());
+
+    for sno in &snos[2..] {
+        let sector = h.get_sector(&rt, *sno);
+        assert_eq!(sector.sector_number, *sno);
+        verify_weights(&rt, &h, *sno, 0, piece_size);
+    }
+
+    // Only successful sectors have claims
+    assert_eq!(4, claims.len()); // Only 4 successful sectors
+    let successful_claims = claims.iter().filter(|c| !c.claims.is_empty()).count();
+    assert_eq!(4, successful_claims); // All 4 successful sectors have actual claims
+
+    // Only successful sectors have notifications
+    assert_eq!(4, notifications.len());
+
+    h.check_state(&rt);
 }
 
 fn setup_basic() -> (ActorHarness, MockRuntime) {
