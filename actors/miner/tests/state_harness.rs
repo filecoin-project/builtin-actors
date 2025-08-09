@@ -87,9 +87,10 @@ impl StateHarness {
         policy: &Policy,
     ) -> BitFieldQueue<'db, MemoryBlockstore> {
         let quant = self.st.quant_spec_every_deadline(policy);
-        let queue =
-            BitFieldQueue::new(&self.store, &self.st.pre_committed_sectors_cleanup, quant).unwrap();
-        queue
+        match &self.st.pre_committed_sectors_cleanup {
+            Some(cid) => BitFieldQueue::load(&self.store, cid, quant).unwrap(),
+            None => BitFieldQueue::new(&self.store, quant),
+        }
     }
 
     #[allow(dead_code)]

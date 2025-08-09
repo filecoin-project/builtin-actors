@@ -12,6 +12,7 @@ use fvm_shared::clock::ChainEpoch;
 use itertools::Itertools;
 
 use super::QuantSpec;
+use super::PRECOMMIT_EXPIRY_AMT_BITWIDTH;
 
 /// Wrapper for working with an AMT[ChainEpoch]*Bitfield functioning as a queue, bucketed by epoch.
 /// Keys in the queue are quantized (upwards), modulo some offset, to reduce the cardinality of keys.
@@ -21,7 +22,14 @@ pub struct BitFieldQueue<'db, BS> {
 }
 
 impl<'db, BS: Blockstore> BitFieldQueue<'db, BS> {
-    pub fn new(store: &'db BS, root: &Cid, quant: QuantSpec) -> Result<Self, AmtError> {
+    pub fn new(store: &'db BS, quant: QuantSpec) -> Self {
+        Self {
+            amt: Array::<BitField, BS>::new_with_bit_width(store, PRECOMMIT_EXPIRY_AMT_BITWIDTH),
+            quant,
+        }
+    }
+
+    pub fn load(store: &'db BS, root: &Cid, quant: QuantSpec) -> Result<Self, AmtError> {
         Ok(Self { amt: Array::load(root, store)?, quant })
     }
 
