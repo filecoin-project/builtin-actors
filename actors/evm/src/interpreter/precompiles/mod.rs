@@ -10,9 +10,15 @@ use crate::reader::OverflowError;
 
 use super::{CallKind, System};
 mod blake2f_impl;
+mod bls12_381;
+mod bls_util;
 mod evm;
 mod fvm;
 
+use bls12_381::{
+    bls12_g1add, bls12_g1msm, bls12_g2add, bls12_g2msm, bls12_map_fp_to_g1, bls12_map_fp2_to_g2,
+    bls12_pairing,
+};
 use evm::{blake2f, ec_add, ec_mul, ec_pairing, ec_recover, identity, modexp, ripemd160, sha256};
 use fvm::{call_actor, call_actor_id, get_randomness, lookup_delegated_address, resolve_address};
 
@@ -52,7 +58,7 @@ impl<RT: Runtime> Precompiles<RT> {
     ]);
 
     /// EVM specific precompiles
-    const EVM_PRECOMPILES: PrecompileTable<RT, 9> = PrecompileTable([
+    const EVM_PRECOMPILES: PrecompileTable<RT, 17> = PrecompileTable([
         Some(ec_recover::<RT>), // 0x01 ecrecover
         Some(sha256::<RT>),     // 0x02 SHA2-256
         Some(ripemd160::<RT>),  // 0x03 ripemd160
@@ -62,6 +68,15 @@ impl<RT: Runtime> Precompiles<RT> {
         Some(ec_mul::<RT>),     // 0x07 ecMul
         Some(ec_pairing::<RT>), // 0x08 ecPairing
         Some(blake2f::<RT>),    // 0x09 blake2f
+        // BLS12-381 precompiles (starting from 0x0b)
+        None,                            // 0x0a (Unused slot)
+        Some(bls12_g1add::<RT>),         // 0x0b BLS12_G1ADD
+        Some(bls12_g1msm::<RT>),         // 0x0c BLS12_G1MSM
+        Some(bls12_g2add::<RT>),         // 0x0d BLS12_G2ADD
+        Some(bls12_g2msm::<RT>),         // 0x0e BLS12_G2MSM
+        Some(bls12_pairing::<RT>),       // 0x0f BLS12_PAIRING_CHECK
+        Some(bls12_map_fp_to_g1::<RT>),  // 0x10 BLS12_MAP_FP_TO_G1
+        Some(bls12_map_fp2_to_g2::<RT>), // 0x11 BLS12_MAP_FP2_TO_G2
     ]);
 
     fn lookup_precompile(addr: &EthAddress) -> Option<PrecompileFn<RT>> {
