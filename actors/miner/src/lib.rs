@@ -823,7 +823,6 @@ impl Actor {
                 deadline: update.deadline,
                 partition: update.partition,
                 new_sealed_cid: update.new_sealed_cid,
-                deals: vec![],
                 update_proof_type: params.update_proofs_type,
                 // Replica proof may be empty if an aggregate is being proven.
                 // Validation needs to accept this empty proof.
@@ -837,7 +836,6 @@ impl Actor {
             &updates,
             &sector_infos,
             &state,
-            info.sector_size,
             rt.policy(),
             rt.curr_epoch(),
             store,
@@ -3286,7 +3284,6 @@ pub struct ReplicaUpdateInner {
     pub deadline: u64,
     pub partition: u64,
     pub new_sealed_cid: Cid,
-    pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
     pub replica_proof: RawBytes,
 }
@@ -3602,7 +3599,6 @@ fn validate_replica_updates<'a, BS>(
     updates: &'a [ReplicaUpdateInner],
     sector_infos: &'a [SectorOnChainInfo],
     state: &State,
-    sector_size: SectorSize,
     policy: &Policy,
     curr_epoch: ChainEpoch,
     store: BS,
@@ -3633,18 +3629,10 @@ where
             ));
         }
 
-        if require_deals && update.deals.is_empty() {
+        if require_deals {
             return Err(actor_error!(
                 illegal_argument,
                 "must have deals to update, skipping sector {}",
-                update.sector_number
-            ));
-        }
-
-        if update.deals.len() as u64 > sector_deals_max(policy, sector_size) {
-            return Err(actor_error!(
-                illegal_argument,
-                "more deals than policy allows, skipping sector {}",
                 update.sector_number
             ));
         }
@@ -5304,7 +5292,7 @@ impl From<&UpdateAndSectorInfo<'_>> for DealsActivationInput {
         DealsActivationInput {
             sector_number: usi.sector_info.sector_number,
             sector_expiry: usi.sector_info.expiration,
-            deal_ids: usi.update.deals.clone(),
+            deal_ids: vec![],
             sector_type: usi.sector_info.seal_proof,
         }
     }
