@@ -130,8 +130,8 @@ pub enum Method {
     ChangeOwnerAddress = 23,
     DisputeWindowedPoSt = 24,
     //PreCommitSectorBatch = 25, // Deprecated
-    ProveCommitAggregate = 26,
-    //ProveReplicaUpdates = 27, // Deprecated
+    // ProveCommitAggregate = 26, // Deprecated
+    // ProveReplicaUpdates = 27, // Deprecated
     PreCommitSectorBatch2 = 28,
     //ProveReplicaUpdates2 = 29, // Deprecated
     ChangeBeneficiary = 30,
@@ -759,97 +759,6 @@ impl Actor {
 
         let state: State = rt.state()?;
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
-
-        Ok(())
-    }
-    /// Checks state of the corresponding sector pre-commitments and verifies aggregate proof of replication
-    /// of these sectors. If valid, the sectors' deals are activated, sectors are assigned a deadline and charged pledge
-    /// and precommit state is removed.
-    fn prove_commit_aggregate(
-        rt: &impl Runtime,
-        params: ProveCommitAggregateParams,
-    ) -> Result<(), ActorError> {
-        // Validate caller and parameters.
-        let state: State = rt.state()?;
-        let store = rt.store();
-        let policy = rt.policy();
-        let info = get_miner_info(store, &state)?;
-        rt.validate_immediate_caller_is(
-            info.control_addresses.iter().chain(&[info.worker, info.owner]),
-        )?;
-
-        let sector_numbers = params.sector_numbers.validate().context_code(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            "failed to validate bitfield of sector numbers",
-        )?;
-        if sector_numbers.is_empty() {
-            return Err(actor_error!(illegal_argument, "no sectors"));
-        }
-
-        validate_seal_aggregate_proof(&params.aggregate_proof, sector_numbers.len(), policy, true)?;
-
-        // Load and validate pre-commits.
-        // Fail if any don't exist, but otherwise continue with valid ones.
-        let precommits = state
-            .get_precommitted_sectors(store, sector_numbers.iter())
-            .context("failed to get precommits")?;
-
-        let allow_deals = true; // Legacy onboarding entry points allow pre-committed deals.
-        let all_or_nothing = false;
-        let (batch_return, proof_inputs) =
-            validate_precommits(rt, &precommits, allow_deals, all_or_nothing)?;
-
-        let miner_actor_id = rt.message().receiver().id().unwrap();
-        verify_aggregate_seal(
-            rt,
-            // All the proof inputs, even for invalid pre-commits,
-            // must be provided as witnesses to the aggregate proof.
-            &proof_inputs,
-            miner_actor_id,
-            precommits[0].info.seal_proof,
-            RegisteredAggregateProof::SnarkPackV2,
-            &params.aggregate_proof,
-        )?;
-
-        let valid_precommits: Vec<SectorPreCommitOnChainInfo> =
-            batch_return.successes(&precommits).into_iter().cloned().collect();
-        let data_activation_inputs: Vec<DealsActivationInput> =
-            valid_precommits.iter().map(|x| x.clone().into()).collect();
-        let rew = request_current_epoch_block_reward(rt)?;
-        let pwr = request_current_total_power(rt)?;
-        let circulating_supply = rt.total_fil_circ_supply();
-        let pledge_inputs = NetworkPledgeInputs {
-            network_qap: pwr.quality_adj_power_smoothed,
-            network_baseline: rew.this_epoch_baseline_power,
-            circulating_supply,
-            epoch_reward: rew.this_epoch_reward_smoothed,
-            epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
-            ramp_duration_epochs: pwr.ramp_duration_epochs,
-        };
-
-        /*
-           For all sectors
-           - CommD was specified at precommit
-           - If deal IDs were specified at precommit the CommD was checked against them
-           Therefore CommD on precommit has already been provided and checked so no further processing needed
-        */
-        let compute_commd = false;
-        let (batch_return, activated_data) =
-            activate_sectors_deals(rt, &data_activation_inputs, compute_commd)?;
-        let activated_precommits = batch_return.successes(&valid_precommits);
-
-        activate_new_sector_infos(
-            rt,
-            activated_precommits.clone(),
-            activated_data.clone(),
-            &pledge_inputs,
-            &info,
-        )?;
-
-        for (pc, data) in activated_precommits.iter().zip(activated_data.iter()) {
-            let unsealed_cid = pc.info.unsealed_cid.0;
-            emit::sector_activated(rt, pc.info.sector_number, unsealed_cid, &data.pieces)?;
-        }
 
         Ok(())
     }
@@ -2440,7 +2349,7 @@ impl Actor {
             // We have remaining terminations, and we didn't _previously_
             // have early terminations to process, schedule a cron job.
             // NOTE: This isn't quite correct. If we repeatedly fill, empty,
-            // fill, and empty, the queue, we'll keep scheduling new cron
+            // fill, empty, the queue, we'll keep scheduling new cron
             // jobs. However, in practice, that shouldn't be all that bad.
             schedule_early_termination_work(rt)?;
         }
@@ -5731,7 +5640,6 @@ impl ActorCode for Actor {
         RepayDebt|RepayDebtExported => repay_debt,
         ChangeOwnerAddress|ChangeOwnerAddressExported => change_owner_address,
         DisputeWindowedPoSt => dispute_windowed_post,
-        ProveCommitAggregate => prove_commit_aggregate,
         PreCommitSectorBatch2 => pre_commit_sector_batch2,
         ChangeBeneficiary|ChangeBeneficiaryExported => change_beneficiary,
         GetBeneficiary|GetBeneficiaryExported => get_beneficiary,
