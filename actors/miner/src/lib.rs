@@ -831,7 +831,6 @@ impl Actor {
         }
 
         // Validate inputs.
-        let require_deals = false; // No deals can be specified in new replica update.
         let (validation_batch, update_sector_infos) = validate_replica_updates(
             &updates,
             &sector_infos,
@@ -839,7 +838,6 @@ impl Actor {
             rt.policy(),
             rt.curr_epoch(),
             store,
-            require_deals,
             params.require_activation_success,
         )?;
         let valid_unproven_usis = validation_batch.successes(&update_sector_infos);
@@ -3602,7 +3600,6 @@ fn validate_replica_updates<'a, BS>(
     policy: &Policy,
     curr_epoch: ChainEpoch,
     store: BS,
-    require_deals: bool,
     all_or_nothing: bool,
 ) -> Result<(BatchReturn, Vec<UpdateAndSectorInfo<'a>>), ActorError>
 where
@@ -3625,14 +3622,6 @@ where
                 illegal_argument,
                 "update proof is too large ({}), skipping sector {}",
                 update.replica_proof.len(),
-                update.sector_number
-            ));
-        }
-
-        if require_deals {
-            return Err(actor_error!(
-                illegal_argument,
-                "must have deals to update, skipping sector {}",
                 update.sector_number
             ));
         }
