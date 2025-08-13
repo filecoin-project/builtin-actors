@@ -5321,8 +5321,6 @@ struct ReplicaUpdateActivatedData {
 // Pieces are grouped by sector and succeed or fail in sector groups.
 // If an activation input specifies an expected CommD for the sector, a CommD
 // is calculated from the pieces and must match.
-// This method never returns CommDs in the output type; either the caller provided
-// them and they are correct, or the caller did not provide anything that needs checking.
 fn activate_sectors_pieces(
     rt: &impl Runtime,
     activation_inputs: Vec<SectorPiecesActivationInput>,
