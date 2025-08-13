@@ -59,14 +59,13 @@ use fil_actor_miner::{
     MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION, Partition,
     PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
     PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitAggregateParams, ProveCommitSectorParams, ProveCommitSectors3Params,
-    ProveCommitSectors3Return, QuantSpec, RecoveryDeclaration, ReportConsensusFaultParams,
-    SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH, SectorActivationManifest, SectorChanges,
-    SectorContentChangedParams, SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, SectorReturn, SectorUpdateManifest, Sectors, State,
-    SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
-    VerifiedAllocationKey, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
-    consensus_fault_penalty, ext,
+    ProveCommitSectorParams, ProveCommitSectors3Params, ProveCommitSectors3Return, QuantSpec,
+    RecoveryDeclaration, ReportConsensusFaultParams, SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH,
+    SectorActivationManifest, SectorChanges, SectorContentChangedParams,
+    SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
+    SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
+    TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, WindowedPoSt,
+    WithdrawBalanceParams, WithdrawBalanceReturn, consensus_fault_penalty, ext,
     ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
     ext::power::UPDATE_CLAIMED_POWER_METHOD,
     ext::verifreg::{
@@ -948,61 +947,6 @@ impl ActorHarness {
         rt.verify();
 
         Ok(result)
-    }
-
-    pub fn prove_commit_aggregate_sector(
-        &self,
-        rt: &MockRuntime,
-        config: ProveCommitConfig,
-        precommits: Vec<SectorPreCommitOnChainInfo>,
-        params: ProveCommitAggregateParams,
-    ) -> Result<(), ActorError> {
-        let comm_ds: Vec<_> = precommits
-            .iter()
-            .map(|pc| pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap())
-            .collect();
-
-        let unsealed_cids: Vec<Option<Cid>> =
-            precommits.iter().map(|pc| pc.info.unsealed_cid.0.clone()).collect();
-
-        self.expect_query_network_info(rt);
-
-        // expect randomness queries for provided precommits
-        let (seal_rands, seal_int_rands) = expect_validate_precommits(rt, &precommits)?;
-
-        // verify syscall
-        let mut svis = Vec::new();
-        for (i, precommit) in precommits.iter().enumerate() {
-            svis.push(AggregateSealVerifyInfo {
-                sector_number: precommit.info.sector_number,
-                randomness: Randomness(seal_rands.get(i).cloned().unwrap().into()),
-                interactive_randomness: Randomness(seal_int_rands.get(i).cloned().unwrap().into()),
-                sealed_cid: precommit.info.sealed_cid,
-                unsealed_cid: comm_ds[i],
-            })
-        }
-        rt.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone().into(), Ok(()));
-
-        // confirm sector proofs valid
-        let pieces = self.expect_sectors_activated(rt, config, &precommits);
-
-        // sector activated event
-        for (i, sc) in precommits.iter().enumerate() {
-            let num = &sc.info.sector_number;
-            let piece_info = pieces.get(&num).unwrap();
-            expect_sector_event(rt, "sector-activated", &num, unsealed_cids[i], &piece_info);
-        }
-
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        let addrs = self.caller_addrs().clone();
-        rt.expect_validate_caller_addr(addrs);
-        rt.call::<Actor>(
-            MinerMethod::ProveCommitAggregate as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-        rt.verify();
-
-        Ok(())
     }
 
     // Check that sectors are activating
@@ -3066,14 +3010,6 @@ pub fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
     match ubf {
         UnvalidatedBitField::Validated(bf) => bf.clone(),
         UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes).unwrap(),
-    }
-}
-
-#[allow(dead_code)]
-pub fn make_prove_commit_aggregate(sector_nos: &BitField) -> ProveCommitAggregateParams {
-    ProveCommitAggregateParams {
-        sector_numbers: sector_nos.clone(),
-        aggregate_proof: vec![0; 1024].into(),
     }
 }
 
