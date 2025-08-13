@@ -9,15 +9,14 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, METHOD_SEND};
 use num_traits::Zero;
 
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_datacap::BalanceParams;
 use fil_actor_market::{
-    BatchActivateDealsParams, OnMinerSectorsTerminateParams, SectorDeals,
-    VerifyDealsForActivationParams,
+    OnMinerSectorsTerminateParams, SectorDeals, VerifyDealsForActivationParams,
 };
 use fil_actor_miner::ext::verifreg::ClaimID;
 use fil_actor_miner::{IsControllingAddressParam, PowerPair};
