@@ -43,42 +43,6 @@ impl Expect {
     pub fn burn(from: ActorID, v: Option<TokenAmount>) -> ExpectInvocation {
         Self::send(from, BURNT_FUNDS_ACTOR_ADDR, v)
     }
-    pub fn market_activate_deals(
-        from: ActorID,
-        deals: Vec<DealID>,
-        client_id: ActorID,
-        sector_number: SectorNumber,
-        sector_expiry: ChainEpoch,
-        sector_type: RegisteredSealProof,
-        compute_cid: bool,
-    ) -> ExpectInvocation {
-        let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
-            sectors: vec![SectorDeals {
-                sector_number,
-                deal_ids: deals.clone(),
-                sector_expiry,
-                sector_type,
-            }],
-            compute_cid,
-        })
-        .unwrap();
-
-        let events: Vec<EmittedEvent> = deals
-            .iter()
-            .map(|deal_id| Expect::build_market_event("deal-activated", *deal_id, client_id, from))
-            .collect();
-
-        ExpectInvocation {
-            from,
-            to: STORAGE_MARKET_ACTOR_ADDR,
-            method: fil_actor_market::Method::BatchActivateDeals as u64,
-            params: Some(params),
-            value: Some(TokenAmount::zero()),
-            subinvocs: Some(vec![]),
-            events: Some(events),
-            ..Default::default()
-        }
-    }
     pub fn market_content_changed(
         from: ActorID,
         deals: Vec<DealID>,
