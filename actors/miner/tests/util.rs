@@ -8,7 +8,7 @@ use std::ops::Neg;
 use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::reward::FilterEstimate;
-use fil_actors_runtime::runtime::policy_constants::MINIMUM_CONSENSUS_POWER;
+use fil_actors_runtime::runtime::policy_constants::CREATE_MINER_DEPOSIT_POWER;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -141,7 +141,7 @@ pub fn minimum_initial_pledge(
     let pwr = CurrentTotalPowerReturn::default();
 
     initial_pledge_for_power(
-        &BigInt::from(MINIMUM_CONSENSUS_POWER),
+        &BigInt::from(CREATE_MINER_DEPOSIT_POWER),
         baseline_power,
         reward_estimated,
         &pwr.quality_adj_power_smoothed,
