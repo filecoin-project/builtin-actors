@@ -11,7 +11,7 @@ use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::policy_constants::MINIMUM_CONSENSUS_POWER;
+use fil_actors_runtime::runtime::policy_constants::CREATE_MINER_DEPOSIT_POWER;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
     MessageAccumulator, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -294,7 +294,7 @@ pub fn get_minimum_initial_pledge(vm: &dyn VM) -> TokenAmount {
     let reward_state: RewardState = get_state(vm, &REWARD_ACTOR_ADDR).unwrap();
 
     initial_pledge_for_power(
-        &BigInt::from(MINIMUM_CONSENSUS_POWER),
+        &BigInt::from(CREATE_MINER_DEPOSIT_POWER),
         &reward_state.this_epoch_baseline_power,
         &reward_state.this_epoch_reward_smoothed,
         &power_state.this_epoch_qa_power_smoothed,

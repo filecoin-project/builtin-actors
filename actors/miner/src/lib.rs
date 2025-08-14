@@ -47,7 +47,9 @@ pub use expiration_queue::*;
 use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::reward::{FilterEstimate, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::policy_constants::{MAX_SECTOR_NUMBER, MINIMUM_CONSENSUS_POWER};
+use fil_actors_runtime::runtime::policy_constants::{
+    CREATE_MINER_DEPOSIT_POWER, MAX_SECTOR_NUMBER,
+};
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     ActorContext, ActorDowncast, ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR, BatchReturn,
@@ -5259,14 +5261,14 @@ fn activate_new_sector_infos(
     Ok(())
 }
 
-/// Calculate create miner deposit by MINIMUM_CONSENSUS_POWER x StateMinerInitialPledgeCollateral
+/// Calculate create miner deposit by MINIMUM_CONSENSUS_POWER x StateMinerInitialPledgeCollateral / 10
 /// See FIP-0077, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0077.md
 pub fn calculate_create_miner_deposit(rt: &impl Runtime) -> Result<TokenAmount, ActorError> {
     let rew = request_current_epoch_block_reward(rt)?;
     let pwr = request_current_total_power(rt)?;
 
     Ok(initial_pledge_for_power(
-        &BigInt::from(MINIMUM_CONSENSUS_POWER),
+        &BigInt::from(CREATE_MINER_DEPOSIT_POWER),
         &rew.this_epoch_baseline_power,
         &rew.this_epoch_reward_smoothed,
         &pwr.quality_adj_power_smoothed,

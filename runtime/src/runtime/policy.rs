@@ -420,6 +420,8 @@ pub mod policy_constants {
         feature = "min-power-32g"
     )))]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 10 << 40;
+
+    pub const CREATE_MINER_DEPOSIT_POWER: i64 = MINIMUM_CONSENSUS_POWER / 10;
 }
 
 /// A set indicating which proofs are considered valid, optimised for lookup of a small number of
