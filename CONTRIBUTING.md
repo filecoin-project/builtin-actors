@@ -2,18 +2,6 @@
 
 Welcome to the Filecoin built-in actors repository! This codebase serves as the canonical implementation of on-chain actors that power the Filecoin network and is a common good across all Filecoin client implementations.
 
-## Table of Contents
-
-- [Getting Started](#getting-started)
-- [Development Setup](#development-setup)
-- [Making Contributions](#making-contributions)
-- [Testing](#testing)
-- [Code Style and Standards](#code-style-and-standards)
-- [Pull Request Guidelines](#pull-request-guidelines)
-- [Issue Guidelines](#issue-guidelines)
-- [Release Process](#release-process)
-- [Getting Help](#getting-help)
-
 ## Getting Started
 
 ### Prerequisites
@@ -69,12 +57,14 @@ builtin-actors/
 
 ### Types of Contributions
 
-1. **FIP Implementation**: Implementing Filecoin Improvement Proposals
+1. **FIP Implementation**: Implementing Filecoin Improvement Proposals - many contributions involve implementing protocol improvements
 2. **Bug Fixes**: Addressing issues in actor logic or runtime
-3. **Performance Optimizations**: Improving gas efficiency and execution speed
-4. **Code Cleanup**: Removing deprecated code, improving maintainability
+3. **Performance Optimizations**: Improving gas efficiency and execution speed - reducing gas costs is a key focus area
+4. **Code Cleanup**: Removing deprecated code, improving maintainability - including actor method deprecation as per FIPs
 5. **Testing**: Adding integration tests, scenario tests, or improving test coverage
 6. **Documentation**: Improving code documentation and examples
+7. **EVM Integration**: Enhancing Ethereum compatibility features
+8. **Code Modernization**: Updating to latest Rust features and best practices
 
 ### Contribution Workflow
 
@@ -84,14 +74,6 @@ builtin-actors/
 4. **Implement changes**: Follow the coding standards and test your changes
 5. **Test thoroughly**: Run the full test suite and ensure all checks pass
 6. **Submit a pull request**: Follow the PR guidelines below
-
-### Common Contribution Areas
-
-- **FIP Implementation**: Many contributions involve implementing protocol improvements
-- **Actor Method Deprecation**: Removing deprecated methods as per FIPs
-- **Performance Optimization**: Reducing gas costs and improving execution efficiency
-- **EVM Integration**: Enhancing Ethereum compatibility features
-- **Code Modernization**: Updating to latest Rust features and best practices
 
 ## Testing
 
@@ -154,15 +136,7 @@ make bundle
 
 ### PR Title Format
 
-Use descriptive prefixes:
-- `feat:` - New features
-- `fix:` - Bug fixes  
-- `chore:` - Maintenance tasks
-- `test:` - Testing improvements
-- `opt:` - Performance optimizations
-- `build:` - Build system changes
-
-Include FIP numbers when applicable: `FIP-0XXX: Description`
+Follow [Conventional Commits](https://www.conventionalcommits.org/) format. If your PR is related to a FIP (Filecoin Improvement Proposal), include the FIP number in the title: `FIP-0XXX: Description`
 
 ### PR Description
 
@@ -179,71 +153,26 @@ Include FIP numbers when applicable: `FIP-0XXX: Description`
 - Large changes may require additional review from domain experts
 - Draft PRs are encouraged for work-in-progress to get early feedback
 
-## Issue Guidelines
+### Who merges PRs and when are they merged?
 
-### Reporting Bugs
+#### Maintainer Approval Process
 
-Include:
-- Clear reproduction steps
-- Expected vs actual behavior
-- Environment details (Rust version, network, etc.)
-- Relevant error messages or logs
+When maintainers give approval on a PR, they are conveying "this is ready to merge whenever" unless they leave comments indicating otherwise. Maintainers may also approve PRs that have minor cleanup items that would be nice to address but aren't blocking - authors should address these if at all possible.
 
-### Feature Requests
+**Important**: Maintainers generally won't merge PRs for you. This allows authors to:
+- Complete any final touchups they may be working on
+- Sequence the merge with other related changes
+- Maintain control over the timing of their contributions
 
-- Check if a FIP exists for the feature
-- Describe the use case and motivation
-- Consider backwards compatibility implications
-- Provide implementation suggestions if possible
+#### FIP-Related PRs
 
-### Labels
+For PRs implementing FIPs:
 
-- `good first issue`: Suitable for new contributors
-- `help wanted`: Community contributions welcome
-- `cleanup`: Code maintenance and cleanup
-- `enhancement`: New features or improvements
-- `bug`: Issues with existing functionality
-- `testing`: Test-related improvements
+- **Standard Process**: We generally wait to merge FIP implementation PRs until the FIP has moved to "Accepted" status.  This includes waiting for FIPs in "Last Call" to move out of "Last Call".
+- **Exception for Low-Risk Changes**: If a FIP is uncontroversial and represents pure code cleanup with low risk of needing to revert, we may merge to master before the FIP reaches "Accepted"
+
+This approach minimizes the risk of having to revert changes if FIP requirements change during the review process.
 
 ## Release Process
 
-Releases follow a structured process detailed in [RELEASE.md](RELEASE.md):
-
-1. Version updates are made via PR to `Cargo.toml`
-2. Automated workflows handle bundle building and asset uploads
-3. Git tags are created when releases are published
-4. Multiple network bundles are built for each release
-
-## Getting Help
-
-### Resources
-
-- **Documentation**: Check the [README](README.md) and inline code documentation
-- **Examples**: See the `examples/` directory for usage patterns
-- **Integration Tests**: Review `integration_tests/` for complex scenarios
-- **FIPs**: Filecoin Improvement Proposals at [github.com/filecoin-project/FIPs](https://github.com/filecoin-project/FIPs)
-
-### Communication
-
-- **GitHub Issues**: For bug reports and feature requests
-- **GitHub Discussions**: For general questions and community discussion
-- **Filecoin Slack**: Join the [Filecoin Slack](https://filecoin.io/slack) for real-time discussion
-
-### Finding Contribution Opportunities
-
-- Browse issues labeled `good first issue` for beginner-friendly tasks
-- Check `help wanted` issues for community contribution opportunities
-- Look for `cleanup` labeled issues for code maintenance tasks
-- Review open FIPs that need implementation
-
-## Code of Conduct
-
-This project follows the Filecoin community standards. Be respectful, inclusive, and constructive in all interactions.
-
-## License
-
-This project is dual-licensed under [MIT](LICENSE-MIT) and [Apache 2.0](LICENSE-APACHE) licenses. By contributing, you agree to license your contributions under the same terms.
-
----
-
-Thank you for contributing to the Filecoin built-in actors! Your contributions help secure and improve the Filecoin network for everyone.
+Releases follow a structured process detailed in [RELEASE.md](RELEASE.md).
