@@ -121,7 +121,7 @@ make bundle
 - Implement the `Actor` trait for new actors
 - Use the shared runtime utilities from the `runtime` crate
 - Follow existing patterns for state management and CBOR encoding - specifically the Filecoin chain *strictly* uses tuple encoding and some types (such as `BigInt`) have custom encodings that must be explicitly declared
-- Ensure gas-efficient implementations
+- Ensure gas-efficient implementations - while hard to measure, knowing that gas is measured at the WASM instruction level, efficient code paths tend toward cheaper gas
 - Use appropriate error codes and messages
 
 ### Security Considerations
