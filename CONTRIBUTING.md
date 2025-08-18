@@ -127,7 +127,7 @@ make bundle
 
 ### Security Considerations
 
-- All actor methods must validate caller permissions
+- All actor methods must validate caller permissions - e.g. see `rt.validate_immediate_caller_is()` calls in existing actors
 - Input parameters must be thoroughly validated
 - State mutations must be atomic and consistent
 - Avoid patterns that could lead to reentrancy issues
