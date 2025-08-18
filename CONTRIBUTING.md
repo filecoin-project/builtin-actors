@@ -129,7 +129,7 @@ make bundle
 
 - All actor methods must validate caller permissions - e.g. see `rt.validate_immediate_caller_is()` calls in existing actors
 - Input parameters must be thoroughly validated
-- State mutations must be atomic and consistent
+- State mutations must be atomic and consistent - note the use of `rt.transaction()` in existing actors to mutate state
 - Avoid patterns that could lead to reentrancy issues
 
 ## Pull Request Guidelines
