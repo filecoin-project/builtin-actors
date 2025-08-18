@@ -63,7 +63,7 @@ builtin-actors/
 5. **Testing**: Adding integration tests, scenario tests, or improving test coverage
 6. **Documentation**: Improving code documentation and examples
 7. **EVM Integration**: Enhancing Ethereum compatibility features
-8. **Code Modernization**: Updating to latest Rust features and best practices
+8. **Code Modernization**: Updating to latest Rust features and best practices, or updating / replacing dependencies
 
 ### Contribution Workflow
 
