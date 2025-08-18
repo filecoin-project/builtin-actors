@@ -56,7 +56,7 @@ builtin-actors/
 
 ### Types of Contributions
 
-1. **FIP Implementation**: Implementing Filecoin Improvement Proposals - many contributions involve implementing protocol improvements
+1. **FIP Implementation**: Implementing Filecoin Improvement Proposals - many contributions involve implementing protocol improvements or other backward-incompatible changes
 2. **Bug Fixes**: Addressing issues in actor logic or runtime
 3. **Performance Optimizations**: Improving gas efficiency and execution speed - reducing gas costs is a key focus area
 4. **Code Cleanup**: Removing deprecated code, improving maintainability - including actor method deprecation as per FIPs
