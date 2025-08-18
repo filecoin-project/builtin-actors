@@ -112,7 +112,7 @@ make bundle
 
 - Use Rust 2024 edition features
 - Follow the project's `rustfmt.toml` configuration
-- Address all Clippy warnings (`cargo clippy --all -- -D warnings`)
+- Address all Clippy warnings (`cargo clippy --all -- -D warnings` - available as `make check`)
 - Use explicit error handling with `ActorError` types
 - Prefer `cargo-nextest` for test execution
 
