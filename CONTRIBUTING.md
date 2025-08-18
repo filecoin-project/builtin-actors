@@ -10,7 +10,6 @@ Welcome to the Filecoin built-in actors repository! This codebase serves as the 
 - **Make**: Required for build automation
 - **Docker**: Required for reproducible builds
 - **Git**: For version control
-- **GitHub CLI (gh)**: Recommended for managing issues and PRs
 
 ### Repository Structure
 
