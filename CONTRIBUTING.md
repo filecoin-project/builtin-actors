@@ -130,7 +130,7 @@ make bundle
 - All actor methods must validate caller permissions - e.g. see `rt.validate_immediate_caller_is()` calls in existing actors
 - Input parameters must be thoroughly validated
 - State mutations must be atomic and consistent - note the use of `rt.transaction()` in existing actors to mutate state
-- Avoid patterns that could lead to reentrancy issues
+- Take extreme care when interacting with smart contracts, either via exported methods or message sends to actors other than those defined here - be mindful of gas exhaustion, reentrancy issues and other potential vectors for malicious or unintended behavior
 
 ## Pull Request Guidelines
 
