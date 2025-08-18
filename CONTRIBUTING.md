@@ -138,6 +138,8 @@ make bundle
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/) format. If your PR is related to a FIP (Filecoin Improvement Proposal), include the FIP number in the title: `FIP-0XXX: Description`
 
+This project uses a GitHub build queue and your branch will be squashed down to a single commit with the name of your pull request. Ensure your PR title is of the appropriate format, or it may be changed for you before merging.
+
 ### PR Description
 
 1. **Clear summary** of what the PR accomplishes
