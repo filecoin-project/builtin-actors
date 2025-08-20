@@ -1,8 +1,9 @@
 use export_macro::vm_test;
 use fil_actor_init::ExecReturn;
 use fil_actor_multisig::{
-    Method as MsigMethod, PENDING_TXN_CONFIG, PendingTxnMap, ApproveReturn, ProposeParams, RemoveSignerParams, AddSignerParams,
-    State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams, compute_proposal_hash,
+    AddSignerParams, ApproveReturn, Method as MsigMethod, PENDING_TXN_CONFIG, PendingTxnMap,
+    ProposeParams, RemoveSignerParams, State as MsigState, SwapSignerParams, Transaction, TxnID,
+    TxnIDParams, compute_proposal_hash,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
@@ -208,10 +209,7 @@ pub fn recursive_approve_fails_test(v: &dyn VM) {
 
     // Add multisig as signer
     // Add msig_addr itself as signer using the AddSigner method
-    let add_signer_params = AddSignerParams {
-        signer: msig_addr,
-        increase: true,
-    };
+    let add_signer_params = AddSignerParams { signer: msig_addr, increase: true };
     println!("add signer coming");
     // Propose to add msig_addr as a signer (only msig can call AddSigner directly, so we must propose)
     let propose_add_signer_params = ProposeParams {
@@ -231,14 +229,7 @@ pub fn recursive_approve_fails_test(v: &dyn VM) {
 
     println!("add signer worked");
     // Fund the multisig
-    apply_ok(
-        v,
-        &alice,
-        &msig_addr,
-        &TokenAmount::from_whole(100),
-        METHOD_SEND,
-        None::<RawBytes>,
-    );
+    apply_ok(v, &alice, &msig_addr, &TokenAmount::from_whole(100), METHOD_SEND, None::<RawBytes>);
 
     // Create a transaction that tries to approve itself
     let approve_params = TxnIDParams {
@@ -280,18 +271,15 @@ pub fn recursive_approve_fails_test(v: &dyn VM) {
     );
 
     // Bob approves the transaction, which should execute the call to approve itself
-    let approve_txn_params = TxnIDParams {
-        id: TxnID(1),
-        proposal_hash: vec![],
-    };
+    let approve_txn_params = TxnIDParams { id: TxnID(1), proposal_hash: vec![] };
 
     // When Bob approves, the transaction should execute successfully, but the inner call
-    // to approve itself should fail with USR_NOT_FOUND since we have now implemented 
-    // checks effects interactions correctly and remove the pending txn id before making the 
+    // to approve itself should fail with USR_NOT_FOUND since we have now implemented
+    // checks effects interactions correctly and remove the pending txn id before making the
     // execution inner call
     println!("approve coming");
 
-    let result : ApproveReturn = apply_ok(
+    let result: ApproveReturn = apply_ok(
         v,
         &bob,
         &msig_addr,
