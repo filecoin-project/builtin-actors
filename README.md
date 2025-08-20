@@ -82,7 +82,9 @@ Precompiled actor bundles are provided as [release binaries][releases] in this r
 [`fil_builtin_actors_bundle`](https://crates.io/crates/fil_builtin_actors_bundle) crate on
 [crates.io](https://crates.io) will not be updated.
 
-## [Releasing](RELEASE.md)
+## Releasing
+
+See [RELEASE.md](RELEASE.md) for the release process.
 
 ## Instructions for client implementations
 
@@ -166,6 +168,10 @@ and fulfils two roles:
 This codebase was originally forked from the actors v6 implementation of the
 [Forest client](https://github.com/ChainSafe/forest/), and was adapted to the
 FVM environment.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
 
 ## Community
 
