@@ -205,12 +205,11 @@ pub fn recursive_approve_fails_test(v: &dyn VM) {
 
     // Create a 1-of-2 multisig
     let msig_addr = create_msig(v, &[alice, bob], 1);
-    println!("msig_addr: {:?}", msig_addr);
 
     // Add multisig as signer
     // Add msig_addr itself as signer using the AddSigner method
     let add_signer_params = AddSignerParams { signer: msig_addr, increase: true };
-    println!("add signer coming");
+
     // Propose to add msig_addr as a signer (only msig can call AddSigner directly, so we must propose)
     let propose_add_signer_params = ProposeParams {
         to: msig_addr,
@@ -227,7 +226,6 @@ pub fn recursive_approve_fails_test(v: &dyn VM) {
         Some(propose_add_signer_params),
     );
 
-    println!("add signer worked");
     // Fund the multisig
     apply_ok(v, &alice, &msig_addr, &TokenAmount::from_whole(100), METHOD_SEND, None::<RawBytes>);
 
@@ -277,7 +275,6 @@ pub fn recursive_approve_fails_test(v: &dyn VM) {
     // to approve itself should fail with USR_NOT_FOUND since we have now implemented
     // checks effects interactions correctly and remove the pending txn id before making the
     // execution inner call
-    println!("approve coming");
 
     let result: ApproveReturn = apply_ok(
         v,
@@ -289,7 +286,6 @@ pub fn recursive_approve_fails_test(v: &dyn VM) {
     )
     .deserialize()
     .expect("failed to deserialize ApproveReturn");
-    println!("approve worked");
 
     // But the return should indicate that the inner transaction failed with USR_NOT_FOUND
     assert!(result.applied, "Transaction should have been applied");
