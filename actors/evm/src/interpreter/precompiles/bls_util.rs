@@ -48,6 +48,7 @@ pub const PAIRING_INPUT_LENGTH: usize = PADDED_G1_LENGTH + PADDED_G2_LENGTH;
 pub const FP_LENGTH: usize = 48;
 
 /// SCALAR_LENGTH_BITS specifies the number of bits needed to represent an Fr element.
+/// Note Fr in EIP 2537 notation is Fq, the BLS 381 Scalar field
 /// This is an element in the scalar field of BLS12-381.
 pub const SCALAR_LENGTH_BITS: usize = SCALAR_LENGTH * 8;
 
