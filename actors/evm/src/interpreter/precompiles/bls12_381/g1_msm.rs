@@ -112,7 +112,6 @@ mod tests {
         let rt = MockRuntime::default();
         rt.in_call.replace(true);
         let mut system = System::create(&rt).unwrap();
-        use hex_literal::hex;
 
         // Array of tuples: (input, expected)
         let test_vectors = [

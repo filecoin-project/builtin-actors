@@ -60,6 +60,10 @@ const MODULUS_REPR: [u8; 48] = [
 ];
 use substrate_bn::CurveError;
 
+/// Converts a G1 point from Jacobian to affine coordinates.
+///
+/// Safety: Wraps an unsafe FFI call; `p` must be a valid, initialized
+/// `blst_p1` value obtained from this module or the `blst` crate.
 #[inline]
 pub fn p1_to_affine(p: &blst_p1) -> blst_p1_affine {
     let mut p_affine = blst_p1_affine::default();
@@ -92,6 +96,10 @@ pub fn p2_from_affine(p_affine: &blst_p2_affine) -> blst_p2 {
     p
 }
 
+/// Reads a scalar in big-endian form and returns a `blst_scalar`.
+///
+/// The input must be exactly 32 bytes. Per EIP-2537, the integer is not
+/// required to be less than or equal to the main subgroup order `r`.
 pub fn read_scalar(input: &[u8]) -> Result<blst_scalar, PrecompileError> {
     if input.len() != SCALAR_LENGTH {
         return Err(PrecompileError::IncorrectInputSize);
@@ -217,15 +225,18 @@ pub(super) fn extract_g2_input(
 }
 
 /// https://eips.ethereum.org/EIPS/eip-2537
-/// Encodes a single finite field element into byte slice with padding.
-pub(super) fn fp_to_bytes(out: &mut [u8], input: *const blst_fp) {
+/// Encodes a single finite field element into a byte slice with padding.
+///
+/// Accepts a safe reference to a `blst_fp`; the only unsafe is localized to
+/// the FFI call that writes the big-endian bytes.
+pub(super) fn fp_to_bytes(out: &mut [u8], input: &blst_fp) {
     if out.len() != PADDED_FP_LENGTH {
         return;
     }
     let (padding, rest) = out.split_at_mut(PADDING_LENGTH);
     padding.fill(0);
     // SAFETY: Out length is checked previously, `input` is a blst value.
-    unsafe { blst_bendian_from_fp(rest.as_mut_ptr(), input) };
+    unsafe { blst_bendian_from_fp(rest.as_mut_ptr(), input as *const _) };
 }
 
 /// Extracts a G1 point in Affine format from a 128 byte slice representation.
@@ -260,14 +271,14 @@ pub fn remove_padding(input: &[u8]) -> Result<&[u8; 48], PrecompileError> {
     unpadded.try_into().map_err(|_| PrecompileError::IncorrectInputSize)
 }
 
-/// Encodes a G1 point in affine format into byte slice with padded elements.
-pub fn encode_g1_point(input: *const blst_p1_affine) -> Vec<u8> {
+/// Encodes a G1 affine point into a byte vector with padded elements.
+///
+/// Uses safe references in the signature; the only unsafe operations are
+/// contained within helper FFI calls.
+pub fn encode_g1_point(input: &blst_p1_affine) -> Vec<u8> {
     let mut out = vec![0u8; G1_OUTPUT_LENGTH];
-    // SAFETY: Out comes from fixed length array, input is a blst value.
-    unsafe {
-        fp_to_bytes(&mut out[..PADDED_FP_LENGTH], &(*input).x);
-        fp_to_bytes(&mut out[PADDED_FP_LENGTH..], &(*input).y);
-    }
+    fp_to_bytes(&mut out[..PADDED_FP_LENGTH], &input.x);
+    fp_to_bytes(&mut out[PADDED_FP_LENGTH..], &input.y);
     out
 }
 
