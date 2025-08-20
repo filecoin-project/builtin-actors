@@ -103,7 +103,7 @@ pub fn read_scalar(input: &[u8]) -> Result<blst_scalar, PrecompileError> {
         // Note: We do not use `blst_scalar_fr_check` here because, from EIP-2537:
         //
         // * The corresponding integer is not required to be less than or equal than main subgroup
-        // order `q`.
+        // order `r`.
         blst_scalar_from_bendian(&mut out, input.as_ptr())
     };
 
