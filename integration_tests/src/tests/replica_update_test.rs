@@ -13,7 +13,7 @@ use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 
 use export_macro::vm_test;
 use fil_actor_market::State as MarketState;
-use fil_actor_market::{Label, Method as MarketMethod};
+use fil_actor_market::{DealMetaArray, Label, Method as MarketMethod};
 use fil_actor_miner::{
     DisputeWindowedPoStParams, ExpirationExtension2, ExtendSectorExpiration2Params,
     Method as MinerMethod, PowerPair, ProveReplicaUpdates3Params, ProveReplicaUpdates3Return,
@@ -972,32 +972,43 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
         update_proofs_type: update_proof,
         aggregate_proof_type: None,
         require_activation_success: true,
-        require_notification_success: true,
+        require_notification_success: false,
     };
 
-    apply_code(
+    let ret: ProveReplicaUpdates3Return = apply_ok(
         v,
         &worker,
         &maddr,
         &TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates3 as u64,
         Some(params),
-        fil_actor_miner::ERR_NOTIFICATION_REJECTED,
-    );
+    )
+    .deserialize()
+    .unwrap();
 
-    // TODO: understand why those asserts don't hold anymore
-    // let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number);
-    // let duration = new_sector_info_p1.expiration - new_sector_info_p1.power_base_epoch;
-    // let weights1 = get_deal_weights(v, deal_ids[0], duration);
-    // let weights2 = get_deal_weights(v, deal_ids[1], duration);
-    // assert_eq!(weights1.0 + weights2.0, new_sector_info_p1.deal_weight);
-    // assert_eq!(weights1.1 + weights2.1, new_sector_info_p1.verified_deal_weight);
-    // assert_eq!(new_sealed_cid1, new_sector_info_p1.sealed_cid);
+    assert_eq!(ret.activation_results.success_count, 2);
+
+    let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number);
+    let duration = new_sector_info_p1.expiration - new_sector_info_p1.power_base_epoch;
+    let weights1 = get_deal_weights(v, deal_ids[0], duration);
+    let weights2 = get_deal_weights(v, deal_ids[1], duration);
+    assert_eq!(&weights1.0 + &weights2.0, new_sector_info_p1.deal_weight);
+    assert_eq!(&weights1.1 + &weights2.1, new_sector_info_p1.verified_deal_weight);
+    assert_eq!(new_sealed_cid1, new_sector_info_p1.sealed_cid);
 
     let new_sector_info_p2 = sector_info(v, &maddr, first_sector_number + 1);
-    assert!(new_sector_info_p2.deal_weight.is_zero());
-    assert!(new_sector_info_p2.verified_deal_weight.is_zero());
-    assert_ne!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
+    assert_eq!(weights1.0 + weights2.0, new_sector_info_p2.deal_weight);
+    assert_eq!(weights1.1 + weights2.1, new_sector_info_p2.verified_deal_weight);
+    assert_eq!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
+
+    let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let deal_states = DealMetaArray::load(&st.states, &store).unwrap();
+    for id in deal_ids.iter() {
+        // both deals are associated with the first sector
+        let state = deal_states.get(*id).unwrap();
+        assert_eq!(first_sector_number, state.unwrap().sector_number);
+    }
 
     assert_invariants(v, &Policy::default(), None)
 }
