@@ -150,7 +150,7 @@ pub fn p2_scalar_mul(p: &blst_p2_affine, scalar: &blst_scalar) -> blst_p2_affine
 }
 
 /// Encodes a G2 point in affine format into byte slice with padded elements.
-/// G2 points have two coordinates (x,y) where each coordinate is a complex number (real,imaginary)
+/// G2 points have two coordinates (x,y).  Each coordinate is in field Fp2.  Each element of Fp2 is made up of two elements of Fp.  Therefore a useful analogy is that each coordinate is made up of a complex number (real,imaginary)
 /// So we need to encode 4 field elements total: x.re, x.im, y.re, y.im
 pub(super) fn encode_g2_point(input: &blst_p2_affine) -> Vec<u8> {
     // Create output buffer with space for all coordinates (4 * 64 bytes)
