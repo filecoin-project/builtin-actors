@@ -1,5 +1,6 @@
 use fil_actors_integration_tests::tests::{
     proposal_hash_test, swap_self_1_of_2_test, swap_self_2_of_3_test, test_delete_self_inner_test,
+    recursive_approve_fails_test,
 };
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
@@ -36,4 +37,11 @@ fn swap_self_2_of_3() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     swap_self_2_of_3_test(&v);
+}
+
+#[test]
+fn recursive_approve_fails() {
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(store);
+    recursive_approve_fails_test(&v);
 }

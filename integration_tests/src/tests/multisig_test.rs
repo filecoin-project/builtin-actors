@@ -1,7 +1,7 @@
 use export_macro::vm_test;
 use fil_actor_init::ExecReturn;
 use fil_actor_multisig::{
-    Method as MsigMethod, PENDING_TXN_CONFIG, PendingTxnMap, ApproveReturn, ProposeParams, RemoveSignerParams,
+    Method as MsigMethod, PENDING_TXN_CONFIG, PendingTxnMap, ApproveReturn, ProposeParams, RemoveSignerParams, AddSignerParams,
     State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams, compute_proposal_hash,
 };
 use fil_actors_runtime::cbor::serialize;
@@ -197,14 +197,39 @@ pub fn swap_self_1_of_2_test(v: &dyn VM) {
 }
 
 #[vm_test]
-pub fn multisig_cannot_loop_approvals_to_itself(v: &dyn VM) {
+pub fn recursive_approve_fails_test(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let alice = addrs[0];
     let bob = addrs[1];
 
-    // Create a 1-of-1 multisig
-    let msig_addr = create_msig(v, &[alice, bob], 2);
+    // Create a 1-of-2 multisig
+    let msig_addr = create_msig(v, &[alice, bob], 1);
+    println!("msig_addr: {:?}", msig_addr);
 
+    // Add multisig as signer
+    // Add msig_addr itself as signer using the AddSigner method
+    let add_signer_params = AddSignerParams {
+        signer: msig_addr,
+        increase: true,
+    };
+    println!("add signer coming");
+    // Propose to add msig_addr as a signer (only msig can call AddSigner directly, so we must propose)
+    let propose_add_signer_params = ProposeParams {
+        to: msig_addr,
+        value: TokenAmount::zero(),
+        method: MsigMethod::AddSigner as u64,
+        params: serialize(&add_signer_params, "add signer params").unwrap(),
+    };
+    apply_ok(
+        v,
+        &alice,
+        &msig_addr,
+        &TokenAmount::zero(),
+        MsigMethod::Propose as u64,
+        Some(propose_add_signer_params),
+    );
+
+    println!("add signer worked");
     // Fund the multisig
     apply_ok(
         v,
@@ -217,7 +242,7 @@ pub fn multisig_cannot_loop_approvals_to_itself(v: &dyn VM) {
 
     // Create a transaction that tries to approve itself
     let approve_params = TxnIDParams {
-        id: TxnID(0), // Non-existent transaction ID
+        id: TxnID(1), // This TxnID
         proposal_hash: vec![],
     };
 
@@ -243,7 +268,7 @@ pub fn multisig_cannot_loop_approvals_to_itself(v: &dyn VM) {
         v,
         msig_addr,
         vec![(
-            TxnID(0),
+            TxnID(1),
             Transaction {
                 to: msig_addr,
                 value: TokenAmount::zero(),
@@ -256,7 +281,7 @@ pub fn multisig_cannot_loop_approvals_to_itself(v: &dyn VM) {
 
     // Bob approves the transaction, which should execute the call to approve itself
     let approve_txn_params = TxnIDParams {
-        id: TxnID(0),
+        id: TxnID(1),
         proposal_hash: vec![],
     };
 
@@ -264,6 +289,8 @@ pub fn multisig_cannot_loop_approvals_to_itself(v: &dyn VM) {
     // to approve itself should fail with USR_NOT_FOUND since we have now implemented 
     // checks effects interactions correctly and remove the pending txn id before making the 
     // execution inner call
+    println!("approve coming");
+
     let result : ApproveReturn = apply_ok(
         v,
         &bob,
@@ -274,6 +301,7 @@ pub fn multisig_cannot_loop_approvals_to_itself(v: &dyn VM) {
     )
     .deserialize()
     .expect("failed to deserialize ApproveReturn");
+    println!("approve worked");
 
     // But the return should indicate that the inner transaction failed with USR_NOT_FOUND
     assert!(result.applied, "Transaction should have been applied");
