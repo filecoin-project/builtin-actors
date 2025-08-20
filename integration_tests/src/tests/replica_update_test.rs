@@ -987,6 +987,7 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     .unwrap();
 
     assert_eq!(ret.activation_results.success_count, 2);
+    assert!(ret.activation_results.all_ok());
 
     let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number);
     let duration = new_sector_info_p1.expiration - new_sector_info_p1.power_base_epoch;
