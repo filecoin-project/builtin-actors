@@ -55,11 +55,11 @@ pub(super) fn p1_add_affine(a: &blst_p1_affine, b: &blst_p1_affine) -> blst_p1_a
 
 /// Adds a G1 point in Jacobian coordinates and a G1 point in affine form.
 ///
-/// Note: While this function contains an unsafe block for BLST operations, 
+/// Note: While this function contains an unsafe block for BLST operations,
 /// the function itself is safe because:
 /// 1. Input types (&blst_fp2) are guaranteed safe by Rust's type system
 /// 2. All possible input variants are covered by test vectors from EIP-2537
-/// 
+///
 /// The unsafe block is used purely for FFI calls to the BLST library.
 #[inline]
 pub fn p1_add_or_double(p: &blst_p1, p_affine: &blst_p1_affine) -> blst_p1 {
@@ -67,7 +67,7 @@ pub fn p1_add_or_double(p: &blst_p1, p_affine: &blst_p1_affine) -> blst_p1 {
     unsafe { blst_p1_add_or_double_affine(&mut result, p, p_affine) };
     result
 }
-
+// Test vectors taken from https://eips.ethereum.org/assets/eip-2537/add_G1_bls.json and https://eips.ethereum.org/assets/eip-2537/fail-add_G1_bls.json
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,7 +103,7 @@ mod tests {
                 ),
             ),
             (
-                // bls_g1add_g1_wrong_order+g1
+                // bls_g1add_g1_not_in_correct_subgroup+g1
                 hex!(
                     "000000000000000000000000000000000123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef00000000000000000000000000000000193fb7cedb32b2c3adc06ec11a96bc0d661869316f5e4a577a9f7c179593987beb4fb2ee424dbb2f5dd891e228b46c4a0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1"
                 ),
@@ -182,7 +182,7 @@ mod tests {
         rt.in_call.replace(true);
         let mut system = System::create(&rt).unwrap();
 
-        // Test case 1: Empty input
+        // Test case 1: Empty input (bls_g1add_empty_input)
         let empty_input: Vec<u8> = vec![];
         let res = bls12_g1add(&mut system, &empty_input, PrecompileContext::default());
         assert!(
@@ -190,7 +190,7 @@ mod tests {
             "Empty input should return IncorrectInputSize error"
         );
 
-        // Test case 2: Short input
+        // Test case 2: Short input (bls_g1add_short_input)
         let short_input = hex!(
             "00000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb\
              0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1\
@@ -203,7 +203,7 @@ mod tests {
             "Short input should return IncorrectInputSize error"
         );
 
-        // Test case 3: Large input (extra byte at start)
+        // Test case 3: Large input (extra byte at start) (bls_g1add_large_input)
         let large_input = hex!(
             "000000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb\
              0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1\
@@ -216,7 +216,7 @@ mod tests {
             "Large input should return IncorrectInputSize error"
         );
 
-        // Test case 4: Point not on curve
+        // Test case 4: Point not on curve (bls_g1add_point_not_on_curve)
         let not_on_curve = hex!(
             "0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb\
              00000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21\
@@ -229,7 +229,7 @@ mod tests {
             "Point not on curve should return InvalidInput error"
         );
 
-        // // Test case 5: Invalid field element
+        // // Test case 5: Invalid field element (bls_g2add_invalid_field_element)
         let invalid_field = hex!(
             "0000000000000000000000000000000031f2e5916b17be2e71b10b4292f558e727dfd7d48af9cbc5087f0ce00dcca27c8b01e83eaace1aefb539f00adb227166\
              0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1\
@@ -242,7 +242,7 @@ mod tests {
             "Invalid field element should return InvalidInput error"
         );
 
-        // Test case 6: Invalid top bytes
+        // Test case 6: Invalid top bytes (bls_g1add_violate_top_bytes)
         let invalid_top = hex!(
             "1000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb\
              0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1\
@@ -253,6 +253,16 @@ mod tests {
         assert!(
             matches!(res, Err(PrecompileError::InvalidInput)),
             "Invalid top bytes should return InvalidInput error"
+        );
+
+        // Test case 7: invalid point: not on curve (bls_g1add_point_in_correct_subgroup_invalid_curve)
+        let invalid_top = hex!(
+            "000000000000000000000000000000000a2833e497b38ee3ca5c62828bf4887a9f940c9e426c7890a759c20f248c23a7210d2432f4c98a514e524b5184a0ddac00000000000000000000000000000000150772d56bf9509469f9ebcd6e47570429fd31b0e262b66d512e245c38ec37255529f2271fd70066473e393a8bead0c300000000000000000000000000000000112b98340eee2777cc3c14163dea3ec97977ac3dc5c70da32e6e87578f44912e902ccef9efe28d4a78b8999dfbca942600000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21"
+        );
+        let res = bls12_g1add(&mut system, &invalid_top, PrecompileContext::default());
+        assert!(
+            matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
+            "Point not on curve should return InvalidInput error"
         );
     }
 }

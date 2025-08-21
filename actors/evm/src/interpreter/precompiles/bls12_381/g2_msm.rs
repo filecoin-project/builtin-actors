@@ -1,8 +1,8 @@
+use crate::interpreter::precompiles::bls_util::is_infinity;
 use crate::interpreter::precompiles::bls_util::{
     G2_MSM_INPUT_LENGTH, G2_OUTPUT_LENGTH, PADDED_G2_LENGTH, SCALAR_LENGTH_BITS, encode_g2_point,
     extract_g2_input, p2_scalar_mul, p2_to_affine, read_scalar,
 };
-use crate::interpreter::precompiles::bls_util::is_infinity;
 use crate::interpreter::{
     System,
     precompiles::{PrecompileContext, PrecompileError, PrecompileResult},
