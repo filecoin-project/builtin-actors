@@ -463,6 +463,18 @@ fn execute_transaction_if_approved(
     if threshold_met {
         st.check_available(rt.current_balance(), &txn.value, rt.curr_epoch())?;
 
+        rt.transaction(|st: &mut State, rt| {
+            let mut ptx = PendingTxnMap::load(
+                rt.store(),
+                &st.pending_txs,
+                PENDING_TXN_CONFIG,
+                "pending txns",
+            )?;
+            ptx.delete(&txn_id)?;
+            st.pending_txs = ptx.flush()?;
+            Ok(())
+        })?;
+
         match extract_send_result(rt.send_simple(
             &txn.to,
             txn.method,
@@ -482,18 +494,6 @@ fn execute_transaction_if_approved(
             _ => {}
         }
         applied = true;
-
-        rt.transaction(|st: &mut State, rt| {
-            let mut ptx = PendingTxnMap::load(
-                rt.store(),
-                &st.pending_txs,
-                PENDING_TXN_CONFIG,
-                "pending txns",
-            )?;
-            ptx.delete(&txn_id)?;
-            st.pending_txs = ptx.flush()?;
-            Ok(())
-        })?;
     }
 
     Ok((applied, out, code))
