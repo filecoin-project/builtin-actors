@@ -5,7 +5,7 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    G2_ADD_INPUT_LENGTH, G2_INPUT_ITEM_LENGTH, encode_g2_point, extract_g2_input, is_infinity,
+    G2_ADD_INPUT_LENGTH, PADDED_G2_LENGTH, encode_g2_point, extract_g2_input, is_infinity,
     p2_from_affine, p2_to_affine,
 };
 
@@ -24,7 +24,7 @@ pub fn bls12_g2add<RT: Runtime>(
     }
 
     // Split the input into two segments corresponding to the two G2 points.
-    let (encoded_a, encoded_b) = input.split_at(G2_INPUT_ITEM_LENGTH);
+    let (encoded_a, encoded_b) = input.split_at(PADDED_G2_LENGTH);
     let a_aff = extract_g2_input(encoded_a, false)?;
     let b_aff = extract_g2_input(encoded_b, false)?;
 
