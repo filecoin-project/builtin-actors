@@ -216,7 +216,7 @@ mod tests {
             "00000000000000000000000000000000053fbdb09b6b5faa08bfe7b7069454247ad4d8bd57e90e2d2ebaa04003dcf110aa83072c07f480ab2107cca2ccff6091000000000000000000000000000000001654537b7c96fe64d13906066679c3d45808cb666452b55d1b909c230cc4b423c3f932c58754b9b762dc49fcc825522c"
         );
         let res3 = bls12_g1msm(&mut system, &input3, PrecompileContext::default())
-            .expect("g2 msm should succeed");
+            .expect("g1 msm should succeed");
         assert_eq!(res3, expected3, "bls_g2msm_multiple_with_point_at_infinity result mismatch");
     }
     #[test]
