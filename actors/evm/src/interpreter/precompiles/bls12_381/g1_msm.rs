@@ -193,7 +193,7 @@ mod tests {
         );
 
         let res1 = bls12_g1msm(&mut system, &input1, PrecompileContext::default())
-            .expect("g2 msm should succeed");
+            .expect("g1 msm should succeed");
         assert_eq!(res1, expected1, "bls_g2msm_multiple result mismatch");
 
         // Test case 2: bls_g1msm_multiple
