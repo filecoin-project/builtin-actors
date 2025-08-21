@@ -310,7 +310,7 @@ fn decode_g1_on_curve(
     //
     // SAFETY: Out is a blst value.
     let on_curve = unsafe { blst_p1_affine_on_curve(&out) };
-    let is_inf   = unsafe { blst_p1_affine_is_inf(&out) };
+    let is_inf = unsafe { blst_p1_affine_is_inf(&out) };
     if !(on_curve || is_inf) {
         return Err(PrecompileError::EcErr(CurveError::NotMember));
     }
@@ -354,7 +354,7 @@ fn decode_g2_on_curve(
     //
     // SAFETY: Out is a blst value.
     let on_curve = unsafe { blst_p2_affine_on_curve(&out) };
-    let is_inf   = unsafe { blst_p2_affine_is_inf(&out) };
+    let is_inf = unsafe { blst_p2_affine_is_inf(&out) };
     if !(on_curve || is_inf) {
         return Err(PrecompileError::EcErr(CurveError::NotMember));
     }
