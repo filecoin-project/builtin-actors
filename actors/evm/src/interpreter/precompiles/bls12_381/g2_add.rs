@@ -5,7 +5,7 @@ use crate::interpreter::{
 use fil_actors_runtime::runtime::Runtime;
 
 use crate::interpreter::precompiles::bls_util::{
-    G2_ADD_INPUT_LENGTH, G2_INPUT_ITEM_LENGTH, encode_g2_point, extract_g2_input, is_infinity,
+    G2_ADD_INPUT_LENGTH, PADDED_G2_LENGTH, encode_g2_point, extract_g2_input, is_infinity,
     p2_from_affine, p2_to_affine,
 };
 
@@ -24,7 +24,7 @@ pub fn bls12_g2add<RT: Runtime>(
     }
 
     // Split the input into two segments corresponding to the two G2 points.
-    let (encoded_a, encoded_b) = input.split_at(G2_INPUT_ITEM_LENGTH);
+    let (encoded_a, encoded_b) = input.split_at(PADDED_G2_LENGTH);
     let a_aff = extract_g2_input(encoded_a, false)?;
     let b_aff = extract_g2_input(encoded_b, false)?;
 
@@ -50,9 +50,12 @@ pub(super) fn p2_add_affine(a: &blst_p2_affine, b: &blst_p2_affine) -> blst_p2_a
 
 /// Adds a G2 point in projective form with a G2 point in affine form.
 ///
-/// # Safety
+/// Note: While this function contains an unsafe block for BLST operations,
+/// the function itself is safe because:
+/// 1. Input types (&blst_p2) and (&blst_p2_affine) are guaranteed safe by Rust's type system
+/// 2. All possible input variants are covered by test vectors from EIP-2537
 ///
-/// All inputs are assumed valid due to earlier checks.
+/// The unsafe block is used purely for FFI calls to the BLST library.
 #[inline]
 pub fn p2_add_or_double(p: &blst_p2, p_affine: &blst_p2_affine) -> blst_p2 {
     let mut result = blst_p2::default();
@@ -60,6 +63,7 @@ pub fn p2_add_or_double(p: &blst_p2, p_affine: &blst_p2_affine) -> blst_p2 {
     result
 }
 
+// Test vectors taken from https://eips.ethereum.org/assets/eip-2537/add_G2_bls.json and https://eips.ethereum.org/assets/eip-2537/fail-add_G2_bls.json
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,7 +99,7 @@ mod tests {
                 ),
             ),
             (
-                // bls_g2add_g2_wrong_order+g2
+                // bls_g2add_g2_not_in_correct_subgroup+g2
                 hex!(
                     "00000000000000000000000000000000197bfd0342bbc8bee2beced2f173e1a87be576379b343e93232d6cef98d84b1d696e5612ff283ce2cfdccb2cfb65fa0c00000000000000000000000000000000184e811f55e6f9d84d77d2f79102fd7ea7422f4759df5bf7f6331d550245e3f1bcf6a30e3b29110d85e0ca16f9f6ae7a000000000000000000000000000000000f10e1eb3c1e53d2ad9cf2d398b2dc22c5842fab0a74b174f691a7e914975da3564d835cd7d2982815b8ac57f507348f000000000000000000000000000000000767d1c453890f1b9110fda82f5815c27281aba3f026ee868e4176a0654feea41a96575e0c4d58a14dbfbcc05b5010b100000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be"
                 ),
@@ -172,7 +176,7 @@ mod tests {
         rt.in_call.replace(true);
         let mut system = System::create(&rt).unwrap();
 
-        // Test case 1: Empty input
+        // Test case 1: Empty input (bls_g2add_empty_input)
         let empty_input: Vec<u8> = vec![];
         let res = bls12_g2add(&mut system, &empty_input, PrecompileContext::default());
         assert!(
@@ -180,12 +184,9 @@ mod tests {
             "Empty input should return IncorrectInputSize error"
         );
 
-        // Test case 2: Short input
+        // Test case 2: Short input (bls_g2add_short_input)
         let short_input = hex!(
-            "000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8\
-             0000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e\
-             000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801\
-             000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be"
+            "000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be00000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"
         );
         let res = bls12_g2add(&mut system, &short_input, PrecompileContext::default());
         assert!(
@@ -193,7 +194,7 @@ mod tests {
             "Short input should return IncorrectInputSize error"
         );
 
-        // Test case 3: Long input (extra byte at start)
+        // Test case 3: Long input (extra byte at start) (bls_g2add_long_input)
         let long_input = hex!(
             "0000000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8\
              0000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e\
@@ -210,7 +211,7 @@ mod tests {
             "Long input should return IncorrectInputSize error"
         );
 
-        // Test case 4: Point not on curve
+        // Test case 4: Point not on curve (bls_g2add_point_not_on_curve)
         let not_on_curve = hex!(
             "00000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8\
              00000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68\
@@ -227,7 +228,7 @@ mod tests {
             "Point not on curve should return InvalidInput error"
         );
 
-        // Test case 5: Invalid field element
+        // Test case 5: Invalid field element (bls_g2add_invalid_field_element)
         let invalid_field = hex!(
             "000000000000000000000000000000001c4bb49d2a0ef12b7123acdd7110bd292b5bc659edc54dc21b81de057194c79b2a5803255959bbef8e7f56c8c12168630000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be00000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"
         );
@@ -237,7 +238,7 @@ mod tests {
             "Invalid field element should return InvalidInput error"
         );
 
-        // Test case 6: Invalid top bytes
+        // Test case 6: Invalid top bytes (bls_g2add_violate_top_bytes)
         let invalid_top = hex!(
             "10000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8\
              0000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e\
@@ -252,6 +253,16 @@ mod tests {
         assert!(
             matches!(res, Err(PrecompileError::InvalidInput)),
             "Invalid top bytes should return InvalidInput error"
+        );
+
+        // Test case 7: Point not on curve (bls_g2add_point_in_correct_subgroup_invalid_curve)
+        let not_on_curve = hex!(
+            "00000000000000000000000000000000152f39ccc20272ce00fb519fc4a3e91f50d9eccefbfa51bfbaa77af322907a4372dc493b5226e66b836bc3f454cfbe0e00000000000000000000000000000000116ce538b309cdd3587d13fd3fdccc523d2cea1c7be76994ef157dc677520ce22fded623d6408b042d38be76afdba88900000000000000000000000000000000192c5538ec7cb7b7b7ee56520d39e2a1b8dded91cb5d4c3fcbbde46795e2c7eb61871ba09aa6d521d063a4d99603cda400000000000000000000000000000000094919a748626cc6899e7cdfbc86c87d0eda311ad5d78418719b3468c4c7d34223d6d0da1c4d8a99b32d46f835c5ba8f00000000000000000000000000000000103121a2ceaae586d240843a398967325f8eb5a93e8fea99b62b9f88d8556c80dd726a4b30e84a36eeabaf3592937f2700000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000f9e7ba9a86a8f7624aa2b42dcc8772e1af4ae115685e60abc2c9b90242167acef3d0be4050bf935eed7c3b6fc7ba77e000000000000000000000000000000000d22c3652d0dc6f0fc9316e14268477c2049ef772e852108d269d9c38dba1d4802e8dae479818184c08f9a569d878451"
+        );
+        let res = bls12_g2add(&mut system, &not_on_curve, PrecompileContext::default());
+        assert!(
+            matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
+            "invalid point: not on curve"
         );
     }
 }

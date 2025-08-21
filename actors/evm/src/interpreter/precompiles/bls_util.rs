@@ -25,14 +25,12 @@ use blst::{
     blst_scalar_from_bendian,
 };
 
-pub const G1_INPUT_LENGTH: usize = 128;
-pub const G1_ADD_INPUT_LENGTH: usize = G1_INPUT_LENGTH * 2;
+pub const G1_ADD_INPUT_LENGTH: usize = PADDED_G1_LENGTH * 2;
 pub const G1_OUTPUT_LENGTH: usize = 128;
 pub const PADDING_LENGTH: usize = 16;
 pub const G1_MSM_INPUT_LENGTH: usize = 160;
 pub const SCALAR_LENGTH: usize = 32;
 pub const G2_ADD_INPUT_LENGTH: usize = 512;
-pub const G2_INPUT_ITEM_LENGTH: usize = 256;
 pub const G2_OUTPUT_LENGTH: usize = 256;
 pub const G2_MSM_INPUT_LENGTH: usize = 288;
 pub const PADDED_FP_LENGTH: usize = 64;
@@ -197,7 +195,7 @@ pub(super) fn extract_g2_input(
     subgroup_check: bool,
 ) -> Result<blst_p2_affine, PrecompileError> {
     // Check input length (256 bytes = 4 * 64 bytes for x.re, x.im, y.re, y.im)
-    if input.len() != G2_INPUT_ITEM_LENGTH {
+    if input.len() != PADDED_G2_LENGTH {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
@@ -252,7 +250,7 @@ pub fn extract_g1_input(
     input: &[u8],
     subgroup_check: bool,
 ) -> Result<blst_p1_affine, PrecompileError> {
-    if input.len() != G1_INPUT_LENGTH {
+    if input.len() != PADDED_G1_LENGTH {
         return Err(PrecompileError::IncorrectInputSize);
     }
 

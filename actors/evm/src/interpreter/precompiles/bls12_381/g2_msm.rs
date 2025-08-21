@@ -1,8 +1,8 @@
+use crate::interpreter::precompiles::bls_util::is_infinity;
 use crate::interpreter::precompiles::bls_util::{
     G2_MSM_INPUT_LENGTH, G2_OUTPUT_LENGTH, PADDED_G2_LENGTH, SCALAR_LENGTH_BITS, encode_g2_point,
     extract_g2_input, p2_scalar_mul, p2_to_affine, read_scalar,
 };
-use crate::interpreter::precompiles::bls_util::is_infinity;
 use crate::interpreter::{
     System,
     precompiles::{PrecompileContext, PrecompileError, PrecompileResult},
@@ -14,11 +14,7 @@ use blst::{MultiPoint, blst_p2_affine, blst_scalar};
 /// **BLS12_G2MSM Precompile**
 ///
 /// Implements G2 multi-scalar multiplication (MSM) according to [EIP-2537](https://eips.ethereum.org/EIPS/eip-2537#abi-for-g2-multiexponentiation).
-/// The input must be `160 * k` bytes, where each 160-byte segment is composed of:
-/// - A 128-byte encoding of a G2 point (padded, in affine form)
-/// - A 32-byte encoding of a scalar value in Big-Endian format
-///
-/// The output is an encoded G2 point (128 bytes).
+/// The input must be `288 * k` bytes here.
 pub fn bls12_g2msm<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
