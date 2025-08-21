@@ -280,49 +280,56 @@ fn bls_precompile_test(bytecode: Vec<u8>) {
     solidity_params.extend_from_slice(&hex::decode("fa17c461").unwrap()); // function selector for "testG1Add()"
 
     rt.expect_gas_available(10_000_000_000u64);
-    util::invoke_contract(&rt, &solidity_params);
+    let res = util::invoke_contract(&rt, &solidity_params);
+    assert!(res.is_empty(), "testG1Add should not return data or revert");
 
     // Test G1 MSM
     let mut g1_msm_params = vec![];
     g1_msm_params.extend_from_slice(&hex::decode("6a3eee08").unwrap()); // function selector for "testG1MSM()"
 
     rt.expect_gas_available(10_000_000_000u64);
-    util::invoke_contract(&rt, &g1_msm_params);
+    let res = util::invoke_contract(&rt, &g1_msm_params);
+    assert!(res.is_empty(), "testG1MSM should not return data or revert");
 
     // Test G2 Addition
     let mut g2_params = vec![];
     g2_params.extend_from_slice(&hex::decode("4660d8a1").unwrap()); // function selector for "testG2Add()"
 
     rt.expect_gas_available(10_000_000_000u64);
-    util::invoke_contract(&rt, &g2_params);
+    let res = util::invoke_contract(&rt, &g2_params);
+    assert!(res.is_empty(), "testG2Add should not return data or revert");
 
     // Test G2 MSM
     let mut g2_msm_params = vec![];
     g2_msm_params.extend_from_slice(&hex::decode("fb0cc8d6").unwrap()); // function selector for "testG2MSM()"
 
     rt.expect_gas_available(10_000_000_000u64);
-    util::invoke_contract(&rt, &g2_msm_params);
+    let res = util::invoke_contract(&rt, &g2_msm_params);
+    assert!(res.is_empty(), "testG2MSM should not return data or revert");
 
     // Test Map Fp to G1
     let mut map_fp_to_g1_params = vec![];
     map_fp_to_g1_params.extend_from_slice(&hex::decode("e38f2f12").unwrap()); // function selector for "testMapFpToG1()"
 
     rt.expect_gas_available(10_000_000_000u64);
-    util::invoke_contract(&rt, &map_fp_to_g1_params);
+    let res = util::invoke_contract(&rt, &map_fp_to_g1_params);
+    assert!(res.is_empty(), "testMapFpToG1 should not return data or revert");
 
     // Test Map Fp2 to G2
     let mut map_fp2_to_g2_params = vec![];
     map_fp2_to_g2_params.extend_from_slice(&hex::decode("f4f4dab1").unwrap()); // function selector for "testMapFp2ToG2()"
 
     rt.expect_gas_available(10_000_000_000u64);
-    util::invoke_contract(&rt, &map_fp2_to_g2_params);
+    let res = util::invoke_contract(&rt, &map_fp2_to_g2_params);
+    assert!(res.is_empty(), "testMapFp2ToG2 should not return data or revert");
 
     // Test Pairing
     let mut pairing_params = vec![];
     pairing_params.extend_from_slice(&hex::decode("25a753ef").unwrap()); // function selector for "testPairing()"
 
     rt.expect_gas_available(10_000_000_000u64);
-    util::invoke_contract(&rt, &pairing_params);
+    let res = util::invoke_contract(&rt, &pairing_params);
+    assert!(res.is_empty(), "testPairing should not return data or revert");
 
     // Test G1 Addition Failure
     let mut failure_params = vec![];

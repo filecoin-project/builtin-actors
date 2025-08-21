@@ -53,7 +53,7 @@ pub fn bls12_pairing<RT: Runtime>(
         let p1_aff = extract_g1_input(encoded_g1_element, true)?;
         let p2_aff = extract_g2_input(encoded_g2_element, true)?;
 
-        if !g1_is_zero & !g2_is_zero {
+        if !g1_is_zero && !g2_is_zero {
             pairs.push((p1_aff, p2_aff));
         }
     }

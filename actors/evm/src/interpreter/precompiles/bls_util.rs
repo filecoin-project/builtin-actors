@@ -157,9 +157,11 @@ pub fn p2_scalar_mul(p: &blst_p2_affine, scalar: &blst_scalar) -> blst_p2_affine
     p2_to_affine(&result)
 }
 
-/// Encodes a G2 point in affine format into byte slice with padded elements.
-/// G2 points have two coordinates (x,y).  Each coordinate is in field Fp2.  Each element of Fp2 is made up of two elements of Fp.  Therefore a useful analogy is that each coordinate is made up of a complex number (real,imaginary)
-/// So we need to encode 4 field elements total: x.re, x.im, y.re, y.im
+/// Encodes a G2 point in affine format into a byte slice with padded elements.
+/// Layout is x.re || x.im || y.re || y.im, each as a 64‑byte padded Fp element:
+/// 16 top bytes of zero padding + 48 bytes big‑endian canonical Fp value.
+/// G2 points are affine over Fp², so each coordinate (x, y) is an Fp² element
+/// with (real, imaginary) Fp limbs—hence 4 Fp elements total.
 pub(super) fn encode_g2_point(input: &blst_p2_affine) -> Vec<u8> {
     // Create output buffer with space for all coordinates (4 * 64 bytes)
     let mut out = vec![0u8; PADDED_G2_LENGTH];
@@ -230,6 +232,12 @@ pub(super) fn extract_g2_input(
 /// Accepts a safe reference to a `blst_fp`; the only unsafe is localized to
 /// the FFI call that writes the big-endian bytes.
 pub(super) fn fp_to_bytes(out: &mut [u8], input: &blst_fp) {
+    debug_assert_eq!(
+        out.len(),
+        PADDED_FP_LENGTH,
+        "fp_to_bytes: expected {}‑byte buffer",
+        PADDED_FP_LENGTH
+    );
     if out.len() != PADDED_FP_LENGTH {
         return;
     }
@@ -303,7 +311,9 @@ fn decode_g1_on_curve(
     // * An input is neither a point on the G1 elliptic curve nor the infinity point
     //
     // SAFETY: Out is a blst value.
-    if unsafe { !blst_p1_affine_on_curve(&out) } {
+    let on_curve = unsafe { blst_p1_affine_on_curve(&out) };
+    let is_inf   = unsafe { blst_p1_affine_is_inf(&out) };
+    if !(on_curve || is_inf) {
         return Err(PrecompileError::EcErr(CurveError::NotMember));
     }
 
@@ -345,7 +355,9 @@ fn decode_g2_on_curve(
     // * An input is neither a point on the G2 elliptic curve nor the infinity point
     //
     // SAFETY: Out is a blst value.
-    if unsafe { !blst_p2_affine_on_curve(&out) } {
+    let on_curve = unsafe { blst_p2_affine_on_curve(&out) };
+    let is_inf   = unsafe { blst_p2_affine_is_inf(&out) };
+    if !(on_curve || is_inf) {
         return Err(PrecompileError::EcErr(CurveError::NotMember));
     }
 

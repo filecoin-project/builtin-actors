@@ -35,8 +35,11 @@ jobs:
       uses: actions/checkout@v3
     - if: env.RUNNER_ENVIRONMENT != 'github-hosted'
       uses: dtolnay/rust-toolchain@stable
-    - name: Install Clang
-      run: sudo apt-get update && sudo apt-get install -y clang
+    - name: Install Clang (Linux only)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends clang
     - name: Installing the toolchain
       run: make toolchain
     - name: Install cargo-nextest
