@@ -28,8 +28,6 @@ mod power_scenario_tests;
 pub use power_scenario_tests::*;
 mod publish_deals_test;
 pub use publish_deals_test::*;
-mod replica_update_test;
-pub use replica_update_test::*;
 mod terminate_test;
 pub use terminate_test::*;
 mod verified_claim_test;

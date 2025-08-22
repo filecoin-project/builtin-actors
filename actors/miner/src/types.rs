@@ -476,22 +476,6 @@ pub struct DisputeWindowedPoStParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ReplicaUpdate {
-    pub sector_number: SectorNumber,
-    pub deadline: u64,
-    pub partition: u64,
-    pub new_sealed_cid: Cid,
-    pub deals: Vec<DealID>,
-    pub update_proof_type: RegisteredUpdateProof,
-    pub replica_proof: RawBytes,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ProveReplicaUpdatesParams {
-    pub updates: Vec<ReplicaUpdate>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveReplicaUpdates3Params {
     pub sector_updates: Vec<SectorUpdateManifest>,
     // Proofs for each sector, parallel to activation manifests.
