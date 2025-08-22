@@ -1,8 +1,9 @@
 use export_macro::vm_test;
 use fil_actor_init::ExecReturn;
 use fil_actor_multisig::{
-    Method as MsigMethod, PENDING_TXN_CONFIG, PendingTxnMap, ProposeParams, RemoveSignerParams,
-    State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams, compute_proposal_hash,
+    AddSignerParams, ApproveReturn, Method as MsigMethod, PENDING_TXN_CONFIG, PendingTxnMap,
+    ProposeParams, RemoveSignerParams, State as MsigState, SwapSignerParams, Transaction, TxnID,
+    TxnIDParams, compute_proposal_hash,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
@@ -193,6 +194,110 @@ pub fn swap_self_1_of_2_test(v: &dyn VM) {
     );
     let st: MsigState = get_state(v, &msig_addr).unwrap();
     assert_eq!(vec![bob, chuck], st.signers);
+    assert_invariants(v, &Policy::default(), None);
+}
+
+#[vm_test]
+pub fn recursive_approve_fails_test(v: &dyn VM) {
+    let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
+    let alice = addrs[0];
+    let bob = addrs[1];
+
+    // Create a 1-of-2 multisig
+    let msig_addr = create_msig(v, &[alice, bob], 1);
+
+    // Add multisig as signer
+    // Add msig_addr itself as signer using the AddSigner method
+    let add_signer_params = AddSignerParams { signer: msig_addr, increase: true };
+
+    // Propose to add msig_addr as a signer (only msig can call AddSigner directly, so we must propose)
+    let propose_add_signer_params = ProposeParams {
+        to: msig_addr,
+        value: TokenAmount::zero(),
+        method: MsigMethod::AddSigner as u64,
+        params: serialize(&add_signer_params, "add signer params").unwrap(),
+    };
+    apply_ok(
+        v,
+        &alice,
+        &msig_addr,
+        &TokenAmount::zero(),
+        MsigMethod::Propose as u64,
+        Some(propose_add_signer_params),
+    );
+
+    // Fund the multisig
+    apply_ok(v, &alice, &msig_addr, &TokenAmount::from_whole(100), METHOD_SEND, None::<RawBytes>);
+
+    // Create a transaction that tries to approve itself
+    let approve_params = TxnIDParams {
+        id: TxnID(1), // This TxnID
+        proposal_hash: vec![],
+    };
+
+    let propose_approve_params = ProposeParams {
+        to: msig_addr,
+        value: TokenAmount::zero(),
+        method: MsigMethod::Approve as u64,
+        params: serialize(&approve_params, "approve params").unwrap(),
+    };
+
+    // Alice proposes to call the multisig's approve method with a non-existent transaction
+    apply_ok(
+        v,
+        &alice,
+        &msig_addr,
+        &TokenAmount::zero(),
+        MsigMethod::Propose as u64,
+        Some(propose_approve_params),
+    );
+
+    // Verify there is a pending transaction
+    check_txs(
+        v,
+        msig_addr,
+        vec![(
+            TxnID(1),
+            Transaction {
+                to: msig_addr,
+                value: TokenAmount::zero(),
+                method: MsigMethod::Approve as u64,
+                params: serialize(&approve_params, "approve params").unwrap(),
+                approved: vec![alice],
+            },
+        )],
+    );
+
+    // Bob approves the transaction, which should execute the call to approve itself
+    let approve_txn_params = TxnIDParams { id: TxnID(1), proposal_hash: vec![] };
+
+    // When Bob approves, the transaction should execute successfully, but the inner call
+    // to approve itself should fail with USR_NOT_FOUND since we have now implemented
+    // checks effects interactions correctly and remove the pending txn id before making the
+    // execution inner call
+
+    let result: ApproveReturn = apply_ok(
+        v,
+        &bob,
+        &msig_addr,
+        &TokenAmount::zero(),
+        MsigMethod::Approve as u64,
+        Some(approve_txn_params),
+    )
+    .deserialize()
+    .expect("failed to deserialize ApproveReturn");
+
+    // But the return should indicate that the inner transaction failed with USR_NOT_FOUND
+    assert!(result.applied, "Transaction should have been applied");
+    assert_eq!(
+        ExitCode::USR_NOT_FOUND,
+        result.code,
+        "Inner approve call should fail with USR_NOT_FOUND"
+    );
+
+    // The transaction should have been executed and removed from pending
+    check_txs(v, msig_addr, vec![]);
+
     assert_invariants(v, &Policy::default(), None);
 }
 
