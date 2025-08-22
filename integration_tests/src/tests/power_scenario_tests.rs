@@ -20,46 +20,31 @@ use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use num_traits::Zero;
 use vm_api::VM;
 use vm_api::trace::ExpectInvocation;
-use vm_api::util::{apply_ok, serialize_ok};
+use vm_api::util::apply_ok;
 
 use crate::expects::Expect;
 use crate::util::{
-    PrecommitMetadata, assert_invariants, create_accounts, create_miner, expect_invariants,
-    invariant_failure_patterns, miner_dline_info, miner_precommit_one_sector_v2,
+    PrecommitMetadata, assert_invariants, create_accounts, create_miner, create_miner_internal,
+    expect_invariants, invariant_failure_patterns, miner_dline_info, miner_precommit_one_sector_v2,
 };
 use crate::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 
 #[vm_test]
 pub fn power_create_miner_test(v: &dyn VM) {
     let owner = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-    v.execute_message(
-        &TEST_FAUCET_ADDR,
-        &owner,
-        &TokenAmount::from_atto(10_000u32),
-        METHOD_SEND,
-        None,
-    )
-    .unwrap();
+    let value = TokenAmount::from_atto(10_000u32);
+    v.execute_message(&TEST_FAUCET_ADDR, &owner, &value, METHOD_SEND, None).unwrap();
     let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
     let peer_id = "miner".as_bytes().to_vec();
-    let post_proof = RegisteredPoStProof::StackedDRGWindow32GiBV1P1;
+    let window_post_proof_type = RegisteredPoStProof::StackedDRGWindow32GiBV1P1;
     let params = CreateMinerParams {
         owner,
         worker: owner,
-        window_post_proof_type: post_proof,
+        window_post_proof_type,
         peer: peer_id.clone(),
         multiaddrs: multiaddrs.clone(),
     };
-
-    let res = v
-        .execute_message(
-            &owner,
-            &STORAGE_POWER_ACTOR_ADDR,
-            &TokenAmount::from_atto(1000u32),
-            PowerMethod::CreateMiner as u64,
-            Some(serialize_ok(&params)),
-        )
-        .unwrap();
+    let res = create_miner_internal(v, &params, &value);
 
     let owner_id = v.resolve_id_address(&owner).unwrap().id().unwrap();
     let expect = ExpectInvocation {
@@ -84,7 +69,7 @@ pub fn power_create_miner_test(v: &dyn VM) {
                         IpldBlock::serialize_cbor(&MinerConstructorParams {
                             owner,
                             worker: owner,
-                            window_post_proof_type: post_proof,
+                            window_post_proof_type,
                             peer_id,
                             control_addresses: vec![],
                             multi_addresses: multiaddrs,

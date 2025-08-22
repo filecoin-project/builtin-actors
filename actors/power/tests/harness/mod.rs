@@ -156,6 +156,7 @@ impl Harness {
             IpldBlock::serialize_cbor(&create_miner_ret).unwrap(),
             ExitCode::OK,
         );
+
         let params = CreateMinerParams {
             owner: *owner,
             worker: *worker,
