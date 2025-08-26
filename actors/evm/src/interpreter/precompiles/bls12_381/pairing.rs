@@ -45,7 +45,12 @@ pub fn bls12_pairing<RT: Runtime>(
         // the point at infinity and G2 be an invalid element or vice versa.
         // In that case, the precompile should error because one of the elements
         // was invalid.
-        let g1_is_zero = encoded_g1_element.iter().all(|i| *i == 0);
+        let p1_aff = extract_g1_input(encoded_g1_element, true)?;
+        let p2_aff = extract_g2_input(encoded_g2_element, true)?;
+        if !is_infinity(&p1_aff) && !is_infinity(&p2_aff) {
+            pairs.push(p1_aff, p2_aff);
+        }
+        
         let g2_is_zero = encoded_g2_element.iter().all(|i| *i == 0);
 
         // NB: Scalar multiplications, MSMs and pairings MUST perform a subgroup check.
