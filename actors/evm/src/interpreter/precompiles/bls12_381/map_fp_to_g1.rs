@@ -136,7 +136,7 @@ mod tests {
         let res = bls12_map_fp_to_g1(&mut system, &empty_input, PrecompileContext::default());
         assert!(
             matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Empty input should return IncorrectInputSize error"
+            "Test case 'bls_mapg1_empty_input' failed: Empty input should return IncorrectInputSize error"
         );
 
         // Test case 2: Short input (48 bytes instead of 64)
@@ -146,7 +146,7 @@ mod tests {
         let res = bls12_map_fp_to_g1(&mut system, &short_input, PrecompileContext::default());
         assert!(
             matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Short input should return IncorrectInputSize error"
+            "Test case 'bls_mapg1_short_input' failed: Short input should return IncorrectInputSize error"
         );
 
         // Test case 3: Large input (65 bytes instead of 64)
@@ -156,7 +156,7 @@ mod tests {
         let res = bls12_map_fp_to_g1(&mut system, &large_input, PrecompileContext::default());
         assert!(
             matches!(res, Err(PrecompileError::IncorrectInputSize)),
-            "Large input should return IncorrectInputSize error"
+            "Test case 'bls_mapg1_large_input' failed: Large input should return IncorrectInputSize error"
         );
 
         // Test case 4: Invalid top bytes (non-zero padding)
@@ -166,7 +166,7 @@ mod tests {
         let res = bls12_map_fp_to_g1(&mut system, &invalid_top, PrecompileContext::default());
         assert!(
             matches!(res, Err(PrecompileError::InvalidInput)),
-            "Invalid top bytes should return InvalidInput error"
+            "Test case 'bls_mapg1_top_bytes' failed: Invalid top bytes should return InvalidInput error"
         );
 
         // Test case 5: Invalid field element
@@ -176,7 +176,7 @@ mod tests {
         let res = bls12_map_fp_to_g1(&mut system, &invalid_field, PrecompileContext::default());
         assert!(
             matches!(res, Err(PrecompileError::EcErr(CurveError::NotMember))),
-            "Invalid field element should return CurveError error, instead got {:?}",
+            "Test case 'bls_invalid_fq_element' failed: Invalid field element should return CurveError error, instead got {:?}",
             res
         );
     }

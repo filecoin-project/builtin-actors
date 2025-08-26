@@ -1,5 +1,6 @@
 use crate::interpreter::{
-    precompiles::{bls_util::is_infinity, PrecompileContext, PrecompileError, PrecompileResult}, System
+    System,
+    precompiles::{PrecompileContext, PrecompileError, PrecompileResult, bls_util::is_infinity},
 };
 use fil_actors_runtime::runtime::Runtime;
 

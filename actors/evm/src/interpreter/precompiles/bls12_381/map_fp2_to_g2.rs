@@ -56,7 +56,7 @@ pub fn bls12_map_fp2_to_g2<RT: Runtime>(
 #[inline]
 pub(super) fn map_fp2_to_g2(fp2: &blst_fp2) -> blst_p2_affine {
     let mut p = blst_p2::default();
-  // SAFETY: `p` and `fp2` are blst values
+    // SAFETY: `p` and `fp2` are blst values
     // The third argument is unused if null.
     unsafe { blst_map_to_g2(&mut p, fp2, core::ptr::null()) };
     p2_to_affine(&p)
