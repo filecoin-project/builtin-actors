@@ -258,7 +258,6 @@ pub fn extract_g1_input(
 
     let point = decode_g1_on_curve(x_bytes, y_bytes)?;
 
-    // Check if point is on curve (no subgroup check needed for addition)
     if subgroup_check && unsafe { !blst_p1_affine_in_g1(&point) } {
         return Err(PrecompileError::InvalidInput);
     }
