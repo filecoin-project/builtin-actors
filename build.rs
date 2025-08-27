@@ -69,10 +69,55 @@ fn network_name() -> String {
     }.to_owned()
 }
 
+// To support EIP 2537 we compile blst library directly into evm actor
+// This requires a C => wasm32-unknown-unknown clang
+// Note that emcc while support by blst is not an option for us as it cannot
+// target wasm32-unknown-unknown
+fn check_c_compiler_does_wasm() {
+    // If CC is not set, default to "clang", else use the value from the environment.
+    let cc = match std::env::var_os("CC") {
+        Some(val) => val,
+        None => "clang".into(),
+    };
+
+    // First check cc actually runs / is in path
+    let version_check = std::process::Command::new(&cc).arg("--version").output();
+
+    if version_check.is_err() || !version_check.as_ref().unwrap().status.success() {
+        eprintln!(
+            "error: could not run C compiler '{}'.\n\
+             Please ensure clang is installed and in your PATH, or set CC to a working clang binary.",
+            cc.to_string_lossy()
+        );
+        std::process::exit(1);
+    }
+
+    // Then check that the compiler supports wasm32 target
+    let targets_check = std::process::Command::new(&cc).arg("--print-targets").output();
+
+    let has_wasm32 = match targets_check {
+        Ok(output) if output.status.success() => {
+            let targets = String::from_utf8_lossy(&output.stdout);
+            targets.lines().any(|line| line.trim().contains("wasm32"))
+        }
+        _ => false,
+    };
+
+    if !has_wasm32 {
+        eprintln!(
+            "error: C compiler '{}' does not support wasm32-unknown-unknown target.\n\
+             Install LLVM/Clang with wasm32 support \n",
+            cc.to_string_lossy()
+        );
+        std::process::exit(1);
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     // Cargo executable location.
     let cargo = std::env::var_os("CARGO").expect("no CARGO env var");
     println!("cargo:warning=cargo: {:?}", &cargo);
+    check_c_compiler_does_wasm();
 
     let out_dir = std::env::var_os("OUT_DIR")
         .as_ref()
