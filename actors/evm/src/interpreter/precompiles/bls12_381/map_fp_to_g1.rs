@@ -53,7 +53,7 @@ pub(super) fn map_fp_to_g1(fp: &blst_fp) -> blst_p1_affine {
     unsafe { blst_map_to_g1(&mut p, fp, core::ptr::null()) };
     p1_to_affine(&p)
 }
-
+// Test vectors taken from https://eips.ethereum.org/assets/eip-2537/map_fp_to_G1_bls.json and https://eips.ethereum.org/assets/eip-2537/fail-map_fp_to_G1_bls.json
 #[cfg(test)]
 mod tests {
     use super::*;

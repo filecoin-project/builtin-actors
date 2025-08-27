@@ -90,7 +90,7 @@ pub(super) fn p2_msm(g2_points: Vec<blst_p2_affine>, scalars: Vec<blst_scalar>) 
     // Convert the projective result back to affine form.
     p2_to_affine(&multiexp_proj)
 }
-
+// Test vectors taken from https://eips.ethereum.org/assets/eip-2537/msm_G2_bls.json and https://eips.ethereum.org/assets/eip-2537/fail-msm_G2_bls.json
 #[cfg(test)]
 mod tests {
     use super::*;

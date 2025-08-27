@@ -60,7 +60,7 @@ pub(super) fn map_fp2_to_g2(fp2: &blst_fp2) -> blst_p2_affine {
     unsafe { blst_map_to_g2(&mut p, fp2, core::ptr::null()) };
     p2_to_affine(&p)
 }
-
+// Test vectors taken from https://eips.ethereum.org/assets/eip-2537/map_fp2_to_G2_bls.json and https://eips.ethereum.org/assets/eip-2537/fail-map_fp2_to_G2_bls.json
 #[cfg(test)]
 mod tests {
     use super::*;

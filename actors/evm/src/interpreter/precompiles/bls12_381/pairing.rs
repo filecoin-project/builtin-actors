@@ -129,7 +129,7 @@ fn is_fp12_one(f: &blst_fp12) -> bool {
     // SAFETY: argument is a valid blst type
     unsafe { blst_fp12_is_one(f) }
 }
-
+// Test vectors taken from https://eips.ethereum.org/assets/eip-2537/pairing_check_bls.json and https://eips.ethereum.org/assets/eip-2537/fail-pairing_check_bls.json
 #[cfg(test)]
 mod tests {
     use super::*;
