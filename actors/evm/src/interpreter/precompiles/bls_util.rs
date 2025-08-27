@@ -1,3 +1,9 @@
+// Implements core operations and validations for BLS precompiles
+// according to EIP-2537 specifications.
+//
+// Much of the code for the BLS Precompile is derived from 
+// https://github.com/bluealloy/revm/blob/6697f70dd3165e5149a0342b29d6f23f7b082cac/crates/precompile/src/bls12_381/blst.rs
+
 use super::PrecompileError;
 use blst::{
     // Basic types
@@ -212,15 +218,7 @@ pub(super) fn extract_g2_input(
                 return Err(PrecompileError::InvalidInput);
             }
         }
-    } else {
-        // Basic curve check (less expensive, sufficient for addition)
-        // Only verifies that the point is on the curve
-        // SAFETY: point is properly initialized above
-        if unsafe { !blst_p2_affine_on_curve(&point) } {
-            return Err(PrecompileError::InvalidInput);
-        }
-    }
-
+    } 
     Ok(point)
 }
 
