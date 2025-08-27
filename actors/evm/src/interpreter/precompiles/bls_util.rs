@@ -228,12 +228,6 @@ pub(super) fn extract_g2_input(
 /// Accepts a safe reference to a `blst_fp`; the only unsafe is localized to
 /// the FFI call that writes the big-endian bytes.
 pub(super) fn fp_to_bytes(out: &mut [u8], input: &blst_fp) {
-    debug_assert_eq!(
-        out.len(),
-        PADDED_FP_LENGTH,
-        "fp_to_bytes: expected {}‑byte buffer",
-        PADDED_FP_LENGTH
-    );
     if out.len() != PADDED_FP_LENGTH {
         return;
     }
@@ -306,9 +300,7 @@ fn decode_g1_on_curve(
     // * An input is neither a point on the G1 elliptic curve nor the infinity point
     //
     // SAFETY: Out is a blst value.
-    let on_curve = unsafe { blst_p1_affine_on_curve(&out) };
-    let is_inf = unsafe { blst_p1_affine_is_inf(&out) };
-    if !(on_curve || is_inf) {
+    if unsafe { !blst_p1_affine_on_curve(&out) } {
         return Err(PrecompileError::EcErr(CurveError::NotMember));
     }
 
@@ -350,9 +342,7 @@ fn decode_g2_on_curve(
     // * An input is neither a point on the G2 elliptic curve nor the infinity point
     //
     // SAFETY: Out is a blst value.
-    let on_curve = unsafe { blst_p2_affine_on_curve(&out) };
-    let is_inf = unsafe { blst_p2_affine_is_inf(&out) };
-    if !(on_curve || is_inf) {
+    if unsafe { !blst_p2_affine_on_curve(&out) } {
         return Err(PrecompileError::EcErr(CurveError::NotMember));
     }
 
