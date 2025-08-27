@@ -81,9 +81,7 @@ fn check_c_compiler_does_wasm() {
     };
 
     // First check cc actually runs / is in path
-    let version_check = std::process::Command::new(&cc)
-        .arg("--version")
-        .output();
+    let version_check = std::process::Command::new(&cc).arg("--version").output();
 
     if version_check.is_err() || !version_check.as_ref().unwrap().status.success() {
         eprintln!(
@@ -95,9 +93,7 @@ fn check_c_compiler_does_wasm() {
     }
 
     // Then check that the compiler supports wasm32 target
-    let targets_check = std::process::Command::new(&cc)
-        .arg("--print-targets")
-        .output();
+    let targets_check = std::process::Command::new(&cc).arg("--print-targets").output();
 
     let has_wasm32 = match targets_check {
         Ok(output) if output.status.success() => {
