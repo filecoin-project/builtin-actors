@@ -1,7 +1,7 @@
 // Implements core operations and validations for BLS precompiles
 // according to EIP-2537 specifications.
 //
-// Much of the code for the BLS Precompile is derived from 
+// Much of the code for the BLS Precompile is derived from
 // https://github.com/bluealloy/revm/blob/6697f70dd3165e5149a0342b29d6f23f7b082cac/crates/precompile/src/bls12_381/blst.rs
 
 use super::PrecompileError;
@@ -218,7 +218,7 @@ pub(super) fn extract_g2_input(
                 return Err(PrecompileError::InvalidInput);
             }
         }
-    } 
+    }
     Ok(point)
 }
 

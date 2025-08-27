@@ -52,7 +52,7 @@ pub(super) fn p2_add_affine(a: &blst_p2_affine, b: &blst_p2_affine) -> blst_p2_a
 ///
 /// Note: Note: While this function contains an unsafe block for BLST operations,
 /// the function itself is safe because:
-/// 1. input types are all defined by blst and `repr(C)` 
+/// 1. input types are all defined by blst and `repr(C)`
 /// 2. blst behavior is assumed memory safe
 /// 3. The unsafe block is used purely for FFI calls to the BLST library.
 #[inline]
