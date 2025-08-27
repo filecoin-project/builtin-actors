@@ -50,12 +50,11 @@ pub(super) fn p2_add_affine(a: &blst_p2_affine, b: &blst_p2_affine) -> blst_p2_a
 
 /// Adds a G2 point in projective form with a G2 point in affine form.
 ///
-/// Note: While this function contains an unsafe block for BLST operations,
+/// Note: Note: While this function contains an unsafe block for BLST operations,
 /// the function itself is safe because:
-/// 1. Input types (&blst_p2) and (&blst_p2_affine) are guaranteed safe by Rust's type system
-/// 2. All possible input variants are covered by test vectors from EIP-2537
-///
-/// The unsafe block is used purely for FFI calls to the BLST library.
+/// 1. input types are all defined by blst and `repr(C)` 
+/// 2. blst behavior is assumed memory safe
+/// 3. The unsafe block is used purely for FFI calls to the BLST library.
 #[inline]
 pub fn p2_add_or_double(p: &blst_p2, p_affine: &blst_p2_affine) -> blst_p2 {
     let mut result = blst_p2::default();
