@@ -3,7 +3,8 @@ use fil_actor_market::{DealProposal, DealState, State as MarketState, load_provi
 use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
     CompactCommD, Deadline, DeadlineInfo, GetBeneficiaryReturn, Method as MinerMethod, MinerInfo,
-    PowerPair, SectorOnChainInfo, State as MinerState, new_deadline_info_from_offset_and_epoch,
+    PieceChange, PowerPair, SectorOnChainInfo, State as MinerState,
+    new_deadline_info_from_offset_and_epoch,
 };
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
@@ -21,6 +22,7 @@ use fvm_ipld_encoding::{CborStore, DAG_CBOR, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use fvm_shared::{ActorID, METHOD_SEND};
@@ -309,4 +311,16 @@ pub fn deal_cid_for_testing(proposal: &DealProposal) -> Cid {
     let hash = Code::Blake2b256.digest(data.bytes());
     debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
     Cid::new_v1(DAG_CBOR, hash)
+}
+
+pub fn piece_change(
+    cid_seed: &[u8],
+    piece_size: PaddedPieceSize,
+    deal_ids: &[DealID],
+) -> PieceChange {
+    PieceChange {
+        data: make_piece_cid(cid_seed),
+        size: piece_size,
+        payload: serialize(&deal_ids[0], "deal id").unwrap(),
+    }
 }
