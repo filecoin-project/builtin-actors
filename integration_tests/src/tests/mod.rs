@@ -14,6 +14,8 @@ mod datacap_tests;
 pub use datacap_tests::*;
 mod evm_test;
 pub use evm_test::*;
+mod evm_notification_test;
+pub use evm_notification_test::*;
 mod extend_sectors_test;
 pub use extend_sectors_test::*;
 mod market_miner_withdrawal_test;

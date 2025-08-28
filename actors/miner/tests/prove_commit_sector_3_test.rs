@@ -2,11 +2,14 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, clock::ChainEpoch};
+use fvm_shared::address::Address;
+use fvm_shared::econ::TokenAmount;
+use num_traits::Zero;
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
     DataActivationNotification, PieceChange, ProveCommitSectors3Return, SectorChanges,
-    SectorOnChainInfo, SectorPreCommitInfo,
+    SectorOnChainInfo, SectorPreCommitInfo, SECTOR_CONTENT_CHANGED,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::MockRuntime;
@@ -756,4 +759,151 @@ fn precommit_sectors_from(
 
 fn assert_commit_result(expected: &[ExitCode], result: &ProveCommitSectors3Return) {
     assert_eq!(BatchReturn::of(expected), result.activation_results);
+}
+
+#[test]
+fn notify_non_market_actor() {
+    let (h, mut rt) = setup_basic();
+    let piece_size = h.sector_size as u64;
+    let precommits = precommit_sectors(&mut rt, &h, &[&[piece_size], &[piece_size]]);
+    let snos: Vec<SectorNumber> =
+        precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
+
+    // Create notifications to different actors, not just STORAGE_MARKET_ACTOR
+    let custom_actor_1 = Address::new_id(5000);
+    let custom_actor_2 = Address::new_id(6000);
+    let evm_actor = Address::new_actor(b"evm_test_actor");
+
+    let mut manifests = vec![
+        make_activation_manifest(snos[0], &[(piece_size, CLIENT_ID, 1000, 0)]),
+        make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 0)]),
+    ];
+
+    // Add notifications to custom actors
+    manifests[0].pieces[0].notify.push(DataActivationNotification {
+        address: custom_actor_1,
+        payload: RawBytes::from(vec![1, 2, 3, 4]),
+    });
+    manifests[0].pieces[0].notify.push(DataActivationNotification {
+        address: evm_actor,
+        payload: RawBytes::from(vec![5, 6, 7, 8]),
+    });
+    manifests[1].pieces[0].notify.push(DataActivationNotification {
+        address: custom_actor_2,
+        payload: RawBytes::from(vec![9, 10, 11, 12]),
+    });
+
+    // Expect notifications to be sent to the custom actors
+    rt.expect_send_simple(
+        custom_actor_1,
+        SECTOR_CONTENT_CHANGED,
+        None,  // The actual params will be set by the notification system
+        TokenAmount::zero(),
+        None,  // Return value
+        ExitCode::OK,
+    );
+    rt.expect_send_simple(
+        evm_actor,
+        SECTOR_CONTENT_CHANGED,
+        None,  // The actual params will be set by the notification system
+        TokenAmount::zero(),
+        None,  // Return value
+        ExitCode::OK,
+    );
+    rt.expect_send_simple(
+        custom_actor_2,
+        SECTOR_CONTENT_CHANGED,
+        None,  // The actual params will be set by the notification system
+        TokenAmount::zero(),
+        None,  // Return value
+        ExitCode::OK,
+    );
+
+    let cfg = ProveCommitSectors3Config::default();
+    let (result, _, _) =
+        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
+
+    // All sectors succeed
+    assert_commit_result(&[ExitCode::OK; 2], &result);
+    verify_weights(&rt, &h, snos[0], 0, piece_size);
+    verify_weights(&rt, &h, snos[1], 0, piece_size);
+}
+
+#[test]
+fn notify_multiple_actors_per_piece() {
+    let (h, mut rt) = setup_basic();
+    let piece_size = h.sector_size as u64 / 2;
+    let precommits = precommit_sectors(&mut rt, &h, &[&[piece_size, piece_size]]);
+    let snos: Vec<SectorNumber> =
+        precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
+
+    let mut manifests = vec![
+        make_activation_manifest(
+            snos[0],
+            &[(piece_size, CLIENT_ID, 1000, 0), (piece_size, CLIENT_ID, 1001, 0)],
+        ),
+    ];
+
+    // Add notifications to multiple different actors for the same piece
+    let actor1 = Address::new_id(7000);
+    let actor2 = Address::new_id(8000);
+    let actor3 = Address::new_id(9000);
+
+    manifests[0].pieces[0].notify.push(DataActivationNotification {
+        address: actor1,
+        payload: RawBytes::from(vec![1, 1, 1, 1]),
+    });
+    manifests[0].pieces[0].notify.push(DataActivationNotification {
+        address: actor2,
+        payload: RawBytes::from(vec![2, 2, 2, 2]),
+    });
+    manifests[0].pieces[1].notify.push(DataActivationNotification {
+        address: actor3,
+        payload: RawBytes::from(vec![3, 3, 3, 3]),
+    });
+    manifests[0].pieces[1].notify.push(DataActivationNotification {
+        address: STORAGE_MARKET_ACTOR_ADDR,
+        payload: RawBytes::from(vec![4, 4, 4, 4]),
+    });
+
+    // Expect notifications to be sent to all actors
+    rt.expect_send_simple(
+        actor1,
+        SECTOR_CONTENT_CHANGED,
+        None,  // The actual params will be set by the notification system
+        TokenAmount::zero(),
+        None,  // Return value
+        ExitCode::OK,
+    );
+    rt.expect_send_simple(
+        actor2,
+        SECTOR_CONTENT_CHANGED,
+        None,  // The actual params will be set by the notification system
+        TokenAmount::zero(),
+        None,  // Return value
+        ExitCode::OK,
+    );
+    rt.expect_send_simple(
+        actor3,
+        SECTOR_CONTENT_CHANGED,
+        None,  // The actual params will be set by the notification system
+        TokenAmount::zero(),
+        None,  // Return value
+        ExitCode::OK,
+    );
+    rt.expect_send_simple(
+        STORAGE_MARKET_ACTOR_ADDR,
+        SECTOR_CONTENT_CHANGED,
+        None,  // The actual params will be set by the notification system
+        TokenAmount::zero(),
+        None,  // Return value
+        ExitCode::OK,
+    );
+
+    let cfg = ProveCommitSectors3Config::default();
+    let (result, _, _) =
+        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
+
+    assert_commit_result(&[ExitCode::OK], &result);
+    verify_weights(&rt, &h, snos[0], 0, piece_size * 2);
 }
