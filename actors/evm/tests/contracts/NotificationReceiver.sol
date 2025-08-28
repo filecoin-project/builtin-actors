@@ -25,7 +25,7 @@ contract NotificationReceiver {
     bytes4 constant NATIVE_METHOD_SELECTOR = 0x868e10c4;
     
     // Sector content changed method number
-    uint64 constant SECTOR_CONTENT_CHANGED = 86399155;
+    uint64 constant SECTOR_CONTENT_CHANGED = 2034386435;
     
     /**
      * @dev Get the count of notifications for a specific sector
