@@ -43,16 +43,13 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     let contract_bytecode = hex::decode(hex_str).expect("Failed to decode contract bytecode hex");
     
     // Create an EVM actor to receive notifications
-    let params = IpldBlock::serialize_cbor(&fil_actor_eam::CreateParams {
-        initcode: contract_bytecode.to_vec().into(),
-        nonce: 0,
-    }).unwrap();
+    let params = IpldBlock::serialize_cbor(&fil_actor_eam::CreateExternalParams(contract_bytecode)).unwrap();
     
     let create_result = v.execute_message(
         &worker,
         &EAM_ACTOR_ADDR,
         &TokenAmount::from_whole(1),
-        fil_actor_eam::Method::Create as u64,
+        fil_actor_eam::Method::CreateExternal as u64,
         params,
     ).unwrap();
     
