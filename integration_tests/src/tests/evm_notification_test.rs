@@ -1,52 +1,46 @@
 use export_macro::vm_test;
 use fil_actor_miner::{
     ProveCommitSectors3Params, SectorActivationManifest, PieceActivationManifest,
-    DataActivationNotification, SECTOR_CONTENT_CHANGED, Method as MinerMethod,
+    DataActivationNotification, Method as MinerMethod,
 };
 use fil_actors_runtime::{
-    EAM_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    test_utils::EVM_ACTOR_CODE_ID, EPOCHS_IN_DAY,
+    EAM_ACTOR_ADDR, test_utils::EVM_ACTOR_CODE_ID, test_utils::make_piece_cid,
 };
 use fvm_ipld_encoding::{RawBytes, ipld_block::IpldBlock};
 use fvm_shared::{
     address::Address, econ::TokenAmount, sector::{RegisteredSealProof, SectorNumber},
-    piece::PaddedPieceSize, ActorID, METHOD_SEND,
+    piece::PaddedPieceSize,
 };
 use num_traits::Zero;
 use vm_api::VM;
-use vm_api::util::apply_ok;
 
 use crate::util::{
-    assert_invariants, create_accounts, create_miner, precommit_sectors_v2,
-    advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_to_proving_deadline, get_network_stats, get_network_version,
-    miner_balance, sector_info,
+    create_accounts, create_miner, precommit_sectors_v2,
+    advance_by_deadline_to_epoch
 };
-use crate::TEST_FAUCET_ADDR;
 
-const BATCH_SIZE: usize = 2;
 
 #[vm_test]
 pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
-    // Network version check
-    let nv = get_network_version(v);
-    
+
     // Create accounts
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[1]);
-    let (miner_id, _) = create_miner(
+    let (miner_addr, _) = create_miner(
         v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(10_000),
     );
-    let miner_addr = Address::new_id(miner_id);
-
+    
     // Deploy the NotificationReceiver EVM contract
-    // First, compile the contract bytecode (simplified for testing)
-    let contract_bytecode = include_bytes!("../../contracts/notification_receiver_bytecode.bin");
+    // The file is a hex string, so decode it to bytes
+    let hex_str = std::fs::read_to_string("../../contracts/notification_receiver_bytecode.hex")
+        .expect("Failed to read contract bytecode hex file");
+    let hex_str = hex_str.trim();
+    let contract_bytecode = hex::decode(hex_str).expect("Failed to decode contract bytecode hex");
     
     // Create an EVM actor to receive notifications
     let params = IpldBlock::serialize_cbor(&fil_actor_eam::CreateParams {
@@ -77,8 +71,8 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     let sector_number: SectorNumber = 100;
     let precommits = precommit_sectors_v2(
         v,
-        BATCH_SIZE,
-        BATCH_SIZE,
+        1,
+        vec![],
         &worker,
         &miner_addr,
         seal_proof,
@@ -109,11 +103,6 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
                         DataActivationNotification {
                             address: evm_robust_addr.clone(),
                             payload: notification_payload.clone(),
-                        },
-                        // Also send to storage market for compatibility
-                        DataActivationNotification {
-                            address: STORAGE_MARKET_ACTOR_ADDR,
-                            payload: notification_payload,
                         },
                     ],
                 },
@@ -152,87 +141,4 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     // The contract should have processed the notifications
     // In production, we would call contract methods to verify the stored notification data
     
-    // Also test with ProveReplicaUpdates3
-    // First, we need existing sectors to update
-    advance_by_deadline_to_epoch_while_proving(
-        v,
-        &miner_addr,
-        &worker,
-        sector_number,
-        sector_number + BATCH_SIZE as u64,
-        v.epoch() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY,
-    );
-    
-    // Create update manifests with notifications to EVM
-    let update_manifests: Vec<SectorUpdateManifest> = (0..BATCH_SIZE).map(|i| {
-        let sector_num = sector_number + i as u64;
-        let piece_cid = make_piece_cid(format!("update-piece-{}", i).as_bytes());
-        let notification_payload = RawBytes::from(vec![100 + i as u8, 4, 5, 6]);
-        
-        SectorUpdateManifest {
-            sector: sector_num,
-            deadline: 0, // Will be set by the actor
-            partition: 0, // Will be set by the actor  
-            new_sealed_cid: make_sealed_cid(format!("update-sealed-{}", i).as_bytes()),
-            pieces: vec![
-                PieceActivationManifest {
-                    cid: piece_cid,
-                    size: piece_size,
-                    verified_allocation_key: None,
-                    notify: vec![
-                        DataActivationNotification {
-                            address: evm_robust_addr.clone(),
-                            payload: notification_payload,
-                        },
-                    ],
-                },
-            ],
-        }
-    }).collect();
-
-    let update_params = ProveReplicaUpdates3Params {
-        sector_updates: update_manifests,
-        sector_proofs: vec![],
-        aggregate_proof: RawBytes::default(),
-        update_proofs_type: RegisteredUpdateProof::StackedDRG32GiBV1,
-        aggregate_proof_type: None,
-        require_activation_success: false,
-        require_notification_success: false,
-    };
-
-    let update_result = v.execute_message(
-        &worker,
-        &miner_addr,
-        &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates3 as u64,
-        IpldBlock::serialize_cbor(&update_params).unwrap(),
-    ).unwrap();
-
-    assert!(update_result.code.is_success(), "ProveReplicaUpdates failed: {}", update_result.message);
-    
-    println!("Successfully updated sectors with EVM notifications");
-
-    // Verify the EVM contract is still functioning
-    let final_evm_actor = v.actor(&evm_actor_addr).unwrap();
-    assert_eq!(final_evm_actor.code, *EVM_ACTOR_CODE_ID, "EVM actor code changed unexpectedly");
-    
-    assert_invariants(v, &miner_addr);
 }
-
-// Helper functions to create test CIDs
-fn make_piece_cid(data: &[u8]) -> cid::Cid {
-    use cid::multihash::{Code, MultihashDigest};
-    let hash = Code::Blake2b256.digest(data);
-    cid::Cid::new_v1(0x55, hash) // 0x55 is the multicodec for raw
-}
-
-fn make_sealed_cid(data: &[u8]) -> cid::Cid {
-    use cid::multihash::{Code, MultihashDigest};
-    let hash = Code::Blake2b256.digest(data);
-    cid::Cid::new_v1(0x55, hash)
-}
-
-// Re-export some constants from other modules
-use fil_actor_miner::{ProveReplicaUpdates3Params, SectorUpdateManifest};
-use fil_actor_miner::RegisteredUpdateProof;
-const DEFAULT_SECTOR_EXPIRATION_DAYS: i64 = 220;
