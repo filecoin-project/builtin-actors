@@ -6,6 +6,7 @@ mod change_owner_test;
 mod commit_post_test;
 mod datacap_tests;
 mod evm_test;
+mod evm_notification_test;
 mod extend_sectors_test;
 mod init_test;
 mod market_miner_withdrawal_test;
