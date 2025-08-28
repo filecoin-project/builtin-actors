@@ -48,7 +48,7 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     let create_result = v.execute_message(
         &worker,
         &EAM_ACTOR_ADDR,
-        &TokenAmount::from_whole(1),
+        &TokenAmount::zero(),
         fil_actor_eam::Method::CreateExternal as u64,
         params,
     ).unwrap();
