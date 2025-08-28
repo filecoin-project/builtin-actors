@@ -1,4 +1,4 @@
-use fil_actors_integration_tests::tests::{evm_notification_test};
+use fil_actors_integration_tests::tests::{evm_receives_ddo_notifications_test};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
@@ -7,5 +7,5 @@ use test_vm::TestVM;
 fn evm_notification() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
-    evm_notification_test(&v);
+    evm_receives_ddo_notifications_test(&v);
 }
