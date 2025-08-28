@@ -37,7 +37,7 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     
     // Deploy the NotificationReceiver EVM contract
     // The file is a hex string, so decode it to bytes
-    let hex_str = std::fs::read_to_string("../../contracts/notification_receiver_bytecode.hex")
+    let hex_str = std::fs::read_to_string("../../../actors/evm/tests/contracts/NotificationReceiver.hex")
         .expect("Failed to read contract bytecode hex file");
     let hex_str = hex_str.trim();
     let contract_bytecode = hex::decode(hex_str).expect("Failed to decode contract bytecode hex");
