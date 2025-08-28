@@ -1,7 +1,7 @@
 use export_macro::vm_test;
 use fil_actor_miner::{
     ProveCommitSectors3Params, SectorActivationManifest, PieceActivationManifest,
-    DataActivationNotification, Method as MinerMethod,
+    DataActivationNotification, Method as MinerMethod, CompactCommD,
 };
 use fil_actors_runtime::{
     EAM_ACTOR_ADDR, test_utils::EVM_ACTOR_CODE_ID, test_utils::make_piece_cid,
@@ -9,14 +9,14 @@ use fil_actors_runtime::{
 use fvm_ipld_encoding::{RawBytes, ipld_block::IpldBlock};
 use fvm_shared::{
     address::Address, econ::TokenAmount, sector::{RegisteredSealProof, SectorNumber},
-    piece::PaddedPieceSize,
+    piece::PaddedPieceSize, piece::PieceInfo,
 };
 use num_traits::Zero;
 use vm_api::VM;
 
 use crate::util::{
     create_accounts, create_miner, precommit_sectors_v2,
-    advance_by_deadline_to_epoch
+    advance_by_deadline_to_epoch, PrecommitMetadata, 
 };
 
 
@@ -36,7 +36,6 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     );
     
     // Deploy the NotificationReceiver EVM contract
-    // The file is a hex string, so decode it to bytes
     let hex_str = std::fs::read_to_string("../actors/evm/tests/contracts/NotificationReceiver.hex")
         .expect("Failed to read contract bytecode hex file");
     let hex_str = hex_str.trim();
@@ -63,37 +62,23 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     
     println!("Created EVM contract at ID: {}, Robust: {}, ETH: 0x{}", 
              evm_actor_addr, evm_robust_addr, hex::encode(&evm_eth_addr));
+             
 
     // Precommit sectors
     let sector_number: SectorNumber = 100;
-    let precommits = precommit_sectors_v2(
-        v,
-        1,
-        vec![],
-        &worker,
-        &miner_addr,
-        seal_proof,
-        sector_number,
-        true,
-        None,
-    );
-
-    // Advance time to prove commit epoch
-    let prove_time = v.epoch() + 150;
-    advance_by_deadline_to_epoch(v, &miner_addr, prove_time);
 
     // Create piece activation manifests with notifications to EVM contract
-    let piece_size = PaddedPieceSize(32 << 30); // 32 GiB
-    let manifests: Vec<SectorActivationManifest> = precommits.iter().enumerate().map(|(i, pc)| {
-        let piece_cid = make_piece_cid(format!("piece-{}", i).as_bytes());
-        let notification_payload = RawBytes::from(vec![i as u8, 1, 2, 3]); // Simple test payload
-        
+    let piece_size0 = PaddedPieceSize(32 << 30); // 32 GiB
+    let piece_cid0 = make_piece_cid(format!("piece-{}", 0).as_bytes());
+    let notification_payload = RawBytes::from(hex::decode("cafe").unwrap());
+
+    let manifests: Vec<SectorActivationManifest> = vec![
         SectorActivationManifest {
-            sector_number: pc.info.sector_number,
+            sector_number: sector_number,
             pieces: vec![
                 PieceActivationManifest {
-                    cid: piece_cid,
-                    size: piece_size,
+                    cid: piece_cid0,
+                    size: piece_size0,
                     verified_allocation_key: None,
                     notify: vec![
                         // Send notification to our EVM contract
@@ -105,16 +90,44 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
                 },
             ],
         }
-    }).collect();
+    ];
+
+
+    let meta: Vec<PrecommitMetadata> = manifests
+    .iter()
+    .map(|sector| {
+        let pis: Vec<PieceInfo> =
+            sector.pieces.iter().map(|p| PieceInfo { size: p.size, cid: p.cid }).collect();
+        let commd = v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
+        PrecommitMetadata { deals: vec![], commd: CompactCommD::of(commd) }
+    })
+    .collect();
+
+    precommit_sectors_v2(
+        v,
+        1,
+        meta,
+        &worker,
+        &miner_addr,
+        seal_proof,
+        sector_number,
+        true,
+        None,
+    );
+
+    // Advance time to prove commit epoch
+    let prove_time = v.epoch() + 151;
+    advance_by_deadline_to_epoch(v, &miner_addr, prove_time);
 
     // ProveCommitSectors3 with notifications
+    let proofs = vec![RawBytes::new(vec![8, 8, 8, 8]); manifests.len()]; // dummy value for faked proof syscalls in test vm
     let prove_params = ProveCommitSectors3Params {
         sector_activations: manifests,
-        sector_proofs: vec![], // Empty proofs for testing
+        sector_proofs: proofs, // Empty proofs for testing
         aggregate_proof: RawBytes::default(),
         aggregate_proof_type: None,
         require_activation_success: false,
-        require_notification_success: false,
+        require_notification_success: true,
     };
 
     let prove_result = v.execute_message(

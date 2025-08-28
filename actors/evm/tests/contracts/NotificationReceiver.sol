@@ -66,10 +66,14 @@ contract NotificationReceiver {
      * @dev Handle incoming Filecoin method calls
      * This is the main entry point for receiving notifications from the miner actor
      */
-    function handle_filecoin_method(uint64 method, uint64, bytes memory params) public returns (bytes memory) {
+    function handle_filecoin_method(uint64 method, uint64 inCodec, bytes memory params) public returns (uint64, uint64,bytes memory) {
+        // 0x51 is IPLD CBOR codec 
+        require(inCodec == 0x51, "Invalid codec");
         // Check if this is a sector content changed notification
         if (method == SECTOR_CONTENT_CHANGED) {
-            return processSectorContentChanged(params);
+            bytes memory ret = processSectorContentChanged(params);
+            uint64 codec = 0x51;
+            return (0, codec, ret);
         }
         
         // For other methods, just revert
@@ -90,17 +94,35 @@ contract NotificationReceiver {
      *     }]
      *   }]
      * }
+     *
+     * All notifications are accepted so CBOR true returned for every piece of every notified sector
      */
     function processSectorContentChanged(bytes memory params) internal returns (bytes memory) {
 
-        (uint nSectors, uint byteIdx) = readFixedArray(params, 0);
+        /* We begin by parsing a single tuple: (sectors)
+         */
+        (uint checkTupleLen, uint byteIdx) = readFixedArray(params, 0);
+        require(checkTupleLen == 1, "Invalid params outer tuple");
+
+        uint nSectors;
+        (nSectors, byteIdx) = readFixedArray(params, 0);
+        require(nSectors > 0, "Invalid non positive sectors field");
+
+        CBORBuffer memory ret_acc;
+        {
+            // Setup return value ret_acc
+            // ret_acc accumulates return cbor array 
+            ret_acc = createCBOR(64);
+            startFixedArray(ret_acc, 1); // SectorContentChangedReturn
+            startFixedArray(ret_acc, uint64(nSectors)); // sectors: Vec<SectorReturn>
+        }
         for (uint i = 0; i < nSectors; i++) {
 
             /* We now need to parse a tuple of 3 cbor objects:
                 (sector, minimum_commitment_epoch, added_pieces) */
-            uint checkTupleLen;
             (checkTupleLen, byteIdx) = readFixedArray(params, byteIdx);
-            require(checkTupleLen == 3, "Invalid params outer");
+            require(checkTupleLen == 3, "Invalid SectorChanges tuple");
+
 
             uint64 sector;
             (sector, byteIdx) = readUInt64(params, byteIdx);
@@ -110,6 +132,11 @@ contract NotificationReceiver {
 
             uint256 pieceCnt;
             (pieceCnt, byteIdx) = readFixedArray(params, byteIdx); 
+
+            {
+                startFixedArray(ret_acc, 1); // SectorReturn
+                startFixedArray(ret_acc, uint64(pieceCnt)); // added: Vec<PieceReturn>
+            }
 
             for (uint j = 0; j < pieceCnt; j++) {
                 /* We now need to parse a tuple of 3 cbor objects: 
@@ -139,14 +166,14 @@ contract NotificationReceiver {
                 
                 sectorNotificationIndices[sector].push(notificationIndex);
                 totalNotifications++;
+                {
+                    startFixedArray(ret_acc, 1); // PieceReturn
+                    writeBool(ret_acc, true); // accepted (set all to true)
+                }
             }
         }
-        /* Hack: just return CBOR null == `0xF6`
-          This deserializes to SectorContentChangedReturn [[bool]] but will fail validation.
-          To call this without failing commitment message must specify require_success == false
-        */
-        return hex"81f6";
-          
+
+        return getCBORData(ret_acc);
     }
 
     /* *** CBOR parsing *** */
@@ -331,6 +358,166 @@ contract NotificationReceiver {
             x := mload(add(bs, add(0x20, start)))
         }
         return uint64(x);
+    }
+
+    /* *** CBOR writing *** */
+    // === MINIMAL CBOR ENCODING FOR SectorContentChangedReturn ===
+
+    // Buffer struct
+    struct Buffer {
+        bytes buf;
+        uint capacity;
+    }
+
+    struct CBORBuffer {
+        Buffer buf;
+    }
+
+    /**
+    * @dev Create a new CBOR buffer with given capacity
+    */
+    function createCBOR(uint256 capacity) internal pure returns(CBORBuffer memory cbor) {
+        initBuffer(cbor.buf, capacity);
+        return cbor;
+    }
+
+    /**
+    * @dev Get the encoded bytes from the buffer
+    */
+    function getCBORData(CBORBuffer memory buf) internal pure returns(bytes memory) {
+        return buf.buf.buf;
+    }
+
+    /**
+    * @dev Start a fixed-length array
+    */
+    function startFixedArray(CBORBuffer memory buf, uint64 length) internal pure {
+        writeFixedNumeric(buf, MajArray, length);
+    }
+
+    /**
+    * @dev Write a boolean value
+    */
+    function writeBool(CBORBuffer memory buf, bool val) internal pure {
+        appendUint8(buf.buf, uint8((MajOther << 5) | (val ? True_Type : False_Type)));
+    }
+
+    // === INTERNAL HELPER FUNCTIONS ===
+
+    function initBuffer(Buffer memory buf, uint capacity) private pure {
+        if (capacity % 32 != 0) {
+            capacity += 32 - (capacity % 32);
+        }
+        buf.capacity = capacity;
+        assembly {
+            let ptr := mload(0x40)
+            mstore(buf, ptr)
+            mstore(ptr, 0)
+            let fpm := add(32, add(ptr, capacity))
+            if lt(fpm, ptr) {
+                revert(0, 0)
+            }
+            mstore(0x40, fpm)
+        }
+    }
+
+    function writeFixedNumeric(CBORBuffer memory buf, uint8 major, uint64 val) private pure {
+        if (val <= 23) {
+            appendUint8(buf.buf, uint8((major << 5) | val));
+        } else if (val <= 0xFF) {
+            appendUint8(buf.buf, uint8((major << 5) | 24));
+            appendInt(buf.buf, val, 1);
+        } else if (val <= 0xFFFF) {
+            appendUint8(buf.buf, uint8((major << 5) | 25));
+            appendInt(buf.buf, val, 2);
+        } else if (val <= 0xFFFFFFFF) {
+            appendUint8(buf.buf, uint8((major << 5) | 26));
+            appendInt(buf.buf, val, 4);
+        } else {
+            appendUint8(buf.buf, uint8((major << 5) | 27));
+            appendInt(buf.buf, val, 8);
+        }
+    }
+
+    function appendUint8(Buffer memory buf, uint8 val) private pure {
+        uint off = buf.buf.length;
+        uint offPlusOne = off + 1;
+        if (off >= buf.capacity) {
+            resizeBuffer(buf, offPlusOne * 2);
+        }
+        
+        assembly {
+            let bufptr := mload(buf)
+            let dest := add(add(bufptr, off), 32)
+            mstore8(dest, val)
+            if gt(offPlusOne, mload(bufptr)) {
+                mstore(bufptr, offPlusOne)
+            }
+        }
+    }
+
+    function appendInt(Buffer memory buf, uint val, uint len) private pure {
+        uint off = buf.buf.length;
+        uint newCapacity = len + off;
+        if (newCapacity > buf.capacity) {
+            resizeBuffer(buf, newCapacity * 2);
+        }
+        
+        uint mask = (256 ** len) - 1;
+        assembly {
+            let bufptr := mload(buf)
+            let dest := add(bufptr, newCapacity)
+            mstore(dest, or(and(mload(dest), not(mask)), val))
+            if gt(newCapacity, mload(bufptr)) {
+                mstore(bufptr, newCapacity)
+            }
+        }
+    }
+
+    function resizeBuffer(Buffer memory buf, uint capacity) private pure {
+        bytes memory oldbuf = buf.buf;
+        initBuffer(buf, capacity);
+        appendBytes(buf, oldbuf);
+    }
+
+    function appendBytes(Buffer memory buf, bytes memory val) private pure {
+        uint len = val.length;
+        uint off = buf.buf.length;
+        uint newCapacity = off + len;
+        if (newCapacity > buf.capacity) {
+            resizeBuffer(buf, newCapacity * 2);
+        }
+        
+        uint dest;
+        uint src;
+        assembly {
+            let bufptr := mload(buf)
+            let buflen := mload(bufptr)
+            dest := add(add(bufptr, 32), off)
+            if gt(newCapacity, buflen) {
+                mstore(bufptr, newCapacity)
+            }
+            src := add(val, 32)
+        }
+        
+        // Copy word-length chunks
+        for (; len >= 32; len -= 32) {
+            assembly {
+                mstore(dest, mload(src))
+            }
+            dest += 32;
+            src += 32;
+        }
+        
+        // Copy remaining bytes
+        if (len > 0) {
+            uint mask = (256 ** (32 - len)) - 1;
+            assembly {
+                let srcpart := and(mload(src), not(mask))
+                let destpart := and(mload(dest), mask)
+                mstore(dest, or(destpart, srcpart))
+            }
+        }
     }
 }
 
