@@ -1,21 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.25;
 
-import "./FEVM.sol";
 
 contract NotificationReceiver {
-    // Events to track notifications
-    event SectorContentChanged(uint64 indexed method, bytes params);
-    event NotificationReceived(uint64 indexed sector, uint64 indexed minimumCommitmentEpoch, bytes32 indexed dataCid);
-    
     // State variables to track received notifications
     struct SectorNotification {
         uint64 sector;
-        uint64 minimumCommitmentEpoch;
-        bytes32 dataCid;
-        uint256 pieceSize;
+        int64 minimumCommitmentEpoch;
+        bytes dataCid;
+        uint64 pieceSize;
         bytes payload;
-        uint256 timestamp;
     }
     
     SectorNotification[] public notifications;
@@ -32,13 +26,6 @@ contract NotificationReceiver {
     
     // Sector content changed method number
     uint64 constant SECTOR_CONTENT_CHANGED = 86399155;
-    
-    /**
-     * @dev Toggle whether to reject notifications (for testing)
-     */
-    function setRejectNotifications(bool _reject) public {
-        shouldRejectNotifications = _reject;
-    }
     
     /**
      * @dev Get the count of notifications for a specific sector
@@ -59,11 +46,10 @@ contract NotificationReceiver {
      */
     function getNotification(uint256 index) public view returns (
         uint64 sector,
-        uint64 minimumCommitmentEpoch,
-        bytes32 dataCid,
-        uint256 pieceSize,
-        bytes memory payload,
-        uint256 timestamp
+        int64 minimumCommitmentEpoch,
+        bytes memory dataCid,
+        uint64 pieceSize,
+        bytes memory payload
     ) {
         require(index < notifications.length, "Invalid notification index");
         SectorNotification memory notif = notifications[index];
@@ -72,8 +58,7 @@ contract NotificationReceiver {
             notif.minimumCommitmentEpoch,
             notif.dataCid,
             notif.pieceSize,
-            notif.payload,
-            notif.timestamp
+            notif.payload
         );
     }
     
@@ -82,15 +67,13 @@ contract NotificationReceiver {
      * This is the main entry point for receiving notifications from the miner actor
      */
     function handle_filecoin_method(uint64 method, uint64, bytes memory params) public returns (bytes memory) {
-        emit SectorContentChanged(method, params);
-        
         // Check if this is a sector content changed notification
         if (method == SECTOR_CONTENT_CHANGED) {
             return processSectorContentChanged(params);
         }
         
-        // For other methods, just acknowledge receipt
-        return abi.encode(true);
+        // For other methods, just revert
+       revert("Invalid method");
     }
     
     /**
@@ -109,153 +92,245 @@ contract NotificationReceiver {
      * }
      */
     function processSectorContentChanged(bytes memory params) internal returns (bytes memory) {
-        // In a real implementation, we would decode CBOR here
-        // For testing, we'll process the raw bytes and extract key information
-        
-        // Check if we should reject this notification
-        if (shouldRejectNotifications) {
-            // Return a rejection response
-            return encodeRejectionResponse();
-        }
-        
-        // For this test contract, we'll store a simplified version of the notification
-        // In production, you would properly decode the CBOR data
-        
-        // Extract some basic info from the params (simplified for testing)
-        uint64 sector = extractSectorNumber(params);
-        uint64 minimumCommitmentEpoch = extractMinimumCommitmentEpoch(params);
-        bytes32 dataCid = extractDataCid(params);
-        uint256 pieceSize = extractPieceSize(params);
-        bytes memory payload = extractPayload(params);
-        
-        // Store the notification
-        uint256 notificationIndex = notifications.length;
-        notifications.push(SectorNotification({
-            sector: sector,
-            minimumCommitmentEpoch: minimumCommitmentEpoch,
-            dataCid: dataCid,
-            pieceSize: pieceSize,
-            payload: payload,
-            timestamp: block.timestamp
-        }));
-        
-        sectorNotificationIndices[sector].push(notificationIndex);
-        totalNotifications++;
-        
-        emit NotificationReceived(sector, minimumCommitmentEpoch, dataCid);
-        
-        // Return acceptance response
-        return encodeAcceptanceResponse();
-    }
-    
-    /**
-     * @dev Extract sector number from params (simplified for testing)
-     */
-    function extractSectorNumber(bytes memory params) internal pure returns (uint64) {
-        // In a real implementation, this would properly decode CBOR
-        // For testing, return a dummy value or extract from known position
-        if (params.length >= 8) {
-            return uint64(uint8(params[7])) | 
-                   (uint64(uint8(params[6])) << 8) |
-                   (uint64(uint8(params[5])) << 16) |
-                   (uint64(uint8(params[4])) << 24);
-        }
-        return 0;
-    }
-    
-    /**
-     * @dev Extract minimum commitment epoch from params (simplified)
-     */
-    function extractMinimumCommitmentEpoch(bytes memory params) internal pure returns (uint64) {
-        // Simplified extraction for testing
-        if (params.length >= 16) {
-            return uint64(uint8(params[15])) | 
-                   (uint64(uint8(params[14])) << 8) |
-                   (uint64(uint8(params[13])) << 16) |
-                   (uint64(uint8(params[12])) << 24);
-        }
-        return 0;
-    }
-    
-    /**
-     * @dev Extract data CID from params (simplified)
-     */
-    function extractDataCid(bytes memory params) internal pure returns (bytes32) {
-        // Simplified extraction for testing
-        if (params.length >= 48) {
-            bytes32 cid;
-            assembly {
-                cid := mload(add(params, 48))
-            }
-            return cid;
-        }
-        return bytes32(0);
-    }
-    
-    /**
-     * @dev Extract piece size from params (simplified)
-     */
-    function extractPieceSize(bytes memory params) internal pure returns (uint256) {
-        // Simplified extraction for testing
-        if (params.length >= 24) {
-            return uint256(uint64(uint8(params[23])) | 
-                          (uint64(uint8(params[22])) << 8) |
-                          (uint64(uint8(params[21])) << 16) |
-                          (uint64(uint8(params[20])) << 24));
-        }
-        return 0;
-    }
-    
-    /**
-     * @dev Extract payload from params (simplified)
-     */
-    function extractPayload(bytes memory params) internal pure returns (bytes memory) {
-        // For testing, return a portion of the params as payload
-        if (params.length > 64) {
-            bytes memory payload = new bytes(params.length - 64);
-            for (uint i = 0; i < payload.length; i++) {
-                payload[i] = params[i + 64];
-            }
-            return payload;
-        }
-        return "";
-    }
-    
-    /**
-     * @dev Encode an acceptance response for the notification
-     * The response should match SectorContentChangedReturn structure
-     */
-    function encodeAcceptanceResponse() internal pure returns (bytes memory) {
-        // Return a properly formatted response indicating acceptance
-        // Structure: { sectors: [{ added: [{ accepted: true }] }] }
-        // For simplified testing, return a basic acceptance
-        return abi.encode(true);
-    }
-    
-    /**
-     * @dev Encode a rejection response for the notification
-     */
-    function encodeRejectionResponse() internal pure returns (bytes memory) {
-        // Return a properly formatted response indicating rejection
-        return abi.encode(false);
-    }
-    
-    /**
-     * @dev Fallback function to handle direct calls
-     */
-    fallback() external payable {
-        // Check if this is a handle_filecoin_method call
-        if (msg.data.length >= 4 && bytes4(msg.data[0:4]) == NATIVE_METHOD_SELECTOR) {
-            // Decode the parameters
-            (uint64 method, uint64 codec, bytes memory params) = abi.decode(msg.data[4:], (uint64, uint64, bytes));
-            bytes memory result = handle_filecoin_method(method, codec, params);
-            
-            // Return the result
-            assembly {
-                return(add(result, 0x20), mload(result))
+
+        (uint nSectors, uint byteIdx) = readFixedArray(params, 0);
+        for (uint i = 0; i < nSectors; i++) {
+
+            /* We now need to parse a tuple of 3 cbor objects:
+                (sector, minimum_commitment_epoch, added_pieces) */
+            uint checkTupleLen;
+            (checkTupleLen, byteIdx) = readFixedArray(params, byteIdx);
+            require(checkTupleLen == 3, "Invalid params outer");
+
+            uint64 sector;
+            (sector, byteIdx) = readUInt64(params, byteIdx);
+
+            int64 minimumCommitmentEpoch;
+            (minimumCommitmentEpoch, byteIdx) = readInt64(params, byteIdx);
+
+            uint256 pieceCnt;
+            (pieceCnt, byteIdx) = readFixedArray(params, byteIdx); 
+
+            for (uint j = 0; j < pieceCnt; j++) {
+                /* We now need to parse a tuple of 3 cbor objects: 
+                    (data, size, payload)
+                */
+                (checkTupleLen, byteIdx) = readFixedArray(params, byteIdx);
+                require(checkTupleLen == 3, "Invalid params inner");
+
+                bytes memory dataCid;
+                (dataCid, byteIdx) = readBytes(params, byteIdx);
+
+                uint64 pieceSize;
+                (pieceSize, byteIdx) = readUInt64(params, byteIdx);
+
+                bytes memory payload;
+                (payload, byteIdx) = readBytes(params, byteIdx); 
+
+                // Store the notification
+                uint256 notificationIndex = notifications.length;
+                notifications.push(SectorNotification({
+                    sector: sector,
+                    minimumCommitmentEpoch: minimumCommitmentEpoch,
+                    dataCid: dataCid,
+                    pieceSize: pieceSize,
+                    payload: payload
+                }));
+                
+                sectorNotificationIndices[sector].push(notificationIndex);
+                totalNotifications++;
             }
         }
+        /* Hack: just return CBOR null == `0xF6`
+          This deserializes to SectorContentChangedReturn [[bool]] but will fail validation.
+          To call this without failing commitment message must specify require_success == false
+        */
+        return hex"81f6";
+          
     }
-    
-    receive() external payable {}
+
+    /* *** CBOR parsing *** */
+
+    uint8 constant MajUnsignedInt = 0;
+    uint8 constant MajSignedInt = 1;
+    uint8 constant MajByteString = 2;
+    uint8 constant MajTextString = 3;
+    uint8 constant MajArray = 4;
+    uint8 constant MajMap = 5;
+    uint8 constant MajTag = 6;
+    uint8 constant MajOther = 7;
+
+    uint8 constant TagTypeBigNum = 2;
+    uint8 constant TagTypeNegativeBigNum = 3;
+
+    uint8 constant True_Type = 21;
+    uint8 constant False_Type = 20;
+
+    /// @notice attempt to read the length of a fixed array
+    /// @param cborData cbor encoded bytes to parse from
+    /// @param byteIdx current position to read on the cbor encoded bytes
+    /// @return length of the fixed array decoded from input bytes and the byte index after moving past the value
+    function readFixedArray(bytes memory cborData, uint byteIdx) internal pure returns (uint, uint) {
+        uint8 maj;
+        uint len;
+
+        (maj, len, byteIdx) = parseCborHeader(cborData, byteIdx);
+        require(maj == MajArray, "invalid maj (expected MajArray)");
+
+        return (len, byteIdx);
+    }
+
+    /// @notice attempt to read an arbitrary byte string value
+    /// @param cborData cbor encoded bytes to parse from
+    /// @param byteIdx current position to read on the cbor encoded bytes
+    /// @return arbitrary byte string decoded from input bytes and the byte index after moving past the value
+    function readBytes(bytes memory cborData, uint byteIdx) internal pure returns (bytes memory, uint) {
+        uint8 maj;
+        uint len;
+
+        (maj, len, byteIdx) = parseCborHeader(cborData, byteIdx);
+        require(maj == MajTag || maj == MajByteString, "invalid maj (expected MajTag or MajByteString)");
+
+        if (maj == MajTag) {
+            (maj, len, byteIdx) = parseCborHeader(cborData, byteIdx);
+            if (!(maj == MajByteString)) {
+                revert("expected MajByteString");
+            }
+        }
+
+        uint max_len = byteIdx + len;
+        bytes memory slice = new bytes(len);
+        uint slice_index = 0;
+        for (uint256 i = byteIdx; i < max_len; i++) {
+            slice[slice_index] = cborData[i];
+            slice_index++;
+        }
+
+        return (slice, byteIdx + len);
+    }
+
+    /// @notice attempt to read a uint64 value
+    /// @param cborData cbor encoded bytes to parse from
+    /// @param byteIdx current position to read on the cbor encoded bytes
+    /// @return an uint64 decoded from input bytes and the byte index after moving past the value
+    function readUInt64(bytes memory cborData, uint byteIdx) internal pure returns (uint64, uint) {
+        uint8 maj;
+        uint value;
+
+        (maj, value, byteIdx) = parseCborHeader(cborData, byteIdx);
+        require(maj == MajUnsignedInt, "invalid maj (expected MajUnsignedInt)");
+
+        return (uint64(value), byteIdx);
+    }
+
+    /// @notice attempt to read a int64 value
+    /// @param cborData cbor encoded bytes to parse from
+    /// @param byteIdx current position to read on the cbor encoded bytes
+    /// @return an int64 decoded from input bytes and the byte index after moving past the value
+    function readInt64(bytes memory cborData, uint byteIdx) internal pure returns (int64, uint) {
+        uint8 maj;
+        uint value;
+
+        (maj, value, byteIdx) = parseCborHeader(cborData, byteIdx);
+        require(maj == MajSignedInt || maj == MajUnsignedInt, "invalid maj (expected MajSignedInt or MajUnsignedInt)");
+
+        return (int64(uint64(value)), byteIdx);
+    }
+
+    /// @notice Parse cbor header for major type and extra info.
+    /// @param cbor cbor encoded bytes to parse from
+    /// @param byteIndex current position to read on the cbor encoded bytes
+    /// @return major type, extra info and the byte index after moving past header bytes
+    function parseCborHeader(bytes memory cbor, uint byteIndex) internal pure returns (uint8, uint64, uint) {
+        uint8 first = sliceUInt8(cbor, byteIndex);
+        byteIndex += 1;
+        uint8 maj = (first & 0xe0) >> 5;
+        uint8 low = first & 0x1f;
+        // We don't handle CBOR headers with extra > 27, i.e. no indefinite lengths
+        require(low < 28, "cannot handle headers with extra > 27");
+
+        // extra is lower bits
+        if (low < 24) {
+            return (maj, low, byteIndex);
+        }
+
+        // extra in next byte
+        if (low == 24) {
+            uint8 next = sliceUInt8(cbor, byteIndex);
+            byteIndex += 1;
+            require(next >= 24, "invalid cbor"); // otherwise this is invalid cbor
+            return (maj, next, byteIndex);
+        }
+
+        // extra in next 2 bytes
+        if (low == 25) {
+            uint16 extra16 = sliceUInt16(cbor, byteIndex);
+            byteIndex += 2;
+            return (maj, extra16, byteIndex);
+        }
+
+        // extra in next 4 bytes
+        if (low == 26) {
+            uint32 extra32 = sliceUInt32(cbor, byteIndex);
+            byteIndex += 4;
+            return (maj, extra32, byteIndex);
+        }
+
+        // extra in next 8 bytes
+        if (!(low == 27)) {
+            revert("ExpectedLowValue27");
+        }
+        uint64 extra64 = sliceUInt64(cbor, byteIndex);
+        byteIndex += 8;
+        return (maj, extra64, byteIndex);
+    } 
+
+     /// @notice slice uint8 from bytes starting at a given index
+    /// @param bs bytes to slice from
+    /// @param start current position to slice from bytes
+    /// @return uint8 sliced from bytes
+    function sliceUInt8(bytes memory bs, uint start) internal pure returns (uint8) {
+        require(bs.length >= start + 1, "slicing out of range");
+        return uint8(bs[start]);
+    }
+
+    /// @notice slice uint16 from bytes starting at a given index
+    /// @param bs bytes to slice from
+    /// @param start current position to slice from bytes
+    /// @return uint16 sliced from bytes
+    function sliceUInt16(bytes memory bs, uint start) internal pure returns (uint16) {
+        require(bs.length >= start + 2, "slicing out of range");
+        bytes2 x;
+        assembly {
+            x := mload(add(bs, add(0x20, start)))
+        }
+        return uint16(x);
+    }
+
+    /// @notice slice uint32 from bytes starting at a given index
+    /// @param bs bytes to slice from
+    /// @param start current position to slice from bytes
+    /// @return uint32 sliced from bytes
+    function sliceUInt32(bytes memory bs, uint start) internal pure returns (uint32) {
+        require(bs.length >= start + 4, "slicing out of range");
+        bytes4 x;
+        assembly {
+            x := mload(add(bs, add(0x20, start)))
+        }
+        return uint32(x);
+    }
+
+    /// @notice slice uint64 from bytes starting at a given index
+    /// @param bs bytes to slice from
+    /// @param start current position to slice from bytes
+    /// @return uint64 sliced from bytes
+    function sliceUInt64(bytes memory bs, uint start) internal pure returns (uint64) {
+        require(bs.length >= start + 8, "slicing out of range");
+        bytes8 x;
+        assembly {
+            x := mload(add(bs, add(0x20, start)))
+        }
+        return uint64(x);
+    }
 }
+
