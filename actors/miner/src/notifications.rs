@@ -4,7 +4,7 @@ use crate::{
 };
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{
-    ActorError, AsActorError, STORAGE_MARKET_ACTOR_ADDR, SendError, actor_error,
+    ActorError, AsActorError, SendError,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
