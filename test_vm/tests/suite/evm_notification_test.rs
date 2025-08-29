@@ -1,4 +1,4 @@
-use fil_actors_integration_tests::tests::{evm_receives_ddo_notifications_test};
+use fil_actors_integration_tests::tests::evm_receives_ddo_notifications_test;
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
