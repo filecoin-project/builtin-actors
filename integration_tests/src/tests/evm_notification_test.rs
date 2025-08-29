@@ -3,10 +3,11 @@ use alloy_core::{primitives::U256 as AlloyU256, sol};
 use export_macro::vm_test;
 use fil_actor_miner::{
     ProveCommitSectors3Params, SectorActivationManifest, PieceActivationManifest,
-    DataActivationNotification, Method as MinerMethod, CompactCommD,
+    DataActivationNotification, Method as MinerMethod, CompactCommD, max_prove_commit_duration,
 };
 use fil_actors_runtime::{
     EAM_ACTOR_ADDR, test_utils::EVM_ACTOR_CODE_ID, test_utils::make_piece_cid,
+    runtime::Policy,
 };
 use fvm_ipld_encoding::{RawBytes, ipld_block::IpldBlock, BytesDe};
 use fvm_shared::{
@@ -108,6 +109,9 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     })
     .collect();
 
+    // Track the precommit epoch for later verification
+    let precommit_epoch = v.epoch();
+    
     precommit_sectors_v2(
         v,
         1,
@@ -223,8 +227,15 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
             "Piece CID data mismatch: expected 0x{}, got 0x{}", 
             hex::encode(&expected_cid_bytes), hex::encode(&data_cid_bytes[1..]));
         
-        // Verify minimum_commitment_epoch is set (this is calculated by the system)
-        assert!(minimum_commitment_epoch > 0, 
-            "Minimum commitment epoch should be positive, got {}", minimum_commitment_epoch);
+        // Verify minimum_commitment_epoch matches the sector expiration
+        // The sector expiration is set to: precommit_epoch + min_sector_expiration + max_prove_commit_duration
+        let policy = Policy::default();
+        let expected_expiration = precommit_epoch 
+            + policy.min_sector_expiration 
+            + max_prove_commit_duration(&policy, seal_proof).unwrap();
+        
+        assert_eq!(minimum_commitment_epoch, expected_expiration, 
+            "Minimum commitment epoch mismatch: expected {}, got {}", 
+            expected_expiration, minimum_commitment_epoch);
     }
 }
