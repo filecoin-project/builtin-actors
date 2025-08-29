@@ -8,6 +8,7 @@ use std::ops::Neg;
 use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::reward::FilterEstimate;
+use fil_actors_runtime::runtime::policy_constants::CREATE_MINER_DEPOSIT_POWER;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -132,6 +133,24 @@ pub fn setup() -> (ActorHarness, MockRuntime) {
     (h, rt)
 }
 
+pub fn create_miner_deposit_for_test(
+    rt: &MockRuntime,
+    baseline_power: &StoragePower,
+    reward_estimated: &FilterEstimate,
+) -> TokenAmount {
+    let pwr = CurrentTotalPowerReturn::default();
+
+    initial_pledge_for_power(
+        &BigInt::from(CREATE_MINER_DEPOSIT_POWER),
+        baseline_power,
+        reward_estimated,
+        &pwr.quality_adj_power_smoothed,
+        &rt.circulating_supply.borrow(),
+        *rt.epoch.borrow() - pwr.ramp_start_epoch,
+        pwr.ramp_duration_epochs,
+    )
+}
+
 pub struct ActorHarness {
     pub receiver: Address,
     pub owner: Address,
@@ -220,6 +239,30 @@ impl ActorHarness {
         check_state_invariants_from_mock_runtime(rt);
     }
 
+    pub fn check_create_miner_deposit_and_reset_state(&self, rt: &MockRuntime) {
+        let create_deposit =
+            create_miner_deposit_for_test(rt, &self.baseline_power, &self.epoch_reward_smooth);
+
+        let mut st = self.get_state(&rt);
+        let create_deposit_vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
+
+        // create miner deposit
+        assert!(create_deposit_vesting_funds.len() == 180);
+        assert!(st.locked_funds == create_deposit);
+
+        // reset create miner deposit vesting funds
+        st.vesting_funds = Default::default();
+        st.locked_funds = TokenAmount::zero();
+        rt.replace_state(&st);
+        rt.set_balance(rt.get_balance() - &create_deposit);
+
+        let st = self.get_state(&rt);
+        let create_deposit_vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
+
+        assert!(create_deposit_vesting_funds.is_empty());
+        assert!(st.locked_funds.is_zero());
+    }
+
     pub fn new_runtime(&self) -> MockRuntime {
         let mut rt = MockRuntime::default();
 
@@ -246,6 +289,13 @@ impl ActorHarness {
     }
 
     pub fn construct_and_verify(&self, rt: &MockRuntime) {
+        let current_reward = ThisEpochRewardReturn {
+            this_epoch_baseline_power: self.baseline_power.clone(),
+            this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
+        };
+
+        let current_total_power = CurrentTotalPowerReturn::default();
+
         let params = ConstructorParams {
             owner: self.owner,
             worker: self.worker,
@@ -261,8 +311,31 @@ impl ActorHarness {
             rt.actor_code_cids.borrow_mut().insert(*a, *ACCOUNT_ACTOR_CODE_ID);
         }
 
+        // set circulating supply non-zero so we get non-zero fees
+        rt.set_circulating_supply(TokenAmount::from_whole(500_000));
+        rt.add_balance(create_miner_deposit_for_test(
+            rt,
+            &self.baseline_power,
+            &self.epoch_reward_smooth,
+        ));
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.expect_send_simple(
+            REWARD_ACTOR_ADDR,
+            RewardMethod::ThisEpochReward as u64,
+            None,
+            TokenAmount::zero(),
+            IpldBlock::serialize_cbor(&current_reward).unwrap(),
+            ExitCode::OK,
+        );
+        rt.expect_send_simple(
+            STORAGE_POWER_ACTOR_ADDR,
+            ext::power::CURRENT_TOTAL_POWER_METHOD,
+            Default::default(),
+            TokenAmount::zero(),
+            IpldBlock::serialize_cbor(&current_total_power).unwrap(),
+            ExitCode::OK,
+        );
         rt.expect_send_simple(
             self.worker,
             AccountMethod::PubkeyAddress as u64,
@@ -271,14 +344,13 @@ impl ActorHarness {
             IpldBlock::serialize_cbor(&self.worker_key).unwrap(),
             ExitCode::OK,
         );
-        // set circulating supply non-zero so we get non-zero fees
-        rt.set_circulating_supply(TokenAmount::from_whole(500_000));
 
         let result = rt
             .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
         expect_empty(result);
         rt.verify();
+        self.check_create_miner_deposit_and_reset_state(rt);
     }
 
     pub fn set_peer_id(&self, rt: &MockRuntime, new_id: Vec<u8>) {
@@ -1935,7 +2007,7 @@ impl ActorHarness {
             expect_burn(rt, penalty.clone());
         }
 
-        let params = ApplyRewardParams { reward: amt, penalty: penalty };
+        let params = ApplyRewardParams { reward: amt, penalty };
         rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
         rt.verify();

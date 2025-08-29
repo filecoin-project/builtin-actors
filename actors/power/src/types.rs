@@ -60,7 +60,7 @@ pub struct UpdatePledgeTotalParams {
     pub pledge_delta: TokenAmount,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Default, Clone, Eq, PartialEq)]
 pub struct CurrentTotalPowerReturn {
     #[serde(with = "bigint_ser")]
     pub raw_byte_power: StoragePower,

@@ -93,7 +93,7 @@ pub mod power {
     pub const SUBMIT_POREP_FOR_BULK_VERIFY_METHOD: u64 = 8;
     pub const CURRENT_TOTAL_POWER_METHOD: u64 = 9;
 
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[derive(Serialize_tuple, Deserialize_tuple, Default)]
     pub struct CurrentTotalPowerReturn {
         #[serde(with = "bigint_ser")]
         pub raw_byte_power: StoragePower,
@@ -104,6 +104,7 @@ pub mod power {
         pub ramp_start_epoch: i64,
         pub ramp_duration_epochs: u64,
     }
+
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct EnrollCronEventParams {
         pub event_epoch: ChainEpoch,

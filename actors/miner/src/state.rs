@@ -208,6 +208,7 @@ impl State {
     pub fn deadline_info(&self, policy: &Policy, current_epoch: ChainEpoch) -> DeadlineInfo {
         new_deadline_info_from_offset_and_epoch(policy, self.proving_period_start, current_epoch)
     }
+
     // Returns deadline calculations for the state recorded proving period and deadline.
     // This is out of date if the a miner does not have an active miner cron
     pub fn recorded_deadline_info(

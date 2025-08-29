@@ -47,7 +47,9 @@ pub use expiration_queue::*;
 use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::reward::{FilterEstimate, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
+use fil_actors_runtime::runtime::policy_constants::{
+    CREATE_MINER_DEPOSIT_POWER, MAX_SECTOR_NUMBER,
+};
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     ActorContext, ActorDowncast, ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR, BatchReturn,
@@ -185,6 +187,14 @@ impl Actor {
         check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
         check_valid_post_proof_type(rt.policy(), params.window_post_proof_type)?;
 
+        let balance = rt.current_balance();
+        let deposit = calculate_create_miner_deposit(rt)?;
+        if balance < deposit {
+            return Err(actor_error!(insufficient_funds;
+                "not enough balance to lock for create miner deposit: \
+                sent balance {} < deposit {}", balance.atto(), deposit.atto()));
+        }
+
         let owner = rt.resolve_address(&params.owner).ok_or_else(|| {
             actor_error!(illegal_argument, "unable to resolve owner address: {}", params.owner)
         })?;
@@ -243,7 +253,10 @@ impl Actor {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
         })?;
 
-        let st = State::new(policy, rt.store(), info_cid, period_start, deadline_idx)?;
+        let store = rt.store();
+        let mut st = State::new(policy, store, info_cid, period_start, deadline_idx)?;
+        st.add_locked_funds(store, rt.curr_epoch(), &deposit, &REWARD_VESTING_SPEC)
+            .map_err(|e| actor_error!(illegal_state, e))?;
         rt.create(&st)?;
         Ok(())
     }
@@ -5246,6 +5259,23 @@ fn activate_new_sector_infos(
     notify_pledge_changed(rt, &(total_pledge - newly_vested))?;
 
     Ok(())
+}
+
+/// Calculate create miner deposit by MINIMUM_CONSENSUS_POWER x StateMinerInitialPledgeCollateral / 10
+/// See FIP-0077, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0077.md
+pub fn calculate_create_miner_deposit(rt: &impl Runtime) -> Result<TokenAmount, ActorError> {
+    let rew = request_current_epoch_block_reward(rt)?;
+    let pwr = request_current_total_power(rt)?;
+
+    Ok(initial_pledge_for_power(
+        &BigInt::from(CREATE_MINER_DEPOSIT_POWER),
+        &rew.this_epoch_baseline_power,
+        &rew.this_epoch_reward_smoothed,
+        &pwr.quality_adj_power_smoothed,
+        &rt.total_fil_circ_supply(),
+        rt.curr_epoch() - pwr.ramp_start_epoch,
+        pwr.ramp_duration_epochs,
+    ))
 }
 
 pub struct SectorPiecesActivationInput {
