@@ -21,7 +21,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use num_traits::{FromPrimitive, Zero};
 
 mod util;
-use util::minimum_initial_pledge;
+use util::create_miner_deposit_for_test;
 
 #[allow(dead_code)]
 struct TestEnv {
@@ -65,7 +65,11 @@ fn prepare_env() -> TestEnv {
     env.rt.caller.replace(INIT_ACTOR_ADDR);
     env.rt.caller_type.replace(*INIT_ACTOR_CODE_ID);
     // add balance for create miner deposit
-    env.rt.add_balance(minimum_initial_pledge(&env.rt, &env.power, &env.epoch_reward_smooth));
+    env.rt.add_balance(create_miner_deposit_for_test(
+        &env.rt,
+        &env.power,
+        &env.epoch_reward_smooth,
+    ));
     env
 }
 
@@ -139,7 +143,7 @@ fn simple_construction() {
 
     assert_eq!(TokenAmount::zero(), state.pre_commit_deposits);
     assert_eq!(
-        minimum_initial_pledge(&env.rt, &env.power, &env.epoch_reward_smooth),
+        create_miner_deposit_for_test(&env.rt, &env.power, &env.epoch_reward_smooth),
         state.locked_funds
     );
     assert_eq!(180, state.vesting_funds.load(&env.rt.store).unwrap().len());

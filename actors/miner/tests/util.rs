@@ -133,7 +133,7 @@ pub fn setup() -> (ActorHarness, MockRuntime) {
     (h, rt)
 }
 
-pub fn minimum_initial_pledge(
+pub fn create_miner_deposit_for_test(
     rt: &MockRuntime,
     baseline_power: &StoragePower,
     reward_estimated: &FilterEstimate,
@@ -241,7 +241,7 @@ impl ActorHarness {
 
     pub fn check_create_miner_deposit_and_reset_state(&self, rt: &MockRuntime) {
         let create_deposit =
-            minimum_initial_pledge(rt, &self.baseline_power, &self.epoch_reward_smooth);
+            create_miner_deposit_for_test(rt, &self.baseline_power, &self.epoch_reward_smooth);
 
         let mut st = self.get_state(&rt);
         let create_deposit_vesting_funds = st.vesting_funds.load(&rt.store).unwrap();
@@ -313,7 +313,11 @@ impl ActorHarness {
 
         // set circulating supply non-zero so we get non-zero fees
         rt.set_circulating_supply(TokenAmount::from_whole(500_000));
-        rt.add_balance(minimum_initial_pledge(rt, &self.baseline_power, &self.epoch_reward_smooth));
+        rt.add_balance(create_miner_deposit_for_test(
+            rt,
+            &self.baseline_power,
+            &self.epoch_reward_smooth,
+        ));
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.expect_send_simple(

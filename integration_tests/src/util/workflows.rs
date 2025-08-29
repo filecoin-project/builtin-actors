@@ -85,7 +85,7 @@ use vm_api::util::{apply_code, apply_ok, apply_ok_implicit};
 use crate::expects::Expect;
 use crate::*;
 
-use super::get_minimum_initial_pledge;
+use super::create_miner_deposit_for_test;
 use super::market_pending_deal_allocations_raw;
 use super::miner_dline_info;
 use super::sector_deadline;
@@ -102,7 +102,7 @@ pub fn cron_tick(v: &dyn VM) {
 }
 
 pub fn owner_add_create_miner_deposit(v: &dyn VM, owner: &Address) -> TokenAmount {
-    let create_miner_deposit = get_minimum_initial_pledge(v);
+    let create_miner_deposit = create_miner_deposit_for_test(v);
     apply_ok(
         v,
         &TEST_FAUCET_ADDR,
