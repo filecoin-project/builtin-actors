@@ -8,7 +8,6 @@ use fil_actor_miner::{
 use fil_actors_runtime::{EAM_ACTOR_ADDR, runtime::Policy, test_utils::make_piece_cid};
 use fvm_ipld_encoding::{BytesDe, RawBytes, ipld_block::IpldBlock};
 use fvm_shared::{
-    address::Address,
     econ::TokenAmount,
     piece::PaddedPieceSize,
     piece::PieceInfo,
@@ -83,7 +82,7 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     let notification_payload = RawBytes::from(hex::decode("cafe").unwrap());
 
     let manifests: Vec<SectorActivationManifest> = vec![SectorActivationManifest {
-        sector_number: sector_number,
+        sector_number,
         pieces: vec![PieceActivationManifest {
             cid: piece_cid0,
             size: piece_size0,
@@ -91,7 +90,7 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
             notify: vec![
                 // Send notification to our EVM contract
                 DataActivationNotification {
-                    address: evm_robust_addr.clone(),
+                    address: evm_robust_addr,
                     payload: notification_payload.clone(),
                 },
             ],
