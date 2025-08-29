@@ -1,15 +1,15 @@
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, clock::ChainEpoch};
-use fvm_shared::address::Address;
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
-    DataActivationNotification, PieceChange, SectorChanges, State, daily_proof_fee,
-    SECTOR_CONTENT_CHANGED,
+    DataActivationNotification, PieceChange, SECTOR_CONTENT_CHANGED, SectorChanges, State,
+    daily_proof_fee,
 };
 use fil_actor_miner::{ProveReplicaUpdates3Return, SectorOnChainInfo};
 use fil_actors_runtime::cbor::serialize;
@@ -709,4 +709,3 @@ fn setup_empty_sectors(count: usize) -> (ActorHarness, MockRuntime, Vec<SectorOn
 fn assert_update_result(expected: &[ExitCode], result: &ProveReplicaUpdates3Return) {
     assert_eq!(BatchReturn::of(expected), result.activation_results);
 }
-

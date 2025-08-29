@@ -3,9 +3,7 @@ use crate::{
     SectorContentChangedParams, SectorContentChangedReturn,
 };
 use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::{
-    ActorError, AsActorError, SendError,
-};
+use fil_actors_runtime::{ActorError, AsActorError, SendError};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 use fvm_shared::address::Address;

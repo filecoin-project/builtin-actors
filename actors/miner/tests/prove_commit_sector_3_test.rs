@@ -1,15 +1,15 @@
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, clock::ChainEpoch};
-use fvm_shared::address::Address;
-use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
-    DataActivationNotification, PieceChange, ProveCommitSectors3Return, SectorChanges,
-    SectorOnChainInfo, SectorPreCommitInfo, SECTOR_CONTENT_CHANGED,
+    DataActivationNotification, PieceChange, ProveCommitSectors3Return, SECTOR_CONTENT_CHANGED,
+    SectorChanges, SectorOnChainInfo, SectorPreCommitInfo,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::MockRuntime;
@@ -760,4 +760,3 @@ fn precommit_sectors_from(
 fn assert_commit_result(expected: &[ExitCode], result: &ProveCommitSectors3Return) {
     assert_eq!(BatchReturn::of(expected), result.activation_results);
 }
-
