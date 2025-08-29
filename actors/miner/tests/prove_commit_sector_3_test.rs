@@ -1,14 +1,11 @@
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, clock::ChainEpoch};
-use num_traits::Zero;
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
-    DataActivationNotification, PieceChange, ProveCommitSectors3Return, SECTOR_CONTENT_CHANGED,
+    DataActivationNotification, PieceChange, ProveCommitSectors3Return,
     SectorChanges, SectorOnChainInfo, SectorPreCommitInfo,
 };
 use fil_actors_runtime::cbor::serialize;

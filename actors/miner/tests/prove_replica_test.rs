@@ -1,5 +1,4 @@
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -8,7 +7,7 @@ use fvm_shared::{ActorID, clock::ChainEpoch};
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
-    DataActivationNotification, PieceChange, SECTOR_CONTENT_CHANGED, SectorChanges, State,
+    DataActivationNotification, PieceChange, SectorChanges, State,
     daily_proof_fee,
 };
 use fil_actor_miner::{ProveReplicaUpdates3Return, SectorOnChainInfo};
