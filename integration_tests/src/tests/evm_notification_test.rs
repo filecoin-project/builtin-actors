@@ -5,9 +5,7 @@ use fil_actor_miner::{
     CompactCommD, DataActivationNotification, Method as MinerMethod, PieceActivationManifest,
     ProveCommitSectors3Params, SectorActivationManifest, max_prove_commit_duration,
 };
-use fil_actors_runtime::{
-    EAM_ACTOR_ADDR, runtime::Policy, test_utils::EVM_ACTOR_CODE_ID, test_utils::make_piece_cid,
-};
+use fil_actors_runtime::{EAM_ACTOR_ADDR, runtime::Policy, test_utils::make_piece_cid};
 use fvm_ipld_encoding::{BytesDe, RawBytes, ipld_block::IpldBlock};
 use fvm_shared::{
     address::Address,
@@ -73,7 +71,6 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
 
     let create_return: fil_actor_eam::CreateReturn =
         create_result.ret.unwrap().deserialize().expect("Failed to decode create return");
-    let evm_actor_addr = Address::new_id(create_return.actor_id);
     let evm_robust_addr = create_return.robust_address.unwrap();
     let _evm_eth_addr = create_return.eth_address;
 
