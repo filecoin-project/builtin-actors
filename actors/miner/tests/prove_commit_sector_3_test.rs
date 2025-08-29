@@ -5,8 +5,8 @@ use fvm_shared::{ActorID, clock::ChainEpoch};
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
-    DataActivationNotification, PieceChange, ProveCommitSectors3Return,
-    SectorChanges, SectorOnChainInfo, SectorPreCommitInfo,
+    DataActivationNotification, PieceChange, ProveCommitSectors3Return, SectorChanges,
+    SectorOnChainInfo, SectorPreCommitInfo,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::MockRuntime;

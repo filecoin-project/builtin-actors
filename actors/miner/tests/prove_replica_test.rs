@@ -7,8 +7,7 @@ use fvm_shared::{ActorID, clock::ChainEpoch};
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
-    DataActivationNotification, PieceChange, SectorChanges, State,
-    daily_proof_fee,
+    DataActivationNotification, PieceChange, SectorChanges, State, daily_proof_fee,
 };
 use fil_actor_miner::{ProveReplicaUpdates3Return, SectorOnChainInfo};
 use fil_actors_runtime::cbor::serialize;
