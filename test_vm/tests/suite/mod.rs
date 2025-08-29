@@ -5,6 +5,7 @@ mod change_beneficiary_test;
 mod change_owner_test;
 mod commit_post_test;
 mod datacap_tests;
+mod evm_notification_test;
 mod evm_test;
 mod extend_sectors_test;
 mod init_test;
