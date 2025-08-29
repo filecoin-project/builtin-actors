@@ -99,13 +99,13 @@ contract NotificationReceiver {
      */
     function processSectorContentChanged(bytes memory params) internal returns (bytes memory) {
 
-        /* We begin by parsing a single tuple: (sectors)
-         */
-        (uint checkTupleLen, uint byteIdx) = readFixedArray(params, 0);
-        require(checkTupleLen == 1, "Invalid params outer tuple");
+        uint checkTupleLen;
+        uint byteIdx = 0;
 
+        // We don't need to parse the SectorContentChangedParams as a tuple because
+        // the type is encoded as serde transparent.  So just parse the sectors array directly
         uint nSectors;
-        (nSectors, byteIdx) = readFixedArray(params, 0);
+        (nSectors, byteIdx) = readFixedArray(params, byteIdx);
         require(nSectors > 0, "Invalid non positive sectors field");
 
         CBORBuffer memory ret_acc;
@@ -113,7 +113,7 @@ contract NotificationReceiver {
             // Setup return value ret_acc
             // ret_acc accumulates return cbor array 
             ret_acc = createCBOR(64);
-            startFixedArray(ret_acc, 1); // SectorContentChangedReturn
+            // No SectorContentChangedReturn outer tuple as it is serde transparent
             startFixedArray(ret_acc, uint64(nSectors)); // sectors: Vec<SectorReturn>
         }
         for (uint i = 0; i < nSectors; i++) {
@@ -134,7 +134,7 @@ contract NotificationReceiver {
             (pieceCnt, byteIdx) = readFixedArray(params, byteIdx); 
 
             {
-                startFixedArray(ret_acc, 1); // SectorReturn
+                // No SectorReturn outer tuple as it is serde transparent
                 startFixedArray(ret_acc, uint64(pieceCnt)); // added: Vec<PieceReturn>
             }
 
@@ -167,7 +167,7 @@ contract NotificationReceiver {
                 sectorNotificationIndices[sector].push(notificationIndex);
                 totalNotifications++;
                 {
-                    startFixedArray(ret_acc, 1); // PieceReturn
+                    // No PieceReturn outer tuple as it is serde transparent
                     writeBool(ret_acc, true); // accepted (set all to true)
                 }
             }
