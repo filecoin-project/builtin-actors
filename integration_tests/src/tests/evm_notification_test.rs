@@ -13,9 +13,11 @@ use fvm_shared::{
     piece::PieceInfo,
     sector::{RegisteredSealProof, SectorNumber},
 };
+use fvm_shared::address::Address;
 use num_traits::Zero;
 use vm_api::VM;
 use vm_api::util::serialize_ok;
+use cid::Cid;
 
 use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, create_accounts, create_miner,
@@ -112,6 +114,9 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
 
     precommit_sectors_v2(v, 1, meta, &worker, &miner_addr, seal_proof, sector_number, true, None);
 
+    // Before prove commit no notifications have been received
+    check_receiver_notification_count(v, &worker, &evm_robust_addr, 0);
+
     // Advance time to prove commit epoch
     let prove_time = v.epoch() + 151;
     advance_by_deadline_to_epoch(v, &miner_addr, prove_time);
@@ -140,118 +145,135 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     assert!(prove_result.code.is_success(), "ProveCommit failed: {}", prove_result.message);
 
     /* ***Verify that the EVM contract received the notifications correctly*** */
-    // 1. Call totalNotifications() to verify only one notification witnessed
-    {
-        let call_params = NotificationReceiver::totalNotificationsCall::new(()).abi_encode();
-        let call_result = v
-            .execute_message(
-                &worker,
-                &evm_robust_addr,
-                &TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
-                Some(serialize_ok(&ContractParams(call_params.to_vec()))),
-            )
-            .unwrap();
+    let policy = Policy::default();
+    let expected_notification = ExpectedNotification {
+        sector: sector_number,
+        minimum_commitment_epoch: precommit_epoch + policy.min_sector_expiration + max_prove_commit_duration(&policy, seal_proof).unwrap(),
+        piece_cid: piece_cid0,
+        piece_size: piece_size0.0,
+        payload: notification_payload.to_vec(),
+    };
 
-        assert!(
-            call_result.code.is_success(),
-            "Failed to call totalNotifications: {}",
-            call_result.message
-        );
-
-        // Decode the return value
-        let return_data: BytesDe = call_result.ret.unwrap().deserialize().unwrap();
-        let total_notifications = AlloyU256::abi_decode(&return_data.0)
-            .expect("Failed to decode totalNotifications return value");
-        assert_eq!(
-            total_notifications,
-            AlloyU256::from(1),
-            "Expected 1 notification, got {}",
-            total_notifications
-        );
-    }
-
-    // 2. Call getNotification(0) to verify the notification contents match exactly what was sent
-    {
-        let call_params =
-            NotificationReceiver::getNotificationCall::new((AlloyU256::from(0),)).abi_encode();
-        let call_result = v
-            .execute_message(
-                &worker,
-                &evm_robust_addr,
-                &TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
-                Some(serialize_ok(&ContractParams(call_params.to_vec()))),
-            )
-            .unwrap();
-        assert!(
-            call_result.code.is_success(),
-            "Failed to call getNotification: {}",
-            call_result.message
-        );
-
-        // Decode the return value - it returns a tuple of (uint64, int64, bytes, uint64, bytes)
-        let return_data: BytesDe = call_result.ret.unwrap().deserialize().unwrap();
-
-        // Use the generated abi_decode_returns function
-        let notification_result =
-            NotificationReceiver::getNotificationCall::abi_decode_returns(&return_data.0)
-                .expect("Failed to decode getNotification return value");
-
-        let received_sector = notification_result.sector;
-        let minimum_commitment_epoch = notification_result.minimumCommitmentEpoch;
-        let data_cid_bytes = notification_result.dataCid;
-        let received_piece_size = notification_result.pieceSize;
-        let received_payload = notification_result.payload;
-
-        assert_eq!(
-            received_sector, sector_number,
-            "Sector number mismatch: expected {}, got {}",
-            sector_number, received_sector
-        );
-
-        assert_eq!(
-            received_piece_size, piece_size0.0,
-            "Piece size mismatch: expected {}, got {}",
-            piece_size0.0, received_piece_size
-        );
-
-        // Check payload matches exactly what we set in the manifest (hex "cafe")
-        let expected_payload_bytes = notification_payload.to_vec();
-        assert_eq!(
-            received_payload.as_ref(),
-            expected_payload_bytes.as_slice(),
-            "Payload mismatch: expected 0x{}, got 0x{}",
-            hex::encode(&expected_payload_bytes),
-            hex::encode(&received_payload)
-        );
-
-        // Check the piece CID data is present
-        // The contract receives the CID with an extra leading byte from the CBOR encoding,
-        // so we verify it contains the expected CID data after the first byte
-        let expected_cid_bytes = piece_cid0.to_bytes();
-        assert!(!data_cid_bytes.is_empty(), "Data CID should not be empty");
-        // Verify the CID data matches
-        assert_eq!(data_cid_bytes[0], 0, "Data CID should start with 0x00 for ipld cbor reasons");
-        assert_eq!(
-            &data_cid_bytes[1..],
-            expected_cid_bytes,
-            "Piece CID data mismatch: expected 0x{}, got 0x{}",
-            hex::encode(&expected_cid_bytes),
-            hex::encode(&data_cid_bytes[1..])
-        );
-
-        // Verify minimum_commitment_epoch matches the sector expiration
-        // The sector expiration is set to: precommit_epoch + min_sector_expiration + max_prove_commit_duration
-        let policy = Policy::default();
-        let expected_expiration = precommit_epoch
-            + policy.min_sector_expiration
-            + max_prove_commit_duration(&policy, seal_proof).unwrap();
-
-        assert_eq!(
-            minimum_commitment_epoch, expected_expiration,
-            "Minimum commitment epoch mismatch: expected {}, got {}",
-            expected_expiration, minimum_commitment_epoch
-        );
-    }
+    check_receiver_notification_count(v, &worker, &evm_robust_addr, 1);
+    check_receiver_notification_at(v, &worker, &evm_robust_addr, 0, &expected_notification);
 }
+
+// Helper functions checking state of receiver contract 
+
+pub fn check_receiver_notification_count(v: &dyn VM, sender_addr: &Address, receiver_addr: &Address, expected_count: u64) {
+    let call_params = NotificationReceiver::totalNotificationsCall::new(()).abi_encode();
+    let call_result = v
+        .execute_message(
+            &sender_addr,
+            &receiver_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(serialize_ok(&ContractParams(call_params.to_vec()))),
+        )
+        .unwrap();
+
+    assert!(
+        call_result.code.is_success(),
+        "Failed to call totalNotifications: {}",
+        call_result.message
+    );
+
+    // Decode the return value
+    let return_data: BytesDe = call_result.ret.unwrap().deserialize().unwrap();
+    let total_notifications = AlloyU256::abi_decode(&return_data.0)
+        .expect("Failed to decode totalNotifications return value");
+    assert_eq!(
+        total_notifications,
+        AlloyU256::from(expected_count),
+        "Expected {} notification(s), got {}",
+        expected_count,
+        total_notifications
+    );
+}
+
+/// Struct to hold all notification values for checking against contract state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpectedNotification {
+    pub sector: u64,
+    pub minimum_commitment_epoch: i64,
+    pub piece_cid: Cid,
+    pub piece_size: u64,
+    pub payload: Vec<u8>,
+}
+
+pub fn check_receiver_notification_at(v: &dyn VM, sender_addr: &Address, receiver_addr: &Address, index: u64, expected: &ExpectedNotification) {
+    let call_params =
+        NotificationReceiver::getNotificationCall::new((AlloyU256::from(index),)).abi_encode();
+    let call_result = v
+        .execute_message(
+            &sender_addr,
+            &receiver_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(serialize_ok(&ContractParams(call_params.to_vec()))),
+        )
+        .unwrap();
+    assert!(
+        call_result.code.is_success(),
+        "Failed to call getNotification: {}",
+        call_result.message
+    );
+
+    // Decode the return value - it returns a tuple of (uint64, int64, bytes, uint64, bytes)
+    let return_data: BytesDe = call_result.ret.unwrap().deserialize().unwrap();
+
+    // Use the generated abi_decode_returns function
+    let notification_result =
+        NotificationReceiver::getNotificationCall::abi_decode_returns(&return_data.0)
+            .expect("Failed to decode getNotification return value");
+
+    let received_sector = notification_result.sector;
+    let minimum_commitment_epoch = notification_result.minimumCommitmentEpoch;
+    let data_cid_bytes = notification_result.dataCid;
+    let received_piece_size = notification_result.pieceSize;
+    let received_payload = notification_result.payload;
+
+    assert_eq!(
+        received_sector, expected.sector,
+        "Sector number mismatch: expected {}, got {}",
+        expected.sector, received_sector
+    );
+
+    assert_eq!(
+        received_piece_size, expected.piece_size,
+        "Piece size mismatch: expected {}, got {}",
+        expected.piece_size, received_piece_size
+    );
+
+    let expected_payload_bytes = expected.payload.to_vec();
+    assert_eq!(
+        received_payload.as_ref(),
+        expected_payload_bytes.as_slice(),
+        "Payload mismatch: expected 0x{:x?}, got 0x{:x?}",
+        &expected_payload_bytes,
+        &received_payload.as_ref()
+    );
+
+    // Check the piece CID data is present
+    // The contract receives the CID with an extra leading byte from the CBOR encoding,
+    // so we verify it contains the expected CID data after the first byte
+    let expected_cid_bytes = expected.piece_cid.to_bytes();
+    assert!(!data_cid_bytes.is_empty(), "Data CID should not be empty");
+    // Verify the CID data matches
+    assert_eq!(data_cid_bytes[0], 0, "Data CID should start with 0x00 for ipld cbor reasons");
+    assert_eq!(
+        &data_cid_bytes[1..],
+        expected_cid_bytes,
+        "Piece CID data mismatch: expected {:x?}, got {:x?}",
+        &expected_cid_bytes,
+        &data_cid_bytes[1..]
+    );
+
+    assert_eq!(
+        minimum_commitment_epoch, expected.minimum_commitment_epoch,
+        "Minimum commitment epoch mismatch: expected {}, got {}",
+        expected.minimum_commitment_epoch, minimum_commitment_epoch
+    );
+}
+
+
