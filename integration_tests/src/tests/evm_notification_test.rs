@@ -5,9 +5,10 @@ use export_macro::vm_test;
 use fil_actor_miner::{
     CompactCommD, DataActivationNotification, Method as MinerMethod, PieceActivationManifest,
     ProveCommitSectors3Params, SectorActivationManifest, max_prove_commit_duration,
+    PieceChange, SectorChanges, SECTOR_CONTENT_CHANGED,
 };
 use fil_actors_runtime::{EAM_ACTOR_ADDR, runtime::Policy, test_utils::make_piece_cid};
-use fvm_ipld_encoding::{BytesDe, RawBytes, ipld_block::IpldBlock};
+use fvm_ipld_encoding::{BytesDe, RawBytes, ipld_block::IpldBlock, CBOR};
 use fvm_shared::address::Address;
 use fvm_shared::{
     econ::TokenAmount,
@@ -287,4 +288,96 @@ pub fn check_receiver_notification_at(
         "Minimum commitment epoch mismatch: expected {}, got {}",
         expected.minimum_commitment_epoch, minimum_commitment_epoch
     );
+}
+
+#[vm_test]
+pub fn evm_direct_call_fails_non_miner_test(v: &dyn VM) {
+    // Create accounts
+    let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
+    let (_owner, worker) = (addrs[0], addrs[1]);
+    
+    // Deploy the NotificationReceiver EVM contract
+    let hex_str = std::fs::read_to_string("../actors/evm/tests/contracts/NotificationReceiver.hex")
+        .expect("Failed to read contract bytecode hex file");
+    let hex_str = hex_str.trim();
+    let contract_bytecode = hex::decode(hex_str).expect("Failed to decode contract bytecode hex");
+
+    // Create an EVM actor to receive notifications
+    let params =
+        IpldBlock::serialize_cbor(&fil_actor_eam::CreateExternalParams(contract_bytecode)).unwrap();
+
+    let create_result = v
+        .execute_message(
+            &worker,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
+            fil_actor_eam::Method::CreateExternal as u64,
+            params,
+        )
+        .unwrap();
+
+    assert!(
+        create_result.code.is_success(),
+        "Failed to create EVM contract: {}",
+        create_result.message
+    );
+
+    let create_return: fil_actor_eam::CreateReturn =
+        create_result.ret.unwrap().deserialize().expect("Failed to decode create return");
+    let evm_robust_addr = create_return.robust_address.unwrap();
+    
+    // Now attempt to call handle_filecoin_method directly from an account actor (not a miner)
+    // We'll construct the CBOR parameters for a SectorContentChanged notification
+    
+    // Create a dummy notification payload that matches the expected format
+    let piece_cid = make_piece_cid(b"test-piece");
+    let piece_size = PaddedPieceSize(32 << 30); // 32 GiB
+    let notification_payload = hex::decode("cafe").unwrap();
+    
+    // Build CBOR encoded params for handle_filecoin_method using builtin miner types
+    // The structure should be:
+    // [{sector: 100, minimum_commitment_epoch: 1000, added: [{data: piece_cid, size: piece_size, payload: notification_payload}]}]
+    use fvm_ipld_encoding::to_vec;
+    
+    let sector_changes = vec![SectorChanges {
+        sector: 100,
+        minimum_commitment_epoch: 1000,
+        added: vec![PieceChange {
+            data: piece_cid,
+            size: piece_size,
+            payload: RawBytes::from(notification_payload),
+        }],
+    }];
+    
+    let cbor_params = to_vec(&sector_changes).expect("Failed to serialize CBOR params");
+    
+    // Now call handle_filecoin_method using the alloy interface
+    let _method_selector = NotificationReceiver::handle_filecoin_methodCall::SELECTOR;
+    
+    // Encode the call using alloy's ABI encoding
+    let call_params = NotificationReceiver::handle_filecoin_methodCall::new((
+        SECTOR_CONTENT_CHANGED,
+        CBOR,
+        cbor_params.into(),
+    )).abi_encode();
+    
+    // Attempt to invoke the contract method from a regular account (not a miner)
+    let call_result = v.execute_message(
+        &worker,
+        &evm_robust_addr,
+        &TokenAmount::zero(),
+        fil_actor_evm::Method::InvokeContract as u64,
+        Some(serialize_ok(&ContractParams(call_params.to_vec()))),
+    );
+    
+    // Verify the error message contains information about the miner check
+    if let Ok(result) = call_result {
+        assert!(
+            !result.code.is_success(),
+            "Call should have failed with non-miner actor"
+        );
+    }
+    
+    // Verify that no notifications were stored
+    check_receiver_notification_count(v, &worker, &evm_robust_addr, 0);
 }
