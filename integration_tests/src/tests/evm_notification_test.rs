@@ -292,6 +292,9 @@ pub fn check_receiver_notification_at(
 
 #[vm_test]
 pub fn evm_direct_call_fails_non_miner_test(v: &dyn VM) {
+    // This test is sanity checking that our `isMiner` logic in our NotificationReceiver contract is working,
+    // it does not actually check our miner actor logic.
+ 
     // Create accounts
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let (_owner, worker) = (addrs[0], addrs[1]);
