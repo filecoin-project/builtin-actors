@@ -181,7 +181,7 @@ contract NotificationReceiver {
 
     // FVM specific precompiles
     address constant RESOLVE_ADDRESS_PRECOMPILE_ADDR = 0xFE00000000000000000000000000000000000001;
-    address constant CALL_ACTOR_ADDRESS = 0xfe00000000000000000000000000000000000003;
+    address constant CALL_ACTOR_ID = 0xfe00000000000000000000000000000000000005;
     
     // FVM system flags 
     uint64 constant READ_ONLY_FLAG = 0x00000001;
@@ -210,6 +210,7 @@ contract NotificationReceiver {
         (int256 exit,) = callById(POWER_ACTOR_ID, MINER_RAW_POWER_METHOD_NUMBER, CBOR_CODEC, rawRequest, 0, false);
         // If the call succeeds, the address is a registered miner
         return exit == 0;
+
     }
 
     function isIDAddress(address _a) internal pure returns (bool isID, uint64 id) {
@@ -236,7 +237,7 @@ contract NotificationReceiver {
         uint256 value,
         bool static_call
     ) internal returns (int256, bytes memory) {
-        (bool success, bytes memory data) = address(CALL_ACTOR_ADDRESS).delegatecall(
+        (bool success, bytes memory data) = address(CALL_ACTOR_ID).delegatecall(
             abi.encode(uint64(method_num), value, static_call ? READ_ONLY_FLAG : DEFAULT_FLAG, codec, raw_request, target)
         );
         if (!success) {
