@@ -1,5 +1,5 @@
 use fil_actors_integration_tests::tests::{
-    evm_receives_ddo_notifications_test, evm_direct_call_fails_non_miner_test,
+    evm_direct_call_fails_non_miner_test, evm_receives_ddo_notifications_test,
 };
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
