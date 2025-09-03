@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.25;
 
+// ========================================================
+// NOTE: If using this contract as an example, consider depending on utilities
+// available in https://github.com/filecoin-project/filecoin-solidity instead of
+// copying reusable utilities from here.
+// ========================================================
 
 contract NotificationReceiver {
     // State variables to track received notifications
