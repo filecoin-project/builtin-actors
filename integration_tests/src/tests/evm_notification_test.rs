@@ -1,5 +1,6 @@
 use alloy_core::sol_types::{SolCall, SolValue};
 use alloy_core::{primitives::U256 as AlloyU256, sol};
+use cid::Cid;
 use export_macro::vm_test;
 use fil_actor_miner::{
     CompactCommD, DataActivationNotification, Method as MinerMethod, PieceActivationManifest,
@@ -7,17 +8,16 @@ use fil_actor_miner::{
 };
 use fil_actors_runtime::{EAM_ACTOR_ADDR, runtime::Policy, test_utils::make_piece_cid};
 use fvm_ipld_encoding::{BytesDe, RawBytes, ipld_block::IpldBlock};
+use fvm_shared::address::Address;
 use fvm_shared::{
     econ::TokenAmount,
     piece::PaddedPieceSize,
     piece::PieceInfo,
     sector::{RegisteredSealProof, SectorNumber},
 };
-use fvm_shared::address::Address;
 use num_traits::Zero;
 use vm_api::VM;
 use vm_api::util::serialize_ok;
-use cid::Cid;
 
 use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, create_accounts, create_miner,
@@ -148,7 +148,9 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     let policy = Policy::default();
     let expected_notification = ExpectedNotification {
         sector: sector_number,
-        minimum_commitment_epoch: precommit_epoch + policy.min_sector_expiration + max_prove_commit_duration(&policy, seal_proof).unwrap(),
+        minimum_commitment_epoch: precommit_epoch
+            + policy.min_sector_expiration
+            + max_prove_commit_duration(&policy, seal_proof).unwrap(),
         piece_cid: piece_cid0,
         piece_size: piece_size0.0,
         payload: notification_payload.to_vec(),
@@ -158,9 +160,14 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     check_receiver_notification_at(v, &worker, &evm_robust_addr, 0, &expected_notification);
 }
 
-// Helper functions checking state of receiver contract 
+// Helper functions checking state of receiver contract
 
-pub fn check_receiver_notification_count(v: &dyn VM, sender_addr: &Address, receiver_addr: &Address, expected_count: u64) {
+pub fn check_receiver_notification_count(
+    v: &dyn VM,
+    sender_addr: &Address,
+    receiver_addr: &Address,
+    expected_count: u64,
+) {
     let call_params = NotificationReceiver::totalNotificationsCall::new(()).abi_encode();
     let call_result = v
         .execute_message(
@@ -201,7 +208,13 @@ pub struct ExpectedNotification {
     pub payload: Vec<u8>,
 }
 
-pub fn check_receiver_notification_at(v: &dyn VM, sender_addr: &Address, receiver_addr: &Address, index: u64, expected: &ExpectedNotification) {
+pub fn check_receiver_notification_at(
+    v: &dyn VM,
+    sender_addr: &Address,
+    receiver_addr: &Address,
+    index: u64,
+    expected: &ExpectedNotification,
+) {
     let call_params =
         NotificationReceiver::getNotificationCall::new((AlloyU256::from(index),)).abi_encode();
     let call_result = v
@@ -275,5 +288,3 @@ pub fn check_receiver_notification_at(v: &dyn VM, sender_addr: &Address, receive
         expected.minimum_commitment_epoch, minimum_commitment_epoch
     );
 }
-
-
