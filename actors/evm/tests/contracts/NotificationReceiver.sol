@@ -32,23 +32,17 @@ contract NotificationReceiver {
     // Sector content changed method number
     uint64 constant SECTOR_CONTENT_CHANGED = 2034386435;
     
-    /**
-     * @dev Get the count of notifications for a specific sector
-     */
+    // Get the count of notifications for a specific sector
     function getNotificationCount(uint64 sector) public view returns (uint256) {
         return sectorNotificationIndices[sector].length;
     }
     
-    /**
-     * @dev Get all notification indices for a sector
-     */
+    // Get all notification indices for a sector
     function getSectorNotifications(uint64 sector) public view returns (uint256[] memory) {
         return sectorNotificationIndices[sector];
     }
     
-    /**
-     * @dev Get a specific notification by index
-     */
+    // Get a specific notification by index
     function getNotification(uint256 index) public view returns (
         uint64 sector,
         int64 minimumCommitmentEpoch,
@@ -67,10 +61,8 @@ contract NotificationReceiver {
         );
     }
     
-    /**
-     * @dev Handle incoming Filecoin method calls
-     * This is the main entry point for receiving notifications from the miner actor
-     */
+    // Handle incoming Filecoin method calls
+    // This is the main entry point for receiving notifications from the miner actor
     function handle_filecoin_method(uint64 method, uint64 inCodec, bytes memory params) public returns (uint64, uint64,bytes memory) {
         // 0x51 is IPLD CBOR codec 
         require(inCodec == 0x51, "Invalid codec");
@@ -86,7 +78,7 @@ contract NotificationReceiver {
     }
     
     /**
-     * @dev Process sector content changed notification
+     * Process sector content changed notification
      * Expected params structure (CBOR encoded):
      * {
      *   sectors: [{
@@ -470,38 +462,28 @@ contract NotificationReceiver {
         Buffer buf;
     }
 
-    /**
-    * @dev Create a new CBOR buffer with given capacity
-    */
+    // Create a new CBOR buffer with given capacity
     function createCBOR(uint256 capacity) internal pure returns(CBORBuffer memory cbor) {
         initBuffer(cbor.buf, capacity);
         return cbor;
     }
 
-    /**
-    * @dev Get the encoded bytes from the buffer
-    */
+    // Get the encoded bytes from the buffer
     function getCBORData(CBORBuffer memory buf) internal pure returns(bytes memory) {
         return buf.buf.buf;
     }
 
-    /**
-    * @dev Start a fixed-length array
-    */
+    // Start a fixed-length array
     function startFixedArray(CBORBuffer memory buf, uint64 length) internal pure {
         writeFixedNumeric(buf, MajArray, length);
     }
 
-    /**
-    * @dev Write a boolean value
-    */
+    // Write a boolean value
     function writeBool(CBORBuffer memory buf, bool val) internal pure {
         appendUint8(buf.buf, uint8((MajOther << 5) | (val ? True_Type : False_Type)));
     }
 
-    /**
-    * @dev Write a Uint64 value
-    */
+    // Write a Uint64 value
     function writeUInt64(CBORBuffer memory buf, uint64 value) internal pure {
         writeFixedNumeric(buf, MajUnsignedInt, value);
     }
