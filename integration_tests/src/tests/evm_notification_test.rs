@@ -119,7 +119,8 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     check_receiver_notification_count(v, &worker, &evm_robust_addr, 0);
 
     // Advance time to prove commit epoch
-    let prove_time = v.epoch() + PRE_COMMIT_CHALLENGE_DELAY + 1;
+    let policy = Policy::default();
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &miner_addr, prove_time);
 
     // ProveCommitSectors3 with notifications
@@ -146,7 +147,6 @@ pub fn evm_receives_ddo_notifications_test(v: &dyn VM) {
     assert!(prove_result.code.is_success(), "ProveCommit failed: {}", prove_result.message);
 
     /* ***Verify that the EVM contract received the notifications correctly*** */
-    let policy = Policy::default();
     let expected_notification = ExpectedNotification {
         sector: sector_number,
         minimum_commitment_epoch: precommit_epoch
