@@ -98,6 +98,7 @@ contract NotificationReceiver {
      * All notifications are accepted so CBOR true returned for every piece of every notified sector
      */
     function processSectorContentChanged(bytes memory params) internal returns (bytes memory) {
+        require(isMinerActor(msg.sender), "Only miner actor can call this function");
 
         uint checkTupleLen;
         uint byteIdx = 0;
@@ -175,6 +176,96 @@ contract NotificationReceiver {
 
         return getCBORData(ret_acc);
     }
+
+    /* Filecoin internal call helpers to enable isMiner check */
+
+    // FVM specific precompiles
+    address constant RESOLVE_ADDRESS_PRECOMPILE_ADDR = 0xFE00000000000000000000000000000000000001;
+    address constant CALL_ACTOR_ADDRESS = 0xfe00000000000000000000000000000000000003;
+    
+    // FVM system flags 
+    uint64 constant READ_ONLY_FLAG = 0x00000001;
+    uint64 constant DEFAULT_FLAG = 0x00000000;    
+    uint64 constant DAG_CBOR_CODEC = 0x71;
+    uint64 constant CBOR_CODEC = 0x51;
+    uint64 constant NONE_CODEC = 0x00;
+
+
+    // Power actor constants 
+    uint64 constant MINER_RAW_POWER_METHOD_NUMBER = 3753401894;
+    uint64 constant POWER_ACTOR_ID = 4;
+
+    // msg.sender to actor id conversion
+    address constant U64_MASK = 0xFffFfFffffFfFFffffFFFffF0000000000000000;
+    address constant ZERO_ID_ADDRESS = 0xfF00000000000000000000000000000000000000;
+    address constant MAX_U64 = 0x000000000000000000000000fFFFFFffFFFFfffF;
+
+
+    function isMinerActor(address caller) internal returns (bool) {
+        (bool isNative, uint64 minerID) = isIDAddress(caller);
+        require(isNative, "caller is not an ID addr");
+        CBORBuffer memory buf = createCBOR(8);
+        writeUInt64(buf, minerID);
+        bytes memory rawRequest = getCBORData(buf);
+        (int256 exit,) = callById(POWER_ACTOR_ID, MINER_RAW_POWER_METHOD_NUMBER, CBOR_CODEC, rawRequest, 0, false);
+        // If the call succeeds, the address is a registered miner
+        return exit == 0;
+    }
+
+    function isIDAddress(address _a) internal pure returns (bool isID, uint64 id) {
+        /// @solidity memory-safe-assembly
+        assembly {
+            // Zeroes out the last 8 bytes of _a
+            let a_mask := and(_a, U64_MASK)
+
+            // If the result is equal to the ZERO_ID_ADDRESS,
+            // _a is an ID address.
+            if eq(a_mask, ZERO_ID_ADDRESS) {
+                isID := true
+                id := and(_a, MAX_U64)
+            }
+        }
+    }
+
+    // Stripped down version of callByID to query power actor in our use case 
+    function callById(
+        uint64 target,
+        uint256 method_num,
+        uint64 codec,
+        bytes memory raw_request,
+        uint256 value,
+        bool static_call
+    ) internal returns (int256, bytes memory) {
+        (bool success, bytes memory data) = address(CALL_ACTOR_ADDRESS).delegatecall(
+            abi.encode(uint64(method_num), value, static_call ? READ_ONLY_FLAG : DEFAULT_FLAG, codec, raw_request, target)
+        );
+        if (!success) {
+            revert("fail to call actor");
+        }
+
+        return readRespData(data);
+    }
+
+    function readRespData(bytes memory raw_response) internal pure returns (int256, bytes memory) {
+        (int256 exit, uint64 return_codec, bytes memory return_value) = abi.decode(raw_response, (int256, uint64, bytes));
+
+        if (return_codec == NONE_CODEC) {
+            if (return_value.length != 0) {
+                revert("invalid response length");
+            }
+        } else if (return_codec == CBOR_CODEC || return_codec == DAG_CBOR_CODEC) {
+            if (return_value.length == 0) {
+                revert("invalid response length");
+            }
+        } else {
+            revert("invalid codec");
+        }
+
+        return (exit, return_value);
+    }
+
+   
+
 
     /* *** CBOR parsing *** */
 
@@ -400,6 +491,13 @@ contract NotificationReceiver {
     */
     function writeBool(CBORBuffer memory buf, bool val) internal pure {
         appendUint8(buf.buf, uint8((MajOther << 5) | (val ? True_Type : False_Type)));
+    }
+
+    /**
+    * @dev Write a Uint64 value
+    */
+    function writeUInt64(CBORBuffer memory buf, uint64 value) internal pure {
+        writeFixedNumeric(buf, MajUnsignedInt, value);
     }
 
     // === INTERNAL HELPER FUNCTIONS ===
