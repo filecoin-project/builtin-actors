@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "16.0.1"
+version = "17.0.0-dev1"
 license = "MIT OR Apache-2.0"
 edition = "2024"
 repository = "https://github.com/filecoin-project/builtin-actors"
