@@ -382,6 +382,24 @@ impl<'r, RT: Runtime> System<'r, RT> {
         self.bytecode.as_ref().map(|b| b.cid)
     }
 
+    /// Mount an external storage root into the current System's slots, replacing the current KAMT root.
+    pub fn mount_storage_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+        self.slots
+            .set_root(root)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to mount external storage root")?
+            ;
+        Ok(())
+    }
+
+    /// Flush and return the current storage root without writing actor state.
+    pub fn flush_storage_root(&mut self) -> Result<Cid, ActorError> {
+        let root = self
+            .slots
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush storage root")?;
+        Ok(root)
+    }
+
     /// Set the bytecode.
     pub fn set_bytecode(&mut self, bytecode: &[u8]) -> Result<EvmBytecode, ActorError> {
         self.saved_state_root = None;

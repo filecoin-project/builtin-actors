@@ -4,6 +4,7 @@ use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{IPLD_RAW, MethodNum, address::Address, sys::SendFlags};
+use num_traits::Zero;
 
 use crate::interpreter::{
     CallKind,
@@ -11,6 +12,9 @@ use crate::interpreter::{
 };
 
 use super::ext::{ContractType, get_contract_type, get_evm_bytecode_cid};
+use fvm_shared::version::NetworkVersion;
+
+use fil_actors_runtime::features::NV_EIP_7702;
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
@@ -21,6 +25,7 @@ use {
     crate::{DelegateCallParams, Method},
     fil_actors_runtime::ActorError,
     fil_actors_runtime::runtime::Runtime,
+    fil_actors_runtime::DELEGATOR_ACTOR_ADDR,
     fvm_shared::econ::TokenAmount,
     fvm_shared::error::ErrorNumber,
 };
@@ -199,6 +204,99 @@ pub fn call_generic<RT: Runtime>(
                     if (gas == 0 && value > 0) || (gas == 2300 && value == 0) {
                         // We provide enough gas for the transfer to succeed in all case.
                         gas = TRANSFER_GAS_LIMIT;
+                    }
+                    // Delegator consult (EIP-7702): If destination is an EOA (Account/NotFound),
+                    // consult Delegator for a mapping. If present, we intend to execute delegate
+                    // code in the EOA's context (storage/account). Execution wiring will follow.
+                    if matches!(get_contract_type(system.rt, &dst), ContractType::Account | ContractType::NotFound)
+                        && system.rt.network_version() >= NV_EIP_7702
+                    {
+                        #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+                        struct LookupDelegateParams { authority: EthAddress }
+                        #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+                        struct LookupDelegateReturn { delegate: Option<EthAddress> }
+
+                        let p = LookupDelegateParams { authority: dst };
+                        let pblk = IpldBlock::serialize_cbor(&p)
+                            .map_err(|e| fil_actors_runtime::ActorError::serialization(e.to_string()))?;
+                        if let Ok(Some(ret)) = system.send(
+                            &DELEGATOR_ACTOR_ADDR,
+                            frc42_dispatch::method_hash!("LookupDelegate"),
+                            pblk,
+                            TokenAmount::zero(),
+                            None,
+                            SendFlags::READ_ONLY,
+                        ) {
+                            if let Ok(LookupDelegateReturn { delegate: Some(delegate) }) = ret.deserialize() {
+                                // Delegate is expected to be an EVM contract. Resolve its code.
+                                match get_contract_type(system.rt, &delegate) {
+                                    ContractType::EVM(delegate_addr) => {
+                                        if let Some(code_cid) = get_evm_bytecode_cid(system, &delegate_addr)? {
+                                            // Transfer any value to the EOA account first (unless readonly/static).
+                                            if !system.readonly && kind != CallKind::StaticCall {
+                                                let v = TokenAmount::from(&value);
+                                                if !v.is_zero() {
+                                                    if let Err(e) = system.transfer(&dst_addr, v) {
+                                                        log::warn!("value transfer to EOA {:?} failed: {}", dst_addr, e);
+                                                        return Ok(U256::from(0));
+                                                    }
+                                                }
+                                            }
+
+                                            // Execute delegate bytecode with receiver bound to the EOA.
+                                            let params = crate::EoaInvokeParams {
+                                                code: code_cid,
+                                                input: input_data.into(),
+                                                caller: state.caller,
+                                                receiver: dst,
+                                                value: TokenAmount::from(&value),
+                                            };
+                                            let res = system
+                                                .send(
+                                                    &system.rt.message().receiver(),
+                                                    crate::Method::InvokeAsEoa as u64,
+                                                    IpldBlock::serialize_dag_cbor(&params)?,
+                                                    TokenAmount::zero(),
+                                                    Some(system.call_gas_limit(gas)),
+                                                    SendFlags::default(),
+                                                );
+                                            match res {
+                                                Ok(Some(r)) => {
+                                                    // Decode InvokeContractReturn { output_data } from InvokeAsEoa
+                                                    #[derive(fvm_ipld_encoding::serde::Deserialize)]
+                                                    struct InvokeContractReturn { output_data: Vec<u8> }
+                                                    let data = r
+                                                        .deserialize::<InvokeContractReturn>()
+                                                        .map(|x| x.output_data)
+                                                        .unwrap_or_else(|_| r.data);
+                                                    state.return_data = data;
+                                                    copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
+                                                    return Ok(U256::from(1));
+                                                }
+                                                Ok(None) => {
+                                                    // No return.
+                                                    state.return_data = Vec::new();
+                                                    copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
+                                                    return Ok(U256::from(1));
+                                                }
+                                                Err(mut ae) => {
+                                                    // Reverted or error; map to 0 and propagate no data.
+                                                    log::info!("InvokeAsEoa failed: {:?}", ae);
+                                                    return Ok(U256::from(0));
+                                                }
+                                            }
+                                        } else {
+                                            // No code at delegate; treat as success with no-op.
+                                            return Ok(U256::from(1));
+                                        }
+                                    }
+                                    _ => {
+                                        // Delegate not an EVM contract; treat as no-op success.
+                                        return Ok(U256::from(1));
+                                    }
+                                }
+                            }
+                        }
                     }
                     let params = if input_data.is_empty() {
                         None

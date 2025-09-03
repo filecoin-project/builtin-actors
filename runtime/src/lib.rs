@@ -26,6 +26,7 @@ pub use self::util::*;
 pub mod actor_error;
 pub mod builtin;
 pub mod runtime;
+pub mod features;
 pub mod util;
 
 mod dispatch;

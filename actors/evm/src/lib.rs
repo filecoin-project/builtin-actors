@@ -15,6 +15,7 @@ use crate::interpreter::{Bytecode, ExecutionState, System, execute};
 use crate::reader::ValueReader;
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fil_actors_runtime::DELEGATOR_ACTOR_ADDR;
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
 
@@ -65,6 +66,7 @@ pub enum Method {
     GetBytecodeHash = 4,
     GetStorageAt = 5,
     InvokeContractDelegate = 6,
+    InvokeAsEoa = 7,
     InvokeContract = frc42_dispatch::method_hash!("InvokeEVM"),
 }
 
@@ -229,6 +231,78 @@ impl EvmContractActor {
             params.value,
         )?;
         Ok(DelegateCallReturn { return_data })
+    }
+
+    /// Execute arbitrary bytecode while binding the receiver to an EOA address.
+    /// Storage is isolated (non-persistent) for this prototype path.
+    pub fn invoke_as_eoa<RT>(
+        rt: &RT,
+        params: WithCodec<EoaInvokeParams, DAG_CBOR>,
+    ) -> Result<InvokeContractReturn, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        // Only callable by this actor (internal trampoline from CALL path).
+        rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
+
+        let p = params.0;
+        let mut system = System::new(rt, rt.read_only());
+
+        // Attempt to mount existing storage root for this EOA from Delegator.
+        // CBOR params to GetStorageRoot(authority)
+        #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+        struct GetStorageRootParams { authority: EthAddress }
+        #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+        struct GetStorageRootReturn { root: Option<Cid> }
+        if let Ok(Some(ret)) = system.send(
+            &DELEGATOR_ACTOR_ADDR,
+            frc42_dispatch::method_hash!("GetStorageRoot"),
+            IpldBlock::serialize_cbor(&GetStorageRootParams { authority: p.receiver })?,
+            TokenAmount::from_whole(0),
+            None,
+            fvm_shared::sys::SendFlags::READ_ONLY,
+        ) {
+            if let Ok(GetStorageRootReturn { root: Some(root) }) = ret.deserialize() {
+                // Mount into System storage.
+                let _ = system.mount_storage_root(&root);
+            }
+        }
+
+        // Load bytecode to execute.
+        let bytecode = match load_bytecode(system.rt.store(), &p.code)? {
+            Some(b) => b,
+            None => return Ok(InvokeContractReturn { output_data: Vec::new() }),
+        };
+
+        // Execute with explicit caller/receiver/value.
+        let mut exec_state = ExecutionState::new(p.caller, p.receiver, p.value, p.input);
+        let output = execute(&bytecode, &mut exec_state, &mut system)?;
+        match output.outcome {
+            Outcome::Return => {
+                // Persist storage root back to Delegator if not read-only.
+                if !system.readonly {
+                    if let Ok(new_root) = system.flush_storage_root() {
+                        #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+                        struct PutStorageRootParams { authority: EthAddress, root: Cid }
+                        let _ = system.send(
+                            &DELEGATOR_ACTOR_ADDR,
+                            frc42_dispatch::method_hash!("PutStorageRoot"),
+                            IpldBlock::serialize_dag_cbor(&PutStorageRootParams { authority: p.receiver, root: new_root })?,
+                            TokenAmount::from_whole(0),
+                            None,
+                            fvm_shared::sys::SendFlags::default(),
+                        );
+                    }
+                }
+                Ok(InvokeContractReturn { output_data: output.return_data.to_vec() })
+            }
+            Outcome::Revert => Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_REVERTED,
+                format!("contract reverted at {0}", output.pc),
+                IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
+            )),
+        }
     }
 
     pub fn invoke_contract<RT>(
@@ -416,7 +490,18 @@ impl ActorCode for EvmContractActor {
         GetBytecodeHash => bytecode_hash,
         GetStorageAt => storage_at,
         InvokeContractDelegate => invoke_contract_delegate,
+        InvokeAsEoa => invoke_as_eoa,
         Resurrect => resurrect,
         _ => handle_filecoin_method,
     }
+}
+
+#[derive(Clone, Debug, fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+pub struct EoaInvokeParams {
+    pub code: Cid,
+    #[serde(with = "fvm_ipld_encoding::strict_bytes")]
+    pub input: Vec<u8>,
+    pub caller: EthAddress,
+    pub receiver: EthAddress,
+    pub value: TokenAmount,
 }

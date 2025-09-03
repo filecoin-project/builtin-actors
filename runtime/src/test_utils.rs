@@ -370,11 +370,26 @@ pub struct ExpectCreateActor {
     pub predictable_address: Option<Address>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum ParamMatcher {
+    Any,
+    Exact(Option<IpldBlock>),
+}
+
+impl ParamMatcher {
+    pub fn matches(&self, actual: &Option<IpldBlock>) -> bool {
+        match self {
+            ParamMatcher::Any => true,
+            ParamMatcher::Exact(expected) => expected == actual,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ExpectedMessage {
     pub to: Address,
     pub method: MethodNum,
-    pub params: Option<IpldBlock>,
+    pub params: ParamMatcher,
     pub value: TokenAmount,
     pub gas_limit: Option<u64>,
     pub send_flags: SendFlags,
@@ -687,7 +702,33 @@ impl MockRuntime {
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
             to,
             method,
-            params,
+            params: ParamMatcher::Exact(params),
+            value,
+            gas_limit,
+            send_flags,
+            send_return,
+            exit_code,
+            send_error,
+        })
+    }
+
+    /// Expect a send with any params (wildcard match). Useful when encoding is internal detail.
+    #[allow(dead_code)]
+    pub fn expect_send_any_params(
+        &self,
+        to: Address,
+        method: MethodNum,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        send_flags: SendFlags,
+        send_return: Option<IpldBlock>,
+        exit_code: ExitCode,
+        send_error: Option<ErrorNumber>,
+    ) {
+        self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
+            to,
+            method,
+            params: ParamMatcher::Any,
             value,
             gas_limit,
             send_flags,
@@ -1189,11 +1230,12 @@ impl Runtime for MockRuntime {
             "send to {} expected method {}, was {}",
             to, expected_msg.method, method
         );
-        assert_eq!(
-            expected_msg.params, params,
-            "send to {}:{} expected params {:?}, was {:?}",
-            to, method, expected_msg.params, params,
-        );
+        if !expected_msg.params.matches(&params) {
+            panic!(
+                "send to {}:{} expected params {:?}, was {:?}",
+                to, method, expected_msg.params, params
+            );
+        }
         assert_eq!(
             expected_msg.value, value,
             "send to {}:{} expected value {:?}, was {:?}",

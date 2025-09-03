@@ -34,6 +34,7 @@ fil_actor_account = { workspace = true, features = ["fil-actor"] }
 fil_actor_cron = { workspace = true, features = ["fil-actor"] }
 fil_actor_datacap = { workspace = true, features = ["fil-actor"] }
 fil_actor_ethaccount = { workspace = true, features = ["fil-actor"] }
+fil_actor_delegator = { workspace = true, features = ["fil-actor"] }
 fil_actor_eam = { workspace = true, features = ["fil-actor"] }
 fil_actor_evm = { workspace = true, features = ["fil-actor"] }
 fil_actor_init = { workspace = true, features = ["fil-actor"] }
@@ -145,6 +146,7 @@ fil_actor_cron = { path = "actors/cron" }
 fil_actor_datacap = { path = "actors/datacap" }
 fil_actor_eam = { path = "actors/eam" }
 fil_actor_ethaccount = { path = "actors/ethaccount" }
+fil_actor_delegator = { path = "actors/delegator" }
 fil_actor_evm = { path = "actors/evm" }
 fil_actor_init = { path = "actors/init" }
 fil_actor_market = { path = "actors/market" }
