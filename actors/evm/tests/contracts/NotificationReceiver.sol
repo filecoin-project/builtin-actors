@@ -77,23 +77,21 @@ contract NotificationReceiver {
        revert("Invalid method");
     }
     
-    /**
-     * Process sector content changed notification
-     * Expected params structure (CBOR encoded):
-     * {
-     *   sectors: [{
-     *     sector: uint64,
-     *     minimum_commitment_epoch: int64,
-     *     added: [{
-     *       data: Cid,
-     *       size: uint64,
-     *       payload: bytes
-     *     }]
-     *   }]
-     * }
-     *
-     * All notifications are accepted so CBOR true returned for every piece of every notified sector
-     */
+    // Process sector content changed notification
+    // Expected params structure (CBOR encoded):
+    // {
+    //   sectors: [{
+    //     sector: uint64,
+    //     minimum_commitment_epoch: int64,
+    //     added: [{
+    //       data: Cid,
+    //       size: uint64,
+    //       payload: bytes
+    //     }]
+    //   }]
+    // }
+    // 
+    // All notifications are accepted so CBOR true returned for every piece of every notified sector
     function processSectorContentChanged(bytes memory params) internal returns (bytes memory) {
         require(isMinerActor(msg.sender), "Only miner actor can call this function");
 
