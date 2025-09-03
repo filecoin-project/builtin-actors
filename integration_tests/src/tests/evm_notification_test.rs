@@ -172,8 +172,8 @@ pub fn check_receiver_notification_count(
     let call_params = NotificationReceiver::totalNotificationsCall::new(()).abi_encode();
     let call_result = v
         .execute_message(
-            &sender_addr,
-            &receiver_addr,
+            sender_addr,
+            receiver_addr,
             &TokenAmount::zero(),
             fil_actor_evm::Method::InvokeContract as u64,
             Some(serialize_ok(&ContractParams(call_params.to_vec()))),
@@ -220,8 +220,8 @@ pub fn check_receiver_notification_at(
         NotificationReceiver::getNotificationCall::new((AlloyU256::from(index),)).abi_encode();
     let call_result = v
         .execute_message(
-            &sender_addr,
-            &receiver_addr,
+            sender_addr,
+            receiver_addr,
             &TokenAmount::zero(),
             fil_actor_evm::Method::InvokeContract as u64,
             Some(serialize_ok(&ContractParams(call_params.to_vec()))),
