@@ -442,7 +442,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 2.0.100",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_account"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "fil_actors_runtime",
@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_cron"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -726,7 +726,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_datacap"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "cid",
  "fil_actors_runtime",
@@ -746,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_eam"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -767,7 +767,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_ethaccount"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "fil_actors_runtime",
  "frc42_dispatch",
@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_evm"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "alloy-core",
  "anyhow",
@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_init"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -831,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_market"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -861,7 +861,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_miner"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -895,7 +895,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_multisig"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -916,7 +916,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_paych"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -935,11 +935,11 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_placeholder"
-version = "16.0.1"
+version = "17.0.0"
 
 [[package]]
 name = "fil_actor_power"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -962,7 +962,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_reward"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -978,7 +978,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_system"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -994,7 +994,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_verifreg"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -1016,7 +1016,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_evm_shared"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_encoding",
@@ -1084,7 +1084,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_runtime"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -1126,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_bundle"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "cid",
  "clap",
@@ -1153,7 +1153,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_state"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "bimap",
@@ -2133,10 +2133,11 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.219"
+version = "1.0.226"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
+checksum = "0dca6411025b24b60bfa7ec1fe1f8e710ac09782dca409ee8237ba74b51295fd"
 dependencies = [
+ "serde_core",
  "serde_derive",
 ]
 
@@ -2150,10 +2151,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_derive"
-version = "1.0.219"
+name = "serde_core"
+version = "1.0.226"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
+checksum = "ba2ba63999edb9dac981fb34b3e5c0d111a69b0924e253ed29d83f7c99e966a4"
+dependencies = [
+ "serde_derive",
+]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.226"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8db53ae22f34573731bafa1db20f04027b2d25e02d8205921b569171699cdb33"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2401,7 +2411,7 @@ dependencies = [
 
 [[package]]
 name = "test_vm"
-version = "16.0.1"
+version = "17.0.0"
 dependencies = [
  "anyhow",
  "blake2b_simd",
