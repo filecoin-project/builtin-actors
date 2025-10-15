@@ -8,6 +8,8 @@ use fvm_shared::address::Address as FilAddress;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
+use fvm_shared::event::{ActorEvent, Entry, Flags};
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::IPLD_RAW;
 
@@ -74,6 +76,12 @@ fn call_to_eoa_uses_delegate_and_propagates_output() {
 
     // Expect: internal self-call InvokeAsEoa with any params; return raw output bytes.
     let expected_output = vec![0xde, 0xad, 0xbe, 0xef];
+    // Expect delegated execution marker event (topic0 + data=delegate 20b)
+    let topic = rt.hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+    rt.expect_emitted_event(ActorEvent::from(vec![
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic.clone() },
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: delegate_eth.as_ref().to_vec() },
+    ]));
     rt.expect_send_any_params(
         rt.receiver,
         evm::Method::InvokeAsEoa as u64,
@@ -167,6 +175,12 @@ fn call_to_eoa_with_value_transfers_then_delegates() {
     rt.expect_gas_available(10_000_000_000u64);
 
     // Internal self-call with any params; return raw output bytes.
+    // Expect delegated execution marker event (topic0 + data=delegate 20b)
+    let topic = rt.hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+    rt.expect_emitted_event(ActorEvent::from(vec![
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic.clone() },
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: delegate_eth.as_ref().to_vec() },
+    ]));
     let expected_output = vec![0xca, 0xfe];
     rt.expect_send_any_params(
         rt.receiver,

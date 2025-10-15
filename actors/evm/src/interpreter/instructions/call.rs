@@ -270,12 +270,34 @@ pub fn call_generic<RT: Runtime>(
                                                         .map(|x| x.output_data)
                                                         .unwrap_or_else(|_| r.data);
                                                     state.return_data = data;
+                                                    // Emit an ETH-style log indicating delegated execution occurred.
+                                                    use fvm_ipld_encoding::IPLD_RAW;
+                                                    use fvm_shared::crypto::hash::SupportedHashes;
+                                                    use fvm_shared::event::{Entry, Flags};
+                                                    let topic = system.rt.hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+                                                    if topic.len() == 32 && !system.readonly {
+                                                        let mut entries: Vec<Entry> = Vec::with_capacity(2);
+                                                        entries.push(Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic });
+                                                        entries.push(Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: delegate.as_ref().to_vec() });
+                                                        let _ = system.rt.emit_event(&entries.into());
+                                                    }
                                                     copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
                                                     return Ok(U256::from(1));
                                                 }
                                                 Ok(None) => {
                                                     // No return.
                                                     state.return_data = Vec::new();
+                                                    // Emit delegated execution event without return data.
+                                                    use fvm_ipld_encoding::IPLD_RAW;
+                                                    use fvm_shared::crypto::hash::SupportedHashes;
+                                                    use fvm_shared::event::{Entry, Flags};
+                                                    let topic = system.rt.hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+                                                    if topic.len() == 32 && !system.readonly {
+                                                        let mut entries: Vec<Entry> = Vec::with_capacity(2);
+                                                        entries.push(Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic });
+                                                        entries.push(Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: delegate.as_ref().to_vec() });
+                                                        let _ = system.rt.emit_event(&entries.into());
+                                                    }
                                                     copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
                                                     return Ok(U256::from(1));
                                                 }
