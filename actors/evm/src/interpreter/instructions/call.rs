@@ -12,7 +12,6 @@ use crate::interpreter::{
 };
 
 use super::ext::{ContractType, get_contract_type, get_evm_bytecode_cid};
-use fvm_shared::version::NetworkVersion;
 
 use fil_actors_runtime::features::NV_EIP_7702;
 
@@ -301,7 +300,7 @@ pub fn call_generic<RT: Runtime>(
                                                     copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
                                                     return Ok(U256::from(1));
                                                 }
-                                                Err(mut ae) => {
+                                                Err(ae) => {
                                                     // Reverted or error; map to 0 and propagate no data.
                                                     log::info!("InvokeAsEoa failed: {:?}", ae);
                                                     return Ok(U256::from(0));
