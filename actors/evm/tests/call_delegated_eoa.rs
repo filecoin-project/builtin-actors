@@ -442,3 +442,88 @@ fn call_to_eoa_delegate_reverts_maps_to_zero() {
         assert!(result.iter().all(|b| *b == 0));
     }
 }
+
+#[test]
+fn call_to_eoa_delegate_returns_no_output_emits_event() {
+    // Construct a proxy contract that CALLs a destination and returns returndata.
+    let initcode = call_proxy_contract();
+    let rt = util::construct_and_verify(initcode);
+
+    // Enable EIP-7702 path.
+    rt.set_network_version(NetworkVersion::V16);
+
+    // Destination is an EOA (no actor code registered, NotFound).
+    let authority = EthAddress(hex_literal::hex!("0101010101010101010101010101010101010101"));
+    let authority_word = authority.as_evm_word();
+
+    // Choose a delegate EVM contract address and program runtime to resolve it as an EVM actor.
+    let delegate_eth = EthAddress(hex_literal::hex!("0202020202020202020202020202020202020202"));
+    let delegate_f4: FilAddress = delegate_eth.into();
+    let delegate_id = FilAddress::new_id(0x202u64);
+    rt.set_delegated_address(delegate_id.id().unwrap(), delegate_f4);
+    rt.actor_code_cids.borrow_mut().insert(delegate_id, *EVM_ACTOR_CODE_ID);
+
+    // Store minimal delegate bytecode and return its CID from GetBytecode.
+    let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
+    rt.store.put_keyed(&bytecode_cid, &[0x00]).unwrap();
+
+    // Expect: Delegator LookupDelegate(authority) -> Some(delegate_eth)
+    #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+    struct LookupDelegateParams { authority: EthAddress }
+    #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+    struct LookupDelegateReturn { delegate: Option<EthAddress> }
+    rt.expect_send(
+        fil_actors_runtime::DELEGATOR_ACTOR_ADDR,
+        frc42_dispatch::method_hash!("LookupDelegate"),
+        IpldBlock::serialize_cbor(&LookupDelegateParams { authority }).unwrap(),
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::READ_ONLY,
+        IpldBlock::serialize_cbor(&LookupDelegateReturn { delegate: Some(delegate_eth) }).unwrap(),
+        ExitCode::OK,
+        None,
+    );
+
+    // Expect: GetBytecode(delegate_id) -> Some(bytecode_cid)
+    rt.expect_send(
+        delegate_id,
+        evm::Method::GetBytecode as u64,
+        None,
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::READ_ONLY,
+        IpldBlock::serialize_cbor(&Some(bytecode_cid)).unwrap(),
+        ExitCode::OK,
+        None,
+    );
+
+    // Gas query for call gas limit.
+    rt.expect_gas_available(10_000_000_000u64);
+
+    // Expect delegated execution marker event (topic0 + data=delegate 20b)
+    let topic = rt.hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+    rt.expect_emitted_event(ActorEvent::from(vec![
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic.clone() },
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: delegate_eth.as_ref().to_vec() },
+    ]));
+
+    // Internal self-call with any params; return None block to simulate no output.
+    rt.expect_send_any_params(
+        rt.receiver,
+        evm::Method::InvokeAsEoa as u64,
+        TokenAmount::from_whole(0),
+        Some(0xffff_ffff),
+        SendFlags::empty(),
+        None,
+        ExitCode::OK,
+        None,
+    );
+
+    // Build call parameters: [dest(32b)] with no additional payload.
+    let mut call_params = vec![0u8; 32];
+    authority_word.write_as_big_endian(&mut call_params[..]);
+
+    // Invoke the contract and verify output is empty.
+    let result = util::invoke_contract(&rt, &call_params);
+    assert!(result.is_empty());
+}
