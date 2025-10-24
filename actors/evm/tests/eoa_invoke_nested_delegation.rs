@@ -115,15 +115,76 @@ return
     let delegate2_cid = Cid::try_from("baeaikaia").unwrap();
     rt.store.put_keyed(&delegate2_cid, &[0x00]).unwrap();
 
-    // Avoid over-constraining Delegator call ordering in nested scenario; storage mount/persist
-    // behavior is covered in eoa_invoke.rs tests.
+    // 1) Mount A storage
+    #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+    struct GetStorageRootParams { authority: EthAddress }
+    #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+    struct GetStorageRootReturn { root: Option<Cid> }
+    rt.expect_send(
+        fil_actors_runtime::DELEGATOR_ACTOR_ADDR,
+        frc42_dispatch::method_hash!("GetStorageRoot"),
+        IpldBlock::serialize_cbor(&GetStorageRootParams { authority: authority_a }).unwrap(),
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::READ_ONLY,
+        IpldBlock::serialize_cbor(&GetStorageRootReturn { root: None }).unwrap(),
+        ExitCode::OK,
+        None,
+    );
 
-    // Nested path during execution: delegate1 issues CALL to B.
-    // The EVM consults Delegator to resolve delegate2 and retrieves its bytecode; allow ordering
-    // flexibility here by not asserting those intermediate sends explicitly.
+    // 2) Lookup B mapping and fetch delegate2 code
+    #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+    struct LookupDelegateParams { authority: EthAddress }
+    #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+    struct LookupDelegateReturn { delegate: Option<EthAddress> }
+    rt.expect_send(
+        fil_actors_runtime::DELEGATOR_ACTOR_ADDR,
+        frc42_dispatch::method_hash!("LookupDelegate"),
+        IpldBlock::serialize_cbor(&LookupDelegateParams { authority: authority_b }).unwrap(),
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::READ_ONLY,
+        IpldBlock::serialize_cbor(&LookupDelegateReturn { delegate: Some(delegate2_eth) }).unwrap(),
+        ExitCode::OK,
+        None,
+    );
+    rt.expect_send(
+        delegate2_id,
+        evm::Method::GetBytecode as u64,
+        None,
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::READ_ONLY,
+        IpldBlock::serialize_cbor(&Some(delegate2_cid)).unwrap(),
+        ExitCode::OK,
+        None,
+    );
 
+    // 3) Self-call for nested InvokeAsEoa(B)
     rt.expect_gas_available(10_000_000_000u64);
-    // After nested returns, outer path persists A's storage and emits delegated event for delegate2.
+    rt.expect_send_any_params(
+        rt.receiver,
+        evm::Method::InvokeAsEoa as u64,
+        TokenAmount::from_whole(0),
+        Some(0xffff_ffff),
+        SendFlags::empty(),
+        Some(IpldBlock { codec: IPLD_RAW, data: vec![] }),
+        ExitCode::OK,
+        None,
+    );
+
+    // 4) Inside nested: mount and persist B storage
+    rt.expect_send(
+        fil_actors_runtime::DELEGATOR_ACTOR_ADDR,
+        frc42_dispatch::method_hash!("GetStorageRoot"),
+        IpldBlock::serialize_cbor(&GetStorageRootParams { authority: authority_b }).unwrap(),
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::READ_ONLY,
+        IpldBlock::serialize_cbor(&GetStorageRootReturn { root: None }).unwrap(),
+        ExitCode::OK,
+        None,
+    );
     rt.expect_send_any_params(
         fil_actors_runtime::DELEGATOR_ACTOR_ADDR,
         frc42_dispatch::method_hash!("PutStorageRoot"),
@@ -134,12 +195,25 @@ return
         ExitCode::OK,
         None,
     );
-    // Assert event only.
+
+    // 5) Event for delegate2
     let topic = rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
     rt.expect_emitted_event(ActorEvent::from(vec![
         Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic.clone() },
         Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: delegate2_eth.as_ref().to_vec() },
     ]));
+
+    // 6) Persist A storage at the end
+    rt.expect_send_any_params(
+        fil_actors_runtime::DELEGATOR_ACTOR_ADDR,
+        frc42_dispatch::method_hash!("PutStorageRoot"),
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::empty(),
+        None,
+        ExitCode::OK,
+        None,
+    );
 
     // Set caller validation for InvokeAsEoa and call it directly.
     rt.expect_validate_caller_addr(vec![rt.receiver]);
