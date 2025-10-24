@@ -49,8 +49,10 @@ fn apply_multiple_across_authorities_in_one_call() {
     s1.append(&0u64);
     s1.append(&delegate1.as_ref());
     s1.append(&0u64);
+    let mut pre1 = vec![0x05u8];
+    pre1.extend_from_slice(&s1.out());
     let mut d1 = [0u8; 32];
-    d1.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &s1.out()));
+    d1.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pre1));
     let sig1: EcdsaSignature = sk1.sign_prehash(&d1).unwrap();
     let recid1 = RecoveryId::trial_recovery_from_prehash(&vk1, &d1, &sig1).unwrap();
 
@@ -58,8 +60,10 @@ fn apply_multiple_across_authorities_in_one_call() {
     s2.append(&0u64);
     s2.append(&delegate2.as_ref());
     s2.append(&0u64);
+    let mut pre2 = vec![0x05u8];
+    pre2.extend_from_slice(&s2.out());
     let mut d2 = [0u8; 32];
-    d2.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &s2.out()));
+    d2.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pre2));
     let sig2: EcdsaSignature = sk2.sign_prehash(&d2).unwrap();
     let recid2 = RecoveryId::trial_recovery_from_prehash(&vk2, &d2, &sig2).unwrap();
 
@@ -112,4 +116,3 @@ fn apply_multiple_across_authorities_in_one_call() {
         .unwrap_err();
     assert_eq!(err.exit_code(), fvm_shared::error::ExitCode::USR_ILLEGAL_ARGUMENT);
 }
-

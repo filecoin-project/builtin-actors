@@ -43,8 +43,10 @@ fn apply_and_lookup_mapping_with_recovery_override() {
     s.append(&EthAddress::from_id(2001).as_ref());
     s.append(&0u64);
     let rlp_bytes = s.out().to_vec();
+    let mut preimage = vec![0x05u8];
+    preimage.extend_from_slice(&rlp_bytes);
     let mut digest = [0u8; 32];
-    let h = rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &rlp_bytes);
+    let h = rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &preimage);
     digest.copy_from_slice(&h);
     let sig: EcdsaSignature = sk.sign_prehash(&digest).unwrap();
     let recid = RecoveryId::trial_recovery_from_prehash(&vk, &digest, &sig).unwrap();

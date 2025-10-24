@@ -6,6 +6,7 @@ use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
+use rlp::RlpStream;
 
 fn new_runtime() -> MockRuntime {
     MockRuntime { receiver: fvm_shared::address::Address::new_id(42), ..Default::default() }
@@ -173,6 +174,11 @@ fn signature_recovery_failure_rejected() {
     assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
 }
 
+// Note: We intentionally do not check for "wrong domain prefix" explicitly here, because
+// the recovered authority address is derived from the signature and message; if the domain
+// prefix differs, the recovered authority will be different, and the actor will apply the
+// delegation to that recovered authority (subject to nonce matching) as per EIP-7702.
+
 #[test]
 fn lookup_none_before_apply_and_get_storage_root_none() {
     let rt = new_runtime();
@@ -208,7 +214,6 @@ fn lookup_none_before_apply_and_get_storage_root_none() {
 #[test]
 fn local_chain_id_is_accepted() {
     use k256::ecdsa::{signature::hazmat::PrehashSigner, RecoveryId, Signature as EcdsaSignature, SigningKey, VerifyingKey};
-    use rlp::RlpStream;
 
     // Set a non-zero local chain id and sign with that chain id.
     let rt = MockRuntime { receiver: fvm_shared::address::Address::new_id(77), chain_id: fvm_shared::chainid::ChainID::from(99u64), ..Default::default() };
@@ -222,8 +227,10 @@ fn local_chain_id_is_accepted() {
     s.append(&99u64); // local chain id
     s.append(&delegate.as_ref());
     s.append(&0u64);
+    let mut pre = vec![0x05u8];
+    pre.extend_from_slice(&s.out());
     let mut digest = [0u8; 32];
-    digest.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &s.out()));
+    digest.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pre));
     let sig: EcdsaSignature = sk.sign_prehash(&digest).unwrap();
     let recid = RecoveryId::trial_recovery_from_prehash(&vk, &digest, &sig).unwrap();
 

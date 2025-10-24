@@ -36,8 +36,10 @@ fn hamt_roots_update_and_state_persists() {
     s.append(&0u64);
     s.append(&delegate.as_ref());
     s.append(&0u64);
+    let mut pre = vec![0x05u8];
+    pre.extend_from_slice(&s.out());
     let mut d = [0u8; 32];
-    d.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &s.out()));
+    d.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pre));
     let sig: EcdsaSignature = sk.sign_prehash(&d).unwrap();
     let recid = RecoveryId::trial_recovery_from_prehash(&vk, &d, &sig).unwrap();
 

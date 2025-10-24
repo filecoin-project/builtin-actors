@@ -15,6 +15,10 @@ use fvm_shared::crypto::hash::SupportedHashes;
 use num_derive::FromPrimitive;
 use rlp::RlpStream;
 
+// EIP-7702 authorization domain: inner tuple signatures must be over
+// keccak256(0x05 || rlp([chain_id, address, nonce])).
+const AUTH_MAGIC: u8 = 0x05;
+
 mod state;
 mod types;
 
@@ -202,15 +206,18 @@ fn is_high_s(s: &[u8; 32]) -> bool {
 }
 
 fn recover_authority<RT: Runtime>(rt: &RT, t: &DelegationParam) -> Result<EthAddress, ActorError> {
-    // message = keccak256(rlp([chain_id, address(20), nonce]))
+    // message = keccak256(0x05 || rlp([chain_id, address(20), nonce]))
     let mut s = RlpStream::new_list(3);
     s.append(&t.chain_id);
     s.append(&t.address.as_ref());
     s.append(&t.nonce);
     let rlp_bytes = s.out().to_vec();
+    let mut preimage = Vec::with_capacity(1 + rlp_bytes.len());
+    preimage.push(AUTH_MAGIC);
+    preimage.extend_from_slice(&rlp_bytes);
 
     let mut hash32 = [0u8; 32];
-    let h = rt.hash(SupportedHashes::Keccak256, &rlp_bytes);
+    let h = rt.hash(SupportedHashes::Keccak256, &preimage);
     hash32.copy_from_slice(&h);
 
     // build 65-byte signature r||s||v

@@ -5,6 +5,9 @@ use cid::Cid;
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
+use fil_actors_runtime::features::NV_EIP_7702;
+use fil_actors_runtime::DELEGATOR_ACTOR_ADDR;
+use fvm_shared::crypto::hash::SupportedHashes;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::{AsActorError, deserialize_block};
 use fvm_ipld_blockstore::Blockstore;
@@ -30,6 +33,25 @@ pub fn extcodesize(
             get_evm_bytecode(system, &addr).map(|bytecode| bytecode.len())?
         }
         ContractType::Native(_) => 1,
+        ContractType::Account if system.rt.network_version() >= NV_EIP_7702 => {
+            // If authority is delegated, expose the size of the delegation indicator (23 bytes).
+            let authority = EthAddress::from(addr);
+            #[derive(fvm_ipld_encoding::serde::Serialize)]
+            struct LookupDelegateParams { authority: EthAddress }
+            #[derive(fvm_ipld_encoding::serde::Deserialize)]
+            struct LookupDelegateReturn { delegate: Option<EthAddress> }
+            if let Ok(Some(ret)) = system.send(
+                &DELEGATOR_ACTOR_ADDR,
+                frc42_dispatch::method_hash!("LookupDelegate"),
+                fvm_ipld_encoding::ipld_block::IpldBlock::serialize_cbor(&LookupDelegateParams { authority }).ok().flatten(),
+                TokenAmount::zero(), None, SendFlags::READ_ONLY,
+            ) {
+                if let Ok(LookupDelegateReturn { delegate: Some(_) }) = ret.deserialize() {
+                    return Ok(U256::from(23));
+                }
+            }
+            0
+        }
         // account, not found, and precompiles are 0 size
         _ => 0,
     };
@@ -52,7 +74,32 @@ pub fn extcodehash(
         //      The FVM does not have chain state cleanup so contracts will never end up "empty" and be removed, they will either exist (in any state in the contract lifecycle)
         //      and return keccak(""), or not exist (where nothing has ever been deployed at that address) and return 0.
         // TODO: With account abstraction, this may be something other than an empty hash!
-        ContractType::Account => return Ok(BytecodeHash::EMPTY.into()),
+        ContractType::Account => {
+            if system.rt.network_version() >= NV_EIP_7702 {
+                // If authority is delegated, compute keccak of 0xef 0x01 0x00 || address.
+                let authority = EthAddress::from(addr);
+                #[derive(fvm_ipld_encoding::serde::Serialize)]
+                struct LookupDelegateParams { authority: EthAddress }
+                #[derive(fvm_ipld_encoding::serde::Deserialize)]
+                struct LookupDelegateReturn { delegate: Option<EthAddress> }
+                if let Ok(Some(ret)) = system.send(
+                    &DELEGATOR_ACTOR_ADDR,
+                    frc42_dispatch::method_hash!("LookupDelegate"),
+                    fvm_ipld_encoding::ipld_block::IpldBlock::serialize_cbor(&LookupDelegateParams { authority }).ok().flatten(),
+                    TokenAmount::zero(), None, SendFlags::READ_ONLY,
+                ) {
+                    if let Ok(LookupDelegateReturn { delegate: Some(d) }) = ret.deserialize() {
+                        let mut bytecode = Vec::with_capacity(23);
+                        bytecode.extend_from_slice(&fil_actors_evm_shared::eip7702::EIP7702_MAGIC);
+                        bytecode.push(fil_actors_evm_shared::eip7702::EIP7702_VERSION);
+                        bytecode.extend_from_slice(d.as_ref());
+                        let hash = BytecodeHash::try_from(system.rt.hash(SupportedHashes::Keccak256, &bytecode).as_slice()).unwrap();
+                        return Ok(hash.into());
+                    }
+                }
+            }
+            return Ok(BytecodeHash::EMPTY.into());
+        }
         // Not found
         ContractType::NotFound => return Ok(U256::zero()),
     };
@@ -79,6 +126,28 @@ pub fn extcodecopy(
 ) -> Result<(), ActorError> {
     let bytecode = match get_contract_type(system.rt, &addr.into()) {
         ContractType::EVM(addr) => get_evm_bytecode(system, &addr)?,
+        ContractType::Account if system.rt.network_version() >= NV_EIP_7702 => {
+            // If delegated, expose the pointer bytecode; otherwise, empty.
+            let authority = EthAddress::from(addr);
+            #[derive(fvm_ipld_encoding::serde::Serialize)]
+            struct LookupDelegateParams { authority: EthAddress }
+            #[derive(fvm_ipld_encoding::serde::Deserialize)]
+            struct LookupDelegateReturn { delegate: Option<EthAddress> }
+            if let Ok(Some(ret)) = system.send(
+                &DELEGATOR_ACTOR_ADDR,
+                frc42_dispatch::method_hash!("LookupDelegate"),
+                fvm_ipld_encoding::ipld_block::IpldBlock::serialize_cbor(&LookupDelegateParams { authority }).ok().flatten(),
+                TokenAmount::zero(), None, SendFlags::READ_ONLY,
+            ) {
+                if let Ok(LookupDelegateReturn { delegate: Some(d) }) = ret.deserialize() {
+                    let mut b = Vec::with_capacity(23);
+                    b.extend_from_slice(&fil_actors_evm_shared::eip7702::EIP7702_MAGIC);
+                    b.push(fil_actors_evm_shared::eip7702::EIP7702_VERSION);
+                    b.extend_from_slice(d.as_ref());
+                    b
+                } else { Vec::new() }
+            } else { Vec::new() }
+        }
         ContractType::NotFound | ContractType::Account | ContractType::Precompile => Vec::new(),
         // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
         // and in general invalid EVM bytecode

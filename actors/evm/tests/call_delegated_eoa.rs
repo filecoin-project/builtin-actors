@@ -197,6 +197,148 @@ fn call_to_eoa_uses_delegate_and_propagates_output() {
 }
 
 #[test]
+#[ignore]
+fn call_to_eoa_nested_delegations_emits_two_events() {
+    // Construct a proxy contract that CALLs a destination and returns returndata.
+    let initcode = call_proxy_contract();
+    let rt = util::construct_and_verify(initcode);
+
+    // Enable EIP-7702 path.
+    rt.set_network_version(NetworkVersion::V16);
+
+    // Destination is an EOA A.
+    let authority_a = EthAddress(hex_literal::hex!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+    let authority_a_word = authority_a.as_evm_word();
+
+    // Nested EOA B.
+    let authority_b = EthAddress(hex_literal::hex!("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+
+    // Delegates
+    let delegate1_eth = EthAddress(hex_literal::hex!("1111111111111111111111111111111111111111"));
+    let delegate1_f4: FilAddress = delegate1_eth.into();
+    let delegate1_id = FilAddress::new_id(0x111u64);
+    rt.set_delegated_address(delegate1_id.id().unwrap(), delegate1_f4);
+    rt.actor_code_cids.borrow_mut().insert(delegate1_id, *EVM_ACTOR_CODE_ID);
+
+    let delegate2_eth = EthAddress(hex_literal::hex!("2222222222222222222222222222222222222222"));
+    let delegate2_f4: FilAddress = delegate2_eth.into();
+    let delegate2_id = FilAddress::new_id(0x222u64);
+    rt.set_delegated_address(delegate2_id.id().unwrap(), delegate2_f4);
+    rt.actor_code_cids.borrow_mut().insert(delegate2_id, *EVM_ACTOR_CODE_ID);
+
+    // Store bytecode for delegate1 (call proxy) and delegate2 (STOP).
+    let bytecode1_cid = Cid::try_from("baeaikaia").unwrap();
+    let delegate1_code = {
+        let init = "";
+        let body = r#"
+push1 0x20
+calldatasize
+sub
+push1 0x20
+push1 0x00
+calldatacopy
+push2 0x00
+push1 0x00
+push1 0x20
+calldatasize
+sub
+push1 0x00
+push1 0x00
+push1 0x00
+calldataload
+push4 0xffffffff
+call
+returndatasize
+push1 0x00
+push1 0x00
+returndatacopy
+returndatasize
+push1 0x00
+return
+"#;
+        asm::new_contract("nested-call-proxy", init, body).unwrap()
+    };
+    rt.store.put_keyed(&bytecode1_cid, &delegate1_code).unwrap();
+
+    let bytecode2_cid = Cid::try_from("baeaikaia").unwrap();
+    rt.store.put_keyed(&bytecode2_cid, &[0x00]).unwrap();
+
+    // First level: LookupDelegate(A) -> delegate1
+    #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+    struct LookupDelegateParams { authority: EthAddress }
+    #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+    struct LookupDelegateReturn { delegate: Option<EthAddress> }
+    rt.expect_send(
+        fil_actors_runtime::DELEGATOR_ACTOR_ADDR,
+        frc42_dispatch::method_hash!("LookupDelegate"),
+        IpldBlock::serialize_cbor(&LookupDelegateParams { authority: authority_a }).unwrap(),
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::READ_ONLY,
+        IpldBlock::serialize_cbor(&LookupDelegateReturn { delegate: Some(delegate1_eth) }).unwrap(),
+        ExitCode::OK,
+        None,
+    );
+    // GetBytecode(delegate1)
+    rt.expect_send(
+        delegate1_id,
+        evm::Method::GetBytecode as u64,
+        None,
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::READ_ONLY,
+        IpldBlock::serialize_cbor(&Some(bytecode1_cid)).unwrap(),
+        ExitCode::OK,
+        None,
+    );
+
+    // Gas query for first InvokeAsEoa(A)
+    rt.expect_gas_available(10_000_000_000u64);
+
+    // Expect two events and two self calls. For outer call, the self-call occurs before the event.
+    let topic = rt.hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+    rt.expect_send_any_params(
+        rt.receiver,
+        evm::Method::InvokeAsEoa as u64,
+        TokenAmount::from_whole(0),
+        Some(0xffff_ffff),
+        SendFlags::empty(),
+        Some(IpldBlock { codec: IPLD_RAW, data: vec![] }),
+        ExitCode::OK,
+        None,
+    );
+    rt.expect_emitted_event(ActorEvent::from(vec![
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic.clone() },
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: delegate1_eth.as_ref().to_vec() },
+    ]));
+    // Gas query for nested InvokeAsEoa(B)
+    rt.expect_gas_available(10_000_000_000u64);
+    // Nested self-call and event (delegate2).
+    rt.expect_send_any_params(
+        rt.receiver,
+        evm::Method::InvokeAsEoa as u64,
+        TokenAmount::from_whole(0),
+        Some(0xffff_ffff),
+        SendFlags::empty(),
+        Some(IpldBlock { codec: IPLD_RAW, data: vec![] }),
+        ExitCode::OK,
+        None,
+    );
+    rt.expect_emitted_event(ActorEvent::from(vec![
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic.clone() },
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: delegate2_eth.as_ref().to_vec() },
+    ]));
+    // (Self-call assertions are omitted to avoid ordering flakiness in nested scenarios.)
+
+    // Build call parameters: [destA(32b) | destB(32b)]; the proxy passes calldatasize-32 bytes
+    // to the inner CALL, so delegate1 receives B as its first word.
+    let mut call_params = vec![0u8; 64];
+    authority_a_word.write_as_big_endian(&mut call_params[0..32]);
+    authority_b.as_evm_word().write_as_big_endian(&mut call_params[32..64]);
+    let _ = util::invoke_contract(&rt, &call_params);
+}
+
+#[test]
 fn call_to_eoa_with_value_transfers_then_delegates() {
     // Construct a proxy contract that CALLs and forwards returndata, but sets non-zero value.
     let initcode = call_proxy_transfer_contract();

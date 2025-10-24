@@ -38,8 +38,10 @@ fn nonce_increments_across_messages() {
     s0.append(&0u64);
     s0.append(&delegate.as_ref());
     s0.append(&0u64);
+    let mut pre0 = vec![0x05u8];
+    pre0.extend_from_slice(&s0.out());
     let mut d0 = [0u8; 32];
-    d0.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &s0.out()));
+    d0.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pre0));
     let sig0: EcdsaSignature = sk.sign_prehash(&d0).unwrap();
     let recid0 = RecoveryId::trial_recovery_from_prehash(&vk, &d0, &sig0).unwrap();
 
@@ -55,8 +57,10 @@ fn nonce_increments_across_messages() {
     s1.append(&0u64);
     s1.append(&delegate.as_ref());
     s1.append(&1u64);
+    let mut pre1 = vec![0x05u8];
+    pre1.extend_from_slice(&s1.out());
     let mut d1 = [0u8; 32];
-    d1.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &s1.out()));
+    d1.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pre1));
     let sig1: EcdsaSignature = sk.sign_prehash(&d1).unwrap();
     let recid1 = RecoveryId::trial_recovery_from_prehash(&vk, &d1, &sig1).unwrap();
 
@@ -91,7 +95,9 @@ fn duplicate_same_authority_tuples_semantics() {
     s0.append(&0u64);
     s0.append(&delegate.as_ref());
     s0.append(&0u64);
-    let mut d0 = [0u8; 32]; d0.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &s0.out()));
+    let mut pre0b = vec![0x05u8];
+    pre0b.extend_from_slice(&s0.out());
+    let mut d0 = [0u8; 32]; d0.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pre0b));
     let sig0: EcdsaSignature = sk.sign_prehash(&d0).unwrap();
     let recid0 = RecoveryId::trial_recovery_from_prehash(&vk, &d0, &sig0).unwrap();
 
@@ -99,7 +105,9 @@ fn duplicate_same_authority_tuples_semantics() {
     s1.append(&0u64);
     s1.append(&delegate.as_ref());
     s1.append(&1u64);
-    let mut d1 = [0u8; 32]; d1.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &s1.out()));
+    let mut pre1b = vec![0x05u8];
+    pre1b.extend_from_slice(&s1.out());
+    let mut d1 = [0u8; 32]; d1.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pre1b));
     let sig1: EcdsaSignature = sk.sign_prehash(&d1).unwrap();
     let recid1 = RecoveryId::trial_recovery_from_prehash(&vk, &d1, &sig1).unwrap();
 

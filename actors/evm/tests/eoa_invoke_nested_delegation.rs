@@ -56,7 +56,6 @@ mod asm_local {
 }
 
 #[test]
-#[ignore]
 fn invoke_as_eoa_nested_delegation_behavior() {
     // Construct an EVM actor (receiver) as usual.
     let rt = util::construct_and_verify(vec![0x00]); // minimal contract bytecode (STOP)
@@ -133,7 +132,10 @@ return
     );
 
     // Nested path during execution: delegate1 issues CALL to B.
-    // The EVM will consult Delegator and resolve delegate2, then attempt a nested InvokeAsEoa.
+    // The EVM consults Delegator to resolve delegate2 and retrieves its bytecode; allow ordering
+    // flexibility here by not asserting those intermediate sends explicitly.
+
+    // Expect lookup and bytecode fetch for nested target (authority B → delegate2).
     #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
     struct LookupDelegateParams { authority: EthAddress }
     #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
@@ -160,7 +162,6 @@ return
         ExitCode::OK,
         None,
     );
-
     rt.expect_gas_available(10_000_000_000u64);
     // Nested self-call: we don't execute it; just assert it is attempted.
     rt.expect_send_any_params(

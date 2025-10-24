@@ -37,13 +37,15 @@ fn apply_many_mappings_and_verify_all() {
         let authority = EthAddress(auth_bytes);
         let delegate = EthAddress::from_id(10_000 + i as u64);
 
-        // digest(chain_id=0, address, nonce=0)
+        // digest(chain_id=0, address, nonce=0) with AUTH MAGIC 0x05 prefix
         let mut s = RlpStream::new_list(3);
         s.append(&0u64);
         s.append(&delegate.as_ref());
         s.append(&0u64);
+        let mut pre = vec![0x05u8];
+        pre.extend_from_slice(&s.out());
         let mut d = [0u8; 32];
-        d.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &s.out()));
+        d.copy_from_slice(&rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pre));
         let sig: EcdsaSignature = sk.sign_prehash(&d).unwrap();
         let recid = RecoveryId::trial_recovery_from_prehash(&vk, &d, &sig).unwrap();
 
@@ -74,4 +76,3 @@ fn apply_many_mappings_and_verify_all() {
         assert_eq!(out.delegate, Some(delegates[idx]));
     }
 }
-
