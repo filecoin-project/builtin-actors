@@ -133,7 +133,7 @@ return
     );
 
     // Nested path during execution: delegate1 issues CALL to B.
-    // The EVM will consult Delegator and resolve delegate2, emit event, and attempt a nested InvokeAsEoa.
+    // The EVM will consult Delegator and resolve delegate2, then attempt a nested InvokeAsEoa.
     #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
     struct LookupDelegateParams { authority: EthAddress }
     #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
@@ -162,11 +162,6 @@ return
     );
 
     rt.expect_gas_available(10_000_000_000u64);
-    let topic = rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
-    rt.expect_emitted_event(ActorEvent::from(vec![
-        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic.clone() },
-        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: delegate2_eth.as_ref().to_vec() },
-    ]));
     // Nested self-call: we don't execute it; just assert it is attempted.
     rt.expect_send_any_params(
         rt.receiver,
@@ -178,6 +173,35 @@ return
         ExitCode::OK,
         None,
     );
+
+    // Inside the nested InvokeAsEoa(B): mount and persist storage for B.
+    rt.expect_send(
+        fil_actors_runtime::DELEGATOR_ACTOR_ADDR,
+        frc42_dispatch::method_hash!("GetStorageRoot"),
+        IpldBlock::serialize_cbor(&GetStorageRootParams { authority: authority_b }).unwrap(),
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::READ_ONLY,
+        IpldBlock::serialize_cbor(&GetStorageRootReturn { root: None }).unwrap(),
+        ExitCode::OK,
+        None,
+    );
+    rt.expect_send_any_params(
+        fil_actors_runtime::DELEGATOR_ACTOR_ADDR,
+        frc42_dispatch::method_hash!("PutStorageRoot"),
+        TokenAmount::from_whole(0),
+        None,
+        SendFlags::empty(),
+        None,
+        ExitCode::OK,
+        None,
+    );
+    // After nested returns, outer path emits a delegated event for delegate2.
+    let topic = rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+    rt.expect_emitted_event(ActorEvent::from(vec![
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic.clone() },
+        Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: delegate2_eth.as_ref().to_vec() },
+    ]));
 
     // After execution, persist A's storage root (accept any params).
     rt.expect_send_any_params(
@@ -196,9 +220,12 @@ return
     rt.set_caller(*EVM_ACTOR_CODE_ID, rt.receiver);
 
     // InvokeAsEoa with delegate1 code, receiver=A, and input containing B at offset 0.
+    // Build input: 32-byte word of authority B.
+    let mut input = vec![0u8; 32];
+    authority_b.as_evm_word().write_as_big_endian(&mut input[..]);
     let params = evm::EoaInvokeParams {
         code: delegate1_cid,
-        input: authority_b.as_ref().to_vec(),
+        input,
         caller: EthAddress::from_id(0x999),
         receiver: authority_a,
         value: TokenAmount::from_whole(0),
