@@ -58,6 +58,9 @@ impl DelegatorActor {
         rt.validate_immediate_caller_accept_any()?;
 
         let list = params.0.list;
+        if list.is_empty() {
+            return Err(ActorError::illegal_argument("empty delegation list".into()));
+        }
         let chain_id = rt.chain_id();
         rt.transaction::<State, _, _>(|st, rt| {
             let mut mapping = st.load_mapping(rt.store())?;
