@@ -11,7 +11,9 @@ pub fn is_eip7702_code(code: &[u8]) -> bool {
 
 /// Attempts to parse an EIP-7702 delegation indicator and return the embedded 20-byte address.
 pub fn eip7702_delegate_address(code: &[u8]) -> Option<EthAddress> {
-    if !is_eip7702_code(code) { return None; }
+    if !is_eip7702_code(code) {
+        return None;
+    }
     let mut addr = [0u8; 20];
     addr.copy_from_slice(&code[3..23]);
     Some(EthAddress(addr))
@@ -23,14 +25,18 @@ mod tests {
     #[test]
     fn detect_and_parse() {
         let mut raw = vec![0u8; 23];
-        raw[0] = 0xEF; raw[1] = 0x01; raw[2] = 0x00;
-        for i in 0..20 { raw[3+i] = 0xAB; }
+        raw[0] = 0xEF;
+        raw[1] = 0x01;
+        raw[2] = 0x00;
+        for i in 0..20 {
+            raw[3 + i] = 0xAB;
+        }
         assert!(is_eip7702_code(&raw));
         let d = eip7702_delegate_address(&raw).unwrap();
         assert_eq!(d, EthAddress([0xAB; 20]));
         assert!(!is_eip7702_code(&raw[..10]));
         let mut bad = raw.clone();
-        bad[1] = 0x00; assert!(!is_eip7702_code(&bad));
+        bad[1] = 0x00;
+        assert!(!is_eip7702_code(&bad));
     }
 }
-

@@ -9,8 +9,10 @@ toolchain:
 	rustup show active-toolchain || rustup toolchain install
 .PHONY: toolchain
 
+NEXTEST_VERSION ?= 0.9.106
+
 install-nextest:
-	@command -v cargo-nextest >/dev/null 2>&1 || cargo install cargo-nextest --locked
+	@command -v cargo-nextest >/dev/null 2>&1 || cargo install cargo-nextest --version $(NEXTEST_VERSION) --locked
 .PHONY: install-nextest
 
 # Run cargo fmt

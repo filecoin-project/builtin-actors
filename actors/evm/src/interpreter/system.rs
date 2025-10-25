@@ -7,6 +7,7 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Block;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_hamt::{BytesKey, Hamt};
 use fvm_ipld_kamt::HashedKey;
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::crypto::hash::SupportedHashes;
@@ -106,6 +107,10 @@ pub struct System<'r, RT: Runtime> {
     /// This is "some" if the actor is currently a "zombie". I.e., it has selfdestructed, but the
     /// current message is still executing. `System` cannot load a contracts state with a
     pub(crate) tombstone: Option<Tombstone>,
+
+    // EIP-7702: per-authority delegation mapping and nonces (authority 20b -> delegate 20b / nonce u64)
+    delegates: Hamt<RT::Blockstore, Vec<u8>>,
+    nonces: Hamt<RT::Blockstore, u64>,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
@@ -127,6 +132,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
             readonly,
             randomness: None,
             tombstone: None,
+            delegates: Hamt::new(rt.store().clone()),
+            nonces: Hamt::new(rt.store().clone()),
         }
     }
 
@@ -206,7 +213,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
             }
         };
 
-        Ok(Self {
+        // Initialize base system from state
+        let mut sys = Self {
             rt,
             slots: StateKamt::load_with_config(&state.contract_state, store, KAMT_CONFIG.clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
@@ -218,7 +226,19 @@ impl<'r, RT: Runtime> System<'r, RT> {
             readonly: read_only,
             randomness: None,
             tombstone: state.tombstone,
-        })
+            delegates: Hamt::new(rt.store().clone()),
+            nonces: Hamt::new(rt.store().clone()),
+        };
+        // Load 7702 maps if present
+        if let Some(cid) = state.delegations {
+            sys.delegates = Hamt::load(&cid, sys.rt.store().clone())
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 delegates map")?;
+        }
+        if let Some(cid) = state.delegation_nonces {
+            sys.nonces = Hamt::load(&cid, sys.rt.store().clone())
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 nonces map")?;
+        }
+        Ok(sys)
     }
 
     pub fn increment_nonce(&mut self) {
@@ -313,6 +333,16 @@ impl<'r, RT: Runtime> System<'r, RT> {
             })
         };
 
+        // Flush delegation maps
+        let del_cid = self
+            .delegates
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush delegates map")?;
+        let non_cid = self
+            .nonces
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush nonces map")?;
+
         let new_root = self
             .rt
             .store()
@@ -327,6 +357,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
                     transient_data,
                     nonce: self.nonce,
                     tombstone: self.tombstone,
+                    delegations: Some(del_cid),
+                    delegation_nonces: Some(non_cid),
                 },
                 Code::Blake2b256,
             )
@@ -334,6 +366,57 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
         self.rt.set_state_root(&new_root)?;
         self.saved_state_root = Some(new_root);
+        Ok(())
+    }
+
+    // EIP-7702 helpers
+    pub fn get_delegate(&self, authority: &EthAddress) -> Option<EthAddress> {
+        let key = BytesKey(authority.as_ref().to_vec());
+        self.delegates.get(&key).ok().flatten().and_then(|v| {
+            if v.len() == 20 {
+                let mut a = [0u8; 20];
+                a.copy_from_slice(&v);
+                Some(EthAddress(a))
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn set_delegate(
+        &mut self,
+        authority: &EthAddress,
+        delegate: Option<&EthAddress>,
+    ) -> Result<(), ActorError> {
+        self.saved_state_root = None;
+        let key = BytesKey(authority.as_ref().to_vec());
+        match delegate {
+            Some(d) => {
+                self.delegates
+                    .set(key, d.as_ref().to_vec())
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set delegate")?;
+            }
+            None => {
+                let _ = self
+                    .delegates
+                    .delete(&key)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to delete delegate")?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn get_auth_nonce(&self, authority: &EthAddress) -> u64 {
+        let key = BytesKey(authority.as_ref().to_vec());
+        self.nonces.get(&key).ok().flatten().copied().unwrap_or(0)
+    }
+
+    pub fn set_auth_nonce(&mut self, authority: &EthAddress, next: u64) -> Result<(), ActorError> {
+        self.saved_state_root = None;
+        let key = BytesKey(authority.as_ref().to_vec());
+        self.nonces
+            .set(key, next)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set nonce")?;
         Ok(())
     }
 
@@ -386,8 +469,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
     pub fn mount_storage_root(&mut self, root: &Cid) -> Result<(), ActorError> {
         self.slots
             .set_root(root)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to mount external storage root")?
-            ;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to mount external storage root")?;
         Ok(())
     }
 

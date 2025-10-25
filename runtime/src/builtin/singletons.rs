@@ -13,7 +13,6 @@ pub const STORAGE_MARKET_ACTOR_ID: ActorID = 5;
 pub const VERIFIED_REGISTRY_ACTOR_ID: ActorID = 6;
 pub const DATACAP_TOKEN_ACTOR_ID: ActorID = 7;
 pub const EAM_ACTOR_ID: ActorID = 10;
-pub const DELEGATOR_ACTOR_ID: ActorID = 18;
 pub const BURNT_FUNDS_ACTOR_ID: ActorID = 99;
 
 /// Singleton Actor Addresses
@@ -26,7 +25,6 @@ pub const STORAGE_MARKET_ACTOR_ADDR: Address = Address::new_id(STORAGE_MARKET_AC
 pub const VERIFIED_REGISTRY_ACTOR_ADDR: Address = Address::new_id(VERIFIED_REGISTRY_ACTOR_ID);
 pub const DATACAP_TOKEN_ACTOR_ADDR: Address = Address::new_id(DATACAP_TOKEN_ACTOR_ID);
 pub const EAM_ACTOR_ADDR: Address = Address::new_id(EAM_ACTOR_ID);
-pub const DELEGATOR_ACTOR_ADDR: Address = Address::new_id(DELEGATOR_ACTOR_ID);
 pub const BURNT_FUNDS_ACTOR_ADDR: Address = Address::new_id(BURNT_FUNDS_ACTOR_ID);
 
 /// Defines first available ID address after builtin actors

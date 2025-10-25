@@ -151,6 +151,14 @@ pub struct State {
     ///
     /// See https://github.com/filecoin-project/ref-fvm/issues/1174 for some context.
     pub tombstone: Option<Tombstone>,
+
+    /// EIP-7702: Delegation mapping (authority -> delegate address) stored as a HAMT keyed by
+    /// 20-byte authority address. Value is a 20-byte delegate address. Empty map means no
+    /// delegations are present.
+    pub delegations: Option<Cid>,
+
+    /// EIP-7702: Nonce mapping (authority -> u64) tracking per-authority authorization nonce.
+    pub delegation_nonces: Option<Cid>,
 }
 
 #[cfg(test)]

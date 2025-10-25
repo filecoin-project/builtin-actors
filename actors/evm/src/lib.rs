@@ -7,6 +7,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesSer, DAG_CBOR};
 use fvm_shared::address::Address;
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
@@ -15,7 +16,7 @@ use crate::interpreter::{Bytecode, ExecutionState, System, execute};
 use crate::reader::ValueReader;
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::DELEGATOR_ACTOR_ADDR;
+// Delegator removed in this branch; 7702 mapping is internal to EVM state.
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
 
@@ -67,6 +68,8 @@ pub enum Method {
     GetStorageAt = 5,
     InvokeContractDelegate = 6,
     InvokeAsEoa = 7,
+    // New: Atomic EIP-7702 apply + call entrypoint
+    ApplyAndCall = frc42_dispatch::method_hash!("ApplyAndCall"),
     InvokeContract = frc42_dispatch::method_hash!("InvokeEVM"),
 }
 
@@ -249,26 +252,6 @@ impl EvmContractActor {
         let p = params.0;
         let mut system = System::new(rt, rt.read_only());
 
-        // Attempt to mount existing storage root for this EOA from Delegator.
-        // CBOR params to GetStorageRoot(authority)
-        #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
-        struct GetStorageRootParams { authority: EthAddress }
-        #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
-        struct GetStorageRootReturn { root: Option<Cid> }
-        if let Ok(Some(ret)) = system.send(
-            &DELEGATOR_ACTOR_ADDR,
-            frc42_dispatch::method_hash!("GetStorageRoot"),
-            IpldBlock::serialize_cbor(&GetStorageRootParams { authority: p.receiver })?,
-            TokenAmount::from_whole(0),
-            None,
-            fvm_shared::sys::SendFlags::READ_ONLY,
-        ) {
-            if let Ok(GetStorageRootReturn { root: Some(root) }) = ret.deserialize() {
-                // Mount into System storage.
-                let _ = system.mount_storage_root(&root);
-            }
-        }
-
         // Load bytecode to execute.
         let bytecode = match load_bytecode(system.rt.store(), &p.code)? {
             Some(b) => b,
@@ -280,21 +263,7 @@ impl EvmContractActor {
         let output = execute(&bytecode, &mut exec_state, &mut system)?;
         match output.outcome {
             Outcome::Return => {
-                // Persist storage root back to Delegator if not read-only.
-                if !system.readonly {
-                    if let Ok(new_root) = system.flush_storage_root() {
-                        #[derive(fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
-                        struct PutStorageRootParams { authority: EthAddress, root: Cid }
-                        let _ = system.send(
-                            &DELEGATOR_ACTOR_ADDR,
-                            frc42_dispatch::method_hash!("PutStorageRoot"),
-                            IpldBlock::serialize_dag_cbor(&PutStorageRootParams { authority: p.receiver, root: new_root })?,
-                            TokenAmount::from_whole(0),
-                            None,
-                            fvm_shared::sys::SendFlags::default(),
-                        );
-                    }
-                }
+                // No external storage root persistence on this branch.
                 Ok(InvokeContractReturn { output_data: output.return_data.to_vec() })
             }
             Outcome::Revert => Err(ActorError::unchecked_with_data(
@@ -491,12 +460,15 @@ impl ActorCode for EvmContractActor {
         GetStorageAt => storage_at,
         InvokeContractDelegate => invoke_contract_delegate,
         InvokeAsEoa => invoke_as_eoa,
+        ApplyAndCall => apply_and_call,
         Resurrect => resurrect,
         _ => handle_filecoin_method,
     }
 }
 
-#[derive(Clone, Debug, fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize)]
+#[derive(
+    Clone, Debug, fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize,
+)]
 pub struct EoaInvokeParams {
     pub code: Cid,
     #[serde(with = "fvm_ipld_encoding::strict_bytes")]
@@ -504,4 +476,301 @@ pub struct EoaInvokeParams {
     pub caller: EthAddress,
     pub receiver: EthAddress,
     pub value: TokenAmount,
+}
+
+/// Atomic EIP-7702 entrypoint: applies authorization tuples and then
+/// executes the outer call. All state changes revert atomically on error.
+impl EvmContractActor {
+    fn validate_tuple(rt: &impl Runtime, t: &crate::DelegationParam) -> Result<(), ActorError> {
+        // chain id 0 or local
+        if t.chain_id != 0 && fvm_shared::chainid::ChainID::from(t.chain_id) != rt.chain_id() {
+            return Err(ActorError::illegal_argument("invalid chain id".into()));
+        }
+        // y_parity 0 or 1
+        if t.y_parity != 0 && t.y_parity != 1 {
+            return Err(ActorError::illegal_argument("invalid y_parity".into()));
+        }
+        // r/s non-zero
+        if t.r.iter().all(|&b| b == 0) || t.s.iter().all(|&b| b == 0) {
+            return Err(ActorError::illegal_argument("zero r/s".into()));
+        }
+        // low-s: s <= n/2
+        if Self::is_high_s(&t.s) {
+            return Err(ActorError::illegal_argument("high-s not allowed".into()));
+        }
+        Ok(())
+    }
+
+    fn is_high_s(sv: &[u8]) -> bool {
+        if sv.len() != 32 {
+            return true;
+        }
+        // n/2 as in Delegator
+        const N: [u8; 32] = [
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFE, 0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B, 0xBF, 0xD2, 0x5E, 0x8C,
+            0xD0, 0x36, 0x41, 0x41,
+        ];
+        let mut n2 = [0u8; 32];
+        let mut carry = 0u16;
+        for i in (0..32).rev() {
+            let v = (carry << 8) | N[i] as u16;
+            n2[i] = (v / 2) as u8;
+            carry = v % 2;
+        }
+        let arr: [u8; 32] = sv.try_into().unwrap();
+        arr > n2
+    }
+
+    fn recover_authority(
+        rt: &impl Runtime,
+        t: &crate::DelegationParam,
+    ) -> Result<EthAddress, ActorError> {
+        // message = keccak256(0x05 || rlp([chain_id, address(20), nonce]))
+        let mut s = rlp::RlpStream::new_list(3);
+        s.append(&t.chain_id);
+        s.append(&t.address.as_ref());
+        s.append(&t.nonce);
+        let rlp_bytes = s.out().to_vec();
+        let mut preimage = Vec::with_capacity(1 + rlp_bytes.len());
+        preimage.push(0x05u8);
+        preimage.extend_from_slice(&rlp_bytes);
+        let mut hash32 = [0u8; 32];
+        let h = rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &preimage);
+        hash32.copy_from_slice(&h);
+
+        // build 65-byte signature r||s||v
+        if t.r.len() != 32 || t.s.len() != 32 {
+            return Err(ActorError::illegal_argument("bad r/s length".into()));
+        }
+        let mut sig = [0u8; 65];
+        sig[..32].copy_from_slice(&t.r);
+        sig[32..64].copy_from_slice(&t.s);
+        sig[64] = t.y_parity;
+        let pubkey = rt
+            .recover_secp_public_key(&hash32, &sig)
+            .map_err(|e| ActorError::illegal_argument(format!("signature recovery failed: {e}")))?;
+        let (mut keccak64, _len) =
+            rt.hash_64(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pubkey[1..]);
+        let mut addr = [0u8; 20];
+        addr.copy_from_slice(&keccak64[12..32]);
+        Ok(EthAddress(addr))
+    }
+    pub fn apply_and_call<RT>(
+        rt: &RT,
+        params: WithCodec<crate::ApplyAndCallParams, DAG_CBOR>,
+    ) -> Result<InvokeContractReturn, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        // Accept any immediate caller (outer transaction envelope).
+        rt.validate_immediate_caller_accept_any()?;
+
+        // Prepare system helper.
+        let mut system = System::new(rt, rt.read_only());
+
+        // 1) Apply delegations directly into EVM state (validate + nonce checks + write mapping).
+        let list = params.0.list;
+        for t in list.iter() {
+            Self::validate_tuple(rt, t)?;
+            let authority = Self::recover_authority(rt, t)?;
+            let current = system.get_auth_nonce(&authority);
+            if current != t.nonce {
+                return Err(ActorError::illegal_argument(format!(
+                    "nonce mismatch for {}: expected {}, got {}",
+                    authority, current, t.nonce
+                )));
+            }
+            // Update mapping: zero address clears, else set
+            let is_zero_delegate = t.address.as_ref().iter().all(|&b| b == 0);
+            if is_zero_delegate {
+                system.set_delegate(&authority, None)?;
+            } else {
+                system.set_delegate(&authority, Some(&t.address))?;
+            }
+            system.set_auth_nonce(&authority, current.saturating_add(1))?;
+        }
+
+        // 2) Execute the outer call as specified: [to, value, input].
+        let call = params.0.call;
+        // Convert value bytes (big-endian magnitude) to a TokenAmount in atto.
+        let value = {
+            use fvm_shared::bigint::{BigInt, Sign};
+            TokenAmount::from_atto(BigInt::from_bytes_be(Sign::Plus, &call.value))
+        };
+
+        // Helper: resolve destination contract type.
+        use fvm_shared::address::Address;
+        let dst_eth = call.to;
+        let (is_evm, dst_actor_addr_opt) = {
+            let fa: Address = dst_eth.into();
+            if let Some(id) = system.rt.resolve_address(&fa) {
+                if let Some(code) = system.rt.get_actor_code_cid(&id) {
+                    match system.rt.resolve_builtin_actor_type(&code) {
+                        Some(fil_actors_runtime::runtime::builtins::Type::EVM) => {
+                            (true, Some(Address::new_id(id)))
+                        }
+                        Some(
+                            fil_actors_runtime::runtime::builtins::Type::Account
+                            | fil_actors_runtime::runtime::builtins::Type::EthAccount
+                            | fil_actors_runtime::runtime::builtins::Type::Placeholder,
+                        ) => (false, None),
+                        _ => (false, None),
+                    }
+                } else {
+                    (false, None)
+                }
+            } else {
+                (false, None)
+            }
+        };
+
+        if is_evm {
+            // Invoke EVM contract directly.
+            use fvm_ipld_encoding::IPLD_RAW;
+            let params_blk = if call.input.is_empty() {
+                None
+            } else {
+                Some(IpldBlock { codec: IPLD_RAW, data: call.input.clone() })
+            };
+            let evm_addr = dst_actor_addr_opt.expect("resolved EVM address");
+            if let Some(ret) = system.send(
+                &evm_addr,
+                Method::InvokeContract as u64,
+                params_blk,
+                value,
+                None,
+                fvm_shared::sys::SendFlags::default(),
+            )? {
+                // Decode InvokeContractReturn { output_data }
+                #[derive(fvm_ipld_encoding::serde::Deserialize)]
+                struct InvokeContractReturn {
+                    output_data: Vec<u8>,
+                }
+                let data = ret
+                    .deserialize::<InvokeContractReturn>()
+                    .map(|x| x.output_data)
+                    .unwrap_or_else(|_| ret.data);
+                Ok(crate::InvokeContractReturn { output_data: data })
+            } else {
+                Ok(crate::InvokeContractReturn { output_data: Vec::new() })
+            }
+        } else {
+            // Look up delegation in internal mapping; if present, execute delegate code in EOA context via InvokeAsEoa.
+            if let Some(delegate) = system.get_delegate(&dst_eth) {
+                let da: Address = delegate.into();
+                if let Some(id) = system.rt.resolve_address(&da) {
+                    if let Some(code) = system.rt.get_actor_code_cid(&id) {
+                        if matches!(
+                            system.rt.resolve_builtin_actor_type(&code),
+                            Some(fil_actors_runtime::runtime::builtins::Type::EVM)
+                        ) {
+                            // Fetch bytecode CID via GetBytecode
+                            let ret = system.send(
+                                &Address::new_id(id),
+                                Method::GetBytecode as u64,
+                                None,
+                                TokenAmount::from_whole(0),
+                                None,
+                                fvm_shared::sys::SendFlags::READ_ONLY,
+                            )?;
+                            let code_cid: Cid = match ret.and_then(|b| b.deserialize().ok()) {
+                                Some(c) => c,
+                                None => {
+                                    return Ok(crate::InvokeContractReturn {
+                                        output_data: Vec::new(),
+                                    });
+                                }
+                            };
+                            if !system.readonly && !value.is_zero() {
+                                let dst_addr: Address = dst_eth.into();
+                                let _ = system.transfer(&dst_addr, value.clone());
+                            }
+                            let caller_eth = system
+                                .resolve_ethereum_address(&system.rt.message().caller())
+                                .context_code(
+                                    ExitCode::USR_ILLEGAL_STATE,
+                                    "failed to resolve caller eth address",
+                                )?;
+                            let p = EoaInvokeParams {
+                                code: code_cid,
+                                input: call.input,
+                                caller: caller_eth,
+                                receiver: dst_eth,
+                                value,
+                            };
+                            let res = system.send(
+                                &system.rt.message().receiver(),
+                                Method::InvokeAsEoa as u64,
+                                IpldBlock::serialize_dag_cbor(&p)?,
+                                TokenAmount::from_whole(0),
+                                None,
+                                fvm_shared::sys::SendFlags::default(),
+                            )?;
+                            if let Some(retblk) = res {
+                                #[derive(fvm_ipld_encoding::serde::Deserialize)]
+                                struct InvokeContractReturn {
+                                    output_data: Vec<u8>,
+                                }
+                                let data = retblk
+                                    .deserialize::<InvokeContractReturn>()
+                                    .map(|x| x.output_data)
+                                    .unwrap_or_else(|_| retblk.data);
+                                // Emit delegated execution event
+                                use fvm_ipld_encoding::IPLD_RAW;
+                                use fvm_shared::event::{Entry, Flags};
+                                let topic = system
+                                    .rt
+                                    .hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+                                if topic.len() == 32 && !system.readonly {
+                                    let mut entries: Vec<Entry> = Vec::with_capacity(2);
+                                    entries.push(Entry {
+                                        flags: Flags::FLAG_INDEXED_ALL,
+                                        key: "t1".to_owned(),
+                                        codec: IPLD_RAW,
+                                        value: topic,
+                                    });
+                                    entries.push(Entry {
+                                        flags: Flags::FLAG_INDEXED_ALL,
+                                        key: "d".to_owned(),
+                                        codec: IPLD_RAW,
+                                        value: delegate.as_ref().to_vec(),
+                                    });
+                                    let _ = system.rt.emit_event(&entries.into());
+                                }
+                                return Ok(crate::InvokeContractReturn { output_data: data });
+                            } else {
+                                // Emit event even if no return
+                                use fvm_ipld_encoding::IPLD_RAW;
+                                use fvm_shared::event::{Entry, Flags};
+                                let topic = system
+                                    .rt
+                                    .hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+                                if topic.len() == 32 && !system.readonly {
+                                    let mut entries: Vec<Entry> = Vec::with_capacity(2);
+                                    entries.push(Entry {
+                                        flags: Flags::FLAG_INDEXED_ALL,
+                                        key: "t1".to_owned(),
+                                        codec: IPLD_RAW,
+                                        value: topic,
+                                    });
+                                    entries.push(Entry {
+                                        flags: Flags::FLAG_INDEXED_ALL,
+                                        key: "d".to_owned(),
+                                        codec: IPLD_RAW,
+                                        value: delegate.as_ref().to_vec(),
+                                    });
+                                    let _ = system.rt.emit_event(&entries.into());
+                                }
+                                return Ok(crate::InvokeContractReturn { output_data: Vec::new() });
+                            }
+                        }
+                    }
+                }
+            }
+            // No delegation: calling EOA with no code is a no-op success.
+            Ok(InvokeContractReturn { output_data: Vec::new() })
+        }
+    }
 }

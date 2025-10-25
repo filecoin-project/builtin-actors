@@ -4,4 +4,3 @@
 use fvm_shared::version::NetworkVersion;
 
 pub const NV_EIP_7702: NetworkVersion = NetworkVersion::V16;
-

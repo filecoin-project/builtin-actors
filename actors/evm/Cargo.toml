@@ -29,6 +29,8 @@ fvm_ipld_encoding = { workspace = true }
 multihash-codetable = { workspace = true }
 frc42_dispatch = { workspace = true }
 fil_actors_evm_shared = { workspace = true }
+rlp = { workspace = true }
+fvm_ipld_hamt = { workspace = true }
 hex = { workspace = true }
 hex-literal = { workspace = true }
 substrate-bn = { workspace = true }

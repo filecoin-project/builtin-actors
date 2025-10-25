@@ -10,10 +10,14 @@ mod util;
 // Minimal assembler helper (copied from tests/asm.rs)
 mod asm_local {
     use etk_asm::ingest::Ingest;
-    use fil_actor_evm as evm;
     use evm::interpreter::opcodes;
+    use fil_actor_evm as evm;
 
-    pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_asm::ingest::Error> {
+    pub fn new_contract(
+        name: &str,
+        init: &str,
+        body: &str,
+    ) -> Result<Vec<u8>, etk_asm::ingest::Error> {
         let mut body_code = Vec::new();
         let mut ingest_body = Ingest::new(&mut body_code);
         ingest_body.ingest(name, body)?;
@@ -109,7 +113,7 @@ return
 // Pre-activation: CALL to EOA should not consult Delegator;
 // it should attempt a direct InvokeContract on the EOA f4 address and surface the syscall error.
 #[test]
-fn call_to_eoa_pre_activation_skips_delegator() {
+fn call_to_eoa_pre_activation_skips_delegation() {
     // Construct a proxy contract that CALLs a destination and returns returndata.
     let initcode = call_proxy_contract();
     let rt = util::construct_and_verify(initcode);

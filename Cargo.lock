@@ -745,27 +745,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fil_actor_delegator"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cid",
- "fil_actors_evm_shared",
- "fil_actors_runtime",
- "frc42_dispatch",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "fvm_ipld_hamt",
- "fvm_shared",
- "hex",
- "k256",
- "num-derive",
- "num-traits",
- "rlp 0.5.2",
- "serde",
-]
-
-[[package]]
 name = "fil_actor_eam"
 version = "16.0.1"
 dependencies = [
@@ -782,7 +761,7 @@ dependencies = [
  "multihash",
  "num-derive",
  "num-traits",
- "rlp 0.6.1",
+ "rlp",
  "serde",
 ]
 
@@ -815,6 +794,7 @@ dependencies = [
  "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
  "fvm_ipld_kamt",
  "fvm_shared",
  "hex",
@@ -826,6 +806,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "rand 0.8.5",
+ "rlp",
  "serde",
  "serde_json",
  "substrate-bn",
@@ -1155,7 +1136,6 @@ dependencies = [
  "fil_actor_bundler",
  "fil_actor_cron",
  "fil_actor_datacap",
- "fil_actor_delegator",
  "fil_actor_eam",
  "fil_actor_ethaccount",
  "fil_actor_evm",
@@ -2083,16 +2063,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd124222d17ad93a644ed9d011a40f4fb64aa54275c08cc216524a9ea82fb09f"
 dependencies = [
  "digest",
-]
-
-[[package]]
-name = "rlp"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb919243f34364b6bd2fc10ef797edbfa75f33c252e7998527479c6d6b47e1ec"
-dependencies = [
- "bytes",
- "rustc-hex",
 ]
 
 [[package]]
