@@ -49,6 +49,11 @@ pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x86, 0x8e, 0x10, 0xc4];
 
 const EVM_WORD_SIZE: usize = 32;
 
+// Placeholder intrinsic gas charges for EIP-7702 ApplyAndCall. Final values may change;
+// these provide behavioral charging to prevent unbounded validation.
+const GAS_PER_AUTH_TUPLE: i64 = 10_000;
+const GAS_BASE_APPLY7702: i64 = 0;
+
 #[test]
 fn test_method_selector() {
     // We could just _generate_ this method selector with a proc macro, but this is easier.
@@ -250,7 +255,9 @@ impl EvmContractActor {
         rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
 
         let p = params.0;
-        let mut system = System::new(rt, rt.read_only());
+        let mut system = System::load(rt).map_err(|e| {
+            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
+        })?;
 
         // Load bytecode to execute.
         let bytecode = match load_bytecode(system.rt.store(), &p.code)? {
@@ -258,19 +265,36 @@ impl EvmContractActor {
             None => return Ok(InvokeContractReturn { output_data: Vec::new() }),
         };
 
-        // Execute with explicit caller/receiver/value.
+        // Save the actor's storage root and mount the authority's persistent storage root.
+        let actor_storage_root = system.flush_storage_root()?;
+        let auth_root = match system.get_storage_root_for(&p.receiver) {
+            Some(cid) => cid,
+            None => system.create_empty_storage_root()?,
+        };
+        system.mount_storage_root(&auth_root)?;
+
+        // Execute with explicit caller/receiver/value using the authority's storage root.
         let mut exec_state = ExecutionState::new(p.caller, p.receiver, p.value, p.input);
         let output = execute(&bytecode, &mut exec_state, &mut system)?;
         match output.outcome {
             Outcome::Return => {
-                // No external storage root persistence on this branch.
+                // Flush updated authority storage root and persist in map, then restore actor root.
+                let new_auth_root = system.flush_storage_root()?;
+                system.set_storage_root_for(&p.receiver, &new_auth_root)?;
+                system.mount_storage_root(&actor_storage_root)?;
+                // Flush maps/state.
+                system.flush()?;
                 Ok(InvokeContractReturn { output_data: output.return_data.to_vec() })
             }
-            Outcome::Revert => Err(ActorError::unchecked_with_data(
-                EVM_CONTRACT_REVERTED,
-                format!("contract reverted at {0}", output.pc),
-                IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
-            )),
+            Outcome::Revert => {
+                // Restore actor root and propagate revert.
+                system.mount_storage_root(&actor_storage_root)?;
+                Err(ActorError::unchecked_with_data(
+                    EVM_CONTRACT_REVERTED,
+                    format!("contract reverted at {0}", output.pc),
+                    IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
+                ))
+            }
         }
     }
 
@@ -570,11 +594,26 @@ impl EvmContractActor {
         // Prepare system helper.
         let mut system = System::new(rt, rt.read_only());
 
+        // Intrinsic gas: base + per-tuple, charged before validation/recovery.
+        let tuple_count = params.0.list.len() as i64;
+        if tuple_count == 0 {
+            return Err(ActorError::illegal_argument("authorizationList must be non-empty".into()));
+        }
+        rt.charge_gas("evm.apply_and_call.base", GAS_BASE_APPLY7702);
+        rt.charge_gas("evm.apply_and_call.per_tuple", GAS_PER_AUTH_TUPLE.saturating_mul(tuple_count));
+
         // 1) Apply delegations directly into EVM state (validate + nonce checks + write mapping).
         let list = params.0.list;
+        // Reject duplicate authorities within a single message to avoid ambiguity.
+        let mut seen = std::collections::HashSet::<[u8; 20]>::new();
         for t in list.iter() {
             Self::validate_tuple(rt, t)?;
             let authority = Self::recover_authority(rt, t)?;
+            let mut key = [0u8; 20];
+            key.copy_from_slice(authority.as_ref());
+            if !seen.insert(key) {
+                return Err(ActorError::illegal_argument("duplicate authority in authorizationList".into()));
+            }
             let current = system.get_auth_nonce(&authority);
             if current != t.nonce {
                 return Err(ActorError::illegal_argument(format!(

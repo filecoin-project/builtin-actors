@@ -1,0 +1,1 @@
+CC=/opt/homebrew/opt/llvm/bin/clang CC_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/clang AR_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/llvm-ar CFLAGS_wasm32_unknown_unknown="--target=wasm32-unknown-unknown" make test

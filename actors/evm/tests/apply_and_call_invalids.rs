@@ -10,8 +10,101 @@ use fvm_shared::sys::SendFlags;
 mod util;
 
 #[test]
+fn apply_and_call_rejects_invalid_chain_id() {
+    let rt = util::construct_and_verify(vec![]);
+    const GAS_BASE_APPLY7702: i64 = 0;
+    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
+    rt.expect_gas_charge(GAS_BASE_APPLY7702);
+    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+
+    let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
+    // chain_id 999 should mismatch most default test runtimes.
+    let list = vec![evm::DelegationParam {
+        chain_id: 999,
+        address: authority,
+        nonce: 0,
+        y_parity: 0,
+        r: vec![1u8; 32],
+        s: vec![1u8; 32],
+    }];
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: authority, value: vec![0u8], input: vec![] },
+    };
+    rt.expect_validate_caller_any();
+    let res = rt.call::<evm::EvmContractActor>(
+        evm::Method::ApplyAndCall as u64,
+        IpldBlock::serialize_dag_cbor(&params).unwrap(),
+    );
+    assert!(res.is_err());
+    assert_eq!(res.err().unwrap().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+}
+
+#[test]
+fn apply_and_call_rejects_zero_r_or_s() {
+    let rt = util::construct_and_verify(vec![]);
+    const GAS_BASE_APPLY7702: i64 = 0;
+    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
+    rt.expect_gas_charge(GAS_BASE_APPLY7702);
+    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+
+    let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
+    let mut zeros = vec![0u8; 32];
+    let list = vec![evm::DelegationParam {
+        chain_id: 0,
+        address: authority,
+        nonce: 0,
+        y_parity: 0,
+        r: zeros.clone(),
+        s: vec![1u8; 32],
+    }];
+    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: authority, value: vec![], input: vec![] } };
+    rt.expect_validate_caller_any();
+    let res = rt.call::<evm::EvmContractActor>(
+        evm::Method::ApplyAndCall as u64,
+        IpldBlock::serialize_dag_cbor(&params).unwrap(),
+    );
+    assert!(res.is_err());
+    assert_eq!(res.err().unwrap().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+}
+
+#[test]
+fn apply_and_call_rejects_high_s() {
+    let rt = util::construct_and_verify(vec![]);
+    const GAS_BASE_APPLY7702: i64 = 0;
+    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
+    rt.expect_gas_charge(GAS_BASE_APPLY7702);
+    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+
+    let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
+    let mut high_s = vec![0xffu8; 32];
+    let list = vec![evm::DelegationParam {
+        chain_id: 0,
+        address: authority,
+        nonce: 0,
+        y_parity: 0,
+        r: vec![1u8; 32],
+        s: high_s.clone(),
+    }];
+    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: authority, value: vec![], input: vec![] } };
+    rt.expect_validate_caller_any();
+    let res = rt.call::<evm::EvmContractActor>(
+        evm::Method::ApplyAndCall as u64,
+        IpldBlock::serialize_dag_cbor(&params).unwrap(),
+    );
+    assert!(res.is_err());
+    assert_eq!(res.err().unwrap().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+}
+
+#[test]
 fn apply_and_call_rejects_invalid_authorizations() {
     let rt = util::construct_and_verify(vec![]);
+
+    // Intrinsic gas expected: base + per-tuple (placeholders).
+    const GAS_BASE_APPLY7702: i64 = 0;
+    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
+    rt.expect_gas_charge(GAS_BASE_APPLY7702);
+    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
 
     // Build ApplyAndCall with a single tuple (invalid y_parity; validator should reject).
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
@@ -42,6 +135,12 @@ fn apply_and_call_rejects_invalid_authorizations() {
 #[test]
 fn apply_and_call_propagates_outer_call_failure() {
     let rt = util::construct_and_verify(vec![]);
+
+    // Intrinsic gas expected: base + per-tuple (placeholders).
+    const GAS_BASE_APPLY7702: i64 = 0;
+    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
+    rt.expect_gas_charge(GAS_BASE_APPLY7702);
+    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
 
     // Build ApplyAndCall with valid-looking tuple and EVM destination.
     let dst = EthAddress(hex_literal::hex!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));

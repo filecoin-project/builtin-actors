@@ -111,6 +111,8 @@ pub struct System<'r, RT: Runtime> {
     // EIP-7702: per-authority delegation mapping and nonces (authority 20b -> delegate 20b / nonce u64)
     delegates: Hamt<RT::Blockstore, Vec<u8>>,
     nonces: Hamt<RT::Blockstore, u64>,
+    /// EIP-7702: Per-authority storage roots
+    storage_roots: Hamt<RT::Blockstore, Cid>,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
@@ -134,6 +136,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             tombstone: None,
             delegates: Hamt::new(rt.store().clone()),
             nonces: Hamt::new(rt.store().clone()),
+            storage_roots: Hamt::new(rt.store().clone()),
         }
     }
 
@@ -228,6 +231,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             tombstone: state.tombstone,
             delegates: Hamt::new(rt.store().clone()),
             nonces: Hamt::new(rt.store().clone()),
+            storage_roots: Hamt::new(rt.store().clone()),
         };
         // Load 7702 maps if present
         if let Some(cid) = state.delegations {
@@ -237,6 +241,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
         if let Some(cid) = state.delegation_nonces {
             sys.nonces = Hamt::load(&cid, sys.rt.store().clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 nonces map")?;
+        }
+        if let Some(cid) = state.delegation_storage {
+            sys.storage_roots = Hamt::load(&cid, sys.rt.store().clone())
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 storage roots map")?;
         }
         Ok(sys)
     }
@@ -342,6 +350,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .nonces
             .flush()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush nonces map")?;
+        let stor_cid = self
+            .storage_roots
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush storage roots map")?;
 
         let new_root = self
             .rt
@@ -359,6 +371,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
                     tombstone: self.tombstone,
                     delegations: Some(del_cid),
                     delegation_nonces: Some(non_cid),
+                    delegation_storage: Some(stor_cid),
                 },
                 Code::Blake2b256,
             )
@@ -418,6 +431,27 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .set(key, next)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set nonce")?;
         Ok(())
+    }
+
+    pub fn get_storage_root_for(&self, authority: &EthAddress) -> Option<Cid> {
+        let key = BytesKey(authority.as_ref().to_vec());
+        self.storage_roots.get(&key).ok().flatten().cloned()
+    }
+
+    pub fn set_storage_root_for(&mut self, authority: &EthAddress, root: &Cid) -> Result<(), ActorError> {
+        self.saved_state_root = None;
+        let key = BytesKey(authority.as_ref().to_vec());
+        self.storage_roots
+            .set(key, root.clone())
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set storage root")?;
+        Ok(())
+    }
+
+    /// Create an empty storage root CID for mounting a fresh KAMT.
+    pub fn create_empty_storage_root(&self) -> Result<Cid, ActorError> {
+        let mut tmp = StateKamt::new_with_config(self.rt.store().clone(), KAMT_CONFIG.clone());
+        // We need to flush to obtain a CID; since tmp is local, this only writes the empty root.
+        tmp.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty storage root")
     }
 
     /// Reload the actor state if changed.

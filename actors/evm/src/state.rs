@@ -159,6 +159,11 @@ pub struct State {
 
     /// EIP-7702: Nonce mapping (authority -> u64) tracking per-authority authorization nonce.
     pub delegation_nonces: Option<Cid>,
+
+    /// EIP-7702: Per-authority storage roots (authority -> storage root CID) used when executing
+    /// delegated code under an EOA authority context. Absent means no storage has been created
+    /// for any authority yet.
+    pub delegation_storage: Option<Cid>,
 }
 
 #[cfg(test)]
