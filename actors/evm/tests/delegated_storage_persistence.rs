@@ -10,9 +10,7 @@ mod util;
 
 fn put_code(rt: &MockRuntime, code: &[u8]) -> Cid {
     use multihash_codetable::Code;
-    rt.store
-        .put(Code::Blake2b256, &Block::new(IPLD_RAW, code))
-        .expect("put code")
+    rt.store.put(Code::Blake2b256, &Block::new(IPLD_RAW, code)).expect("put code")
 }
 
 #[test]
@@ -35,8 +33,8 @@ fn delegated_storage_persists_across_invocations() {
     let p1 = evm::EoaInvokeParams {
         code: store_cid,
         input: vec![],
-        caller: authority,    // arbitrary
-        receiver: authority,  // authority address
+        caller: authority,   // arbitrary
+        receiver: authority, // authority address
         value: TokenAmount::from_whole(0),
     };
     // Immediate caller is self.
@@ -74,11 +72,15 @@ fn delegated_storage_persists_across_invocations() {
     let out = ret
         .deserialize::<InvokeContractReturn>()
         .map(|x| x.output_data)
-        .or_else(|_| fvm_ipld_encoding::from_slice::<InvokeContractReturn>(&ret.data).map(|x| x.output_data))
+        .or_else(|_| {
+            fvm_ipld_encoding::from_slice::<InvokeContractReturn>(&ret.data).map(|x| x.output_data)
+        })
         .unwrap_or_else(|_| ret.data);
     // Expect big-endian 0x02 in the last 32 bytes (some runtimes wrap raw output).
     assert!(out.len() >= 32);
     let word = &out[out.len() - 32..];
     assert_eq!(word[31], 0x02);
-    for b in &word[..31] { assert_eq!(*b, 0x00) }
+    for b in &word[..31] {
+        assert_eq!(*b, 0x00)
+    }
 }

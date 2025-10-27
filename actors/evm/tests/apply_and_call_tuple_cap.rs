@@ -29,12 +29,27 @@ fn tuple_cap_allows_64() {
     let mut list = Vec::with_capacity(64);
     for i in 1..=64u8 {
         let varying_addr = EthAddress::from_id(1000 + i as u64);
-        list.push(evm::DelegationParam { chain_id: 0, address: varying_addr, nonce: 0, y_parity: 0, r: vec![i;32], s: vec![1u8;32] });
+        list.push(evm::DelegationParam {
+            chain_id: 0,
+            address: varying_addr,
+            nonce: 0,
+            y_parity: 0,
+            r: vec![i; 32],
+            s: vec![1u8; 32],
+        });
     }
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: dst, value: vec![], input: vec![] } };
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: dst, value: vec![], input: vec![] },
+    };
     rt.expect_validate_caller_any();
-    let res = rt.call::<evm::EvmContractActor>(evm::Method::ApplyAndCall as u64, IpldBlock::serialize_dag_cbor(&params).unwrap());
-    if let Err(e) = &res { println!("allows_64 error: code={} msg={}", e.exit_code().value(), e.msg()); }
+    let res = rt.call::<evm::EvmContractActor>(
+        evm::Method::ApplyAndCall as u64,
+        IpldBlock::serialize_dag_cbor(&params).unwrap(),
+    );
+    if let Err(e) = &res {
+        println!("allows_64 error: code={} msg={}", e.exit_code().value(), e.msg());
+    }
     assert!(res.is_ok());
 }
 
@@ -54,11 +69,24 @@ fn tuple_cap_rejects_65() {
     let dst = EthAddress(hex_literal::hex!("cccccccccccccccccccccccccccccccccccccccc"));
     let mut list = Vec::with_capacity(65);
     for n in 0..65u64 {
-        list.push(evm::DelegationParam { chain_id: 0, address: dst, nonce: n, y_parity: 0, r: vec![1u8;32], s: vec![1u8;32] });
+        list.push(evm::DelegationParam {
+            chain_id: 0,
+            address: dst,
+            nonce: n,
+            y_parity: 0,
+            r: vec![1u8; 32],
+            s: vec![1u8; 32],
+        });
     }
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: dst, value: vec![], input: vec![] } };
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: dst, value: vec![], input: vec![] },
+    };
     rt.expect_validate_caller_any();
-    let res = rt.call::<evm::EvmContractActor>(evm::Method::ApplyAndCall as u64, IpldBlock::serialize_dag_cbor(&params).unwrap());
+    let res = rt.call::<evm::EvmContractActor>(
+        evm::Method::ApplyAndCall as u64,
+        IpldBlock::serialize_dag_cbor(&params).unwrap(),
+    );
     assert!(res.is_err());
     assert_eq!(res.err().unwrap().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
 }

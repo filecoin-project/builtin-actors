@@ -17,13 +17,22 @@ fn charges_intrinsic_gas_per_tuple_before_validation() {
     rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
 
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
-    let list = vec![evm::DelegationParam { chain_id: 0, address: authority, nonce: 0, y_parity: 0, r: vec![1u8;32], s: vec![1u8;32] }];
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: authority, value: vec![], input: vec![] } };
+    let list = vec![evm::DelegationParam {
+        chain_id: 0,
+        address: authority,
+        nonce: 0,
+        y_parity: 0,
+        r: vec![1u8; 32],
+        s: vec![1u8; 32],
+    }];
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: authority, value: vec![], input: vec![] },
+    };
 
     rt.expect_validate_caller_any();
-    let _ = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::ApplyAndCall as u64,
-            IpldBlock::serialize_dag_cbor(&params).unwrap(),
-        );
+    let _ = rt.call::<evm::EvmContractActor>(
+        evm::Method::ApplyAndCall as u64,
+        IpldBlock::serialize_dag_cbor(&params).unwrap(),
+    );
 }

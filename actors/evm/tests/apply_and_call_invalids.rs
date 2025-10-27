@@ -58,7 +58,10 @@ fn apply_and_call_rejects_zero_r_or_s() {
         r: zeros.clone(),
         s: vec![1u8; 32],
     }];
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: authority, value: vec![], input: vec![] } };
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: authority, value: vec![], input: vec![] },
+    };
     rt.expect_validate_caller_any();
     let res = rt.call::<evm::EvmContractActor>(
         evm::Method::ApplyAndCall as u64,
@@ -86,7 +89,10 @@ fn apply_and_call_rejects_high_s() {
         r: vec![1u8; 32],
         s: high_s.clone(),
     }];
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: authority, value: vec![], input: vec![] } };
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: authority, value: vec![], input: vec![] },
+    };
     rt.expect_validate_caller_any();
     let res = rt.call::<evm::EvmContractActor>(
         evm::Method::ApplyAndCall as u64,
@@ -231,15 +237,22 @@ fn apply_and_call_rejects_authority_preexistence_contract() {
         // Return a constant uncompressed pubkey (0x04 || 64 bytes)
         let mut pk = [0u8; 65];
         pk[0] = 0x04;
-        for i in 1..65 { pk[i] = 0xAB; }
+        for i in 1..65 {
+            pk[i] = 0xAB;
+        }
         Ok(pk)
     });
     // Compute the recovered Eth address from the above pubkey.
     use fil_actors_runtime::test_utils::hash as rt_hash;
     use fvm_shared::crypto::hash::SupportedHashes;
-    let mut pk = [0u8; 65]; pk[0]=0x04; for i in 1..65 { pk[i]=0xAB; }
+    let mut pk = [0u8; 65];
+    pk[0] = 0x04;
+    for i in 1..65 {
+        pk[i] = 0xAB;
+    }
     let (keccak64, _) = rt_hash(SupportedHashes::Keccak256, &pk[1..]);
-    let mut recovered = [0u8;20]; recovered.copy_from_slice(&keccak64[12..32]);
+    let mut recovered = [0u8; 20];
+    recovered.copy_from_slice(&keccak64[12..32]);
     let recovered_eth = EthAddress(recovered);
     // Map recovered_eth (f4) to an ID with EVM code to trigger pre-existence rejection.
     use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
@@ -251,8 +264,18 @@ fn apply_and_call_rejects_authority_preexistence_contract() {
 
     // Build tuple; the "address" field is the delegate pointer, not the authority.
     // Authority will be recovered to `recovered_eth` via the override above.
-    let list = vec![evm::DelegationParam { chain_id: 0, address: recovered_eth, nonce: 0, y_parity: 0, r: vec![1u8;32], s: vec![1u8;32] }];
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: recovered_eth, value: vec![], input: vec![] } };
+    let list = vec![evm::DelegationParam {
+        chain_id: 0,
+        address: recovered_eth,
+        nonce: 0,
+        y_parity: 0,
+        r: vec![1u8; 32],
+        s: vec![1u8; 32],
+    }];
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: recovered_eth, value: vec![], input: vec![] },
+    };
     rt.expect_validate_caller_any();
     let res = rt.call::<evm::EvmContractActor>(
         evm::Method::ApplyAndCall as u64,

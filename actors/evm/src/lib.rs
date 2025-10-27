@@ -610,7 +610,10 @@ impl EvmContractActor {
             return Err(ActorError::illegal_argument("authorizationList exceeds tuple cap".into()));
         }
         rt.charge_gas("evm.apply_and_call.base", GAS_BASE_APPLY7702);
-        rt.charge_gas("evm.apply_and_call.per_tuple", GAS_PER_AUTH_TUPLE.saturating_mul(tuple_count));
+        rt.charge_gas(
+            "evm.apply_and_call.per_tuple",
+            GAS_PER_AUTH_TUPLE.saturating_mul(tuple_count),
+        );
 
         // 1) Apply delegations directly into EVM state (validate + nonce checks + write mapping).
         let list = params.0.list;
@@ -625,7 +628,9 @@ impl EvmContractActor {
             let mut key = [0u8; 20];
             key.copy_from_slice(authority.as_ref());
             if !seen.insert(key) {
-                return Err(ActorError::illegal_argument("duplicate authority in authorizationList".into()));
+                return Err(ActorError::illegal_argument(
+                    "duplicate authority in authorizationList".into(),
+                ));
             }
             let current = system.get_auth_nonce(&authority);
             if current != t.nonce {
@@ -640,8 +645,13 @@ impl EvmContractActor {
                 let fa: Address = authority.into();
                 if let Some(id) = system.rt.resolve_address(&fa) {
                     if let Some(code) = system.rt.get_actor_code_cid(&id) {
-                        if matches!(system.rt.resolve_builtin_actor_type(&code), Some(BuiltinType::EVM)) {
-                            return Err(ActorError::illegal_argument("authority is an EVM contract".into()));
+                        if matches!(
+                            system.rt.resolve_builtin_actor_type(&code),
+                            Some(BuiltinType::EVM)
+                        ) {
+                            return Err(ActorError::illegal_argument(
+                                "authority is an EVM contract".into(),
+                            ));
                         }
                     }
                 }
@@ -713,8 +723,13 @@ impl EvmContractActor {
             ) {
                 Ok(Some(ret)) => {
                     #[derive(fvm_ipld_encoding::serde::Deserialize)]
-                    struct InvokeContractReturn { output_data: Vec<u8> }
-                    let data = ret.deserialize::<InvokeContractReturn>().map(|x| x.output_data).unwrap_or_else(|_| ret.data);
+                    struct InvokeContractReturn {
+                        output_data: Vec<u8>,
+                    }
+                    let data = ret
+                        .deserialize::<InvokeContractReturn>()
+                        .map(|x| x.output_data)
+                        .unwrap_or_else(|_| ret.data);
                     Ok(crate::ApplyAndCallReturn { status: 1, output_data: data })
                 }
                 Ok(None) => Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() }),
@@ -746,7 +761,10 @@ impl EvmContractActor {
                             let code_cid: Cid = match ret.and_then(|b| b.deserialize().ok()) {
                                 Some(c) => c,
                                 None => {
-                                    return Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() });
+                                    return Ok(crate::ApplyAndCallReturn {
+                                        status: 1,
+                                        output_data: Vec::new(),
+                                    });
                                 }
                             };
                             if !system.readonly && !value.is_zero() {
@@ -776,8 +794,13 @@ impl EvmContractActor {
                             )?;
                             if let Some(retblk) = res {
                                 #[derive(fvm_ipld_encoding::serde::Deserialize)]
-                                struct InvokeContractReturn { output_data: Vec<u8> }
-                                let data = retblk.deserialize::<InvokeContractReturn>().map(|x| x.output_data).unwrap_or_else(|_| retblk.data);
+                                struct InvokeContractReturn {
+                                    output_data: Vec<u8>,
+                                }
+                                let data = retblk
+                                    .deserialize::<InvokeContractReturn>()
+                                    .map(|x| x.output_data)
+                                    .unwrap_or_else(|_| retblk.data);
                                 // Emit delegated execution event
                                 use fvm_ipld_encoding::IPLD_RAW;
                                 use fvm_shared::event::{Entry, Flags};
@@ -800,7 +823,10 @@ impl EvmContractActor {
                                     });
                                     let _ = system.rt.emit_event(&entries.into());
                                 }
-                                return Ok(crate::ApplyAndCallReturn { status: 1, output_data: data });
+                                return Ok(crate::ApplyAndCallReturn {
+                                    status: 1,
+                                    output_data: data,
+                                });
                             } else {
                                 // Emit event even if no return
                                 use fvm_ipld_encoding::IPLD_RAW;
@@ -824,7 +850,10 @@ impl EvmContractActor {
                                     });
                                     let _ = system.rt.emit_event(&entries.into());
                                 }
-                                return Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() });
+                                return Ok(crate::ApplyAndCallReturn {
+                                    status: 1,
+                                    output_data: Vec::new(),
+                                });
                             }
                         }
                     }

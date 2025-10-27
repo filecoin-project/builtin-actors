@@ -19,10 +19,27 @@ fn apply_and_call_rejects_duplicate_authorities() {
     // Two tuples for the same authority.
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
     let list = vec![
-        evm::DelegationParam { chain_id: 0, address: authority, nonce: 0, y_parity: 0, r: vec![1u8;32], s: vec![1u8;32] },
-        evm::DelegationParam { chain_id: 0, address: authority, nonce: 1, y_parity: 0, r: vec![1u8;32], s: vec![1u8;32] },
+        evm::DelegationParam {
+            chain_id: 0,
+            address: authority,
+            nonce: 0,
+            y_parity: 0,
+            r: vec![1u8; 32],
+            s: vec![1u8; 32],
+        },
+        evm::DelegationParam {
+            chain_id: 0,
+            address: authority,
+            nonce: 1,
+            y_parity: 0,
+            r: vec![1u8; 32],
+            s: vec![1u8; 32],
+        },
     ];
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: authority, value: vec![], input: vec![] } };
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: authority, value: vec![], input: vec![] },
+    };
 
     rt.expect_validate_caller_any();
     let res = rt.call::<evm::EvmContractActor>(
@@ -32,4 +49,3 @@ fn apply_and_call_rejects_duplicate_authorities() {
     assert!(res.is_err());
     assert_eq!(res.err().unwrap().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
 }
-

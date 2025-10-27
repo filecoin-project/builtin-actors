@@ -249,8 +249,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 nonces map")?;
         }
         if let Some(cid) = state.delegation_storage {
-            sys.storage_roots = Hamt::load(&cid, sys.rt.store().clone())
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 storage roots map")?;
+            sys.storage_roots = Hamt::load(&cid, sys.rt.store().clone()).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to load 7702 storage roots map",
+            )?;
         }
         Ok(sys)
     }
@@ -444,7 +446,11 @@ impl<'r, RT: Runtime> System<'r, RT> {
         self.storage_roots.get(&key).ok().flatten().cloned()
     }
 
-    pub fn set_storage_root_for(&mut self, authority: &EthAddress, root: &Cid) -> Result<(), ActorError> {
+    pub fn set_storage_root_for(
+        &mut self,
+        authority: &EthAddress,
+        root: &Cid,
+    ) -> Result<(), ActorError> {
         self.saved_state_root = None;
         let key = BytesKey(authority.as_ref().to_vec());
         self.storage_roots
