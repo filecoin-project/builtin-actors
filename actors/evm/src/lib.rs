@@ -272,6 +272,9 @@ impl EvmContractActor {
             None => system.create_empty_storage_root()?,
         };
         system.mount_storage_root(&auth_root)?;
+        // Enter authority context (depth==1 for delegation).
+        let prev_ctx = system.in_authority_context;
+        system.in_authority_context = true;
 
         // Execute with explicit caller/receiver/value using the authority's storage root.
         let mut exec_state = ExecutionState::new(p.caller, p.receiver, p.value, p.input);
@@ -282,6 +285,7 @@ impl EvmContractActor {
                 let new_auth_root = system.flush_storage_root()?;
                 system.set_storage_root_for(&p.receiver, &new_auth_root)?;
                 system.mount_storage_root(&actor_storage_root)?;
+                system.in_authority_context = prev_ctx;
                 // Flush maps/state.
                 system.flush()?;
                 Ok(InvokeContractReturn { output_data: output.return_data.to_vec() })
@@ -289,6 +293,7 @@ impl EvmContractActor {
             Outcome::Revert => {
                 // Restore actor root and propagate revert.
                 system.mount_storage_root(&actor_storage_root)?;
+                system.in_authority_context = prev_ctx;
                 Err(ActorError::unchecked_with_data(
                     EVM_CONTRACT_REVERTED,
                     format!("contract reverted at {0}", output.pc),
@@ -583,7 +588,7 @@ impl EvmContractActor {
     pub fn apply_and_call<RT>(
         rt: &RT,
         params: WithCodec<crate::ApplyAndCallParams, DAG_CBOR>,
-    ) -> Result<InvokeContractReturn, ActorError>
+    ) -> Result<crate::ApplyAndCallReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -599,6 +604,11 @@ impl EvmContractActor {
         if tuple_count == 0 {
             return Err(ActorError::illegal_argument("authorizationList must be non-empty".into()));
         }
+        // Tuple cap (placeholder; to be tuned/finalized).
+        // TODO(cap): 64 is a placeholder cap to mitigate DoS; finalize or remove in spec constants.
+        if tuple_count > 64 {
+            return Err(ActorError::illegal_argument("authorizationList exceeds tuple cap".into()));
+        }
         rt.charge_gas("evm.apply_and_call.base", GAS_BASE_APPLY7702);
         rt.charge_gas("evm.apply_and_call.per_tuple", GAS_PER_AUTH_TUPLE.saturating_mul(tuple_count));
 
@@ -606,6 +616,9 @@ impl EvmContractActor {
         let list = params.0.list;
         // Reject duplicate authorities within a single message to avoid ambiguity.
         let mut seen = std::collections::HashSet::<[u8; 20]>::new();
+        // Refunds plumbing (placeholder): track potential refunds at per-tuple granularity.
+        // TODO(refunds): numeric constants and caps will be wired once finalized.
+        let mut _tuple_refund_accumulator: i64 = 0;
         for t in list.iter() {
             Self::validate_tuple(rt, t)?;
             let authority = Self::recover_authority(rt, t)?;
@@ -621,12 +634,27 @@ impl EvmContractActor {
                     authority, current, t.nonce
                 )));
             }
+            // Pre-existence policy: reject if authority resolves to an EVM contract actor.
+            {
+                use fil_actors_runtime::runtime::builtins::Type as BuiltinType;
+                let fa: Address = authority.into();
+                if let Some(id) = system.rt.resolve_address(&fa) {
+                    if let Some(code) = system.rt.get_actor_code_cid(&id) {
+                        if matches!(system.rt.resolve_builtin_actor_type(&code), Some(BuiltinType::EVM)) {
+                            return Err(ActorError::illegal_argument("authority is an EVM contract".into()));
+                        }
+                    }
+                }
+            }
             // Update mapping: zero address clears, else set
             let is_zero_delegate = t.address.as_ref().iter().all(|&b| b == 0);
             if is_zero_delegate {
                 system.set_delegate(&authority, None)?;
             } else {
                 system.set_delegate(&authority, Some(&t.address))?;
+                // Record potential refund placeholder when setting from none->nonzero.
+                // TODO: apply final refund constants once finalized.
+                _tuple_refund_accumulator = _tuple_refund_accumulator.saturating_add(0);
             }
             system.set_auth_nonce(&authority, current.saturating_add(1))?;
         }
@@ -674,26 +702,27 @@ impl EvmContractActor {
                 Some(IpldBlock { codec: IPLD_RAW, data: call.input.clone() })
             };
             let evm_addr = dst_actor_addr_opt.expect("resolved EVM address");
-            if let Some(ret) = system.send(
+            // Always capture outcome; map to status + output
+            match system.send(
                 &evm_addr,
                 Method::InvokeContract as u64,
                 params_blk,
                 value,
                 None,
                 fvm_shared::sys::SendFlags::default(),
-            )? {
-                // Decode InvokeContractReturn { output_data }
-                #[derive(fvm_ipld_encoding::serde::Deserialize)]
-                struct InvokeContractReturn {
-                    output_data: Vec<u8>,
+            ) {
+                Ok(Some(ret)) => {
+                    #[derive(fvm_ipld_encoding::serde::Deserialize)]
+                    struct InvokeContractReturn { output_data: Vec<u8> }
+                    let data = ret.deserialize::<InvokeContractReturn>().map(|x| x.output_data).unwrap_or_else(|_| ret.data);
+                    Ok(crate::ApplyAndCallReturn { status: 1, output_data: data })
                 }
-                let data = ret
-                    .deserialize::<InvokeContractReturn>()
-                    .map(|x| x.output_data)
-                    .unwrap_or_else(|_| ret.data);
-                Ok(crate::InvokeContractReturn { output_data: data })
-            } else {
-                Ok(crate::InvokeContractReturn { output_data: Vec::new() })
+                Ok(None) => Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() }),
+                Err(mut e) => {
+                    // Outer call failed; persist mapping already applied; return status=0 with revert data if present.
+                    let data = e.take_data().map(|b| b.data).unwrap_or_default();
+                    Ok(crate::ApplyAndCallReturn { status: 0, output_data: data })
+                }
             }
         } else {
             // Look up delegation in internal mapping; if present, execute delegate code in EOA context via InvokeAsEoa.
@@ -717,9 +746,7 @@ impl EvmContractActor {
                             let code_cid: Cid = match ret.and_then(|b| b.deserialize().ok()) {
                                 Some(c) => c,
                                 None => {
-                                    return Ok(crate::InvokeContractReturn {
-                                        output_data: Vec::new(),
-                                    });
+                                    return Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() });
                                 }
                             };
                             if !system.readonly && !value.is_zero() {
@@ -749,13 +776,8 @@ impl EvmContractActor {
                             )?;
                             if let Some(retblk) = res {
                                 #[derive(fvm_ipld_encoding::serde::Deserialize)]
-                                struct InvokeContractReturn {
-                                    output_data: Vec<u8>,
-                                }
-                                let data = retblk
-                                    .deserialize::<InvokeContractReturn>()
-                                    .map(|x| x.output_data)
-                                    .unwrap_or_else(|_| retblk.data);
+                                struct InvokeContractReturn { output_data: Vec<u8> }
+                                let data = retblk.deserialize::<InvokeContractReturn>().map(|x| x.output_data).unwrap_or_else(|_| retblk.data);
                                 // Emit delegated execution event
                                 use fvm_ipld_encoding::IPLD_RAW;
                                 use fvm_shared::event::{Entry, Flags};
@@ -778,7 +800,7 @@ impl EvmContractActor {
                                     });
                                     let _ = system.rt.emit_event(&entries.into());
                                 }
-                                return Ok(crate::InvokeContractReturn { output_data: data });
+                                return Ok(crate::ApplyAndCallReturn { status: 1, output_data: data });
                             } else {
                                 // Emit event even if no return
                                 use fvm_ipld_encoding::IPLD_RAW;
@@ -802,14 +824,14 @@ impl EvmContractActor {
                                     });
                                     let _ = system.rt.emit_event(&entries.into());
                                 }
-                                return Ok(crate::InvokeContractReturn { output_data: Vec::new() });
+                                return Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() });
                             }
                         }
                     }
                 }
             }
             // No delegation: calling EOA with no code is a no-op success.
-            Ok(InvokeContractReturn { output_data: Vec::new() })
+            Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() })
         }
     }
 }

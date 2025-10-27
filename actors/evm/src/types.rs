@@ -97,3 +97,13 @@ pub struct ApplyAndCallParams {
     pub list: Vec<DelegationParam>,
     pub call: ApplyCall,
 }
+
+// Return type for ApplyAndCall. Always returned with ExitCode::OK.
+// - status: 1 on success, 0 on revert/failure of the outer call
+// - output_data: return or revert data from the outer call
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ApplyAndCallReturn {
+    pub status: u8,
+    #[serde(with = "strict_bytes")]
+    pub output_data: Vec<u8>,
+}

@@ -113,6 +113,10 @@ pub struct System<'r, RT: Runtime> {
     nonces: Hamt<RT::Blockstore, u64>,
     /// EIP-7702: Per-authority storage roots
     storage_roots: Hamt<RT::Blockstore, Cid>,
+
+    /// EIP-7702: Flag indicating we are executing under an authority context (InvokeAsEoa).
+    /// When set, delegation mapping must not be followed again (depth limit == 1).
+    pub in_authority_context: bool,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
@@ -137,6 +141,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             delegates: Hamt::new(rt.store().clone()),
             nonces: Hamt::new(rt.store().clone()),
             storage_roots: Hamt::new(rt.store().clone()),
+            in_authority_context: false,
         }
     }
 
@@ -232,6 +237,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             delegates: Hamt::new(rt.store().clone()),
             nonces: Hamt::new(rt.store().clone()),
             storage_roots: Hamt::new(rt.store().clone()),
+            in_authority_context: false,
         };
         // Load 7702 maps if present
         if let Some(cid) = state.delegations {

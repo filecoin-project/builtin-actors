@@ -208,6 +208,8 @@ pub fn call_generic<RT: Runtime>(
                         get_contract_type(system.rt, &dst),
                         ContractType::Account | ContractType::NotFound
                     ) && system.rt.network_version() >= NV_EIP_7702
+                        // Depth limit: do not follow delegation when already in authority context.
+                        && !system.in_authority_context
                     {
                         // EVM-only: consult internal mapping for 7702 delegation
                         if let Some(delegate) = system.get_delegate(&dst) {
@@ -991,4 +993,9 @@ mod tests {
             assert_eq!(&m.state.memory[0..4], &output_data);
         };
     }
+
+    // Depth limit functional test is implemented in ApplyAndCall-driven tests.
+
+    // Note: Depth limit is enforced in code by System.in_authority_context.
+    // A dedicated integration test can be added when a stable harness for nested delegation flows is available.
 }
