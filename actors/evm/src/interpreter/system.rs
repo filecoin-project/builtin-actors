@@ -14,7 +14,7 @@ use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{IPLD_RAW, HAMT_BIT_WIDTH, METHOD_SEND, MethodNum, Response};
+use fvm_shared::{HAMT_BIT_WIDTH, IPLD_RAW, METHOD_SEND, MethodNum, Response};
 use multihash_codetable::Code;
 
 use crate::BytecodeHash;
@@ -249,10 +249,12 @@ impl<'r, RT: Runtime> System<'r, RT> {
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 nonces map")?;
         }
         if let Some(cid) = state.delegation_storage {
-            sys.storage_roots = Hamt::load_with_bit_width(&cid, sys.rt.store().clone(), HAMT_BIT_WIDTH).context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                "failed to load 7702 storage roots map",
-            )?;
+            sys.storage_roots =
+                Hamt::load_with_bit_width(&cid, sys.rt.store().clone(), HAMT_BIT_WIDTH)
+                    .context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to load 7702 storage roots map",
+                    )?;
         }
         Ok(sys)
     }
