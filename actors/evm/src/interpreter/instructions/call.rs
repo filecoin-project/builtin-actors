@@ -271,20 +271,20 @@ pub fn call_generic<RT: Runtime>(
                                                     b"EIP7702Delegated(address)",
                                                 );
                                                 if topic.len() == 32 && !system.readonly {
-                                                    let mut entries: Vec<Entry> =
-                                                        Vec::with_capacity(2);
-                                                    entries.push(Entry {
-                                                        flags: Flags::FLAG_INDEXED_ALL,
-                                                        key: "t1".to_owned(),
-                                                        codec: IPLD_RAW,
-                                                        value: topic,
-                                                    });
-                                                    entries.push(Entry {
-                                                        flags: Flags::FLAG_INDEXED_ALL,
-                                                        key: "d".to_owned(),
-                                                        codec: IPLD_RAW,
-                                                        value: delegate.as_ref().to_vec(),
-                                                    });
+                                                    let entries: Vec<Entry> = vec![
+                                                        Entry {
+                                                            flags: Flags::FLAG_INDEXED_ALL,
+                                                            key: "t1".to_owned(),
+                                                            codec: IPLD_RAW,
+                                                            value: topic,
+                                                        },
+                                                        Entry {
+                                                            flags: Flags::FLAG_INDEXED_ALL,
+                                                            key: "d".to_owned(),
+                                                            codec: IPLD_RAW,
+                                                            value: delegate.as_ref().to_vec(),
+                                                        },
+                                                    ];
                                                     let _ = system.rt.emit_event(&entries.into());
                                                 }
                                                 copy_to_memory(
@@ -309,20 +309,20 @@ pub fn call_generic<RT: Runtime>(
                                                     b"EIP7702Delegated(address)",
                                                 );
                                                 if topic.len() == 32 && !system.readonly {
-                                                    let mut entries: Vec<Entry> =
-                                                        Vec::with_capacity(2);
-                                                    entries.push(Entry {
-                                                        flags: Flags::FLAG_INDEXED_ALL,
-                                                        key: "t1".to_owned(),
-                                                        codec: IPLD_RAW,
-                                                        value: topic,
-                                                    });
-                                                    entries.push(Entry {
-                                                        flags: Flags::FLAG_INDEXED_ALL,
-                                                        key: "d".to_owned(),
-                                                        codec: IPLD_RAW,
-                                                        value: delegate.as_ref().to_vec(),
-                                                    });
+                                                    let entries: Vec<Entry> = vec![
+                                                        Entry {
+                                                            flags: Flags::FLAG_INDEXED_ALL,
+                                                            key: "t1".to_owned(),
+                                                            codec: IPLD_RAW,
+                                                            value: topic,
+                                                        },
+                                                        Entry {
+                                                            flags: Flags::FLAG_INDEXED_ALL,
+                                                            key: "d".to_owned(),
+                                                            codec: IPLD_RAW,
+                                                            value: delegate.as_ref().to_vec(),
+                                                        },
+                                                    ];
                                                     let _ = system.rt.emit_event(&entries.into());
                                                 }
                                                 copy_to_memory(

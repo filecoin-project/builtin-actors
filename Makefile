@@ -24,8 +24,8 @@ rustfmt: toolchain
 
 # Run cargo check
 check: toolchain
-	cargo clippy --all --all-targets -- -D warnings
-	cargo clippy --all -- -D warnings
+	SKIP_BUNDLE=1 cargo clippy --all --all-targets -- -D warnings
+	SKIP_BUNDLE=1 cargo clippy --all -- -D warnings
 
 # NOTE: nextest doesn't run doctests https://github.com/nextest-rs/nextest/issues/16,
 # enable once doc tests are added: `cargo test --doc`

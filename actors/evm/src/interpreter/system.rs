@@ -14,7 +14,7 @@ use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{IPLD_RAW, METHOD_SEND, MethodNum, Response};
+use fvm_shared::{IPLD_RAW, HAMT_BIT_WIDTH, METHOD_SEND, MethodNum, Response};
 use multihash_codetable::Code;
 
 use crate::BytecodeHash;
@@ -138,9 +138,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
             readonly,
             randomness: None,
             tombstone: None,
-            delegates: Hamt::new(rt.store().clone()),
-            nonces: Hamt::new(rt.store().clone()),
-            storage_roots: Hamt::new(rt.store().clone()),
+            delegates: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
+            nonces: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
+            storage_roots: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
             in_authority_context: false,
         }
     }
@@ -234,22 +234,22 @@ impl<'r, RT: Runtime> System<'r, RT> {
             readonly: read_only,
             randomness: None,
             tombstone: state.tombstone,
-            delegates: Hamt::new(rt.store().clone()),
-            nonces: Hamt::new(rt.store().clone()),
-            storage_roots: Hamt::new(rt.store().clone()),
+            delegates: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
+            nonces: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
+            storage_roots: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
             in_authority_context: false,
         };
         // Load 7702 maps if present
         if let Some(cid) = state.delegations {
-            sys.delegates = Hamt::load(&cid, sys.rt.store().clone())
+            sys.delegates = Hamt::load_with_bit_width(&cid, sys.rt.store().clone(), HAMT_BIT_WIDTH)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 delegates map")?;
         }
         if let Some(cid) = state.delegation_nonces {
-            sys.nonces = Hamt::load(&cid, sys.rt.store().clone())
+            sys.nonces = Hamt::load_with_bit_width(&cid, sys.rt.store().clone(), HAMT_BIT_WIDTH)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 nonces map")?;
         }
         if let Some(cid) = state.delegation_storage {
-            sys.storage_roots = Hamt::load(&cid, sys.rt.store().clone()).context_code(
+            sys.storage_roots = Hamt::load_with_bit_width(&cid, sys.rt.store().clone(), HAMT_BIT_WIDTH).context_code(
                 ExitCode::USR_ILLEGAL_STATE,
                 "failed to load 7702 storage roots map",
             )?;
@@ -396,7 +396,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         self.delegates.get(&key).ok().flatten().and_then(|v| {
             if v.len() == 20 {
                 let mut a = [0u8; 20];
-                a.copy_from_slice(&v);
+                a.copy_from_slice(v);
                 Some(EthAddress(a))
             } else {
                 None
@@ -454,7 +454,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         self.saved_state_root = None;
         let key = BytesKey(authority.as_ref().to_vec());
         self.storage_roots
-            .set(key, root.clone())
+            .set(key, *root)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set storage root")?;
         Ok(())
     }

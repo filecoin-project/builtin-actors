@@ -1,6 +1,5 @@
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
-use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 mod util;

@@ -400,6 +400,13 @@ pub struct ExpectedMessage {
     pub send_error: Option<ErrorNumber>,
 }
 
+#[derive(Clone, Debug)]
+pub struct SendOutcome {
+    pub send_return: Option<IpldBlock>,
+    pub exit_code: ExitCode,
+    pub send_error: Option<ErrorNumber>,
+}
+
 #[derive(Debug)]
 pub struct ExpectedVerifySig {
     pub sig: Signature,
@@ -721,9 +728,7 @@ impl MockRuntime {
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
-        send_return: Option<IpldBlock>,
-        exit_code: ExitCode,
-        send_error: Option<ErrorNumber>,
+        outcome: SendOutcome,
     ) {
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
             to,
@@ -732,9 +737,9 @@ impl MockRuntime {
             value,
             gas_limit,
             send_flags,
-            send_return,
-            exit_code,
-            send_error,
+            send_return: outcome.send_return,
+            exit_code: outcome.exit_code,
+            send_error: outcome.send_error,
         })
     }
 

@@ -116,6 +116,19 @@ fn check_c_compiler_does_wasm() {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // Allow skipping the heavy wasm bundle build during linting or local checks.
+    if std::env::var_os("SKIP_BUNDLE").is_some() {
+        let out_dir = std::env::var_os("OUT_DIR")
+            .as_ref()
+            .map(Path::new)
+            .map(|p| p.join("bundle"))
+            .expect("no OUT_DIR env var");
+        std::fs::create_dir_all(&out_dir)?;
+        let dst = out_dir.join("bundle.car");
+        std::fs::write(&dst, &[] as &[u8])?;
+        println!("cargo:warning=SKIP_BUNDLE set; wrote placeholder {:?}", dst);
+        return Ok(());
+    }
     // Cargo executable location.
     let cargo = std::env::var_os("CARGO").expect("no CARGO env var");
     println!("cargo:warning=cargo: {:?}", &cargo);

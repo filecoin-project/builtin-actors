@@ -1,7 +1,5 @@
-use cid::Cid;
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
-use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -49,7 +47,7 @@ fn apply_and_call_rejects_zero_r_or_s() {
     rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
 
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
-    let mut zeros = vec![0u8; 32];
+    let zeros = vec![0u8; 32];
     let list = vec![evm::DelegationParam {
         chain_id: 0,
         address: authority,
@@ -80,7 +78,7 @@ fn apply_and_call_rejects_high_s() {
     rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
 
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
-    let mut high_s = vec![0xffu8; 32];
+    let high_s = vec![0xffu8; 32];
     let list = vec![evm::DelegationParam {
         chain_id: 0,
         address: authority,
@@ -237,8 +235,8 @@ fn apply_and_call_rejects_authority_preexistence_contract() {
         // Return a constant uncompressed pubkey (0x04 || 64 bytes)
         let mut pk = [0u8; 65];
         pk[0] = 0x04;
-        for i in 1..65 {
-            pk[i] = 0xAB;
+        for b in pk.iter_mut().skip(1) {
+            *b = 0xAB;
         }
         Ok(pk)
     });
@@ -247,8 +245,8 @@ fn apply_and_call_rejects_authority_preexistence_contract() {
     use fvm_shared::crypto::hash::SupportedHashes;
     let mut pk = [0u8; 65];
     pk[0] = 0x04;
-    for i in 1..65 {
-        pk[i] = 0xAB;
+    for b in pk.iter_mut().skip(1) {
+        *b = 0xAB;
     }
     let (keccak64, _) = rt_hash(SupportedHashes::Keccak256, &pk[1..]);
     let mut recovered = [0u8; 20];

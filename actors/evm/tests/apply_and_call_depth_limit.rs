@@ -1,7 +1,7 @@
 use cid::Cid;
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
-use fil_actors_runtime::test_utils::MockRuntime;
+use fil_actors_runtime::test_utils::SendOutcome;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::event::{ActorEvent, Entry, Flags};
@@ -27,13 +27,13 @@ fn apply_and_call_depth_limit_invokeaseoa() {
     // pk_c derives EthAddress C; pk_a derives EthAddress A.
     let mut pk_c = [0u8; 65];
     pk_c[0] = 0x04;
-    for i in 1..65 {
-        pk_c[i] = 0xC1;
+    for b in pk_c.iter_mut().skip(1) {
+        *b = 0xC1;
     }
     let mut pk_a = [0u8; 65];
     pk_a[0] = 0x04;
-    for i in 1..65 {
-        pk_a[i] = 0xA1;
+    for b in pk_a.iter_mut().skip(1) {
+        *b = 0xA1;
     }
 
     // Derive EthAddress from uncompressed pubkey as in actor: keccak(pubkey[1:])[12:]
@@ -159,9 +159,11 @@ fn apply_and_call_depth_limit_invokeaseoa() {
             TokenAmount::from_whole(0),
             None,
             SendFlags::default(),
-            Some(IpldBlock { codec: IPLD_RAW, data: Vec::new() }),
-            ExitCode::OK,
-            None,
+            SendOutcome {
+                send_return: Some(IpldBlock { codec: IPLD_RAW, data: Vec::new() }),
+                exit_code: ExitCode::OK,
+                send_error: None,
+            },
         );
 
         // Expect the synthetic EIP7702Delegated(address) event for delegated execution attribution.

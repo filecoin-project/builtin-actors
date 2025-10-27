@@ -69,13 +69,13 @@ fn delegated_storage_persists_across_invocations() {
     struct InvokeContractReturn {
         output_data: Vec<u8>,
     }
-    let out = ret
-        .deserialize::<InvokeContractReturn>()
-        .map(|x| x.output_data)
-        .or_else(|_| {
-            fvm_ipld_encoding::from_slice::<InvokeContractReturn>(&ret.data).map(|x| x.output_data)
-        })
-        .unwrap_or_else(|_| ret.data);
+        let out = ret
+            .deserialize::<InvokeContractReturn>()
+            .map(|x| x.output_data)
+            .or_else(|_| {
+                fvm_ipld_encoding::from_slice::<InvokeContractReturn>(&ret.data).map(|x| x.output_data)
+            })
+            .unwrap_or(ret.data);
     // Expect big-endian 0x02 in the last 32 bytes (some runtimes wrap raw output).
     assert!(out.len() >= 32);
     let word = &out[out.len() - 32..];
