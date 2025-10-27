@@ -135,7 +135,7 @@ pub enum PrecompileExit {
 #[allow(dead_code)]
 pub enum NativePrecompile {
     ResolveAddress = 1,
-    Reserved02 = 2,
+    LookupDelegatedAddress = 2,
     CallActor = 3,
     GetActorTypeDISABLED = 4,
     CallActorId = 5,

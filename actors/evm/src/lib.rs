@@ -596,8 +596,8 @@ impl EvmContractActor {
         // Accept any immediate caller (outer transaction envelope).
         rt.validate_immediate_caller_accept_any()?;
 
-        // Prepare system helper.
-        let mut system = System::new(rt, rt.read_only());
+        // Prepare system helper by loading existing state.
+        let mut system = System::load(rt)?;
 
         // Intrinsic gas: base + per-tuple, charged before validation/recovery.
         let tuple_count = params.0.list.len() as i64;
@@ -668,6 +668,11 @@ impl EvmContractActor {
             }
             system.set_auth_nonce(&authority, current.saturating_add(1))?;
         }
+
+        // Persist delegation state (mapping + nonces) before executing the outer call so that
+        // these changes survive even if the outer call fails. This matches EIP-7702 atomic
+        // semantics where authorization application is independent of outer call success.
+        system.flush()?;
 
         // 2) Execute the outer call as specified: [to, value, input].
         let call = params.0.call;
