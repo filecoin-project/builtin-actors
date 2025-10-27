@@ -217,4 +217,3 @@ fn test_resolve_delegated() {
     assert_eq!(&[0u8], result.as_slice());
     rt.reset();
 }
-

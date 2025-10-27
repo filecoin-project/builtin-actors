@@ -5,13 +5,17 @@ use fil_actors_runtime::test_utils::SendOutcome;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::event::{ActorEvent, Entry, Flags};
-use fvm_shared::{IPLD_RAW, address::Address as FilAddress, econ::TokenAmount, error::ExitCode, sys::SendFlags};
+use fvm_shared::{
+    IPLD_RAW, address::Address as FilAddress, econ::TokenAmount, error::ExitCode, sys::SendFlags,
+};
 
 mod util;
 
 fn put_code(rt: &fil_actors_runtime::test_utils::MockRuntime, code: &[u8]) -> Cid {
     use multihash_codetable::Code;
-    rt.store.put(Code::Blake2b256, &fvm_ipld_blockstore::Block::new(IPLD_RAW, code)).expect("put code")
+    rt.store
+        .put(Code::Blake2b256, &fvm_ipld_blockstore::Block::new(IPLD_RAW, code))
+        .expect("put code")
 }
 
 // Delegated SELFDESTRUCT under InvokeAsEoa must be a no-op for the EVM actor: no fund transfer,
@@ -34,7 +38,9 @@ fn apply_and_call_delegated_selfdestruct_is_noop() {
     // Choose a fixed public key for authority recovery used in ApplyAndCall.
     let mut pk_a = [0u8; 65];
     pk_a[0] = 0x04;
-    for b in pk_a.iter_mut().skip(1) { *b = 0xA1; }
+    for b in pk_a.iter_mut().skip(1) {
+        *b = 0xA1;
+    }
     // Derive EthAddress for authority A.
     use fil_actors_runtime::test_utils::hash as rt_hash;
     use fvm_shared::crypto::hash::SupportedHashes;
@@ -72,21 +78,45 @@ fn apply_and_call_delegated_selfdestruct_is_noop() {
         TokenAmount::from_whole(0),
         None,
         SendFlags::default(),
-        SendOutcome { send_return: Some(IpldBlock { codec: IPLD_RAW, data: Vec::new() }), exit_code: ExitCode::OK, send_error: None },
+        SendOutcome {
+            send_return: Some(IpldBlock { codec: IPLD_RAW, data: Vec::new() }),
+            exit_code: ExitCode::OK,
+            send_error: None,
+        },
     );
 
     // Expect the synthetic delegated event.
     let (topic, len) = rt_hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
     rt.expect_emitted_event(ActorEvent {
         entries: vec![
-            Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic[..len].to_vec() },
-            Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: b_eth.as_ref().to_vec() },
+            Entry {
+                flags: Flags::FLAG_INDEXED_ALL,
+                key: "t1".to_owned(),
+                codec: IPLD_RAW,
+                value: topic[..len].to_vec(),
+            },
+            Entry {
+                flags: Flags::FLAG_INDEXED_ALL,
+                key: "d".to_owned(),
+                codec: IPLD_RAW,
+                value: b_eth.as_ref().to_vec(),
+            },
         ],
     });
 
     // Build ApplyAndCall with single tuple A->B and call A.
-    let list = vec![evm::DelegationParam { chain_id: 0, address: b_eth, nonce: 0, y_parity: 0, r: vec![1u8; 32], s: vec![1u8; 32] }];
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: a_eth, value: vec![], input: vec![] } };
+    let list = vec![evm::DelegationParam {
+        chain_id: 0,
+        address: b_eth,
+        nonce: 0,
+        y_parity: 0,
+        r: vec![1u8; 32],
+        s: vec![1u8; 32],
+    }];
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: a_eth, value: vec![], input: vec![] },
+    };
 
     rt.expect_validate_caller_any();
     let res = rt.call::<evm::EvmContractActor>(
@@ -121,7 +151,9 @@ fn apply_and_call_delegated_selfdestruct_with_value_noop() {
     // Authority A
     let mut pk_a = [0u8; 65];
     pk_a[0] = 0x04;
-    for b in pk_a.iter_mut().skip(1) { *b = 0xB2; }
+    for b in pk_a.iter_mut().skip(1) {
+        *b = 0xB2;
+    }
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk_a));
     use fil_actors_runtime::test_utils::hash as rt_hash;
     use fvm_shared::crypto::hash::SupportedHashes;
@@ -170,23 +202,47 @@ fn apply_and_call_delegated_selfdestruct_with_value_noop() {
         TokenAmount::from_whole(0),
         None,
         SendFlags::default(),
-        SendOutcome { send_return: Some(IpldBlock { codec: IPLD_RAW, data: Vec::new() }), exit_code: ExitCode::OK, send_error: None },
+        SendOutcome {
+            send_return: Some(IpldBlock { codec: IPLD_RAW, data: Vec::new() }),
+            exit_code: ExitCode::OK,
+            send_error: None,
+        },
     );
 
     // Expect delegated event emission.
     let (topic, len) = rt_hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
     rt.expect_emitted_event(ActorEvent {
         entries: vec![
-            Entry { flags: Flags::FLAG_INDEXED_ALL, key: "t1".to_owned(), codec: IPLD_RAW, value: topic[..len].to_vec() },
-            Entry { flags: Flags::FLAG_INDEXED_ALL, key: "d".to_owned(), codec: IPLD_RAW, value: b_eth.as_ref().to_vec() },
+            Entry {
+                flags: Flags::FLAG_INDEXED_ALL,
+                key: "t1".to_owned(),
+                codec: IPLD_RAW,
+                value: topic[..len].to_vec(),
+            },
+            Entry {
+                flags: Flags::FLAG_INDEXED_ALL,
+                key: "d".to_owned(),
+                codec: IPLD_RAW,
+                value: b_eth.as_ref().to_vec(),
+            },
         ],
     });
 
     // Apply A->B and call A with non-zero value.
-    let list = vec![evm::DelegationParam { chain_id: 0, address: b_eth, nonce: 0, y_parity: 0, r: vec![1u8; 32], s: vec![1u8; 32] }];
+    let list = vec![evm::DelegationParam {
+        chain_id: 0,
+        address: b_eth,
+        nonce: 0,
+        y_parity: 0,
+        r: vec![1u8; 32],
+        s: vec![1u8; 32],
+    }];
     // value encoded as big-endian magnitude; 1234 atto
     let call_value = vec![0x04, 0xD2];
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: a_eth, value: call_value, input: vec![] } };
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: a_eth, value: call_value, input: vec![] },
+    };
 
     rt.expect_validate_caller_any();
     let res = rt.call::<evm::EvmContractActor>(

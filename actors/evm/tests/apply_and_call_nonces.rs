@@ -83,4 +83,3 @@ fn apply_and_call_nonce_initialization_and_repeat_rejection() {
     );
     assert!(res3.is_ok());
 }
-
