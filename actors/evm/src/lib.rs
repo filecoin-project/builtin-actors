@@ -579,7 +579,7 @@ impl EvmContractActor {
         let pubkey = rt
             .recover_secp_public_key(&hash32, &sig)
             .map_err(|e| ActorError::illegal_argument(format!("signature recovery failed: {e}")))?;
-        let (mut keccak64, _len) =
+        let (keccak64, _len) =
             rt.hash_64(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pubkey[1..]);
         let mut addr = [0u8; 20];
         addr.copy_from_slice(&keccak64[12..32]);
