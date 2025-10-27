@@ -4,7 +4,9 @@ use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_runtime::test_utils::SendOutcome;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::{IPLD_RAW, address::Address as FilAddress, econ::TokenAmount, error::ExitCode, sys::SendFlags};
+use fvm_shared::{
+    IPLD_RAW, address::Address as FilAddress, econ::TokenAmount, error::ExitCode, sys::SendFlags,
+};
 
 mod util;
 
@@ -27,7 +29,9 @@ fn apply_and_call_invokeaseoa_revert_keeps_state_and_returns_ok() {
     // Prepare a deterministic recovered authority A.
     let mut pk_a = [0u8; 65];
     pk_a[0] = 0x04;
-    for b in pk_a.iter_mut().skip(1) { *b = 0xA1; }
+    for b in pk_a.iter_mut().skip(1) {
+        *b = 0xA1;
+    }
     // Derive A's EthAddress as the actor would: keccak(pubkey[1:])[12:]
     use fil_actors_runtime::test_utils::hash as rt_hash;
     use fvm_shared::crypto::hash::SupportedHashes;
@@ -57,7 +61,10 @@ fn apply_and_call_invokeaseoa_revert_keeps_state_and_returns_ok() {
         r: vec![1u8; 32],
         s: vec![1u8; 32],
     }];
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: a_eth, value: vec![], input: vec![] } };
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: a_eth, value: vec![], input: vec![] },
+    };
 
     // Expect GetBytecode(delegate=B) to return some code CID (content irrelevant for this test).
     let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
@@ -122,7 +129,10 @@ fn apply_and_call_invokeaseoa_revert_keeps_state_and_returns_ok() {
         r: vec![2u8; 32],
         s: vec![2u8; 32],
     }];
-    let params_again = evm::ApplyAndCallParams { list: list_nonce0, call: evm::ApplyCall { to: a_eth, value: vec![], input: vec![] } };
+    let params_again = evm::ApplyAndCallParams {
+        list: list_nonce0,
+        call: evm::ApplyCall { to: a_eth, value: vec![], input: vec![] },
+    };
     // Gas for second attempt
     rt.expect_gas_charge(GAS_BASE_APPLY7702);
     rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);

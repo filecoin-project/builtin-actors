@@ -762,13 +762,24 @@ impl EvmContractActor {
                                 TokenAmount::from_whole(0),
                                 None,
                                 fvm_shared::sys::SendFlags::READ_ONLY,
-                            )?;
-                            let code_cid: Cid = match ret.and_then(|b| b.deserialize().ok()) {
-                                Some(c) => c,
-                                None => {
+                            );
+                            let code_cid: Cid = match ret {
+                                Ok(opt_blk) => match opt_blk.and_then(|b| b.deserialize().ok()) {
+                                    Some(c) => c,
+                                    None => {
+                                        return Ok(crate::ApplyAndCallReturn {
+                                            status: 1,
+                                            output_data: Vec::new(),
+                                        });
+                                    }
+                                },
+                                // Treat GetBytecode failure as an outer-call failure: preserve applied state
+                                // and return status=0 with any revert data if present.
+                                Err(mut e) => {
+                                    let data = e.take_data().map(|b| b.data).unwrap_or_default();
                                     return Ok(crate::ApplyAndCallReturn {
-                                        status: 1,
-                                        output_data: Vec::new(),
+                                        status: 0,
+                                        output_data: data,
                                     });
                                 }
                             };
@@ -776,12 +787,18 @@ impl EvmContractActor {
                                 let dst_addr: Address = dst_eth.into();
                                 let _ = system.transfer(&dst_addr, value.clone());
                             }
-                            let caller_eth = system
+                            let caller_eth = match system
                                 .resolve_ethereum_address(&system.rt.message().caller())
-                                .context_code(
-                                    ExitCode::USR_ILLEGAL_STATE,
-                                    "failed to resolve caller eth address",
-                                )?;
+                            {
+                                Ok(addr) => addr,
+                                // Treat inability to resolve caller as an outer-call failure; do not abort.
+                                Err(_) => {
+                                    return Ok(crate::ApplyAndCallReturn {
+                                        status: 0,
+                                        output_data: Vec::new(),
+                                    });
+                                }
+                            };
                             let p = EoaInvokeParams {
                                 code: code_cid,
                                 input: call.input,
@@ -810,9 +827,10 @@ impl EvmContractActor {
                                     // Emit delegated execution event
                                     use fvm_ipld_encoding::IPLD_RAW;
                                     use fvm_shared::event::{Entry, Flags};
-                                    let topic = system
-                                        .rt
-                                        .hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+                                    let topic = system.rt.hash(
+                                        SupportedHashes::Keccak256,
+                                        b"EIP7702Delegated(address)",
+                                    );
                                     if topic.len() == 32 && !system.readonly {
                                         let entries: Vec<Entry> = vec![
                                             Entry {
@@ -830,15 +848,19 @@ impl EvmContractActor {
                                         ];
                                         let _ = system.rt.emit_event(&entries.into());
                                     }
-                                    return Ok(crate::ApplyAndCallReturn { status: 1, output_data: data });
+                                    return Ok(crate::ApplyAndCallReturn {
+                                        status: 1,
+                                        output_data: data,
+                                    });
                                 }
                                 Ok(None) => {
                                     // Emit event even if no return
                                     use fvm_ipld_encoding::IPLD_RAW;
                                     use fvm_shared::event::{Entry, Flags};
-                                    let topic = system
-                                        .rt
-                                        .hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+                                    let topic = system.rt.hash(
+                                        SupportedHashes::Keccak256,
+                                        b"EIP7702Delegated(address)",
+                                    );
                                     if topic.len() == 32 && !system.readonly {
                                         let entries: Vec<Entry> = vec![
                                             Entry {
@@ -856,13 +878,19 @@ impl EvmContractActor {
                                         ];
                                         let _ = system.rt.emit_event(&entries.into());
                                     }
-                                    return Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() });
+                                    return Ok(crate::ApplyAndCallReturn {
+                                        status: 1,
+                                        output_data: Vec::new(),
+                                    });
                                 }
                                 Err(mut e) => {
                                     // InvokeAsEoa failed; per EIP-7702 atomicity, ApplyAndCall must not abort.
                                     // Return embedded failure status and propagate revert data if present.
                                     let data = e.take_data().map(|b| b.data).unwrap_or_default();
-                                    return Ok(crate::ApplyAndCallReturn { status: 0, output_data: data });
+                                    return Ok(crate::ApplyAndCallReturn {
+                                        status: 0,
+                                        output_data: data,
+                                    });
                                 }
                             }
                         }
