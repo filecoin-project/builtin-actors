@@ -796,71 +796,74 @@ impl EvmContractActor {
                                 TokenAmount::from_whole(0),
                                 None,
                                 fvm_shared::sys::SendFlags::default(),
-                            )?;
-                            if let Some(retblk) = res {
-                                #[derive(fvm_ipld_encoding::serde::Deserialize)]
-                                struct InvokeContractReturn {
-                                    output_data: Vec<u8>,
+                            );
+                            match res {
+                                Ok(Some(retblk)) => {
+                                    #[derive(fvm_ipld_encoding::serde::Deserialize)]
+                                    struct InvokeContractReturn {
+                                        output_data: Vec<u8>,
+                                    }
+                                    let data = retblk
+                                        .deserialize::<InvokeContractReturn>()
+                                        .map(|x| x.output_data)
+                                        .unwrap_or_else(|_| retblk.data);
+                                    // Emit delegated execution event
+                                    use fvm_ipld_encoding::IPLD_RAW;
+                                    use fvm_shared::event::{Entry, Flags};
+                                    let topic = system
+                                        .rt
+                                        .hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+                                    if topic.len() == 32 && !system.readonly {
+                                        let entries: Vec<Entry> = vec![
+                                            Entry {
+                                                flags: Flags::FLAG_INDEXED_ALL,
+                                                key: "t1".to_owned(),
+                                                codec: IPLD_RAW,
+                                                value: topic,
+                                            },
+                                            Entry {
+                                                flags: Flags::FLAG_INDEXED_ALL,
+                                                key: "d".to_owned(),
+                                                codec: IPLD_RAW,
+                                                value: delegate.as_ref().to_vec(),
+                                            },
+                                        ];
+                                        let _ = system.rt.emit_event(&entries.into());
+                                    }
+                                    return Ok(crate::ApplyAndCallReturn { status: 1, output_data: data });
                                 }
-                                let data = retblk
-                                    .deserialize::<InvokeContractReturn>()
-                                    .map(|x| x.output_data)
-                                    .unwrap_or_else(|_| retblk.data);
-                                // Emit delegated execution event
-                                use fvm_ipld_encoding::IPLD_RAW;
-                                use fvm_shared::event::{Entry, Flags};
-                                let topic = system
-                                    .rt
-                                    .hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
-                                if topic.len() == 32 && !system.readonly {
-                                    let entries: Vec<Entry> = vec![
-                                        Entry {
-                                            flags: Flags::FLAG_INDEXED_ALL,
-                                            key: "t1".to_owned(),
-                                            codec: IPLD_RAW,
-                                            value: topic,
-                                        },
-                                        Entry {
-                                            flags: Flags::FLAG_INDEXED_ALL,
-                                            key: "d".to_owned(),
-                                            codec: IPLD_RAW,
-                                            value: delegate.as_ref().to_vec(),
-                                        },
-                                    ];
-                                    let _ = system.rt.emit_event(&entries.into());
+                                Ok(None) => {
+                                    // Emit event even if no return
+                                    use fvm_ipld_encoding::IPLD_RAW;
+                                    use fvm_shared::event::{Entry, Flags};
+                                    let topic = system
+                                        .rt
+                                        .hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+                                    if topic.len() == 32 && !system.readonly {
+                                        let entries: Vec<Entry> = vec![
+                                            Entry {
+                                                flags: Flags::FLAG_INDEXED_ALL,
+                                                key: "t1".to_owned(),
+                                                codec: IPLD_RAW,
+                                                value: topic,
+                                            },
+                                            Entry {
+                                                flags: Flags::FLAG_INDEXED_ALL,
+                                                key: "d".to_owned(),
+                                                codec: IPLD_RAW,
+                                                value: delegate.as_ref().to_vec(),
+                                            },
+                                        ];
+                                        let _ = system.rt.emit_event(&entries.into());
+                                    }
+                                    return Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() });
                                 }
-                                return Ok(crate::ApplyAndCallReturn {
-                                    status: 1,
-                                    output_data: data,
-                                });
-                            } else {
-                                // Emit event even if no return
-                                use fvm_ipld_encoding::IPLD_RAW;
-                                use fvm_shared::event::{Entry, Flags};
-                                let topic = system
-                                    .rt
-                                    .hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
-                                if topic.len() == 32 && !system.readonly {
-                                    let entries: Vec<Entry> = vec![
-                                        Entry {
-                                            flags: Flags::FLAG_INDEXED_ALL,
-                                            key: "t1".to_owned(),
-                                            codec: IPLD_RAW,
-                                            value: topic,
-                                        },
-                                        Entry {
-                                            flags: Flags::FLAG_INDEXED_ALL,
-                                            key: "d".to_owned(),
-                                            codec: IPLD_RAW,
-                                            value: delegate.as_ref().to_vec(),
-                                        },
-                                    ];
-                                    let _ = system.rt.emit_event(&entries.into());
+                                Err(mut e) => {
+                                    // InvokeAsEoa failed; per EIP-7702 atomicity, ApplyAndCall must not abort.
+                                    // Return embedded failure status and propagate revert data if present.
+                                    let data = e.take_data().map(|b| b.data).unwrap_or_default();
+                                    return Ok(crate::ApplyAndCallReturn { status: 0, output_data: data });
                                 }
-                                return Ok(crate::ApplyAndCallReturn {
-                                    status: 1,
-                                    output_data: Vec::new(),
-                                });
                             }
                         }
                     }
