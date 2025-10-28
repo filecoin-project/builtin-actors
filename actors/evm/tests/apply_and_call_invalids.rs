@@ -35,7 +35,9 @@ fn apply_and_call_rejects_invalid_chain_id() {
         IpldBlock::serialize_dag_cbor(&params).unwrap(),
     );
     assert!(res.is_err());
-    assert_eq!(res.err().unwrap().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    let err = res.err().unwrap();
+    assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    assert!(err.msg().contains("invalid chain id"));
 }
 
 #[test]
@@ -241,7 +243,7 @@ fn apply_and_call_rejects_bad_r_s_lengths() {
     rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
 
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
-    // r too short, s too long
+    // r too short, s too long (should error on s length)
     let list = vec![evm::DelegationParam {
         chain_id: 0,
         address: authority,
@@ -263,6 +265,40 @@ fn apply_and_call_rejects_bad_r_s_lengths() {
     let err = res.err().unwrap();
     assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     assert!(err.msg().contains("s length exceeds 32"));
+}
+
+#[test]
+fn apply_and_call_rejects_too_long_r() {
+    let rt = util::construct_and_verify(vec![]);
+
+    const GAS_BASE_APPLY7702: i64 = 0;
+    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
+    rt.expect_gas_charge(GAS_BASE_APPLY7702);
+    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+
+    let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
+    // r too long (33), s minimal (1)
+    let list = vec![evm::DelegationParam {
+        chain_id: 0,
+        address: authority,
+        nonce: 0,
+        y_parity: 0,
+        r: vec![1u8; 33],
+        s: vec![1u8; 1],
+    }];
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: authority, value: vec![], input: vec![] },
+    };
+    rt.expect_validate_caller_any();
+    let res = rt.call::<evm::EvmContractActor>(
+        evm::Method::ApplyAndCall as u64,
+        IpldBlock::serialize_dag_cbor(&params).unwrap(),
+    );
+    assert!(res.is_err());
+    let err = res.err().unwrap();
+    assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    assert!(err.msg().contains("r length exceeds 32"));
 }
 
 #[test]
