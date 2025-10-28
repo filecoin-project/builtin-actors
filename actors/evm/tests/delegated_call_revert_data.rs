@@ -1,5 +1,12 @@
 mod asm;
 
+// Acceptance coverage:
+// - Delegated CALL returns 0 on callee revert.
+// - RETURNDATASIZE equals the full revert payload length.
+// - RETURNDATACOPY truncates to the requested out_size when out_size < payload len,
+//   and returns the full payload at the head of the output region when out_size >= len,
+//   leaving the remainder unchanged (copy_to_memory zero_fill=false).
+
 use cid::Cid;
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
@@ -87,7 +94,10 @@ fn delegated_call_revert_data_memory_copy_semantics() {
     rt.set_address_actor_type(a_id, *test_utils::PLACEHOLDER_ACTOR_CODE_ID);
 
     let to_other = EthAddress::from_id(0xB0B0);
-    let params = evm::ApplyAndCallParams { list, call: evm::ApplyCall { to: to_other, value: vec![], input: vec![] } };
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: to_other, value: vec![], input: vec![] },
+    };
     rt.expect_validate_caller_any();
     rt.call::<evm::EvmContractActor>(
         evm::Method::ApplyAndCall as u64,
@@ -106,7 +116,11 @@ fn delegated_call_revert_data_memory_copy_semantics() {
         TokenAmount::from_whole(0),
         None,
         SendFlags::READ_ONLY,
-        test_utils::SendOutcome { send_return: IpldBlock::serialize_cbor(&code_cid).unwrap(), exit_code: ExitCode::OK, send_error: None },
+        test_utils::SendOutcome {
+            send_return: IpldBlock::serialize_cbor(&code_cid).unwrap(),
+            exit_code: ExitCode::OK,
+            send_error: None,
+        },
     );
     rt.expect_send_any_params(
         rt.receiver,
@@ -142,14 +156,17 @@ fn delegated_call_revert_data_memory_copy_semantics() {
     rt.expect_gas_charge(GAS_BASE_APPLY7702);
     rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk_a));
-    let params = evm::ApplyAndCallParams { list: vec![evm::DelegationParam {
+    let params = evm::ApplyAndCallParams {
+        list: vec![evm::DelegationParam {
             chain_id: 0,
             address: b_eth,
             nonce: 0,
             y_parity: 0,
             r: vec![1u8; 32],
             s: vec![1u8; 32],
-        }], call: evm::ApplyCall { to: to_other, value: vec![], input: vec![] } };
+        }],
+        call: evm::ApplyCall { to: to_other, value: vec![], input: vec![] },
+    };
     rt.expect_validate_caller_any();
     rt.call::<evm::EvmContractActor>(
         evm::Method::ApplyAndCall as u64,
@@ -163,7 +180,11 @@ fn delegated_call_revert_data_memory_copy_semantics() {
         TokenAmount::from_whole(0),
         None,
         SendFlags::READ_ONLY,
-        test_utils::SendOutcome { send_return: IpldBlock::serialize_cbor(&code_cid).unwrap(), exit_code: ExitCode::OK, send_error: None },
+        test_utils::SendOutcome {
+            send_return: IpldBlock::serialize_cbor(&code_cid).unwrap(),
+            exit_code: ExitCode::OK,
+            send_error: None,
+        },
     );
     rt.expect_send_any_params(
         rt.receiver,
