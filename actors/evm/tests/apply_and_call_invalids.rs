@@ -39,6 +39,41 @@ fn apply_and_call_rejects_invalid_chain_id() {
 }
 
 #[test]
+fn apply_and_call_accepts_minimal_r_s() {
+    let mut rt = util::construct_and_verify(vec![]);
+    const GAS_BASE_APPLY7702: i64 = 0;
+    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
+    rt.expect_gas_charge(GAS_BASE_APPLY7702);
+    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+
+    // Deterministic recover
+    let mut pk = [0u8; 65];
+    pk[0] = 0x04;
+    for b in pk.iter_mut().skip(1) { *b = 0xAC; }
+    rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk));
+
+    let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
+    let list = vec![evm::DelegationParam {
+        chain_id: 0,
+        address: authority,
+        nonce: 0,
+        y_parity: 0,
+        r: vec![1u8; 31],
+        s: vec![1u8; 31],
+    }];
+    let params = evm::ApplyAndCallParams {
+        list,
+        call: evm::ApplyCall { to: authority, value: vec![], input: vec![] },
+    };
+    rt.expect_validate_caller_any();
+    let res = rt.call::<evm::EvmContractActor>(
+        evm::Method::ApplyAndCall as u64,
+        IpldBlock::serialize_dag_cbor(&params).unwrap(),
+    );
+    assert!(res.is_ok());
+}
+
+#[test]
 fn apply_and_call_rejects_zero_r_or_s() {
     let rt = util::construct_and_verify(vec![]);
     const GAS_BASE_APPLY7702: i64 = 0;
@@ -66,7 +101,9 @@ fn apply_and_call_rejects_zero_r_or_s() {
         IpldBlock::serialize_dag_cbor(&params).unwrap(),
     );
     assert!(res.is_err());
-    assert_eq!(res.err().unwrap().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    let err = res.err().unwrap();
+    assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    assert!(err.msg().contains("zero r/s"));
 }
 
 #[test]
@@ -97,7 +134,9 @@ fn apply_and_call_rejects_high_s() {
         IpldBlock::serialize_dag_cbor(&params).unwrap(),
     );
     assert!(res.is_err());
-    assert_eq!(res.err().unwrap().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    let err = res.err().unwrap();
+    assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    assert!(err.msg().contains("high-s not allowed"));
 }
 
 #[test]
@@ -219,7 +258,9 @@ fn apply_and_call_rejects_bad_r_s_lengths() {
         IpldBlock::serialize_dag_cbor(&params).unwrap(),
     );
     assert!(res.is_err());
-    assert_eq!(res.err().unwrap().exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    let err = res.err().unwrap();
+    assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    assert!(err.msg().contains("s length exceeds 32"));
 }
 
 #[test]

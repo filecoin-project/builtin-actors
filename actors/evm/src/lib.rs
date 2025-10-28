@@ -515,25 +515,34 @@ impl EvmContractActor {
         if t.chain_id != 0 && fvm_shared::chainid::ChainID::from(t.chain_id) != rt.chain_id() {
             return Err(ActorError::illegal_argument("invalid chain id".into()));
         }
-        // y_parity 0 or 1
-        if t.y_parity != 0 && t.y_parity != 1 {
-            return Err(ActorError::illegal_argument("invalid y_parity".into()));
+        // Length checks first: r,s must be <= 32 bytes.
+        if t.r.len() > 32 {
+            return Err(ActorError::illegal_argument("r length exceeds 32".into()));
+        }
+        if t.s.len() > 32 {
+            return Err(ActorError::illegal_argument("s length exceeds 32".into()));
         }
         // r/s non-zero
         if t.r.iter().all(|&b| b == 0) || t.s.iter().all(|&b| b == 0) {
             return Err(ActorError::illegal_argument("zero r/s".into()));
         }
-        // low-s: s <= n/2
-        if Self::is_high_s(&t.s) {
+        // y_parity 0 or 1
+        if t.y_parity != 0 && t.y_parity != 1 {
+            return Err(ActorError::illegal_argument("invalid y_parity".into()));
+        }
+        // low-s: s <= n/2, run on 32-byte left-padded S
+        let mut s_padded = [0u8; 32];
+        let s_in = &t.s;
+        let start = 32 - s_in.len();
+        s_padded[start..].copy_from_slice(s_in);
+        if Self::is_high_s(&s_padded) {
             return Err(ActorError::illegal_argument("high-s not allowed".into()));
         }
         Ok(())
     }
 
     fn is_high_s(sv: &[u8]) -> bool {
-        if sv.len() != 32 {
-            return true;
-        }
+        debug_assert_eq!(sv.len(), 32, "is_high_s expects 32-byte input");
         // n/2 as in Delegator
         const N: [u8; 32] = [
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -568,13 +577,18 @@ impl EvmContractActor {
         let h = rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &preimage);
         hash32.copy_from_slice(&h);
 
-        // build 65-byte signature r||s||v
-        if t.r.len() != 32 || t.s.len() != 32 {
-            return Err(ActorError::illegal_argument("bad r/s length".into()));
+        // build 65-byte signature r||s||v (accept <=32-byte r/s; left-pad to 32)
+        if t.r.len() > 32 {
+            return Err(ActorError::illegal_argument("r length exceeds 32".into()));
+        }
+        if t.s.len() > 32 {
+            return Err(ActorError::illegal_argument("s length exceeds 32".into()));
         }
         let mut sig = [0u8; 65];
-        sig[..32].copy_from_slice(&t.r);
-        sig[32..64].copy_from_slice(&t.s);
+        let r_start = 32 - t.r.len();
+        sig[r_start..32].copy_from_slice(&t.r);
+        let s_start = 64 - t.s.len();
+        sig[s_start..64].copy_from_slice(&t.s);
         sig[64] = t.y_parity;
         let pubkey = rt
             .recover_secp_public_key(&hash32, &sig)
