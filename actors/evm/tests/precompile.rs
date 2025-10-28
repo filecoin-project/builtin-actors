@@ -1,8 +1,11 @@
 mod asm;
 
 use fil_actors_evm_shared::{address::EthAddress, uints::U256};
-use fil_actors_runtime::test_utils::{MockRuntime, new_bls_addr};
-use fvm_shared::address::Address as FILAddress;
+use fil_actors_runtime::{
+    EAM_ACTOR_ID,
+    test_utils::{MockRuntime, new_bls_addr},
+};
+use fvm_shared::{METHOD_SEND, address::Address as FILAddress, econ::TokenAmount, error::ExitCode};
 
 mod util;
 
@@ -212,5 +215,115 @@ fn test_resolve_delegated() {
     let result = util::invoke_contract(&rt, &input);
     rt.verify();
     assert_eq!(&[0u8], result.as_slice());
+    rt.reset();
+}
+
+#[test]
+fn test_precompile_randomness() {
+    let (init, body) = PrecompileTest::test_runner_assembly();
+    let rt =
+        util::construct_and_verify(asm::new_contract("precompile-tester", &init, &body).unwrap());
+    let rand_epoch = 100;
+    let rand_epoch_u256 = U256::from(rand_epoch);
+    {
+        // Underlying syscall succeeds.
+        let result = U256::from(0xdeadbeefu32).to_bytes();
+        let test = PrecompileTest {
+            precompile_address: NativePrecompile::GetRandomness.eth_address(),
+            output_size: 32,
+            expected_exit_code: PrecompileExit::Success,
+            call_op: util::PrecompileCallOpcode::StaticCall,
+            input: rand_epoch_u256.to_bytes().to_vec(),
+            expected_return: result.to_vec(),
+        };
+        rt.expect_get_beacon_randomness(rand_epoch, result, ExitCode::OK);
+        test.run_test(&rt);
+    }
+    {
+        // Underlying syscall fails.
+        let test = PrecompileTest {
+            precompile_address: NativePrecompile::GetRandomness.eth_address(),
+            output_size: 32,
+            expected_exit_code: PrecompileExit::Reverted, // Precompile reverts due to syscall failure
+            call_op: util::PrecompileCallOpcode::StaticCall,
+            input: rand_epoch_u256.to_bytes().to_vec(),
+            expected_return: vec![],
+        };
+        rt.expect_get_beacon_randomness(rand_epoch, [0u8; 32], ExitCode::USR_ILLEGAL_ARGUMENT);
+        test.run_test(&rt);
+    }
+}
+
+#[test]
+fn test_precompile_transfer() {
+    let (init, body) = util::PrecompileTest::test_runner_assembly();
+
+    let rt =
+        util::construct_and_verify(asm::new_contract("precompile-tester", &init, &body).unwrap());
+    rt.set_balance(TokenAmount::from_atto(100));
+    // test invalid precompile address
+    for (prefix, index) in [(0x00, 0xff), (0xfe, 0xff)] {
+        let addr = util::precompile_address(prefix, index);
+        let test = PrecompileTest {
+            precompile_address: addr,
+            output_size: 32,
+            expected_exit_code: PrecompileExit::Success,
+            call_op: util::PrecompileCallOpcode::Call(1),
+            input: vec![0xff; 32],
+            expected_return: vec![],
+        };
+        let fil_addr = FILAddress::new_delegated(EAM_ACTOR_ID, addr.as_ref()).unwrap();
+        rt.expect_send_simple(
+            fil_addr,
+            METHOD_SEND,
+            None,
+            TokenAmount::from_atto(1),
+            None,
+            ExitCode::OK,
+        );
+        test.run_test(&rt);
+    }
+    assert_eq!(rt.get_balance(), TokenAmount::from_atto(98));
+}
+
+#[test]
+fn test_precompile_transfer_nothing() {
+    let (init, body) = util::PrecompileTest::test_runner_assembly();
+
+    let rt =
+        util::construct_and_verify(asm::new_contract("precompile-tester", &init, &body).unwrap());
+    rt.set_balance(TokenAmount::from_atto(100));
+    // test invalid precompile address
+    for (prefix, index) in [(0x00, 0xff), (0xfe, 0xff), (0xfe, 0xef)] {
+        let addr = util::precompile_address(prefix, index);
+        let test = PrecompileTest {
+            precompile_address: addr,
+            output_size: 32,
+            expected_exit_code: PrecompileExit::Success,
+            call_op: util::PrecompileCallOpcode::Call(0),
+            input: vec![0xff; 32],
+            expected_return: vec![],
+        };
+        test.run_test(&rt);
+    }
+    assert_eq!(rt.get_balance(), TokenAmount::from_atto(100));
+}
+
+#[test]
+fn test_precompile_failure() {
+    let bytecode = resolve_address_contract();
+    let rt = util::construct_and_verify(bytecode);
+
+    // invalid input fails
+    let result = util::invoke_contract(&rt, &[0xff; 32]);
+    rt.verify();
+    assert_eq!(&[0u8], result.as_slice());
+    rt.reset();
+
+    // not found succeeds with empty
+    let input = FILAddress::new_delegated(111, b"foo").unwrap().to_bytes();
+    let result = util::invoke_contract(&rt, &input);
+    rt.verify();
+    assert_eq!(&[1u8], result.as_slice());
     rt.reset();
 }
