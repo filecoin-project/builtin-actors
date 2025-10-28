@@ -49,6 +49,9 @@ pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x86, 0x8e, 0x10, 0xc4];
 
 const EVM_WORD_SIZE: usize = 32;
 
+// Shared delegated event topic string for EIP-7702 attribution.
+pub const DELEGATED_EVENT_TOPIC: &[u8] = b"Delegated(address)";
+
 // Placeholder intrinsic gas charges for EIP-7702 ApplyAndCall. Final values may change;
 // these provide behavioral charging to prevent unbounded validation.
 const GAS_PER_AUTH_TUPLE: i64 = 10_000;
@@ -541,8 +544,7 @@ impl EvmContractActor {
         Ok(())
     }
 
-    fn is_high_s(sv: &[u8]) -> bool {
-        debug_assert_eq!(sv.len(), 32, "is_high_s expects 32-byte input");
+    fn is_high_s(sv: &[u8; 32]) -> bool {
         // n/2 as in Delegator
         const N: [u8; 32] = [
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -556,8 +558,7 @@ impl EvmContractActor {
             n2[i] = (v / 2) as u8;
             carry = v % 2;
         }
-        let arr: [u8; 32] = sv.try_into().unwrap();
-        arr > n2
+        sv > &n2
     }
 
     fn recover_authority(
@@ -578,12 +579,6 @@ impl EvmContractActor {
         hash32.copy_from_slice(&h);
 
         // build 65-byte signature r||s||v (accept <=32-byte r/s; left-pad to 32)
-        if t.r.len() > 32 {
-            return Err(ActorError::illegal_argument("r length exceeds 32".into()));
-        }
-        if t.s.len() > 32 {
-            return Err(ActorError::illegal_argument("s length exceeds 32".into()));
-        }
         let mut sig = [0u8; 65];
         let r_start = 32 - t.r.len();
         sig[r_start..32].copy_from_slice(&t.r);
@@ -730,7 +725,15 @@ impl EvmContractActor {
             } else {
                 Some(IpldBlock { codec: IPLD_RAW, data: call.input.clone() })
             };
-            let evm_addr = dst_actor_addr_opt.expect("resolved EVM address");
+            let evm_addr = match dst_actor_addr_opt {
+                Some(a) => a,
+                None => {
+                    // This indicates an internal invariant violation in address resolution.
+                    return Err(ActorError::illegal_state(
+                        "destination resolved as EVM but missing ID address".into(),
+                    ));
+                }
+            };
             // Always capture outcome; map to status + output
             match system.send(
                 &evm_addr,
@@ -799,7 +802,16 @@ impl EvmContractActor {
                             };
                             if !system.readonly && !value.is_zero() {
                                 let dst_addr: Address = dst_eth.into();
-                                let _ = system.transfer(&dst_addr, value.clone());
+                                if let Err(e) = system.transfer(&dst_addr, value.clone()) {
+                                    log::debug!(
+                                        "ApplyAndCall: value transfer to delegated EOA failed: {}",
+                                        e
+                                    );
+                                    return Ok(crate::ApplyAndCallReturn {
+                                        status: 0,
+                                        output_data: Vec::new(),
+                                    });
+                                }
                             }
                             let caller_eth = match system
                                 .resolve_ethereum_address(&system.rt.message().caller())
@@ -843,7 +855,7 @@ impl EvmContractActor {
                                     use fvm_shared::event::{Entry, Flags};
                                     let topic = system.rt.hash(
                                         SupportedHashes::Keccak256,
-                                        b"EIP7702Delegated(address)",
+                                        crate::DELEGATED_EVENT_TOPIC,
                                     );
                                     if topic.len() == 32 && !system.readonly {
                                         let entries: Vec<Entry> = vec![
@@ -857,7 +869,8 @@ impl EvmContractActor {
                                                 flags: Flags::FLAG_INDEXED_ALL,
                                                 key: "d".to_owned(),
                                                 codec: IPLD_RAW,
-                                                value: delegate.as_ref().to_vec(),
+                                                // Emit authority (EOA) address for attribution.
+                                                value: dst_eth.as_ref().to_vec(),
                                             },
                                         ];
                                         let _ = system.rt.emit_event(&entries.into());
@@ -873,7 +886,7 @@ impl EvmContractActor {
                                     use fvm_shared::event::{Entry, Flags};
                                     let topic = system.rt.hash(
                                         SupportedHashes::Keccak256,
-                                        b"EIP7702Delegated(address)",
+                                        crate::DELEGATED_EVENT_TOPIC,
                                     );
                                     if topic.len() == 32 && !system.readonly {
                                         let entries: Vec<Entry> = vec![
@@ -887,7 +900,8 @@ impl EvmContractActor {
                                                 flags: Flags::FLAG_INDEXED_ALL,
                                                 key: "d".to_owned(),
                                                 codec: IPLD_RAW,
-                                                value: delegate.as_ref().to_vec(),
+                                                // Emit authority (EOA) address for attribution.
+                                                value: dst_eth.as_ref().to_vec(),
                                             },
                                         ];
                                         let _ = system.rt.emit_event(&entries.into());

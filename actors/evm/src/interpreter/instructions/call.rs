@@ -268,7 +268,7 @@ pub fn call_generic<RT: Runtime>(
                                                 use fvm_shared::event::{Entry, Flags};
                                                 let topic = system.rt.hash(
                                                     SupportedHashes::Keccak256,
-                                                    b"EIP7702Delegated(address)",
+                                                    crate::DELEGATED_EVENT_TOPIC,
                                                 );
                                                 if topic.len() == 32 && !system.readonly {
                                                     let entries: Vec<Entry> = vec![
@@ -282,7 +282,8 @@ pub fn call_generic<RT: Runtime>(
                                                             flags: Flags::FLAG_INDEXED_ALL,
                                                             key: "d".to_owned(),
                                                             codec: IPLD_RAW,
-                                                            value: delegate.as_ref().to_vec(),
+                                                            // Emit the authority (EOA) address, not the delegate.
+                                                            value: dst.as_ref().to_vec(),
                                                         },
                                                     ];
                                                     let _ = system.rt.emit_event(&entries.into());
@@ -306,7 +307,7 @@ pub fn call_generic<RT: Runtime>(
                                                 use fvm_shared::event::{Entry, Flags};
                                                 let topic = system.rt.hash(
                                                     SupportedHashes::Keccak256,
-                                                    b"EIP7702Delegated(address)",
+                                                    crate::DELEGATED_EVENT_TOPIC,
                                                 );
                                                 if topic.len() == 32 && !system.readonly {
                                                     let entries: Vec<Entry> = vec![
@@ -320,7 +321,8 @@ pub fn call_generic<RT: Runtime>(
                                                             flags: Flags::FLAG_INDEXED_ALL,
                                                             key: "d".to_owned(),
                                                             codec: IPLD_RAW,
-                                                            value: delegate.as_ref().to_vec(),
+                                                            // Emit the authority (EOA) address, not the delegate.
+                                                            value: dst.as_ref().to_vec(),
                                                         },
                                                     ];
                                                     let _ = system.rt.emit_event(&entries.into());
@@ -335,9 +337,21 @@ pub fn call_generic<RT: Runtime>(
                                                 )?;
                                                 return Ok(U256::from(1));
                                             }
-                                            Err(ae) => {
-                                                // Reverted or error; map to 0 and propagate no data.
-                                                log::info!("InvokeAsEoa failed: {:?}", ae);
+                                            Err(mut ae) => {
+                                                // Reverted or error; map to 0 and propagate revert data to memory.
+                                                log::debug!("InvokeAsEoa failed (delegated CALL)");
+                                                state.return_data = ae
+                                                    .take_data()
+                                                    .map(|b| b.data)
+                                                    .unwrap_or_default();
+                                                copy_to_memory(
+                                                    memory,
+                                                    output_offset,
+                                                    output_size,
+                                                    U256::zero(),
+                                                    &state.return_data,
+                                                    false,
+                                                )?;
                                                 return Ok(U256::from(0));
                                             }
                                         }

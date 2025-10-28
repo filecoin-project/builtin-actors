@@ -86,7 +86,7 @@ fn apply_and_call_delegated_selfdestruct_is_noop() {
     );
 
     // Expect the synthetic delegated event.
-    let (topic, len) = rt_hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+    let (topic, len) = rt_hash(SupportedHashes::Keccak256, b"Delegated(address)");
     rt.expect_emitted_event(ActorEvent {
         entries: vec![
             Entry {
@@ -99,7 +99,8 @@ fn apply_and_call_delegated_selfdestruct_is_noop() {
                 flags: Flags::FLAG_INDEXED_ALL,
                 key: "d".to_owned(),
                 codec: IPLD_RAW,
-                value: b_eth.as_ref().to_vec(),
+                // Authority (EOA) address emitted, not the delegate contract address.
+                value: a_eth.as_ref().to_vec(),
             },
         ],
     });
@@ -186,6 +187,8 @@ fn apply_and_call_delegated_selfdestruct_with_value_noop() {
     // Expect 2) value transfer to authority (EOA) before InvokeAsEoa.
     let authority_f4: FilAddress = a_eth.into();
     let send_value = TokenAmount::from_atto(1234u64);
+    // Ensure the EVM actor has enough balance to cover the value transfer.
+    rt.set_balance(send_value.clone());
     rt.expect_send_simple(
         authority_f4,
         fvm_shared::METHOD_SEND,
@@ -210,7 +213,7 @@ fn apply_and_call_delegated_selfdestruct_with_value_noop() {
     );
 
     // Expect delegated event emission.
-    let (topic, len) = rt_hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+    let (topic, len) = rt_hash(SupportedHashes::Keccak256, b"Delegated(address)");
     rt.expect_emitted_event(ActorEvent {
         entries: vec![
             Entry {
@@ -223,7 +226,8 @@ fn apply_and_call_delegated_selfdestruct_with_value_noop() {
                 flags: Flags::FLAG_INDEXED_ALL,
                 key: "d".to_owned(),
                 codec: IPLD_RAW,
-                value: b_eth.as_ref().to_vec(),
+                // Authority (EOA) address emitted, not the delegate contract address.
+                value: a_eth.as_ref().to_vec(),
             },
         ],
     });

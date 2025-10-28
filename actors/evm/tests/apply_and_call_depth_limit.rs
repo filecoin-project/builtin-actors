@@ -166,10 +166,10 @@ fn apply_and_call_depth_limit_invokeaseoa() {
             },
         );
 
-        // Expect the synthetic EIP7702Delegated(address) event for delegated execution attribution.
+        // Expect the synthetic Delegated(address) event for delegated execution attribution.
         use fil_actors_runtime::test_utils::hash as rt_hash;
         use fvm_shared::crypto::hash::SupportedHashes;
-        let (topic, len) = rt_hash(SupportedHashes::Keccak256, b"EIP7702Delegated(address)");
+        let (topic, len) = rt_hash(SupportedHashes::Keccak256, b"Delegated(address)");
         rt.expect_emitted_event(ActorEvent {
             entries: vec![
                 Entry {
@@ -182,7 +182,8 @@ fn apply_and_call_depth_limit_invokeaseoa() {
                     flags: Flags::FLAG_INDEXED_ALL,
                     key: "d".to_owned(),
                     codec: IPLD_RAW,
-                    value: b_eth.as_ref().to_vec(),
+                    // Authority (EOA) address emitted, not the delegate contract address.
+                    value: a_eth.as_ref().to_vec(),
                 },
             ],
         });
