@@ -49,7 +49,9 @@ fn apply_and_call_accepts_minimal_r_s() {
     // Deterministic recover
     let mut pk = [0u8; 65];
     pk[0] = 0x04;
-    for b in pk.iter_mut().skip(1) { *b = 0xAC; }
+    for b in pk.iter_mut().skip(1) {
+        *b = 0xAC;
+    }
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk));
 
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
