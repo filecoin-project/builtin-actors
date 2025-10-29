@@ -19,7 +19,6 @@ fn apply_and_call_nonce_initialization_and_repeat_rejection() {
     }
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk));
 
-
     // Build a single tuple at nonce=0, delegate to an arbitrary address, and call a different EOA
     // so no additional sends occur.
     let delegate = EthAddress::from_id(1001);
