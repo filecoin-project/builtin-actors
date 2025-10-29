@@ -72,17 +72,20 @@ fn apply_and_call_delegated_selfdestruct_is_noop() {
         ExitCode::OK,
         None,
     );
+    // Return an empty InvokeContractReturn via CBOR for strict decode.
+    #[derive(fvm_ipld_encoding::serde::Serialize)]
+    struct InvokeContractReturn {
+        output_data: Vec<u8>,
+    }
+    let empty_ok =
+        IpldBlock::serialize_cbor(&InvokeContractReturn { output_data: Vec::new() }).unwrap();
     rt.expect_send_any_params(
         rt.receiver,
         evm::Method::InvokeAsEoa as u64,
         TokenAmount::from_whole(0),
         None,
         SendFlags::default(),
-        SendOutcome {
-            send_return: Some(IpldBlock { codec: IPLD_RAW, data: Vec::new() }),
-            exit_code: ExitCode::OK,
-            send_error: None,
-        },
+        SendOutcome { send_return: empty_ok, exit_code: ExitCode::OK, send_error: None },
     );
 
     // Expect the synthetic delegated event.
@@ -199,17 +202,20 @@ fn apply_and_call_delegated_selfdestruct_with_value_noop() {
     );
 
     // Expect 3) InvokeAsEoa call.
+    // Return an empty InvokeContractReturn via CBOR for strict decode.
+    #[derive(fvm_ipld_encoding::serde::Serialize)]
+    struct InvokeContractReturn2 {
+        output_data: Vec<u8>,
+    }
+    let empty_ok2 =
+        IpldBlock::serialize_cbor(&InvokeContractReturn2 { output_data: Vec::new() }).unwrap();
     rt.expect_send_any_params(
         rt.receiver,
         evm::Method::InvokeAsEoa as u64,
         TokenAmount::from_whole(0),
         None,
         SendFlags::default(),
-        SendOutcome {
-            send_return: Some(IpldBlock { codec: IPLD_RAW, data: Vec::new() }),
-            exit_code: ExitCode::OK,
-            send_error: None,
-        },
+        SendOutcome { send_return: empty_ok2, exit_code: ExitCode::OK, send_error: None },
     );
 
     // Expect delegated event emission.

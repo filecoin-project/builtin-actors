@@ -153,17 +153,20 @@ fn apply_and_call_depth_limit_invokeaseoa() {
             ExitCode::OK,
             None,
         );
+        // Return an empty InvokeContractReturn in CBOR to satisfy strict decode.
+        #[derive(fvm_ipld_encoding::serde::Serialize)]
+        struct InvokeContractReturn {
+            output_data: Vec<u8>,
+        }
+        let empty_ok =
+            IpldBlock::serialize_cbor(&InvokeContractReturn { output_data: Vec::new() }).unwrap();
         rt.expect_send_any_params(
             rt.receiver,
             evm::Method::InvokeAsEoa as u64,
             TokenAmount::from_whole(0),
             None,
             SendFlags::default(),
-            SendOutcome {
-                send_return: Some(IpldBlock { codec: IPLD_RAW, data: Vec::new() }),
-                exit_code: ExitCode::OK,
-                send_error: None,
-            },
+            SendOutcome { send_return: empty_ok, exit_code: ExitCode::OK, send_error: None },
         );
 
         // Expect the synthetic Delegated(address) event for delegated execution attribution.
