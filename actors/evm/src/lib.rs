@@ -52,10 +52,7 @@ const EVM_WORD_SIZE: usize = 32;
 // Shared delegated event topic string for EIP-7702 attribution.
 pub const DELEGATED_EVENT_TOPIC: &[u8] = b"Delegated(address)";
 
-// Placeholder intrinsic gas charges for EIP-7702 ApplyAndCall. Final values may change;
-// these provide behavioral charging to prevent unbounded validation.
-const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-const GAS_BASE_APPLY7702: i64 = 0;
+// Note: no actor-defined intrinsic gas charges are applied for 7702 in this branch.
 
 #[test]
 fn test_method_selector() {
@@ -608,7 +605,7 @@ impl EvmContractActor {
         // Prepare system helper by loading existing state.
         let mut system = System::load(rt)?;
 
-        // Intrinsic gas: base + per-tuple, charged before validation/recovery.
+        // Count tuples for validation and tuple cap checks only.
         let tuple_count = params.0.list.len() as i64;
         if tuple_count == 0 {
             return Err(ActorError::illegal_argument("authorizationList must be non-empty".into()));
@@ -618,11 +615,6 @@ impl EvmContractActor {
         if tuple_count > 64 {
             return Err(ActorError::illegal_argument("authorizationList exceeds tuple cap".into()));
         }
-        rt.charge_gas("evm.apply_and_call.base", GAS_BASE_APPLY7702);
-        rt.charge_gas(
-            "evm.apply_and_call.per_tuple",
-            GAS_PER_AUTH_TUPLE.saturating_mul(tuple_count),
-        );
 
         // 1) Apply delegations directly into EVM state (validate + nonce checks + write mapping).
         let list = params.0.list;

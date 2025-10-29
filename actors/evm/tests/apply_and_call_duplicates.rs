@@ -10,10 +10,7 @@ fn apply_and_call_rejects_duplicate_authorities() {
     let rt = util::construct_and_verify(vec![]);
 
     // Expect intrinsic gas charges for 2 tuples.
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE * 2);
+    // No gas expectations in tests (behavioral only).
 
     // Two tuples for the same authority.
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));

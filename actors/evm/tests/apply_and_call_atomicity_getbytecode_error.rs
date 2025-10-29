@@ -27,10 +27,7 @@ fn apply_and_call_getbytecode_error_keeps_state_and_returns_ok() {
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk_a));
 
     // Gas charges
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     // Outer call targets an EOA (authority A) to exercise the InvokeAsEoa path, but we will make
     // GetBytecode(delegate=B) fail.
@@ -94,8 +91,7 @@ fn apply_and_call_getbytecode_error_keeps_state_and_returns_ok() {
     };
 
     // Gas charges for second attempt
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
     rt.expect_validate_caller_any();
     let res2 = rt.call::<evm::EvmContractActor>(
         evm::Method::ApplyAndCall as u64,

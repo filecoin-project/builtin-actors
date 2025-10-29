@@ -80,10 +80,7 @@ exthash_a:
     let b_eth: EthAddress = EthAddress(util::CONTRACT_ADDRESS);
 
     // Apply mapping A -> B via ApplyAndCall with a no-op outer call.
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk));
     let list = vec![evm::DelegationParam {
         chain_id: 0,
@@ -185,10 +182,7 @@ extcopy_a:
     rt.set_address_actor_type(a_id, *PLACEHOLDER_ACTOR_CODE_ID);
 
     // Map A -> B (mapping should be ignored pre-activation)
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk));
     let b_eth: EthAddress = EthAddress(util::CONTRACT_ADDRESS);
     let list = vec![evm::DelegationParam {

@@ -72,9 +72,7 @@ fn apply_and_call_depth_limit_invokeaseoa() {
 
     // Initialize EVM actor with the deployer initcode.
     let mut rt = util::construct_and_verify(initcode);
-    // Intrinsic gas placeholders used by ApplyAndCall.
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
+    // No gas expectations in tests (behavioral only).
 
     // Prepare an EVM actor code CID to return from GetBytecode.
     let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
@@ -84,9 +82,7 @@ fn apply_and_call_depth_limit_invokeaseoa() {
     {
         // Recover always returns pk_c so authority == C.
         rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk_c));
-        // Expect intrinsic gas for one tuple.
-        rt.expect_gas_charge(GAS_BASE_APPLY7702);
-        rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+        // No gas expectations in tests (behavioral only).
         let d_eth = EthAddress::from_id(101); // arbitrary delegate; mapping should not be followed in this phase
         let list = vec![evm::DelegationParam {
             chain_id: 0,
@@ -118,9 +114,7 @@ fn apply_and_call_depth_limit_invokeaseoa() {
     {
         // Recover always returns pk_a so authority == A.
         rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk_a));
-        // Expect intrinsic gas for one tuple.
-        rt.expect_gas_charge(GAS_BASE_APPLY7702);
-        rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+        // No gas expectations in tests (behavioral only).
 
         // Delegate B is the receiver EVM actor (ID 0) with known f4 address set by util::construct_and_verify.
         // Build mapping tuple for A -> B (B as EthAddress derived from receiver's f4).

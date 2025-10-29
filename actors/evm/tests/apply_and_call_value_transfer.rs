@@ -37,10 +37,7 @@ fn apply_and_call_value_transfer_failure_short_circuits() {
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk_a));
 
     // Intrinsic gas placeholder expectations.
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     // Build ApplyAndCall with a single tuple (A -> B) and call A (EOA) with non-zero value.
     let list = vec![evm::DelegationParam {

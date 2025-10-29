@@ -10,10 +10,7 @@ mod util;
 #[test]
 fn apply_and_call_rejects_invalid_chain_id() {
     let rt = util::construct_and_verify(vec![]);
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
     // chain_id 999 should mismatch most default test runtimes.
@@ -43,10 +40,7 @@ fn apply_and_call_rejects_invalid_chain_id() {
 #[test]
 fn apply_and_call_accepts_minimal_r_s() {
     let mut rt = util::construct_and_verify(vec![]);
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     // Deterministic recover
     let mut pk = [0u8; 65];
@@ -80,10 +74,7 @@ fn apply_and_call_accepts_minimal_r_s() {
 #[test]
 fn apply_and_call_rejects_zero_r_or_s() {
     let rt = util::construct_and_verify(vec![]);
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
     let zeros = vec![0u8; 32];
@@ -113,10 +104,7 @@ fn apply_and_call_rejects_zero_r_or_s() {
 #[test]
 fn apply_and_call_rejects_high_s() {
     let rt = util::construct_and_verify(vec![]);
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
     let high_s = vec![0xffu8; 32];
@@ -147,11 +135,7 @@ fn apply_and_call_rejects_high_s() {
 fn apply_and_call_rejects_invalid_authorizations() {
     let rt = util::construct_and_verify(vec![]);
 
-    // Intrinsic gas expected: base + per-tuple (placeholders).
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     // Build ApplyAndCall with a single tuple (invalid y_parity; validator should reject).
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
@@ -183,11 +167,7 @@ fn apply_and_call_rejects_invalid_authorizations() {
 fn apply_and_call_propagates_outer_call_failure() {
     let rt = util::construct_and_verify(vec![]);
 
-    // Intrinsic gas expected: base + per-tuple (placeholders).
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     // Build ApplyAndCall with valid-looking tuple and EVM destination.
     let dst = EthAddress(hex_literal::hex!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
@@ -237,10 +217,7 @@ fn apply_and_call_propagates_outer_call_failure() {
 fn apply_and_call_rejects_bad_r_s_lengths() {
     let rt = util::construct_and_verify(vec![]);
 
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
     // r too short, s too long (should error on s length)
@@ -271,10 +248,7 @@ fn apply_and_call_rejects_bad_r_s_lengths() {
 fn apply_and_call_rejects_too_long_r() {
     let rt = util::construct_and_verify(vec![]);
 
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     let authority = EthAddress(hex_literal::hex!("00112233445566778899aabbccddeeff00112233"));
     // r too long (33), s minimal (1)
@@ -304,10 +278,7 @@ fn apply_and_call_rejects_too_long_r() {
 #[test]
 fn apply_and_call_rejects_authority_preexistence_contract() {
     let mut rt = util::construct_and_verify(vec![]);
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     // Override recover to control the recovered authority address.
     rt.recover_secp_pubkey_fn = Box::new(|_hash, _sig| {

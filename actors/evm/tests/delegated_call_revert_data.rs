@@ -69,10 +69,7 @@ fn delegated_call_revert_data_memory_copy_semantics() {
     }
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk_a));
     let b_eth: EthAddress = EthAddress(util::CONTRACT_ADDRESS);
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
     let list = vec![evm::DelegationParam {
         chain_id: 0,
         address: b_eth,
@@ -153,8 +150,7 @@ fn delegated_call_revert_data_memory_copy_semantics() {
     let mut rt = rt2;
     rt.set_network_version(NetworkVersion::V16);
     // Re-apply mapping A->B.
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk_a));
     let params = evm::ApplyAndCallParams {
         list: vec![evm::DelegationParam {

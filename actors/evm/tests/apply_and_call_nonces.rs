@@ -19,8 +19,6 @@ fn apply_and_call_nonce_initialization_and_repeat_rejection() {
     }
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk));
 
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
 
     // Build a single tuple at nonce=0, delegate to an arbitrary address, and call a different EOA
     // so no additional sends occur.
@@ -40,8 +38,7 @@ fn apply_and_call_nonce_initialization_and_repeat_rejection() {
     };
 
     // First application at nonce=0 succeeds and initializes nonce to 1.
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
     rt.expect_validate_caller_any();
     let res = rt.call::<evm::EvmContractActor>(
         evm::Method::ApplyAndCall as u64,
@@ -51,8 +48,7 @@ fn apply_and_call_nonce_initialization_and_repeat_rejection() {
     rt.verify();
 
     // Re-apply with the same authority at nonce=0 should now fail with illegal argument.
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
     rt.expect_validate_caller_any();
     let res2 = rt.call::<evm::EvmContractActor>(
         evm::Method::ApplyAndCall as u64,
@@ -74,8 +70,7 @@ fn apply_and_call_nonce_initialization_and_repeat_rejection() {
         list: list_nonce1,
         call: evm::ApplyCall { to: to_other, value: vec![], input: vec![] },
     };
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
     rt.expect_validate_caller_any();
     let res3 = rt.call::<evm::EvmContractActor>(
         evm::Method::ApplyAndCall as u64,

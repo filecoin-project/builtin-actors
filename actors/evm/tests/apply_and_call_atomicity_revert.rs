@@ -12,10 +12,7 @@ fn mapping_and_nonce_persist_on_outer_call_failure() {
     let mut rt = util::construct_and_verify(vec![]);
 
     // Intrinsic gas charges
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     // First attempt: mapping A->B; outer call to B (EVM) should go through InvokeContract which we fail.
     let b_eth: EthAddress = EthAddress(util::CONTRACT_ADDRESS);

@@ -55,10 +55,7 @@ fn apply_and_call_delegated_selfdestruct_is_noop() {
     // Make signature recovery deterministic to A.
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk_a));
 
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     // Expect exactly two sends: GetBytecode(delegate=B) and InvokeAsEoa; no fund transfer from SELFDESTRUCT.
     rt.expect_send(
@@ -169,10 +166,7 @@ fn apply_and_call_delegated_selfdestruct_with_value_noop() {
     // Delegate B is receiver EVM actor
     let b_eth: EthAddress = EthAddress(util::CONTRACT_ADDRESS);
 
-    const GAS_BASE_APPLY7702: i64 = 0;
-    const GAS_PER_AUTH_TUPLE: i64 = 10_000;
-    rt.expect_gas_charge(GAS_BASE_APPLY7702);
-    rt.expect_gas_charge(GAS_PER_AUTH_TUPLE);
+    // No gas expectations in tests (behavioral only).
 
     // Expect 1) GetBytecode
     rt.expect_send(
