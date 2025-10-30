@@ -13,7 +13,6 @@ use crate::interpreter::{
 
 use super::ext::{ContractType, get_contract_type, get_evm_bytecode_cid};
 
-
 use {
     super::memory::{copy_to_memory, get_memory_region},
     crate::interpreter::ExecutionState,

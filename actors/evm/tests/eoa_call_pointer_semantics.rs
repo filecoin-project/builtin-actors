@@ -66,7 +66,6 @@ exthash_a:
 
     let mut rt = util::construct_and_verify(bytecode);
 
-
     // Ensure A resolves to an Account/Placeholder type (EOA) in the runtime.
     let a_f4: FilAddress = authority.into();
     let a_id = FilAddress::new_id(0xABCDu64);
