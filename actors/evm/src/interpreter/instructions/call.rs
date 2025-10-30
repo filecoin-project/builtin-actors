@@ -13,7 +13,6 @@ use crate::interpreter::{
 
 use super::ext::{ContractType, get_contract_type, get_evm_bytecode_cid};
 
-use fil_actors_runtime::features::NV_EIP_7702;
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
@@ -207,7 +206,7 @@ pub fn call_generic<RT: Runtime>(
                     if matches!(
                         get_contract_type(system.rt, &dst),
                         ContractType::Account | ContractType::NotFound
-                    ) && system.rt.network_version() >= NV_EIP_7702
+                    )
                         // Depth limit: do not follow delegation when already in authority context.
                         && !system.in_authority_context
                     {
