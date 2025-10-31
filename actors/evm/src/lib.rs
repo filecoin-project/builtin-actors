@@ -842,15 +842,15 @@ impl EvmContractActor {
                                     struct InvokeContractReturn {
                                         output_data: Vec<u8>,
                                     }
-                                    let data = retblk
-                                        .deserialize::<InvokeContractReturn>()
-                                        .map(|x| x.output_data)
-                                        .map_err(|_| {
-                                            ActorError::illegal_state(
-                                                "ApplyAndCall: failed to decode InvokeAsEoa return"
-                                                    .into(),
-                                            )
-                                        })?;
+                                    let data = match retblk.deserialize::<InvokeContractReturn>() {
+                                        Ok(x) => x.output_data,
+                                        Err(_) => {
+                                            // Per EIP-7702 atomicity, return status 0 on failure.
+                                            return Ok(crate::ApplyAndCallReturn {
+                                                status: 0,
+                                                output_data: Vec::new(),
+                                            });
+                                        }
                                     // Emit delegated execution event
                                     use fvm_ipld_encoding::IPLD_RAW;
                                     use fvm_shared::event::{Entry, Flags};
