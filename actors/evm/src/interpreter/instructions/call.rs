@@ -240,7 +240,9 @@ pub fn call_generic<RT: Runtime>(
                                             receiver: dst,
                                             value: TokenAmount::from(&value),
                                         };
-                                        let serialized_params = match IpldBlock::serialize_dag_cbor(&params) {
+                                        let serialized_params = match IpldBlock::serialize_dag_cbor(
+                                            &params,
+                                        ) {
                                             Ok(val) => val,
                                             Err(e) => {
                                                 log::warn!(

@@ -111,4 +111,3 @@ fn apply_and_call_invokeaseoa_decode_error_maps_to_status_zero() {
     );
     assert!(res2.is_err(), "re-applying nonce=0 should fail after first apply");
 }
-

@@ -2,7 +2,9 @@ use cid::Cid;
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::{address::Address as FilAddress, econ::TokenAmount, error::ExitCode, sys::SendFlags};
+use fvm_shared::{
+    address::Address as FilAddress, econ::TokenAmount, error::ExitCode, sys::SendFlags,
+};
 
 mod util;
 
