@@ -464,7 +464,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
     /// Create an empty storage root CID for mounting a fresh KAMT.
     pub fn create_empty_storage_root(&self) -> Result<Cid, ActorError> {
         let mut tmp = StateKamt::new_with_config(self.rt.store(), KAMT_CONFIG.clone());
-        // We need to flush to obtain a CID; since tmp is local, this only writes the empty root.
+        // We need to flush to obtain a CID. While the KAMT is temporary, flushing writes the empty KAMT structure to the blockstore.
+        // The resulting CID and its data persist in the blockstore and will be referenced by the per-authority storage root mapping.
         tmp.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty storage root")
     }
 
