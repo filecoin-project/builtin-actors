@@ -3,9 +3,7 @@ use crate::{
     SectorContentChangedParams, SectorContentChangedReturn,
 };
 use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::{
-    ActorError, AsActorError, STORAGE_MARKET_ACTOR_ADDR, SendError, actor_error,
-};
+use fil_actors_runtime::{ActorError, AsActorError, SendError};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 use fvm_shared::address::Address;
@@ -58,15 +56,6 @@ pub fn notify_data_consumers(
     }
 
     for (notifee, payloads) in activations_by_notifee {
-        // Reject notifications to any actor other than the built-in market.
-        if notifee != STORAGE_MARKET_ACTOR_ADDR {
-            if require_success {
-                return Err(
-                    actor_error!(illegal_argument; "disallowed notification receiver: {}", notifee),
-                );
-            }
-            continue;
-        }
         let sectors_changes: Vec<SectorChanges> = payloads
             .into_iter()
             .map(|(sector_number, pieces)| SectorChanges {
