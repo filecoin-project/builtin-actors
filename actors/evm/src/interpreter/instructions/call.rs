@@ -240,10 +240,20 @@ pub fn call_generic<RT: Runtime>(
                                             receiver: dst,
                                             value: TokenAmount::from(&value),
                                         };
+                                        let serialized_params = match IpldBlock::serialize_dag_cbor(&params) {
+                                            Ok(val) => val,
+                                            Err(e) => {
+                                                log::warn!(
+                                                    "failed to serialize EoaInvokeParams for delegate call: {}",
+                                                    e
+                                                );
+                                                return Ok(U256::from(0));
+                                            }
+                                        };
                                         let res = system.send(
                                             &system.rt.message().receiver(),
                                             crate::Method::InvokeAsEoa as u64,
-                                            IpldBlock::serialize_dag_cbor(&params)?,
+                                            serialized_params,
                                             TokenAmount::zero(),
                                             Some(system.call_gas_limit(gas)),
                                             SendFlags::default(),
