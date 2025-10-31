@@ -727,27 +727,26 @@ impl EvmContractActor {
                 }
             };
             // Always capture outcome; map to status + output
-            match system.send(
-                &evm_addr,
-                Method::InvokeContract as u64,
-                params_blk,
-                value,
-                None,
-                fvm_shared::sys::SendFlags::default(),
-            ) {
+                            match system.send(
+                                &evm_addr,
+                                Method::InvokeContract as u64,
+                                params_blk,
+                                value,
+                                None,
+                                fvm_shared::sys::SendFlags::default(),
+                            ) {
                 Ok(Some(ret)) => {
                     #[derive(fvm_ipld_encoding::serde::Deserialize)]
                     struct InvokeContractReturn {
                         output_data: Vec<u8>,
                     }
-                    let data = ret
-                        .deserialize::<InvokeContractReturn>()
-                        .map(|x| x.output_data)
-                        .map_err(|_| {
-                            ActorError::illegal_state(
-                                "ApplyAndCall: failed to decode InvokeContractReturn".into(),
-                            )
-                        })?;
+                    let data = match ret.deserialize::<InvokeContractReturn>() {
+                        Ok(x) => x.output_data,
+                        Err(_) => {
+                            // Per EIP-7702 atomicity, decoding errors on the outer call map to status=0.
+                            return Ok(crate::ApplyAndCallReturn { status: 0, output_data: Vec::new() });
+                        }
+                    };
                     Ok(crate::ApplyAndCallReturn { status: 1, output_data: data })
                 }
                 Ok(None) => Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() }),
@@ -860,6 +859,7 @@ impl EvmContractActor {
                                                 output_data: Vec::new(),
                                             });
                                         }
+                                    };
                                     // Emit delegated execution event
                                     use fvm_ipld_encoding::IPLD_RAW;
                                     use fvm_shared::event::{Entry, Flags};
