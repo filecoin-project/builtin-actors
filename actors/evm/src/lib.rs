@@ -781,7 +781,7 @@ impl EvmContractActor {
                                     Some(c) => c,
                                     None => {
                                         return Ok(crate::ApplyAndCallReturn {
-                                            status: 1,
+                                            status: 0,
                                             output_data: Vec::new(),
                                         });
                                     }
