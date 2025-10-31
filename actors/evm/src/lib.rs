@@ -828,10 +828,19 @@ impl EvmContractActor {
                                 receiver: dst_eth,
                                 value,
                             };
+                            let serialized_params = match IpldBlock::serialize_dag_cbor(&p) {
+                                Ok(params) => params,
+                                Err(_) => {
+                                    return Ok(crate::ApplyAndCallReturn {
+                                        status: 0,
+                                        output_data: Vec::new(),
+                                    });
+                                }
+                            };
                             let res = system.send(
                                 &system.rt.message().receiver(),
                                 Method::InvokeAsEoa as u64,
-                                IpldBlock::serialize_dag_cbor(&p)?,
+                                serialized_params,
                                 TokenAmount::from_whole(0),
                                 None,
                                 fvm_shared::sys::SendFlags::default(),
