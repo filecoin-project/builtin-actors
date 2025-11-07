@@ -46,6 +46,9 @@ alloy-core = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
 once_cell = { workspace = true }
+test_vm = { workspace = true }
+vm_api = { workspace = true, features = ["testing"] }
+fil_actor_eam = { workspace = true }
 
 
 [features]

@@ -804,6 +804,7 @@ dependencies = [
  "blst",
  "cid",
  "etk-asm",
+ "fil_actor_eam",
  "fil_actors_evm_shared",
  "fil_actors_runtime",
  "frc42_dispatch",
@@ -825,7 +826,9 @@ dependencies = [
  "serde",
  "serde_json",
  "substrate-bn",
+ "test_vm",
  "thiserror",
+ "vm_api",
 ]
 
 [[package]]
