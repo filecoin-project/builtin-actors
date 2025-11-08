@@ -125,6 +125,9 @@ pub trait Runtime: Primitives + RuntimePolicy {
         rand_epoch: ChainEpoch,
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 
+    /// Returns the EthAccount's `delegate_to` address (20 bytes) if set; None otherwise.
+    fn get_eth_delegate_to(&self, actor_id: ActorID) -> Result<Option<[u8; 20]>, ActorError>;
+
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.
     /// NOTE: we should also limit this to being invoked during the constructor method

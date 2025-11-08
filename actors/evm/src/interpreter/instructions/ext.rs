@@ -34,8 +34,12 @@ pub fn extcodesize(
         ContractType::Native(_) => 1,
         ContractType::Account => {
             let authority = EthAddress::from(addr);
-            if system.get_delegate(&authority).is_some() {
-                return Ok(U256::from(23));
+            // Resolve to actor ID and consult runtime helper.
+            let a: Address = authority.into();
+            if let Some(id) = system.rt.resolve_address(&a) {
+                if let Ok(Some(_delegate)) = system.rt.get_eth_delegate_to(id) {
+                    return Ok(U256::from(23));
+                }
             }
             0
         }
@@ -63,7 +67,15 @@ pub fn extcodehash(
         // TODO: With account abstraction, this may be something other than an empty hash!
         ContractType::Account => {
             let authority = EthAddress::from(addr);
-            if let Some(d) = system.get_delegate(&authority) {
+            let d_opt = {
+                let a: Address = authority.into();
+                system
+                    .rt
+                    .resolve_address(&a)
+                    .and_then(|id| system.rt.get_eth_delegate_to(id).ok().flatten())
+                    .map(EthAddress)
+            };
+            if let Some(d) = d_opt {
                 let mut bytecode = Vec::with_capacity(23);
                 bytecode.extend_from_slice(&fil_actors_evm_shared::eip7702::EIP7702_MAGIC);
                 bytecode.push(fil_actors_evm_shared::eip7702::EIP7702_VERSION);
@@ -106,7 +118,16 @@ pub fn extcodecopy(
         ContractType::EVM(addr) => get_evm_bytecode(system, &addr)?,
         ContractType::Account => {
             let authority = EthAddress::from(addr);
-            if let Some(d) = system.get_delegate(&authority) {
+            // Resolve and consult runtime helper for pointer projection.
+            let d_opt = {
+                let a: Address = authority.into();
+                system
+                    .rt
+                    .resolve_address(&a)
+                    .and_then(|id| system.rt.get_eth_delegate_to(id).ok().flatten())
+                    .map(EthAddress)
+            };
+            if let Some(d) = d_opt {
                 let mut b = Vec::with_capacity(23);
                 b.extend_from_slice(&fil_actors_evm_shared::eip7702::EIP7702_MAGIC);
                 b.push(fil_actors_evm_shared::eip7702::EIP7702_VERSION);

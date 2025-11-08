@@ -140,6 +140,7 @@ pub struct MockRuntime {
     pub chain_id: ChainID,
     pub id_addresses: RefCell<HashMap<Address, Address>>,
     pub delegated_addresses: RefCell<HashMap<ActorID, Address>>,
+    pub eth_delegate_to: RefCell<HashMap<ActorID, [u8; 20]>>,
     pub actor_code_cids: RefCell<HashMap<Address, Cid>>,
     pub new_actor_addr: RefCell<Option<Address>>,
     pub receiver: Address,
@@ -336,6 +337,7 @@ impl MockRuntime {
             chain_id: ChainID::from(0),
             id_addresses: Default::default(),
             delegated_addresses: Default::default(),
+            eth_delegate_to: Default::default(),
             actor_code_cids: Default::default(),
             new_actor_addr: Default::default(),
             receiver: Address::new_id(0),
@@ -574,6 +576,11 @@ impl MockRuntime {
         );
         self.delegated_addresses.borrow_mut().insert(source, target);
         self.id_addresses.borrow_mut().insert(target, Address::new_id(source));
+    }
+
+    /// Test hook: set the EIP-7702 delegate_to address for the given actor id.
+    pub fn set_eth_delegate_to(&self, source: ActorID, delegate20: [u8; 20]) {
+        self.eth_delegate_to.borrow_mut().insert(source, delegate20);
     }
 
     pub fn call<A: ActorCode>(
@@ -1073,6 +1080,11 @@ impl Runtime for MockRuntime {
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         self.require_in_call();
         self.actor_code_cids.borrow().get(&Address::new_id(*id)).cloned()
+    }
+
+    fn get_eth_delegate_to(&self, actor_id: ActorID) -> Result<Option<[u8; 20]>, ActorError> {
+        // Consult test hook mapping; default to None.
+        Ok(self.eth_delegate_to.borrow().get(&actor_id).copied())
     }
 
     fn get_randomness_from_tickets(

@@ -265,6 +265,10 @@ where
         ))
     }
 
+    fn get_eth_delegate_to(&self, actor_id: ActorID) -> Result<Option<[u8; 20]>, ActorError> {
+        Ok(fvm::actor::get_eth_delegate_to(actor_id))
+    }
+
     fn get_beacon_randomness(
         &self,
         rand_epoch: ChainEpoch,
