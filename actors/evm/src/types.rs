@@ -67,43 +67,29 @@ pub struct GetStorageAtParams {
 }
 
 // ----- EIP-7702 ApplyAndCall params -----
-// Atomic params shape matches Lotus encoding:
-//   [ [ tuple, ... ], [ to(20), value(bytes), input(bytes) ] ]
-// Where `tuple` is DelegationParam defined below.
+// Re-export shared types to avoid drift across crates.
+pub use fil_actors_evm_shared::eip7702::{
+    ApplyAndCallParams, ApplyAndCallReturn, ApplyCall, DelegationParam,
+};
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
-pub struct DelegationParam {
-    pub chain_id: u64,
-    pub address: EthAddress,
-    pub nonce: u64,
-    pub y_parity: u8,
-    #[serde(with = "strict_bytes")]
-    pub r: Vec<u8>, // 32 bytes
-    #[serde(with = "strict_bytes")]
-    pub s: Vec<u8>, // 32 bytes
-}
+// ----- EIP-7702 VM intercept support -----
+// Params/return for InvokeAsEoaWithRoot trampoline used by the VM to execute
+// delegate EVM bytecode under an authority context with an explicit storage root.
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ApplyCall {
-    pub to: EthAddress,
-    #[serde(with = "strict_bytes")]
-    pub value: Vec<u8>,
+pub struct InvokeAsEoaWithRootParams {
+    pub code: Cid,
     #[serde(with = "strict_bytes")]
     pub input: Vec<u8>,
+    pub caller: EthAddress,
+    pub receiver: EthAddress,
+    pub value: TokenAmount,
+    pub initial_storage_root: Cid,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ApplyAndCallParams {
-    pub list: Vec<DelegationParam>,
-    pub call: ApplyCall,
-}
-
-// Return type for ApplyAndCall. Always returned with ExitCode::OK.
-// - status: 1 on success, 0 on revert/failure of the outer call
-// - output_data: return or revert data from the outer call
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ApplyAndCallReturn {
-    pub status: u8,
+pub struct InvokeAsEoaWithRootReturn {
     #[serde(with = "strict_bytes")]
     pub output_data: Vec<u8>,
+    pub new_storage_root: Cid,
 }
