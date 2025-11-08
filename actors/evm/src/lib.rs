@@ -73,6 +73,7 @@ pub enum Method {
     GetStorageAt = 5,
     InvokeContractDelegate = 6,
     InvokeAsEoa = 7,
+    InvokeAsEoaWithRoot = frc42_dispatch::method_hash!("InvokeAsEoaWithRoot"),
     // New: Atomic EIP-7702 apply + call entrypoint
     ApplyAndCall = frc42_dispatch::method_hash!("ApplyAndCall"),
     InvokeContract = frc42_dispatch::method_hash!("InvokeEVM"),
@@ -194,6 +195,67 @@ where
 }
 
 impl EvmContractActor {
+    /// Execute arbitrary bytecode while binding the receiver to an EOA address.
+    /// Storage is isolated (non-persistent) for this legacy path; kept temporarily for compatibility.
+    pub fn invoke_as_eoa<RT>(
+        rt: &RT,
+        params: WithCodec<EoaInvokeParams, DAG_CBOR>,
+    ) -> Result<InvokeContractReturn, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        // Only callable by this actor (internal trampoline from CALL path).
+        rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
+
+        let p = params.0;
+        let mut system = System::load(rt).map_err(|e| {
+            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
+        })?;
+
+        // Load bytecode to execute.
+        let bytecode = match load_bytecode(system.rt.store(), &p.code)? {
+            Some(b) => b,
+            None => return Ok(InvokeContractReturn { output_data: Vec::new() }),
+        };
+
+        // Save the actor's storage root and mount the authority's persistent storage root.
+        let actor_storage_root = system.flush_storage_root()?;
+        let auth_root = match system.get_storage_root_for(&p.receiver) {
+            Some(cid) => cid,
+            None => system.create_empty_storage_root()?,
+        };
+        system.mount_storage_root(&auth_root)?;
+        // Enter authority context (depth==1 for delegation).
+        let prev_ctx = system.in_authority_context;
+        system.in_authority_context = true;
+
+        // Execute with explicit caller/receiver/value using the authority's storage root.
+        let mut exec_state = ExecutionState::new(p.caller, p.receiver, p.value, p.input);
+        let output = execute(&bytecode, &mut exec_state, &mut system)?;
+        match output.outcome {
+            Outcome::Return => {
+                // Flush updated authority storage root and persist in map, then restore actor root.
+                let new_auth_root = system.flush_storage_root()?;
+                system.set_storage_root_for(&exec_state.receiver, &new_auth_root)?;
+                system.mount_storage_root(&actor_storage_root)?;
+                system.in_authority_context = prev_ctx;
+                // Flush maps/state.
+                system.flush()?;
+                Ok(InvokeContractReturn { output_data: output.return_data.to_vec() })
+            }
+            Outcome::Revert => {
+                // Restore actor root and propagate revert.
+                system.mount_storage_root(&actor_storage_root)?;
+                system.in_authority_context = prev_ctx;
+                Err(ActorError::unchecked_with_data(
+                    EVM_CONTRACT_REVERTED,
+                    format!("contract reverted at {0}", output.pc),
+                    IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
+                ))
+            }
+        }
+    }
     pub fn constructor<RT>(rt: &RT, params: ConstructorParams) -> Result<(), ActorError>
     where
         RT: Runtime,
@@ -241,17 +303,19 @@ impl EvmContractActor {
         Ok(DelegateCallReturn { return_data })
     }
 
-    /// Execute arbitrary bytecode while binding the receiver to an EOA address.
-    /// Storage is isolated (non-persistent) for this prototype path.
-    pub fn invoke_as_eoa<RT>(
+    // invoke_as_eoa removed; VM uses invoke_as_eoa_with_root trampoline.
+
+    /// Execute delegate bytecode under authority context mounting the provided storage root.
+    /// Returns both output bytes and the updated storage root. This is intended to be called
+    /// only by the VM intercept path; immediate caller must be self.
+    pub fn invoke_as_eoa_with_root<RT>(
         rt: &RT,
-        params: WithCodec<EoaInvokeParams, DAG_CBOR>,
-    ) -> Result<InvokeContractReturn, ActorError>
+        params: WithCodec<crate::InvokeAsEoaWithRootParams, DAG_CBOR>,
+    ) -> Result<crate::InvokeAsEoaWithRootReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        // Only callable by this actor (internal trampoline from CALL path).
         rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
 
         let p = params.0;
@@ -262,36 +326,38 @@ impl EvmContractActor {
         // Load bytecode to execute.
         let bytecode = match load_bytecode(system.rt.store(), &p.code)? {
             Some(b) => b,
-            None => return Ok(InvokeContractReturn { output_data: Vec::new() }),
+            None => {
+                // Nothing to execute; return the same root.
+                return Ok(crate::InvokeAsEoaWithRootReturn {
+                    output_data: Vec::new(),
+                    new_storage_root: p.initial_storage_root,
+                });
+            }
         };
 
-        // Save the actor's storage root and mount the authority's persistent storage root.
+        // Mount the provided authority storage root.
         let actor_storage_root = system.flush_storage_root()?;
-        let auth_root = match system.get_storage_root_for(&p.receiver) {
-            Some(cid) => cid,
-            None => system.create_empty_storage_root()?,
-        };
-        system.mount_storage_root(&auth_root)?;
-        // Enter authority context (depth==1 for delegation).
+        system.mount_storage_root(&p.initial_storage_root)?;
+        // Enter authority context (depth=1).
         let prev_ctx = system.in_authority_context;
         system.in_authority_context = true;
 
-        // Execute with explicit caller/receiver/value using the authority's storage root.
+        // Execute with explicit caller/receiver/value.
         let mut exec_state = ExecutionState::new(p.caller, p.receiver, p.value, p.input);
         let output = execute(&bytecode, &mut exec_state, &mut system)?;
         match output.outcome {
             Outcome::Return => {
-                // Flush updated authority storage root and persist in map, then restore actor root.
-                let new_auth_root = system.flush_storage_root()?;
-                system.set_storage_root_for(&p.receiver, &new_auth_root)?;
+                let new_root = system.flush_storage_root()?;
                 system.mount_storage_root(&actor_storage_root)?;
                 system.in_authority_context = prev_ctx;
-                // Flush maps/state.
                 system.flush()?;
-                Ok(InvokeContractReturn { output_data: output.return_data.to_vec() })
+                Ok(crate::InvokeAsEoaWithRootReturn {
+                    output_data: output.return_data.to_vec(),
+                    new_storage_root: new_root,
+                })
             }
             Outcome::Revert => {
-                // Restore actor root and propagate revert.
+                // Restore and propagate revert via unchecked error with data encoded as raw bytes.
                 system.mount_storage_root(&actor_storage_root)?;
                 system.in_authority_context = prev_ctx;
                 Err(ActorError::unchecked_with_data(
@@ -489,6 +555,7 @@ impl ActorCode for EvmContractActor {
         GetStorageAt => storage_at,
         InvokeContractDelegate => invoke_contract_delegate,
         InvokeAsEoa => invoke_as_eoa,
+        InvokeAsEoaWithRoot => invoke_as_eoa_with_root,
         ApplyAndCall => apply_and_call,
         Resurrect => resurrect,
         _ => handle_filecoin_method,
@@ -507,8 +574,6 @@ pub struct EoaInvokeParams {
     pub value: TokenAmount,
 }
 
-/// Atomic EIP-7702 entrypoint: applies authorization tuples and then
-/// executes the outer call. All state changes revert atomically on error.
 impl EvmContractActor {
     fn validate_tuple(rt: &impl Runtime, t: &crate::DelegationParam) -> Result<(), ActorError> {
         // chain id 0 or local
@@ -839,8 +904,9 @@ impl EvmContractActor {
                                     });
                                 }
                             };
+                            let self_id_addr = Address::new_id(system.rt.message().receiver().id().unwrap());
                             let res = system.send(
-                                &system.rt.message().receiver(),
+                                &self_id_addr,
                                 Method::InvokeAsEoa as u64,
                                 serialized_params,
                                 TokenAmount::from_whole(0),

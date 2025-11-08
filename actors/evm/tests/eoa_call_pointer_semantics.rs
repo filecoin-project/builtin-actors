@@ -1,9 +1,11 @@
 mod asm;
 
+#[allow(unused_imports)]
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::test_utils::{self, PLACEHOLDER_ACTOR_CODE_ID};
+#[allow(unused_imports)]
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address as FilAddress;
 use fvm_shared::crypto::hash::SupportedHashes;
@@ -75,28 +77,10 @@ exthash_a:
     // Delegate B is this EVM actor (receiver) with known ETH f4 address.
     let b_eth: EthAddress = EthAddress(util::CONTRACT_ADDRESS);
 
-    // Apply mapping A -> B via ApplyAndCall with a no-op outer call.
-    // No gas expectations in tests (behavioral only).
+    // In the new architecture, EXTCODE* consults the runtime helper for delegation mapping.
+    // Program the helper to reflect A -> B so pointer projection engages in tests.
     rt.recover_secp_pubkey_fn = Box::new(move |_, _| Ok(pk));
-    let list = vec![evm::DelegationParam {
-        chain_id: 0,
-        address: b_eth,
-        nonce: 0,
-        y_parity: 0,
-        r: vec![1u8; 32],
-        s: vec![1u8; 32],
-    }];
-    let to_other = EthAddress::from_id(0xB0B0);
-    let params = evm::ApplyAndCallParams {
-        list,
-        call: evm::ApplyCall { to: to_other, value: vec![], input: vec![] },
-    };
-    rt.expect_validate_caller_any();
-    rt.call::<evm::EvmContractActor>(
-        evm::Method::ApplyAndCall as u64,
-        IpldBlock::serialize_dag_cbor(&params).unwrap(),
-    )
-    .unwrap();
+    rt.set_eth_delegate_to(a_id.id().unwrap(), b_eth.0);
 
     // EXTCODESIZE(A) == 23
     let size_out = util::invoke_contract(&rt, &util::dispatch_num_word(0x00));

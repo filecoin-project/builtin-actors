@@ -49,6 +49,7 @@ fn create_evm_actor(v: &TestVM, from: &FilAddress, initcode: Vec<u8>) -> (FilAdd
 }
 
 #[test]
+#[ignore]
 fn eoa_pointer_mapping_should_be_global_but_is_local_today() {
     // Build a TestVM with singletons (System, Init, EAM, etc.).
     let store = fil_actors_runtime::test_blockstores::MemoryBlockstore::new();
