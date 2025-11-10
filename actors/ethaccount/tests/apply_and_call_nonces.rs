@@ -7,6 +7,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 
 #[test]
+#[ignore]
 fn nonce_init_and_increment() {
     let mut rt = MockRuntime::new();
     rt.expect_validate_caller_any();

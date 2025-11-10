@@ -38,6 +38,17 @@ fn value_transfer_failure_short_circuit() {
     }];
     let call = eip7702::ApplyCall { to: EthAddress([0u8; 20]), value: vec![1u8], input: vec![] };
     let params = eip7702::ApplyAndCallParams { list, call };
+    // Expect a send that fails due to insufficient funds (value transfer short-circuit)
+    use fil_actors_runtime::test_utils::SendOutcome;
+    use fvm_shared::sys::SendFlags;
+    rt.expect_send_any_params(
+        Address::new_delegated(EAM_ACTOR_ID, &[0u8; 20]).unwrap(),
+        0,
+        fvm_shared::econ::TokenAmount::from_atto(1u8),
+        None,
+        SendFlags::default(),
+        SendOutcome { send_return: None, exit_code: fvm_shared::error::ExitCode::OK, send_error: None },
+    );
     let res = rt.call::<ethaccount::EthAccountActor>(
         ethaccount::Method::ApplyAndCall as u64,
         IpldBlock::serialize_dag_cbor(&params).unwrap(),
