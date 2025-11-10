@@ -52,7 +52,9 @@ pub fn calldatasize(
     state: &mut ExecutionState,
     _: &System<impl Runtime>,
 ) -> Result<U256, ActorError> {
-    Ok(u128::try_from(state.input_data.len()).unwrap().into())
+    // input_data length always fits into u128; avoid unwrap to be explicit.
+    let len = state.input_data.len() as u128;
+    Ok(U256::from(len))
 }
 
 #[inline]
