@@ -152,18 +152,7 @@ pub struct State {
     /// See https://github.com/filecoin-project/ref-fvm/issues/1174 for some context.
     pub tombstone: Option<Tombstone>,
 
-    /// EIP-7702: Delegation mapping (authority -> delegate address) stored as a HAMT keyed by
-    /// 20-byte authority address. Value is a 20-byte delegate address. Empty map means no
-    /// delegations are present.
-    pub delegations: Option<Cid>,
-
-    /// EIP-7702: Nonce mapping (authority -> u64) tracking per-authority authorization nonce.
-    pub delegation_nonces: Option<Cid>,
-
-    /// EIP-7702: Per-authority storage roots (authority -> storage root CID) used when executing
-    /// delegated code under an EOA authority context. Absent means no storage has been created
-    /// for any authority yet.
-    pub delegation_storage: Option<Cid>,
+    // EIP-7702 legacy delegation maps removed; delegation lives in EthAccount and VM intercept handles execution.
 }
 
 #[cfg(test)]

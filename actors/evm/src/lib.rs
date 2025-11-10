@@ -7,6 +7,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesSer, DAG_CBOR};
 use fvm_shared::address::Address;
+#[allow(unused_imports)]
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -543,6 +544,7 @@ pub struct EoaInvokeParams {
 }
 
 impl EvmContractActor {
+    #[allow(dead_code)]
     fn validate_tuple(rt: &impl Runtime, t: &crate::DelegationParam) -> Result<(), ActorError> {
         // chain id 0 or local
         if t.chain_id != 0 && fvm_shared::chainid::ChainID::from(t.chain_id) != rt.chain_id() {
@@ -574,6 +576,7 @@ impl EvmContractActor {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn is_high_s(sv: &[u8; 32]) -> bool {
         // n/2 as in Delegator
         const N: [u8; 32] = [
@@ -591,6 +594,7 @@ impl EvmContractActor {
         sv > &n2
     }
 
+    #[allow(dead_code)]
     fn recover_authority(
         rt: &impl Runtime,
         t: &crate::DelegationParam,
@@ -625,356 +629,13 @@ impl EvmContractActor {
         Ok(EthAddress(addr))
     }
     pub fn apply_and_call<RT>(
-        rt: &RT,
-        params: WithCodec<crate::ApplyAndCallParams, DAG_CBOR>,
+        _rt: &RT,
+        _params: WithCodec<crate::ApplyAndCallParams, DAG_CBOR>,
     ) -> Result<crate::ApplyAndCallReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        // Accept any immediate caller (outer transaction envelope).
-        rt.validate_immediate_caller_accept_any()?;
-
-        // Prepare system helper by loading existing state.
-        let mut system = System::load(rt)?;
-
-        // Count tuples for validation and tuple cap checks only.
-        let tuple_count = params.0.list.len() as i64;
-        if tuple_count == 0 {
-            return Err(ActorError::illegal_argument("authorizationList must be non-empty".into()));
-        }
-        // Tuple cap (placeholder; to be tuned/finalized).
-        // TODO(cap): 64 is a placeholder cap to mitigate DoS; finalize or remove in spec constants.
-        if tuple_count > 64 {
-            return Err(ActorError::illegal_argument("authorizationList exceeds tuple cap".into()));
-        }
-
-        // 1) Apply delegations directly into EVM state (validate + nonce checks + write mapping).
-        let list = params.0.list;
-        // Reject duplicate authorities within a single message to avoid ambiguity.
-        let mut seen = std::collections::HashSet::<[u8; 20]>::new();
-        // Refunds plumbing (placeholder): track potential refunds at per-tuple granularity.
-        // TODO(refunds): numeric constants and caps will be wired once finalized.
-        let mut _tuple_refund_accumulator: i64 = 0;
-        for t in list.iter() {
-            Self::validate_tuple(rt, t)?;
-            let authority = Self::recover_authority(rt, t)?;
-            let mut key = [0u8; 20];
-            key.copy_from_slice(authority.as_ref());
-            if !seen.insert(key) {
-                return Err(ActorError::illegal_argument(
-                    "duplicate authority in authorizationList".into(),
-                ));
-            }
-            let current = system.get_auth_nonce(&authority);
-            if current != t.nonce {
-                return Err(ActorError::illegal_argument(format!(
-                    "nonce mismatch for {}: expected {}, got {}",
-                    authority, current, t.nonce
-                )));
-            }
-            // Pre-existence policy: reject if authority resolves to an EVM contract actor.
-            {
-                use fil_actors_runtime::runtime::builtins::Type as BuiltinType;
-                let fa: Address = authority.into();
-                if let Some(id) = system.rt.resolve_address(&fa) {
-                    if let Some(code) = system.rt.get_actor_code_cid(&id) {
-                        if matches!(
-                            system.rt.resolve_builtin_actor_type(&code),
-                            Some(BuiltinType::EVM)
-                        ) {
-                            return Err(ActorError::illegal_argument(
-                                "authority is an EVM contract".into(),
-                            ));
-                        }
-                    }
-                }
-            }
-            // Update mapping: zero address clears, else set
-            let is_zero_delegate = t.address.as_ref().iter().all(|&b| b == 0);
-            if is_zero_delegate {
-                system.set_delegate(&authority, None)?;
-            } else {
-                system.set_delegate(&authority, Some(&t.address))?;
-                // Record potential refund placeholder when setting from none->nonzero.
-                // TODO: apply final refund constants once finalized.
-                _tuple_refund_accumulator = _tuple_refund_accumulator.saturating_add(0);
-            }
-            system.set_auth_nonce(&authority, current.saturating_add(1))?;
-        }
-
-        // Persist delegation state (mapping + nonces) before executing the outer call so that
-        // these changes survive even if the outer call fails. This matches EIP-7702 atomic
-        // semantics where authorization application is independent of outer call success.
-        system.flush()?;
-
-        // 2) Execute the outer call as specified: [to, value, input].
-        let call = params.0.call;
-        // Convert value bytes (big-endian magnitude) to a TokenAmount in atto.
-        let value = {
-            use fvm_shared::bigint::{BigInt, Sign};
-            TokenAmount::from_atto(BigInt::from_bytes_be(Sign::Plus, &call.value))
-        };
-
-        // Helper: resolve destination contract type.
-        use fvm_shared::address::Address;
-        let dst_eth = call.to;
-        let (is_evm, dst_actor_addr_opt) = {
-            let fa: Address = dst_eth.into();
-            if let Some(id) = system.rt.resolve_address(&fa) {
-                if let Some(code) = system.rt.get_actor_code_cid(&id) {
-                    match system.rt.resolve_builtin_actor_type(&code) {
-                        Some(fil_actors_runtime::runtime::builtins::Type::EVM) => {
-                            (true, Some(Address::new_id(id)))
-                        }
-                        Some(
-                            fil_actors_runtime::runtime::builtins::Type::Account
-                            | fil_actors_runtime::runtime::builtins::Type::EthAccount
-                            | fil_actors_runtime::runtime::builtins::Type::Placeholder,
-                        ) => (false, None),
-                        _ => (false, None),
-                    }
-                } else {
-                    (false, None)
-                }
-            } else {
-                (false, None)
-            }
-        };
-
-        if is_evm {
-            // Invoke EVM contract directly.
-            use fvm_ipld_encoding::IPLD_RAW;
-            let params_blk = if call.input.is_empty() {
-                None
-            } else {
-                Some(IpldBlock { codec: IPLD_RAW, data: call.input.clone() })
-            };
-            let evm_addr = match dst_actor_addr_opt {
-                Some(a) => a,
-                None => {
-                    // This indicates an internal invariant violation in address resolution.
-                    return Err(ActorError::illegal_state(
-                        "destination resolved as EVM but missing ID address".into(),
-                    ));
-                }
-            };
-            // Always capture outcome; map to status + output
-            match system.send(
-                &evm_addr,
-                Method::InvokeContract as u64,
-                params_blk,
-                value,
-                None,
-                fvm_shared::sys::SendFlags::default(),
-            ) {
-                Ok(Some(ret)) => {
-                    #[derive(fvm_ipld_encoding::serde::Deserialize)]
-                    struct InvokeContractReturn {
-                        output_data: Vec<u8>,
-                    }
-                    let data = match ret.deserialize::<InvokeContractReturn>() {
-                        Ok(x) => x.output_data,
-                        Err(_) => {
-                            // Per EIP-7702 atomicity, decoding errors on the outer call map to status=0.
-                            return Ok(crate::ApplyAndCallReturn {
-                                status: 0,
-                                output_data: Vec::new(),
-                            });
-                        }
-                    };
-                    Ok(crate::ApplyAndCallReturn { status: 1, output_data: data })
-                }
-                Ok(None) => Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() }),
-                Err(mut e) => {
-                    // Outer call failed; persist mapping already applied; return status=0 with revert data if present.
-                    let data = e.take_data().map(|b| b.data).unwrap_or_default();
-                    Ok(crate::ApplyAndCallReturn { status: 0, output_data: data })
-                }
-            }
-        } else {
-            // Look up delegation in internal mapping; if present, execute delegate code in EOA context via InvokeAsEoa.
-            if let Some(delegate) = system.get_delegate(&dst_eth) {
-                let da: Address = delegate.into();
-                if let Some(id) = system.rt.resolve_address(&da) {
-                    if let Some(code) = system.rt.get_actor_code_cid(&id) {
-                        if matches!(
-                            system.rt.resolve_builtin_actor_type(&code),
-                            Some(fil_actors_runtime::runtime::builtins::Type::EVM)
-                        ) {
-                            // Fetch bytecode CID via GetBytecode
-                            let ret = system.send(
-                                &Address::new_id(id),
-                                Method::GetBytecode as u64,
-                                None,
-                                TokenAmount::from_whole(0),
-                                None,
-                                fvm_shared::sys::SendFlags::READ_ONLY,
-                            );
-                            let code_cid: Cid = match ret {
-                                Ok(opt_blk) => match opt_blk.and_then(|b| b.deserialize().ok()) {
-                                    Some(c) => c,
-                                    None => {
-                                        return Ok(crate::ApplyAndCallReturn {
-                                            status: 0,
-                                            output_data: Vec::new(),
-                                        });
-                                    }
-                                },
-                                // Treat GetBytecode failure as an outer-call failure: preserve applied state
-                                // and return status=0 with any revert data if present.
-                                Err(mut e) => {
-                                    let data = e.take_data().map(|b| b.data).unwrap_or_default();
-                                    return Ok(crate::ApplyAndCallReturn {
-                                        status: 0,
-                                        output_data: data,
-                                    });
-                                }
-                            };
-                            if !system.readonly && !value.is_zero() {
-                                let dst_addr: Address = dst_eth.into();
-                                if let Err(e) = system.transfer(&dst_addr, value.clone()) {
-                                    log::debug!(
-                                        "ApplyAndCall: value transfer to delegated EOA failed: {}",
-                                        e
-                                    );
-                                    return Ok(crate::ApplyAndCallReturn {
-                                        status: 0,
-                                        output_data: Vec::new(),
-                                    });
-                                }
-                            }
-                            let caller_eth = match system
-                                .resolve_ethereum_address(&system.rt.message().caller())
-                            {
-                                Ok(addr) => addr,
-                                // Treat inability to resolve caller as an outer-call failure; do not abort.
-                                Err(_) => {
-                                    return Ok(crate::ApplyAndCallReturn {
-                                        status: 0,
-                                        output_data: Vec::new(),
-                                    });
-                                }
-                            };
-                            let p = EoaInvokeParams {
-                                code: code_cid,
-                                input: call.input,
-                                caller: caller_eth,
-                                receiver: dst_eth,
-                                value,
-                            };
-                            let serialized_params = match IpldBlock::serialize_dag_cbor(&p) {
-                                Ok(params) => params,
-                                Err(_) => {
-                                    return Ok(crate::ApplyAndCallReturn {
-                                        status: 0,
-                                        output_data: Vec::new(),
-                                    });
-                                }
-                            };
-                            let self_id_addr =
-                                Address::new_id(system.rt.message().receiver().id().unwrap());
-                            let res = system.send(
-                                &self_id_addr,
-                                Method::InvokeAsEoa as u64,
-                                serialized_params,
-                                TokenAmount::from_whole(0),
-                                None,
-                                fvm_shared::sys::SendFlags::default(),
-                            );
-                            match res {
-                                Ok(Some(retblk)) => {
-                                    #[derive(fvm_ipld_encoding::serde::Deserialize)]
-                                    struct InvokeContractReturn {
-                                        output_data: Vec<u8>,
-                                    }
-                                    let data = match retblk.deserialize::<InvokeContractReturn>() {
-                                        Ok(x) => x.output_data,
-                                        Err(_) => {
-                                            // Per EIP-7702 atomicity, return status 0 on failure.
-                                            return Ok(crate::ApplyAndCallReturn {
-                                                status: 0,
-                                                output_data: Vec::new(),
-                                            });
-                                        }
-                                    };
-                                    // Emit delegated execution event
-                                    use fvm_ipld_encoding::IPLD_RAW;
-                                    use fvm_shared::event::{Entry, Flags};
-                                    let topic = system.rt.hash(
-                                        SupportedHashes::Keccak256,
-                                        crate::DELEGATED_EVENT_TOPIC,
-                                    );
-                                    if topic.len() == 32 && !system.readonly {
-                                        let entries: Vec<Entry> = vec![
-                                            Entry {
-                                                flags: Flags::FLAG_INDEXED_ALL,
-                                                key: "t1".to_owned(),
-                                                codec: IPLD_RAW,
-                                                value: topic,
-                                            },
-                                            Entry {
-                                                flags: Flags::FLAG_INDEXED_ALL,
-                                                key: "d".to_owned(),
-                                                codec: IPLD_RAW,
-                                                // Emit authority (EOA) address for attribution.
-                                                value: dst_eth.as_ref().to_vec(),
-                                            },
-                                        ];
-                                        let _ = system.rt.emit_event(&entries.into());
-                                    }
-                                    return Ok(crate::ApplyAndCallReturn {
-                                        status: 1,
-                                        output_data: data,
-                                    });
-                                }
-                                Ok(None) => {
-                                    // Emit event even if no return
-                                    use fvm_ipld_encoding::IPLD_RAW;
-                                    use fvm_shared::event::{Entry, Flags};
-                                    let topic = system.rt.hash(
-                                        SupportedHashes::Keccak256,
-                                        crate::DELEGATED_EVENT_TOPIC,
-                                    );
-                                    if topic.len() == 32 && !system.readonly {
-                                        let entries: Vec<Entry> = vec![
-                                            Entry {
-                                                flags: Flags::FLAG_INDEXED_ALL,
-                                                key: "t1".to_owned(),
-                                                codec: IPLD_RAW,
-                                                value: topic,
-                                            },
-                                            Entry {
-                                                flags: Flags::FLAG_INDEXED_ALL,
-                                                key: "d".to_owned(),
-                                                codec: IPLD_RAW,
-                                                // Emit authority (EOA) address for attribution.
-                                                value: dst_eth.as_ref().to_vec(),
-                                            },
-                                        ];
-                                        let _ = system.rt.emit_event(&entries.into());
-                                    }
-                                    return Ok(crate::ApplyAndCallReturn {
-                                        status: 1,
-                                        output_data: Vec::new(),
-                                    });
-                                }
-                                Err(mut e) => {
-                                    // InvokeAsEoa failed; per EIP-7702 atomicity, ApplyAndCall must not abort.
-                                    // Return embedded failure status and propagate revert data if present.
-                                    let data = e.take_data().map(|b| b.data).unwrap_or_default();
-                                    return Ok(crate::ApplyAndCallReturn {
-                                        status: 0,
-                                        output_data: data,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // No delegation: calling EOA with no code is a no-op success.
-            Ok(crate::ApplyAndCallReturn { status: 1, output_data: Vec::new() })
-        }
+        Err(ActorError::illegal_state("EVM.ApplyAndCall has been removed on this branch".into()))
     }
 }

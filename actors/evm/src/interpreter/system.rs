@@ -7,14 +7,14 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Block;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_hamt::{BytesKey, Hamt};
+// Legacy Hamt-based 7702 maps removed.
 use fvm_ipld_kamt::HashedKey;
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{HAMT_BIT_WIDTH, IPLD_RAW, METHOD_SEND, MethodNum, Response};
+use fvm_shared::{IPLD_RAW, METHOD_SEND, MethodNum, Response};
 use multihash_codetable::Code;
 
 use crate::BytecodeHash;
@@ -108,12 +108,6 @@ pub struct System<'r, RT: Runtime> {
     /// current message is still executing. `System` cannot load a contracts state with a
     pub(crate) tombstone: Option<Tombstone>,
 
-    // EIP-7702: per-authority delegation mapping and nonces (authority 20b -> delegate 20b / nonce u64)
-    delegates: Hamt<RT::Blockstore, Vec<u8>>,
-    nonces: Hamt<RT::Blockstore, u64>,
-    /// EIP-7702: Per-authority storage roots
-    storage_roots: Hamt<RT::Blockstore, Cid>,
-
     /// EIP-7702: Flag indicating we are executing under an authority context (InvokeAsEoa).
     /// When set, delegation mapping must not be followed again (depth limit == 1).
     pub in_authority_context: bool,
@@ -138,9 +132,6 @@ impl<'r, RT: Runtime> System<'r, RT> {
             readonly,
             randomness: None,
             tombstone: None,
-            delegates: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
-            nonces: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
-            storage_roots: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
             in_authority_context: false,
         }
     }
@@ -222,7 +213,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         };
 
         // Initialize base system from state
-        let mut sys = Self {
+        let sys = Self {
             rt,
             slots: StateKamt::load_with_config(&state.contract_state, store, KAMT_CONFIG.clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
@@ -234,28 +225,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
             readonly: read_only,
             randomness: None,
             tombstone: state.tombstone,
-            delegates: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
-            nonces: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
-            storage_roots: Hamt::new_with_bit_width(rt.store().clone(), HAMT_BIT_WIDTH),
             in_authority_context: false,
         };
-        // Load 7702 maps if present
-        if let Some(cid) = state.delegations {
-            sys.delegates = Hamt::load_with_bit_width(&cid, sys.rt.store().clone(), HAMT_BIT_WIDTH)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 delegates map")?;
-        }
-        if let Some(cid) = state.delegation_nonces {
-            sys.nonces = Hamt::load_with_bit_width(&cid, sys.rt.store().clone(), HAMT_BIT_WIDTH)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load 7702 nonces map")?;
-        }
-        if let Some(cid) = state.delegation_storage {
-            sys.storage_roots =
-                Hamt::load_with_bit_width(&cid, sys.rt.store().clone(), HAMT_BIT_WIDTH)
-                    .context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to load 7702 storage roots map",
-                    )?;
-        }
         Ok(sys)
     }
 
@@ -351,20 +322,6 @@ impl<'r, RT: Runtime> System<'r, RT> {
             })
         };
 
-        // Flush delegation maps
-        let del_cid = self
-            .delegates
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush delegates map")?;
-        let non_cid = self
-            .nonces
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush nonces map")?;
-        let stor_cid = self
-            .storage_roots
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush storage roots map")?;
-
         let new_root = self
             .rt
             .store()
@@ -379,9 +336,6 @@ impl<'r, RT: Runtime> System<'r, RT> {
                     transient_data,
                     nonce: self.nonce,
                     tombstone: self.tombstone,
-                    delegations: Some(del_cid),
-                    delegation_nonces: Some(non_cid),
-                    delegation_storage: Some(stor_cid),
                 },
                 Code::Blake2b256,
             )
@@ -392,82 +346,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         Ok(())
     }
 
-    // EIP-7702 helpers
-    pub fn get_delegate(&self, authority: &EthAddress) -> Option<EthAddress> {
-        let key = BytesKey(authority.as_ref().to_vec());
-        self.delegates.get(&key).ok().flatten().and_then(|v| {
-            if v.len() == 20 {
-                let mut a = [0u8; 20];
-                a.copy_from_slice(v);
-                Some(EthAddress(a))
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn set_delegate(
-        &mut self,
-        authority: &EthAddress,
-        delegate: Option<&EthAddress>,
-    ) -> Result<(), ActorError> {
-        self.saved_state_root = None;
-        let key = BytesKey(authority.as_ref().to_vec());
-        match delegate {
-            Some(d) => {
-                self.delegates
-                    .set(key, d.as_ref().to_vec())
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set delegate")?;
-            }
-            None => {
-                let _ = self
-                    .delegates
-                    .delete(&key)
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to delete delegate")?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn get_auth_nonce(&self, authority: &EthAddress) -> u64 {
-        let key = BytesKey(authority.as_ref().to_vec());
-        self.nonces.get(&key).ok().flatten().copied().unwrap_or(0)
-    }
-
-    pub fn set_auth_nonce(&mut self, authority: &EthAddress, next: u64) -> Result<(), ActorError> {
-        self.saved_state_root = None;
-        let key = BytesKey(authority.as_ref().to_vec());
-        self.nonces
-            .set(key, next)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set nonce")?;
-        Ok(())
-    }
-
-    pub fn get_storage_root_for(&self, authority: &EthAddress) -> Option<Cid> {
-        let key = BytesKey(authority.as_ref().to_vec());
-        self.storage_roots.get(&key).ok().flatten().cloned()
-    }
-
-    pub fn set_storage_root_for(
-        &mut self,
-        authority: &EthAddress,
-        root: &Cid,
-    ) -> Result<(), ActorError> {
-        self.saved_state_root = None;
-        let key = BytesKey(authority.as_ref().to_vec());
-        self.storage_roots
-            .set(key, *root)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set storage root")?;
-        Ok(())
-    }
-
-    /// Create an empty storage root CID for mounting a fresh KAMT.
-    pub fn create_empty_storage_root(&self) -> Result<Cid, ActorError> {
-        let mut tmp = StateKamt::new_with_config(self.rt.store(), KAMT_CONFIG.clone());
-        // We need to flush to obtain a CID. While the KAMT is temporary, flushing writes the empty KAMT structure to the blockstore.
-        // The resulting CID and its data persist in the blockstore and will be referenced by the per-authority storage root mapping.
-        tmp.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty storage root")
-    }
+    // Legacy 7702 per-authority maps have been removed; delegation is handled by EthAccount + VM intercept.
 
     /// Reload the actor state if changed.
     pub fn reload(&mut self) -> Result<(), ActorError> {
