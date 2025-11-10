@@ -105,7 +105,7 @@ fn load_bytecode(bs: &impl Blockstore, cid: &Cid) -> Result<Option<Bytecode>, Ac
     let bytecode = bs
         .get(cid)
         .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
-        .expect("bytecode not in state tree");
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "bytecode not in state tree")?;
     if bytecode.is_empty() { Ok(None) } else { Ok(Some(Bytecode::new(bytecode))) }
 }
 
@@ -181,7 +181,9 @@ where
 
     // Resolve the receiver's ethereum address.
     let receiver_fil_addr = system.rt.message().receiver();
-    let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).unwrap();
+    let receiver_eth_addr = system
+        .resolve_ethereum_address(&receiver_fil_addr)
+        .map_err(|_| ActorError::illegal_state("failed to resolve receiver eth address".into()))?;
 
     let mut exec_state =
         ExecutionState::new(*caller, receiver_eth_addr, value_received, input_data);
@@ -367,7 +369,10 @@ impl EvmContractActor {
         };
 
         let received_value = system.rt.message().value_received();
-        let caller = system.resolve_ethereum_address(&system.rt.message().caller()).unwrap();
+        let caller =
+            system.resolve_ethereum_address(&system.rt.message().caller()).map_err(|_| {
+                ActorError::illegal_state("failed to resolve caller eth address".into())
+            })?;
         let data = invoke_contract_inner(
             &mut system,
             params.input_data,
