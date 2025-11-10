@@ -8,7 +8,14 @@ use fvm_shared::address::Address;
 fn mk_tuple(nonce: u64) -> eip7702::DelegationParam {
     let mut addr = [0u8; 20];
     addr[19] = (nonce & 0xFF) as u8; // make unique per tuple
-    eip7702::DelegationParam { chain_id: 0, address: EthAddress(addr), nonce, y_parity: 0, r: vec![1u8], s: vec![1u8] }
+    eip7702::DelegationParam {
+        chain_id: 0,
+        address: EthAddress(addr),
+        nonce,
+        y_parity: 0,
+        r: vec![1u8],
+        s: vec![1u8],
+    }
 }
 
 #[test]

@@ -331,9 +331,7 @@ impl EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        Err(ActorError::illegal_state(
-            "EVM.ApplyAndCall has been removed on this branch".into(),
-        ))
+        Err(ActorError::illegal_state("EVM.ApplyAndCall has been removed on this branch".into()))
     }
 
     pub fn invoke_contract<RT>(

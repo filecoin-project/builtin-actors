@@ -47,7 +47,11 @@ fn value_transfer_failure_short_circuit() {
         fvm_shared::econ::TokenAmount::from_atto(1u8),
         None,
         SendFlags::default(),
-        SendOutcome { send_return: None, exit_code: fvm_shared::error::ExitCode::OK, send_error: None },
+        SendOutcome {
+            send_return: None,
+            exit_code: fvm_shared::error::ExitCode::OK,
+            send_error: None,
+        },
     );
     let res = rt.call::<ethaccount::EthAccountActor>(
         ethaccount::Method::ApplyAndCall as u64,
