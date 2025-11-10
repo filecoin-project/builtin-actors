@@ -72,9 +72,11 @@ pub enum Method {
     GetBytecodeHash = 4,
     GetStorageAt = 5,
     InvokeContractDelegate = 6,
+    // Legacy entry removed; kept for binary compatibility of method numbers.
     InvokeAsEoa = 7,
     InvokeAsEoaWithRoot = frc42_dispatch::method_hash!("InvokeAsEoaWithRoot"),
     // New: Atomic EIP-7702 apply + call entrypoint
+    // Legacy entry removed; kept for binary compatibility of method numbers.
     ApplyAndCall = frc42_dispatch::method_hash!("ApplyAndCall"),
     InvokeContract = frc42_dispatch::method_hash!("InvokeEVM"),
 }
@@ -195,66 +197,16 @@ where
 }
 
 impl EvmContractActor {
-    /// Execute arbitrary bytecode while binding the receiver to an EOA address.
-    /// Storage is isolated (non-persistent) for this legacy path; kept temporarily for compatibility.
+    /// Legacy InvokeAsEoa has been removed; keep stub returning illegal_state.
     pub fn invoke_as_eoa<RT>(
-        rt: &RT,
-        params: WithCodec<EoaInvokeParams, DAG_CBOR>,
+        _rt: &RT,
+        _params: WithCodec<EoaInvokeParams, DAG_CBOR>,
     ) -> Result<InvokeContractReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        // Only callable by this actor (internal trampoline from CALL path).
-        rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
-
-        let p = params.0;
-        let mut system = System::load(rt).map_err(|e| {
-            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
-        })?;
-
-        // Load bytecode to execute.
-        let bytecode = match load_bytecode(system.rt.store(), &p.code)? {
-            Some(b) => b,
-            None => return Ok(InvokeContractReturn { output_data: Vec::new() }),
-        };
-
-        // Save the actor's storage root and mount the authority's persistent storage root.
-        let actor_storage_root = system.flush_storage_root()?;
-        let auth_root = match system.get_storage_root_for(&p.receiver) {
-            Some(cid) => cid,
-            None => system.create_empty_storage_root()?,
-        };
-        system.mount_storage_root(&auth_root)?;
-        // Enter authority context (depth==1 for delegation).
-        let prev_ctx = system.in_authority_context;
-        system.in_authority_context = true;
-
-        // Execute with explicit caller/receiver/value using the authority's storage root.
-        let mut exec_state = ExecutionState::new(p.caller, p.receiver, p.value, p.input);
-        let output = execute(&bytecode, &mut exec_state, &mut system)?;
-        match output.outcome {
-            Outcome::Return => {
-                // Flush updated authority storage root and persist in map, then restore actor root.
-                let new_auth_root = system.flush_storage_root()?;
-                system.set_storage_root_for(&exec_state.receiver, &new_auth_root)?;
-                system.mount_storage_root(&actor_storage_root)?;
-                system.in_authority_context = prev_ctx;
-                // Flush maps/state.
-                system.flush()?;
-                Ok(InvokeContractReturn { output_data: output.return_data.to_vec() })
-            }
-            Outcome::Revert => {
-                // Restore actor root and propagate revert.
-                system.mount_storage_root(&actor_storage_root)?;
-                system.in_authority_context = prev_ctx;
-                Err(ActorError::unchecked_with_data(
-                    EVM_CONTRACT_REVERTED,
-                    format!("contract reverted at {0}", output.pc),
-                    IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
-                ))
-            }
-        }
+        Err(ActorError::illegal_state("InvokeAsEoa has been removed on this branch".into()))
     }
     pub fn constructor<RT>(rt: &RT, params: ConstructorParams) -> Result<(), ActorError>
     where
@@ -367,6 +319,20 @@ impl EvmContractActor {
                 ))
             }
         }
+    }
+
+    // Legacy ApplyAndCall route removed in favor of EthAccount.ApplyAndCall + VM intercept.
+    fn apply_and_call_removed<RT>(
+        _rt: &RT,
+        _params: WithCodec<crate::ApplyAndCallParams, DAG_CBOR>,
+    ) -> Result<crate::ApplyAndCallReturn, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        Err(ActorError::illegal_state(
+            "EVM.ApplyAndCall has been removed on this branch".into(),
+        ))
     }
 
     pub fn invoke_contract<RT>(
@@ -554,9 +520,11 @@ impl ActorCode for EvmContractActor {
         GetBytecodeHash => bytecode_hash,
         GetStorageAt => storage_at,
         InvokeContractDelegate => invoke_contract_delegate,
+        // Legacy ApplyAndCall/InvokeAsEoa removed; map to stubs returning illegal_state.
         InvokeAsEoa => invoke_as_eoa,
+        ApplyAndCall => apply_and_call_removed,
+        // Keep only InvokeAsEoaWithRoot for VM intercepts.
         InvokeAsEoaWithRoot => invoke_as_eoa_with_root,
-        ApplyAndCall => apply_and_call,
         Resurrect => resurrect,
         _ => handle_filecoin_method,
     }
