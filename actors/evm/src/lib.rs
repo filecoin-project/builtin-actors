@@ -150,11 +150,15 @@ fn initialize_evm_contract(
             system.set_bytecode(&output.return_data)?;
             system.flush()
         }
-        Outcome::Revert => Err(ActorError::unchecked_with_data(
-            EVM_CONTRACT_REVERTED,
-            "constructor reverted".to_string(),
-            IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
-        )),
+        Outcome::Revert => {
+            let data_block = IpldBlock::serialize_cbor(&BytesSer(&output.return_data))
+                .map_err(|_| ActorError::illegal_state("failed to encode revert data".into()))?;
+            Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_REVERTED,
+                "constructor reverted".to_string(),
+                data_block,
+            ))
+        }
     }
 }
 
@@ -189,11 +193,15 @@ where
             system.flush()?;
             Ok(output.return_data.to_vec())
         }
-        Outcome::Revert => Err(ActorError::unchecked_with_data(
-            EVM_CONTRACT_REVERTED,
-            format!("contract reverted at {0}", output.pc),
-            IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
-        )),
+        Outcome::Revert => {
+            let data_block = IpldBlock::serialize_cbor(&BytesSer(&output.return_data))
+                .map_err(|_| ActorError::illegal_state("failed to encode revert data".into()))?;
+            Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_REVERTED,
+                format!("contract reverted at {0}", output.pc),
+                data_block,
+            ))
+        }
     }
 }
 
@@ -313,10 +321,14 @@ impl EvmContractActor {
                 // Restore and propagate revert via unchecked error with data encoded as raw bytes.
                 system.mount_storage_root(&actor_storage_root)?;
                 system.in_authority_context = prev_ctx;
+                let data_block = IpldBlock::serialize_cbor(&BytesSer(&output.return_data))
+                    .map_err(|_| {
+                        ActorError::illegal_state("failed to encode revert data".into())
+                    })?;
                 Err(ActorError::unchecked_with_data(
                     EVM_CONTRACT_REVERTED,
                     format!("contract reverted at {0}", output.pc),
-                    IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
+                    data_block,
                 ))
             }
         }
