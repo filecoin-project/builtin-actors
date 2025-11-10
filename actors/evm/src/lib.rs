@@ -904,7 +904,8 @@ impl EvmContractActor {
                                     });
                                 }
                             };
-                            let self_id_addr = Address::new_id(system.rt.message().receiver().id().unwrap());
+                            let self_id_addr =
+                                Address::new_id(system.rt.message().receiver().id().unwrap());
                             let res = system.send(
                                 &self_id_addr,
                                 Method::InvokeAsEoa as u64,
