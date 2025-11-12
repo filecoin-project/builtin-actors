@@ -5,7 +5,8 @@ use cid::Cid;
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
-// Delegator removed; 7702 mapping is internal to EVM state.
+// EIP-7702: Delegation mapping/state lives in EthAccount; EXTCODE*
+// consults the runtime helper to project the 23-byte pointer image.
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::{AsActorError, deserialize_block};
 use fvm_ipld_blockstore::Blockstore;

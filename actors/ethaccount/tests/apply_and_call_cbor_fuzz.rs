@@ -1,5 +1,6 @@
-use fil_actor_evm as evm;
+use fil_actor_ethaccount as ethaccount;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::DAG_CBOR;
 use fvm_shared::error::ExitCode;
 
 mod util;
@@ -8,13 +9,14 @@ mod util;
 // rejection and no panics on deserialization or validation.
 #[test]
 fn apply_and_call_rejects_malformed_cbor() {
-    let mut rt = util::construct_and_verify(vec![]);
+    // We don't need full EthAccount setup because decode fails before actor code executes.
+    let mut rt = util::new_runtime();
 
     // Helper to call ApplyAndCall with raw CBOR bytes and assert error.
     let try_call = |rt: &mut fil_actors_runtime::test_utils::MockRuntime, cbor: Vec<u8>| {
-        let res = rt.call::<evm::EvmContractActor>(
-            evm::Method::ApplyAndCall as u64,
-            Some(IpldBlock { codec: fvm_ipld_encoding::DAG_CBOR, data: cbor }),
+        let res = rt.call::<ethaccount::EthAccountActor>(
+            ethaccount::Method::ApplyAndCall as u64,
+            Some(IpldBlock { codec: DAG_CBOR, data: cbor }),
         );
         assert!(res.is_err(), "malformed CBOR should be rejected");
         // Any non-OK exit is fine; USR_SERIALIZATION or USR_ILLEGAL_ARGUMENT are acceptable.
@@ -63,3 +65,4 @@ fn apply_and_call_rejects_malformed_cbor() {
         try_call(&mut rt, buf);
     }
 }
+

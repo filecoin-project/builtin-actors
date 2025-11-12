@@ -17,7 +17,8 @@ use crate::interpreter::{Bytecode, ExecutionState, System, execute};
 use crate::reader::ValueReader;
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-// Delegator removed in this branch; 7702 mapping is internal to EVM state.
+// EIP-7702: Delegation mapping/state lives in EthAccount; VM intercept
+// handles delegated execution (authority context) and storage mounting.
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
 
@@ -50,8 +51,7 @@ pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x86, 0x8e, 0x10, 0xc4];
 
 const EVM_WORD_SIZE: usize = 32;
 
-// Shared delegated event topic string for EIP-7702 attribution.
-pub const DELEGATED_EVENT_TOPIC: &[u8] = b"Delegated(address)";
+// Delegated event topic is emitted by the VM intercept; no local constant needed here.
 
 // Note: no actor-defined intrinsic gas charges are applied for 7702 in this branch.
 
@@ -609,48 +609,5 @@ impl EvmContractActor {
         sv > &n2
     }
 
-    #[allow(dead_code)]
-    fn recover_authority(
-        rt: &impl Runtime,
-        t: &crate::DelegationParam,
-    ) -> Result<EthAddress, ActorError> {
-        // message = keccak256(0x05 || rlp([chain_id, address(20), nonce]))
-        let mut s = rlp::RlpStream::new_list(3);
-        s.append(&t.chain_id);
-        s.append(&t.address.as_ref());
-        s.append(&t.nonce);
-        let rlp_bytes = s.out().to_vec();
-        let mut preimage = Vec::with_capacity(1 + rlp_bytes.len());
-        preimage.push(0x05u8);
-        preimage.extend_from_slice(&rlp_bytes);
-        let mut hash32 = [0u8; 32];
-        let h = rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &preimage);
-        hash32.copy_from_slice(&h);
-
-        // build 65-byte signature r||s||v (accept <=32-byte r/s; left-pad to 32)
-        let mut sig = [0u8; 65];
-        let r_start = 32 - t.r.len();
-        sig[r_start..32].copy_from_slice(&t.r);
-        let s_start = 64 - t.s.len();
-        sig[s_start..64].copy_from_slice(&t.s);
-        sig[64] = t.y_parity;
-        let pubkey = rt
-            .recover_secp_public_key(&hash32, &sig)
-            .map_err(|e| ActorError::illegal_argument(format!("signature recovery failed: {e}")))?;
-        let (keccak64, _len) =
-            rt.hash_64(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &pubkey[1..]);
-        let mut addr = [0u8; 20];
-        addr.copy_from_slice(&keccak64[12..32]);
-        Ok(EthAddress(addr))
-    }
-    pub fn apply_and_call<RT>(
-        _rt: &RT,
-        _params: WithCodec<crate::ApplyAndCallParams, DAG_CBOR>,
-    ) -> Result<crate::ApplyAndCallReturn, ActorError>
-    where
-        RT: Runtime,
-        RT::Blockstore: Clone,
-    {
-        Err(ActorError::illegal_state("EVM.ApplyAndCall has been removed on this branch".into()))
-    }
+    // Note: EVM.ApplyAndCall has been removed; dispatch maps it to apply_and_call_removed.
 }
