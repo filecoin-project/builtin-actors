@@ -12,7 +12,8 @@ fn apply_and_call_params_roundtrip() {
         r: vec![0x11; 32],
         s: vec![0x22; 32],
     };
-    let call = ApplyCall { to: EthAddress([0xBB; 20]), value: vec![0x01, 0x02], input: vec![0x03, 0x04] };
+    let call =
+        ApplyCall { to: EthAddress([0xBB; 20]), value: vec![0x01, 0x02], input: vec![0x03, 0x04] };
     let params = ApplyAndCallParams { list: vec![auth.clone()], call };
 
     let enc = to_vec(&params).expect("encode");
@@ -24,4 +25,3 @@ fn apply_and_call_params_roundtrip() {
     assert_eq!(dec.call.value, vec![0x01, 0x02]);
     assert_eq!(dec.call.input, vec![0x03, 0x04]);
 }
-

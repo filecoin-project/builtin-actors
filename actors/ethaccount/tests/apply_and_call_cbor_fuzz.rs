@@ -1,6 +1,6 @@
 use fil_actor_ethaccount as ethaccount;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::DAG_CBOR;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::error::ExitCode;
 
 mod util;
@@ -65,4 +65,3 @@ fn apply_and_call_rejects_malformed_cbor() {
         try_call(&mut rt, buf);
     }
 }
-
