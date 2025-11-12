@@ -176,34 +176,19 @@ test_vm = { path = "test_vm" }
 #frc42_dispatch = { git = "https://github.com/filecoin-project/actors-utils", branch = "main" }
 #frc46_token = { git = "https://github.com/filecoin-project/actors-utils", branch = "main" }
 
-## Uncomment when working locally on ref-fvm and this repo simultaneously.
-## Assumes the ref-fvm checkout is in a sibling directory with the same name.
-## (Valid while FVM modules aren't published to crates.io)
-[patch."https://github.com/filecoin-project/ref-fvm"]
-fvm_shared = { path = "../ref-fvm/shared" }
-fvm_sdk = { path = "../ref-fvm/sdk" }
-fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
-fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
-fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
-fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
-fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
-
-## Uncomment entries below when working locally on ref-fvm and this repo simultaneously.
-## Assumes the ref-fvm checkout is in a sibling directory with the same name.
-## (Valid once FVM modules are published to crates.io)
+## NOTE: Use git-based patches for CI so path overrides aren't required.
+## These override crates.io versions with the EIP-7702-capable ref-fvm commit.
+## For local cross-repo development, prefer uncommenting the path-based section above
+## in a local working copy (do not commit path overrides).
 [patch.crates-io]
-fvm_shared = { path = "../ref-fvm/shared" }
-fvm_sdk = { path = "../ref-fvm/sdk" }
-fvm_ipld_car = { path = "../ref-fvm/ipld/car" }
-fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
-fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
-fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
-fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
-fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
-#fvm_actor_utils = { path = "../actors-utils/fvm_actor_utils"}
-#fil_actor_bundler = { path = "../builtin-actors-bundler"}
-#frc42_dispatch = { path = "../actors-utils/frc42_dispatch"}
-#frc46_token = { path = "../actors-utils/frc46_token"}
+fvm_shared = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_sdk = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_car = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_hamt = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_amt = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_bitfield = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_encoding = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_blockstore = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
 
 [profile.wasm]
 inherits = "release"
