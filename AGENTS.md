@@ -10,15 +10,15 @@ Repo‑local quick notes:
 - Lint: `make check` (clippy; warnings are errors).
 - Formatting: `make rustfmt`.
 - EIP‑7702 is always active in this bundle (no runtime NV gating).
-- EIP‑7702 design notes live at `../eip7702.md`.
+- EIP‑7702 design notes live at `../eip-7702.md` and `../lotus/documentation/eip7702_ethaccount_ref-fvm_migration.md`.
 
 Current Work Priority (EIP‑7702)
-- Interpreter minimalized: CALL/STATICCALL to EOAs route via `METHOD_SEND`; no internal delegation re‑follow.
+- Interpreter minimalized: CALL/STATICCALL to EOAs do not re‑follow delegation; VM intercept handles delegation.
 - Legacy EVM ApplyAndCall/InvokeAsEoa removed; `InvokeAsEoaWithRoot` remains for VM intercept.
 - Decode robustness: no unwraps or silent fallbacks; decode errors return `illegal_state`.
 - Tests (green):
-  - EVM: core unit tests; no legacy 7702 tests.
-  - EthAccount: tuple cap boundary, duplicates under receiver‑only, value‑transfer short‑circuit; nonce init/increment covered with one ignored test.
+  - EVM: core unit tests; EXTCODE* now consults runtime helper.
+  - EthAccount: invalids (domain, yParity, R/S ≤32 with left‑pad, high‑S), tuple cap boundary, duplicates under receiver‑only, value‑transfer short‑circuit; nonce init/increment.
 
 Quick Validation
 - Build/lint/tests (workspace):
