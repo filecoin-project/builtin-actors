@@ -73,10 +73,14 @@ pub(crate) fn verify_signature(msg: [u8; 32], sig: [u8; 64], pk: [u8; 64]) -> Op
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::PrecompileError;
-    use primitives::hex::FromHex;
+    use crate::interpreter::precompiles::PrecompileError;
+    // use alloy_core::primitives::Bytes;
+    // use alloy_core::primitives::hex::FromHex;
+    use fil_actors_runtime::test_utils::MockRuntime;
+    use crate::interpreter::System;
+    use crate::interpreter::precompiles::PrecompileContext;
     use rstest::rstest;
-
+    
     #[rstest]
     // Test vectors from https://github.com/daimo-eth/p256-verifier/tree/master/test-vectors
     #[case::ok_1("4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d604aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e", true)]
@@ -95,22 +99,33 @@ mod test {
     #[case::fail_invalid_sig("4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4dffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff4aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e", false)]
     #[case::fail_invalid_pubkey("4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d6000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", false)]
     fn test_sig_verify(#[case] input: &str, #[case] expect_success: bool) {
-        let input = Bytes::from_hex(input).unwrap();
-        let outcome = p256_verify(&input).unwrap();
-        assert_eq!(outcome.gas_used, 3_450u64);
+        let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+        let mut system = System::create(&rt).unwrap();
+
+        // let input = Bytes::from_hex(input).unwrap();
+        let input_bytes = hex::decode(input).unwrap();
+        let outcome = p256_verify(&mut system, &input_bytes, PrecompileContext::default()).unwrap();
+        
         let expected_result = if expect_success {
-            B256::with_last_byte(1).into()
+            // Return 32 bytes with last byte set to 1 for success
+            B256::with_last_byte(1).to_vec()
         } else {
-            Bytes::new()
+            // Return empty vector for failure
+            vec![]
         };
-        assert_eq!(outcome.bytes, expected_result);
+        assert_eq!(outcome, expected_result);
     }
 
     // #[rstest]
     // fn test_not_enough_gas_errors() {
-    //     let input = Bytes::from_hex("4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d604aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e").unwrap();
-    //     let target_gas = 2_500u64;
-    //     let result = p256_verify(&input, target_gas);
+    //     let rt = MockRuntime::default();
+    //     rt.in_call.replace(true);
+    //     let mut system = System::create(&rt).unwrap();
+
+    //     let input = hex::decode("4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d604aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e").unwrap();
+    //     // let target_gas = 2_500u64;
+    //     let result = p256_verify(&mut system, &input, PrecompileContext::default());
 
     //     assert!(result.is_err());
     //     assert_eq!(result.err(), Some(PrecompileError::OutOfGas));
@@ -120,8 +135,8 @@ mod test {
     #[case::ok_1("b5a77e7a90aa14e0bf5f337f06f597148676424fae26e175c6e5621c34351955289f319789da424845c9eac935245fcddd805950e2f02506d09be7e411199556d262144475b1fa46ad85250728c600c53dfd10f8b3f4adf140e27241aec3c2da3a81046703fccf468b48b145f939efdbb96c3786db712b3113bb2488ef286cdcef8afe82d200a5bb36b5462166e8ce77f2d831a52ef2135b2af188110beaefb1", true)]
     #[case::fail_1("b5a77e7a90aa14e0bf5f337f06f597148676424fae26e175c6e5621c34351955289f319789da424845c9eac935245fcddd805950e2f02506d09be7e411199556d262144475b1fa46ad85250728c600c53dfd10f8b3f4adf140e27241aec3c2daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaef8afe82d200a5bb36b5462166e8ce77f2d831a52ef2135b2af188110beaefb1", false)]
     fn test_verify_impl(#[case] input: &str, #[case] expect_success: bool) {
-        let input = Bytes::from_hex(input).unwrap();
-        let result = verify_impl(&input);
+        let input_bytes = hex::decode(input).unwrap();
+        let result = verify_impl(&input_bytes);
 
         assert_eq!(result, expect_success);
     }
