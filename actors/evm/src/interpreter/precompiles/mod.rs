@@ -14,6 +14,7 @@ mod bls12_381;
 mod bls_util;
 mod evm;
 mod fvm;
+mod secp256r1;
 
 use bls12_381::{
     bls12_g1add, bls12_g1msm, bls12_g2add, bls12_g2msm, bls12_map_fp_to_g1, bls12_map_fp2_to_g2,
