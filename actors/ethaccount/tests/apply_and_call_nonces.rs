@@ -1,4 +1,5 @@
 use fil_actor_ethaccount as ethaccount;
+use fil_actor_ethaccount::state::State;
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::eip7702;
 use fil_actors_runtime::EAM_ACTOR_ID;
@@ -7,7 +8,6 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 
 #[test]
-#[ignore]
 fn nonce_init_and_increment() {
     let mut rt = MockRuntime::new();
     rt.expect_validate_caller_any();
@@ -62,6 +62,10 @@ fn nonce_init_and_increment() {
     );
     assert!(res.is_ok());
 
+    // After the first successful call, the nonce should be incremented to 1.
+    let state: State = rt.get_state();
+    assert_eq!(state.auth_nonce, 1, "auth_nonce should be incremented to 1 after first tuple");
+
     // Next attempt with nonce=0 fails; expect error
     rt.expect_validate_caller_any();
     let list = vec![eip7702::DelegationParam {
@@ -76,21 +80,13 @@ fn nonce_init_and_increment() {
         list,
         call: eip7702::ApplyCall { to: EthAddress([0u8; 20]), value: vec![], input: vec![] },
     };
-    rt.expect_send_any_params(
-        Address::new_delegated(EAM_ACTOR_ID, &[0u8; 20]).unwrap(),
-        0,
-        fvm_shared::econ::TokenAmount::from_atto(0u8),
-        None,
-        SendFlags::default(),
-        SendOutcome {
-            send_return: None,
-            exit_code: fvm_shared::error::ExitCode::OK,
-            send_error: None,
-        },
-    );
     let res = rt.call::<ethaccount::EthAccountActor>(
         ethaccount::Method::ApplyAndCall as u64,
         IpldBlock::serialize_dag_cbor(&params).unwrap(),
     );
-    assert!(res.is_err());
+    assert!(res.is_err(), "second ApplyAndCall with nonce=0 must fail once auth_nonce=1");
+
+    // State should remain unchanged on failed call (auth_nonce still 1).
+    let state_after: State = rt.get_state();
+    assert_eq!(state_after.auth_nonce, 1, "auth_nonce should remain 1 after rejected nonce");
 }

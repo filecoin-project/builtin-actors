@@ -1,11 +1,6 @@
 pub mod state;
 pub mod types;
 
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::address::Payload;
-use fvm_shared::{METHOD_CONSTRUCTOR, MethodNum};
-use num_derive::FromPrimitive;
-
 use crate::state::State;
 use cid::Cid;
 use fil_actors_evm_shared::address::EthAddress;
@@ -18,11 +13,16 @@ use fil_actors_runtime::{
     actor_error,
 };
 use fvm_ipld_encoding::DAG_CBOR;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::strict_bytes;
+use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple, serde_tuple};
 use fvm_shared::address::Address;
+use fvm_shared::address::Payload;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
+use fvm_shared::{METHOD_CONSTRUCTOR, MethodNum};
+use num_derive::FromPrimitive;
 use std::collections::HashSet;
 
 #[cfg(feature = "fil-actor")]
@@ -38,6 +38,15 @@ pub enum Method {
 
 /// Ethereum Account actor.
 pub struct EthAccountActor;
+
+// Minimal local copy of the EVM InvokeContract params shape, to avoid a hard
+// dependency on the EVM actor crate while still routing outer calls through
+// the EVM entrypoint when the target is an EVM contract.
+#[derive(Serialize_tuple, Deserialize_tuple)]
+struct InvokeContractParams {
+    #[serde(with = "strict_bytes")]
+    pub input_data: Vec<u8>,
+}
 
 impl EthAccountActor {
     fn ensure_initialized(rt: &impl Runtime) -> Result<(), ActorError> {
@@ -231,7 +240,7 @@ impl EthAccountActor {
         };
 
         // Apply tuples that target this receiver only (WIP: single-authority per actor). Others are rejected.
-        rt.transaction::<State, _, _>(|st, rt| {
+        rt.transaction::<State, _, _>(|st, rt: &_| {
             for t in tuples.iter() {
                 Self::validate_tuple(rt, t)?;
                 let authority = Self::recover_authority(rt, t)?;
@@ -281,7 +290,11 @@ impl EthAccountActor {
             Ok(())
         })?;
 
-        // WIP outer call: forward value to destination and return status/data best-effort.
+        // Outer call: when the target resolves to an EVM contract, route via the
+        // EVM InvokeContract entrypoint so the callee executes under the EVM
+        // interpreter and can benefit from delegated CALL/EXTCODE* semantics.
+        // For non-EVM targets or unresolved addresses, fall back to a plain
+        // value transfer (METHOD_SEND) with no parameters.
         let call = &params.0.call;
         let to_fil: Address = call.to.into();
         // value is encoded as bytes; parse as big-endian U256 then into TokenAmount
@@ -290,7 +303,36 @@ impl EthAccountActor {
             let v = U256::from_big_endian(&call.value);
             TokenAmount::from(&v)
         };
-        let res = rt.send(&to_fil, 0, None, value, None, SendFlags::default());
+
+        // Detect whether the target is an EVM builtin actor.
+        let is_evm_target = match rt.resolve_address(&to_fil) {
+            Some(id) => match rt.get_actor_code_cid(&id) {
+                Some(code) => matches!(
+                    rt.resolve_builtin_actor_type(&code),
+                    Some(fil_actors_runtime::runtime::builtins::Type::EVM)
+                ),
+                None => false,
+            },
+            None => false,
+        };
+
+        // Route via InvokeEVM when the target is an EVM contract; otherwise use
+        // a plain send (METHOD_SEND). In all cases, map the callee exit code
+        // into the embedded status while keeping this actor's exit code OK.
+        let res = if is_evm_target {
+            let params_blk = IpldBlock::serialize_dag_cbor(&InvokeContractParams {
+                input_data: call.input.clone(),
+            })
+            .map_err(|e| {
+                ActorError::illegal_argument(format!("failed to encode outer EVM call params: {e}"))
+            })?;
+            let method_invoke_evm = frc42_dispatch::method_hash!("InvokeEVM");
+            rt.send(&to_fil, method_invoke_evm, params_blk, value, None, SendFlags::default())
+        } else {
+            rt.send(&to_fil, 0, None, value, None, SendFlags::default())
+        };
+
+        use fvm_shared::error::ExitCode;
         match res {
             Ok(resp) => Ok(ApplyAndCallReturn {
                 status: if resp.exit_code == ExitCode::OK { 1 } else { 0 },

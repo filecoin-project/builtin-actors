@@ -110,7 +110,7 @@ return
     asm_local::new_contract("call-proxy", init, body).unwrap()
 }
 
-// Pre-activation: CALL to EOA should not consult Delegator;
+// Pre-activation: CALL to EOA should not consult any 7702 delegation machinery;
 // it should attempt a direct InvokeContract on the EOA f4 address and surface the syscall error.
 #[test]
 fn call_to_eoa_pre_activation_skips_delegation() {
@@ -142,7 +142,7 @@ fn call_to_eoa_pre_activation_skips_delegation() {
         Some(ErrorNumber::NotFound),
     );
 
-    // Invoke the contract; we only care that no unexpected Delegator send occurred.
+    // Invoke the contract; we only care that no unexpected delegated send occurred.
     let _ = util::invoke_contract(&rt, &call_params);
     rt.verify();
 }
