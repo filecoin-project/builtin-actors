@@ -666,3 +666,42 @@ pub struct MaxTerminationFeeReturn {
 pub struct InitialPledgeReturn {
     pub initial_pledge: TokenAmount,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct GenerateSectorStatusInfoReturn {
+    pub status: SectorStatusCode,
+    #[serde(with = "strict_bytes")]
+    pub aux_data: Vec<u8>, // CBOR-encoded (deadline, partition)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ValidateSectorStatusInfoReturn {
+    pub valid: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SectorStatusCode {
+    /// Sector is active (not terminated, includes faulty sectors)
+    Active,
+    /// Sector has been terminated
+    Terminated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorLocation {
+    pub deadline: u64,
+    pub partition: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct GenerateSectorStatusInfoParams {
+    pub sector_number: SectorNumber,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ValidateSectorStatusInfoParams {
+    pub sector_number: SectorNumber,
+    pub status: SectorStatusCode,
+    pub aux_data: Vec<u8>,
+}
