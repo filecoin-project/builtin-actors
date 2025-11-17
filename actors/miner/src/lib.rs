@@ -162,6 +162,8 @@ pub enum Method {
     GetMultiaddrsExported = frc42_dispatch::method_hash!("GetMultiaddrs"),
     MaxTerminationFeeExported = frc42_dispatch::method_hash!("MaxTerminationFee"),
     InitialPledgeExported = frc42_dispatch::method_hash!("InitialPledge"),
+    GenerateSectorStatusInfoExported = frc42_dispatch::method_hash!("GenerateSectorStatusInfo"),
+    ValidateSectorStatusInfoExported = frc42_dispatch::method_hash!("ValidateSectorStatusInfo"),
 }
 
 pub const SECTOR_CONTENT_CHANGED: MethodNum = frc42_dispatch::method_hash!("SectorContentChanged");
@@ -1970,6 +1972,81 @@ impl Actor {
         let state: State = rt.state()?;
 
         Ok(InitialPledgeReturn { initial_pledge: state.initial_pledge })
+    }
+
+    /// Generates sector status information including location data.
+    /// This is an expensive operation that searches through all deadlines and partitions
+    /// to find sector and determine its status.
+    fn generate_sector_status_info(
+        rt: &impl Runtime,
+        params: GenerateSectorStatusInfoParams,
+    ) -> Result<GenerateSectorStatusInfoReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+
+        let state: State = rt.state()?;
+
+        // Find sector location using existing method
+        let (deadline_idx, partition_idx) = state
+            .find_sector(rt.store(), params.sector_number)
+            .map_err(|e| actor_error!(illegal_state, "failed to find sector location: {}", e))?;
+
+        // Load partition to determine status
+        let deadlines = state.load_deadlines(rt.store())?;
+        let deadline = deadlines.load_deadline(rt.store(), deadline_idx)?;
+        let partition = deadline.load_partition(rt.store(), partition_idx)?;
+
+        // Determine status
+        let current_status = if partition.terminated.get(params.sector_number) {
+            SectorStatusCode::Terminated
+        } else {
+            SectorStatusCode::Active // Includes faulty sectors
+        };
+        let sector_location = SectorLocation { deadline: deadline_idx, partition: partition_idx };
+        let aux_data = fvm_ipld_encoding::to_vec(&sector_location)
+            .map_err(|e| actor_error!(illegal_state, e.description))?;
+
+        // Compare with provided status
+        Ok(GenerateSectorStatusInfoReturn { status: current_status, aux_data: aux_data })
+    }
+
+    /// Validates sector status information using pre-computed location data.
+    /// This is a cheap operation that directly loads partition using provided
+    /// location and checks if the current status matches the expected status.
+    fn validate_sector_status_info(
+        rt: &impl Runtime,
+        params: ValidateSectorStatusInfoParams,
+    ) -> Result<ValidateSectorStatusInfoReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+
+        let state: State = rt.state()?;
+
+        // Deserialize aux_data to extract sector location
+        let sector_location: SectorLocation = fvm_ipld_encoding::from_slice(&params.aux_data)
+            .map_err(|e| actor_error!(illegal_argument, "invalid aux_data: {}", e))?;
+
+        // Load partition directly using provided location indices
+        let deadlines = state.load_deadlines(rt.store())
+            .map_err(|e| e.wrap("failed to load deadlines"))?;
+        let deadline = deadlines.load_deadline(rt.store(), sector_location.deadline)
+            .map_err(|e| e.wrap("failed to load deadline"))?;
+        let partition = deadline.load_partition(rt.store(), sector_location.partition)?;
+
+        // Check if sector actually exists in this partition
+        if !partition.sectors.get(params.sector_number) {
+            // Sector doesn't exist in specified partition - data is inconsistent
+            return Ok(ValidateSectorStatusInfoReturn { valid: false });
+        }
+
+        // Determine current status using same logic as generate_sector_status_info
+        let current_status = if partition.terminated.get(params.sector_number) {
+            SectorStatusCode::Terminated
+        } else {
+            SectorStatusCode::Active // Includes faulty sectors
+        };
+
+        // Compare with expected status
+        let is_valid = current_status == params.status;
+        Ok(ValidateSectorStatusInfoReturn { valid: is_valid })
     }
 
     fn check_sector_proven(
@@ -5659,6 +5736,8 @@ impl ActorCode for Actor {
         ProveCommitSectorsNI => prove_commit_sectors_ni,
         MaxTerminationFeeExported => max_termination_fee,
         InitialPledgeExported => initial_pledge,
+        GenerateSectorStatusInfoExported => generate_sector_status_info,
+        ValidateSectorStatusInfoExported => validate_sector_status_info,
     }
 }
 
