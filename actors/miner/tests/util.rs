@@ -55,18 +55,20 @@ use fil_actor_miner::{
     DataActivationNotification, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, FaultDeclaration,
-    GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
-    GetMultiaddrsReturn, GetPeerIDReturn, Method, Method as MinerMethod,
-    MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION, Partition,
-    PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
-    PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitSectorParams, ProveCommitSectors3Params, ProveCommitSectors3Return, QuantSpec,
-    RecoveryDeclaration, ReportConsensusFaultParams, SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH,
-    SectorActivationManifest, SectorChanges, SectorContentChangedParams,
-    SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
-    TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, WindowedPoSt,
-    WithdrawBalanceParams, WithdrawBalanceReturn, consensus_fault_penalty, ext,
+    GenerateSectorStatusInfoParams, GenerateSectorStatusInfoReturn, GetAvailableBalanceReturn,
+    GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn, GetPeerIDReturn, Method,
+    Method as MinerMethod, MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION,
+    Partition, PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn,
+    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
+    PreCommitSectorParams, ProveCommitSectorParams, ProveCommitSectors3Params,
+    ProveCommitSectors3Return, QuantSpec, RecoveryDeclaration, ReportConsensusFaultParams,
+    SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH, SectorActivationManifest, SectorChanges,
+    SectorContentChangedParams, SectorContentChangedReturn, SectorOnChainInfo,
+    SectorPreCommitInfo, SectorPreCommitOnChainInfo, SectorReturn, SectorStatusCode,
+    SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
+    TerminationDeclaration, ValidateSectorStatusInfoParams, ValidateSectorStatusInfoReturn,
+    VerifiedAllocationKey, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
+    consensus_fault_penalty, ext,
     ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
     ext::power::UPDATE_CLAIMED_POWER_METHOD,
     ext::verifreg::{
@@ -2834,6 +2836,42 @@ impl ActorHarness {
             .deserialize()?;
         rt.verify();
         Ok(available_balance_ret.available_balance)
+    }
+
+    pub fn generate_sector_status_info(
+        &self,
+        rt: &MockRuntime,
+        sector_number: SectorNumber,
+    ) -> Result<(SectorStatusCode, Vec<u8>), ActorError> {
+        let params = GenerateSectorStatusInfoParams { sector_number };
+        rt.expect_validate_caller_any();
+        let result = rt.call::<Actor>(
+            Method::GenerateSectorStatusInfoExported as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        rt.verify();
+
+        let return_value: GenerateSectorStatusInfoReturn = result.unwrap().deserialize().unwrap();
+        Ok((return_value.status, return_value.aux_data))
+    }
+
+    pub fn validate_sector_status_info(
+        &self,
+        rt: &MockRuntime,
+        sector_number: SectorNumber,
+        status: SectorStatusCode,
+        aux_data: Vec<u8>,
+    ) -> Result<bool, ActorError> {
+        let params = ValidateSectorStatusInfoParams { sector_number, status, aux_data };
+        rt.expect_validate_caller_any();
+        let result = rt.call::<Actor>(
+            Method::ValidateSectorStatusInfoExported as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        rt.verify();
+
+        let return_value: ValidateSectorStatusInfoReturn = result.unwrap().deserialize().unwrap();
+        Ok(return_value.valid)
     }
 }
 
