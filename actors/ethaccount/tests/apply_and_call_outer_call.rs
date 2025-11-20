@@ -1,4 +1,5 @@
 use fil_actor_ethaccount as ethaccount;
+use fil_actor_ethaccount::state::State;
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::eip7702;
 use fil_actors_runtime::EAM_ACTOR_ID;
@@ -46,9 +47,10 @@ fn outer_call_routes_through_evm_invoke_contract() {
     rt.set_address_actor_type(Address::new_id(evm_id), *EVM_ACTOR_CODE_ID);
 
     // Single valid delegation tuple targeting the receiver authority.
+    let delegate = EthAddress([9u8; 20]);
     let list = vec![eip7702::DelegationParam {
         chain_id: 0,
-        address: EthAddress([9u8; 20]),
+        address: delegate,
         nonce: 0,
         y_parity: 0,
         r: vec![1u8; 32],
@@ -85,6 +87,10 @@ fn outer_call_routes_through_evm_invoke_contract() {
         IpldBlock::serialize_dag_cbor(&params).unwrap(),
     );
     assert!(res.is_ok(), "ApplyAndCall should succeed with embedded status");
+
+    let state: State = rt.get_state();
+    assert_eq!(state.delegate_to, Some(delegate));
+    assert_eq!(state.auth_nonce, 1);
 
     // Decode the embedded ApplyAndCallReturn and verify status/output_data.
     let ret_blk = res.unwrap().expect("expected non-empty ApplyAndCall return");
