@@ -2006,7 +2006,7 @@ impl Actor {
             .map_err(|e| actor_error!(illegal_state, e.description))?;
 
         // Compare with provided status
-        Ok(GenerateSectorStatusInfoReturn { status: current_status, aux_data: aux_data })
+        Ok(GenerateSectorStatusInfoReturn { status: current_status, aux_data })
     }
 
     /// Validates sector status information using pre-computed location data.
@@ -2025,9 +2025,10 @@ impl Actor {
             .map_err(|e| actor_error!(illegal_argument, "invalid aux_data: {}", e))?;
 
         // Load partition directly using provided location indices
-        let deadlines = state.load_deadlines(rt.store())
-            .map_err(|e| e.wrap("failed to load deadlines"))?;
-        let deadline = deadlines.load_deadline(rt.store(), sector_location.deadline)
+        let deadlines =
+            state.load_deadlines(rt.store()).map_err(|e| e.wrap("failed to load deadlines"))?;
+        let deadline = deadlines
+            .load_deadline(rt.store(), sector_location.deadline)
             .map_err(|e| e.wrap("failed to load deadline"))?;
         let partition = deadline.load_partition(rt.store(), sector_location.partition)?;
 
