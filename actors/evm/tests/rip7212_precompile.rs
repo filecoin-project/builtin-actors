@@ -3,31 +3,11 @@ mod util;
 
 use fvm_shared::{METHOD_SEND, address::Address as FILAddress, econ::TokenAmount, error::ExitCode};
 
-use p256::ecdsa::signature::hazmat::PrehashSigner;
-use p256::ecdsa::{Signature, SigningKey, VerifyingKey};
-use rand::rngs::StdRng;
-use rand::{RngCore, SeedableRng};
-
 fn p256_input() -> Vec<u8> {
-    let mut rng = StdRng::seed_from_u64(7212);
-    let sk = SigningKey::random(&mut rng);
-    let vk = VerifyingKey::from(&sk);
-
-    let mut hash = [0u8; 32];
-    rng.fill_bytes(&mut hash);
-    let sig: Signature = PrehashSigner::sign_prehash(&sk, &hash).unwrap();
-
-    let pk = vk.to_encoded_point(false);
-    let (x, y) = (pk.x().unwrap(), pk.y().unwrap());
-
-    let mut input = Vec::with_capacity(160);
-    input.extend_from_slice(&hash);
-    input.extend_from_slice(&sig.r().to_bytes());
-    input.extend_from_slice(&sig.s().to_bytes());
-    input.extend_from_slice(x);
-    input.extend_from_slice(y);
-    assert_eq!(input.len(), 160);
-    input
+    // Using a well-known test vector from the daimo-eth/p256-verifier test suite
+    // This ensures reproducible, deterministic tests rather than random data
+    // Test case: valid secp256r1 ECDSA signature verification
+    hex::decode("4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d604aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e").unwrap()
 }
 
 fn p256_verify_contract_call() -> Vec<u8> {
