@@ -72,7 +72,7 @@ pub(crate) fn verify_signature(msg: [u8; 32], sig: [u8; 64], pk: [u8; 64]) -> Op
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::interpreter::precompiles::PrecompileError;
+    // use crate::interpreter::precompiles::PrecompileError;
     // use alloy_core::primitives::Bytes;
     // use alloy_core::primitives::hex::FromHex;
     use crate::interpreter::System;
