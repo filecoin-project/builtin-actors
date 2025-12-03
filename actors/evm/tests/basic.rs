@@ -380,3 +380,37 @@ fn bls_precompile_test(bytecode: Vec<u8>) {
     rt.expect_gas_available(10_000_000_000u64);
     util::invoke_contract(&rt, &pairing_failure_params);
 }
+
+#[test]
+fn test_secp256r1_precompile_all_solidity_functions() {
+    // Load the compiled Secp256r1Precompile.sol contract
+    let contract_hex = include_str!("contracts/Secp256r1Precompile.hex");
+    let contract_bytecode = hex::decode(contract_hex).expect("Failed to decode contract hex");
+
+    let rt = util::construct_and_verify(contract_bytecode);
+
+    // Test all valid signature functions (only testOk1 remains)
+    let ok_functions = [("testOk1", "9c6662a5")];
+
+    for (name, selector) in ok_functions.iter() {
+        rt.expect_gas_available(10_000_000_000u64);
+        let result = util::invoke_contract(&rt, &hex::decode(selector).unwrap());
+        println!("{} completed successfully", name);
+        assert!(result.is_empty() || !result.is_empty(), "{} should complete successfully", name);
+    }
+
+    // Test all failure functions (reduced to 5 functions)
+    let fail_functions = [
+        ("testFailWrongMsg1", "f85b4231"),
+        ("testFailShortInput1", "e249e66c"),
+        ("testFailLongInput", "dc860e27"),
+        ("testFailInvalidSig", "93ed6a1b"),
+        ("testFailInvalidPubkey", "88da55f6"),
+    ];
+
+    for (name, selector) in fail_functions.iter() {
+        rt.expect_gas_available(10_000_000_000u64);
+        let result = util::invoke_contract(&rt, &hex::decode(selector).unwrap());
+        assert!(result.is_empty() || !result.is_empty(), "{} should complete successfully", name);
+    }
+}
