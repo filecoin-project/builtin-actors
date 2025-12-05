@@ -181,14 +181,14 @@ test_vm = { path = "test_vm" }
 ## For local cross-repo development, prefer uncommenting the path-based section above
 ## in a local working copy (do not commit path overrides).
 [patch.crates-io]
-fvm_shared = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
-fvm_sdk = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
-fvm_ipld_car = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
-fvm_ipld_hamt = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
-fvm_ipld_amt = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
-fvm_ipld_bitfield = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
-fvm_ipld_encoding = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
-fvm_ipld_blockstore = { git = "https://github.com/snissn/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_car = { git = "https://github.com/filecoin-project/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
+fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm.git", rev = "0d53fc71f5924cec2d5af9d8cca55e51020694d2" }
 
 [profile.wasm]
 inherits = "release"
