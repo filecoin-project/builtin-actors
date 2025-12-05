@@ -212,7 +212,7 @@ impl EthAccountActor {
             .message()
             .receiver()
             .id()
-            .ok_or_else(|| ActorError::illegal_state("receiver not an id address".into()))?;
+            .map_err(|_| ActorError::illegal_state("receiver not an id address".into()))?;
         let receiver_eth20 = match rt.lookup_delegated_address(receiver_id) {
             Some(Address { .. }) => {
                 // Extract last 20 bytes from f4 address payload; assuming EAM namespace.

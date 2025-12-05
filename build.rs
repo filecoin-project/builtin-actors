@@ -125,7 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .expect("no OUT_DIR env var");
         std::fs::create_dir_all(&out_dir)?;
         let dst = out_dir.join("bundle.car");
-        std::fs::write(&dst, &[])?;
+        std::fs::write(&dst, [])?;
         println!("cargo:warning=SKIP_BUNDLE set; wrote placeholder {:?}", dst);
         return Ok(());
     }
