@@ -25,7 +25,7 @@ num-derive = { workspace = true }
 hex-literal = { workspace = true }
 cid = { workspace = true }
 fil_actors_evm_shared = { workspace = true }
-rlp = "0.5"
+rlp = "0.5.2"
 
 [dev-dependencies]
 fil_actors_runtime = { workspace = true, features = ["test_utils"] }
