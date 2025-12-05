@@ -105,7 +105,7 @@ fn load_bytecode(bs: &impl Blockstore, cid: &Cid) -> Result<Option<Bytecode>, Ac
     let bytecode = bs
         .get(cid)
         .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "bytecode not in state tree")?;
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "bytecode block not found in blockstore")?;
     if bytecode.is_empty() { Ok(None) } else { Ok(Some(Bytecode::new(bytecode))) }
 }
 
