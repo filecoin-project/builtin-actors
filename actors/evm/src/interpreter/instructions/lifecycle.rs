@@ -155,6 +155,14 @@ pub fn selfdestruct(
 ) -> Result<Output, ActorError> {
     use crate::interpreter::output::Outcome;
 
+    // In EIP-7702 delegated authority context (InvokeAsEoa), SELFDESTRUCT must not affect the
+    // hosting EVM actor. Treat as a no-op success: do not transfer funds and do not mark
+    // tombstone. This preserves actor liveness while allowing delegated code to run arbitrary
+    // logic without destructive side-effects.
+    if system.in_authority_context {
+        return Ok(Output { outcome: Outcome::Return, return_data: Vec::new(), pc });
+    }
+
     if system.readonly {
         return Err(ActorError::read_only("selfdestruct called while read-only".into()));
     }

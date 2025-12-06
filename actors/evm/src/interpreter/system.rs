@@ -7,6 +7,7 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Block;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+// Legacy Hamt-based 7702 maps removed.
 use fvm_ipld_kamt::HashedKey;
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::crypto::hash::SupportedHashes;
@@ -106,6 +107,10 @@ pub struct System<'r, RT: Runtime> {
     /// This is "some" if the actor is currently a "zombie". I.e., it has selfdestructed, but the
     /// current message is still executing. `System` cannot load a contracts state with a
     pub(crate) tombstone: Option<Tombstone>,
+
+    /// EIP-7702: Flag indicating we are executing under an authority context (InvokeAsEoa).
+    /// When set, delegation mapping must not be followed again (depth limit == 1).
+    pub in_authority_context: bool,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
@@ -127,6 +132,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             readonly,
             randomness: None,
             tombstone: None,
+            in_authority_context: false,
         }
     }
 
@@ -206,7 +212,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
             }
         };
 
-        Ok(Self {
+        // Initialize base system from state
+        let sys = Self {
             rt,
             slots: StateKamt::load_with_config(&state.contract_state, store, KAMT_CONFIG.clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
@@ -218,7 +225,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
             readonly: read_only,
             randomness: None,
             tombstone: state.tombstone,
-        })
+            in_authority_context: false,
+        };
+        Ok(sys)
     }
 
     pub fn increment_nonce(&mut self) {
@@ -337,6 +346,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
         Ok(())
     }
 
+    // Legacy 7702 per-authority maps have been removed; delegation is handled by EthAccount + VM intercept.
+
     /// Reload the actor state if changed.
     pub fn reload(&mut self) -> Result<(), ActorError> {
         if self.readonly {
@@ -380,6 +391,23 @@ impl<'r, RT: Runtime> System<'r, RT> {
     /// Get the bytecode, if any.
     pub fn get_bytecode(&self) -> Option<Cid> {
         self.bytecode.as_ref().map(|b| b.cid)
+    }
+
+    /// Mount an external storage root into the current System's slots, replacing the current KAMT root.
+    pub fn mount_storage_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+        self.slots
+            .set_root(root)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to mount external storage root")?;
+        Ok(())
+    }
+
+    /// Flush and return the current storage root without writing actor state.
+    pub fn flush_storage_root(&mut self) -> Result<Cid, ActorError> {
+        let root = self
+            .slots
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush storage root")?;
+        Ok(root)
     }
 
     /// Set the bytecode.

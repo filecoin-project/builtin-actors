@@ -358,6 +358,11 @@ impl Runtime for InvocationCtx<'_> {
         self
     }
 
+    fn get_eth_delegate_to(&self, _actor_id: ActorID) -> Result<Option<[u8; 20]>, ActorError> {
+        // Test VM does not model EthAccount delegation; default to None.
+        Ok(None)
+    }
+
     fn curr_epoch(&self) -> ChainEpoch {
         self.v.epoch()
     }

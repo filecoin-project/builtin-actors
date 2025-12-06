@@ -5,9 +5,12 @@ use cid::Cid;
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
+// EIP-7702: Delegation mapping/state lives in EthAccount; EXTCODE*
+// consults the runtime helper to project the 23-byte pointer image.
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::{AsActorError, deserialize_block};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{address::Address, econ::TokenAmount};
@@ -30,6 +33,17 @@ pub fn extcodesize(
             get_evm_bytecode(system, &addr).map(|bytecode| bytecode.len())?
         }
         ContractType::Native(_) => 1,
+        ContractType::Account => {
+            let authority = EthAddress::from(addr);
+            // Resolve to actor ID and consult runtime helper.
+            let a: Address = authority.into();
+            if let Some(id) = system.rt.resolve_address(&a) {
+                if let Ok(Some(_delegate)) = system.rt.get_eth_delegate_to(id) {
+                    return Ok(U256::from(23));
+                }
+            }
+            0
+        }
         // account, not found, and precompiles are 0 size
         _ => 0,
     };
@@ -52,7 +66,29 @@ pub fn extcodehash(
         //      The FVM does not have chain state cleanup so contracts will never end up "empty" and be removed, they will either exist (in any state in the contract lifecycle)
         //      and return keccak(""), or not exist (where nothing has ever been deployed at that address) and return 0.
         // TODO: With account abstraction, this may be something other than an empty hash!
-        ContractType::Account => return Ok(BytecodeHash::EMPTY.into()),
+        ContractType::Account => {
+            let authority = EthAddress::from(addr);
+            let d_opt = {
+                let a: Address = authority.into();
+                system
+                    .rt
+                    .resolve_address(&a)
+                    .and_then(|id| system.rt.get_eth_delegate_to(id).ok().flatten())
+                    .map(EthAddress)
+            };
+            if let Some(d) = d_opt {
+                let mut bytecode = Vec::with_capacity(23);
+                bytecode.extend_from_slice(&fil_actors_evm_shared::eip7702::EIP7702_MAGIC);
+                bytecode.push(fil_actors_evm_shared::eip7702::EIP7702_VERSION);
+                bytecode.extend_from_slice(d.as_ref());
+                let hash_bytes = system.rt.hash(SupportedHashes::Keccak256, &bytecode);
+                let hash = BytecodeHash::try_from(hash_bytes.as_slice()).expect(
+                    "extcodehash: BytecodeHash::try_from() failed for delegated EOA pointer code; this should never happen as the bytecode is constructed deterministically (23 bytes from known constants + delegate address)"
+                );
+                return Ok(hash.into());
+            }
+            return Ok(BytecodeHash::EMPTY.into());
+        }
         // Not found
         ContractType::NotFound => return Ok(U256::zero()),
     };
@@ -79,7 +115,28 @@ pub fn extcodecopy(
 ) -> Result<(), ActorError> {
     let bytecode = match get_contract_type(system.rt, &addr.into()) {
         ContractType::EVM(addr) => get_evm_bytecode(system, &addr)?,
-        ContractType::NotFound | ContractType::Account | ContractType::Precompile => Vec::new(),
+        ContractType::Account => {
+            let authority = EthAddress::from(addr);
+            // Resolve and consult runtime helper for pointer projection.
+            let d_opt = {
+                let a: Address = authority.into();
+                system
+                    .rt
+                    .resolve_address(&a)
+                    .and_then(|id| system.rt.get_eth_delegate_to(id).ok().flatten())
+                    .map(EthAddress)
+            };
+            if let Some(d) = d_opt {
+                let mut b = Vec::with_capacity(23);
+                b.extend_from_slice(&fil_actors_evm_shared::eip7702::EIP7702_MAGIC);
+                b.push(fil_actors_evm_shared::eip7702::EIP7702_VERSION);
+                b.extend_from_slice(d.as_ref());
+                b
+            } else {
+                Vec::new()
+            }
+        }
+        ContractType::NotFound | ContractType::Precompile => Vec::new(),
         // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
         // and in general invalid EVM bytecode
         _ => vec![0xFE],

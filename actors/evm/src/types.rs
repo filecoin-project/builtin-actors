@@ -65,3 +65,31 @@ pub struct DelegateCallReturn {
 pub struct GetStorageAtParams {
     pub storage_key: U256,
 }
+
+// ----- EIP-7702 ApplyAndCall params -----
+// Re-export shared types to avoid drift across crates.
+pub use fil_actors_evm_shared::eip7702::{
+    ApplyAndCallParams, ApplyAndCallReturn, ApplyCall, DelegationParam,
+};
+
+// ----- EIP-7702 VM intercept support -----
+// Params/return for InvokeAsEoaWithRoot trampoline used by the VM to execute
+// delegate EVM bytecode under an authority context with an explicit storage root.
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct InvokeAsEoaWithRootParams {
+    pub code: Cid,
+    #[serde(with = "strict_bytes")]
+    pub input: Vec<u8>,
+    pub caller: EthAddress,
+    pub receiver: EthAddress,
+    pub value: TokenAmount,
+    pub initial_storage_root: Cid,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct InvokeAsEoaWithRootReturn {
+    #[serde(with = "strict_bytes")]
+    pub output_data: Vec<u8>,
+    pub new_storage_root: Cid,
+}

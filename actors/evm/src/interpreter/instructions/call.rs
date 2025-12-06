@@ -52,7 +52,9 @@ pub fn calldatasize(
     state: &mut ExecutionState,
     _: &System<impl Runtime>,
 ) -> Result<U256, ActorError> {
-    Ok(u128::try_from(state.input_data.len()).unwrap().into())
+    // input_data length always fits into u128; avoid unwrap to be explicit.
+    let len = state.input_data.len() as u128;
+    Ok(U256::from(len))
 }
 
 #[inline]
@@ -200,6 +202,8 @@ pub fn call_generic<RT: Runtime>(
                         // We provide enough gas for the transfer to succeed in all case.
                         gas = TRANSFER_GAS_LIMIT;
                     }
+                    // EIP-7702 minimized path: do not follow delegation internally.
+                    // VM intercept handles delegation for CALL/STATICCALL to EOAs, including depth limit and events.
                     let params = if input_data.is_empty() {
                         None
                     } else {
@@ -839,4 +843,9 @@ mod tests {
             assert_eq!(&m.state.memory[0..4], &output_data);
         };
     }
+
+    // Depth limit functional test is implemented in ApplyAndCall-driven tests.
+
+    // Note: Depth limit is enforced in code by System.in_authority_context.
+    // A dedicated integration test can be added when a stable harness for nested delegation flows is available.
 }

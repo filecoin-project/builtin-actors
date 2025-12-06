@@ -7,6 +7,8 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesSer, DAG_CBOR};
 use fvm_shared::address::Address;
+#[allow(unused_imports)]
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
@@ -15,6 +17,8 @@ use crate::interpreter::{Bytecode, ExecutionState, System, execute};
 use crate::reader::ValueReader;
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
+// EIP-7702: Delegation mapping/state lives in EthAccount; VM intercept
+// handles delegated execution (authority context) and storage mounting.
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
 
@@ -47,6 +51,10 @@ pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x86, 0x8e, 0x10, 0xc4];
 
 const EVM_WORD_SIZE: usize = 32;
 
+// Delegated event topic is emitted by the VM intercept; no local constant needed here.
+
+// Note: no actor-defined intrinsic gas charges are applied for 7702 in this branch.
+
 #[test]
 fn test_method_selector() {
     // We could just _generate_ this method selector with a proc macro, but this is easier.
@@ -65,6 +73,12 @@ pub enum Method {
     GetBytecodeHash = 4,
     GetStorageAt = 5,
     InvokeContractDelegate = 6,
+    // Legacy entry removed; kept for binary compatibility of method numbers.
+    InvokeAsEoa = 7,
+    InvokeAsEoaWithRoot = frc42_dispatch::method_hash!("InvokeAsEoaWithRoot"),
+    // New: Atomic EIP-7702 apply + call entrypoint
+    // Legacy entry removed; kept for binary compatibility of method numbers.
+    ApplyAndCall = frc42_dispatch::method_hash!("ApplyAndCall"),
     InvokeContract = frc42_dispatch::method_hash!("InvokeEVM"),
 }
 
@@ -91,7 +105,7 @@ fn load_bytecode(bs: &impl Blockstore, cid: &Cid) -> Result<Option<Bytecode>, Ac
     let bytecode = bs
         .get(cid)
         .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
-        .expect("bytecode not in state tree");
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "bytecode block not found in blockstore")?;
     if bytecode.is_empty() { Ok(None) } else { Ok(Some(Bytecode::new(bytecode))) }
 }
 
@@ -136,11 +150,15 @@ fn initialize_evm_contract(
             system.set_bytecode(&output.return_data)?;
             system.flush()
         }
-        Outcome::Revert => Err(ActorError::unchecked_with_data(
-            EVM_CONTRACT_REVERTED,
-            "constructor reverted".to_string(),
-            IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
-        )),
+        Outcome::Revert => {
+            let data_block = IpldBlock::serialize_cbor(&BytesSer(&output.return_data))
+                .map_err(|_| ActorError::illegal_state("failed to encode revert data".into()))?;
+            Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_REVERTED,
+                "constructor reverted".to_string(),
+                data_block,
+            ))
+        }
     }
 }
 
@@ -163,7 +181,9 @@ where
 
     // Resolve the receiver's ethereum address.
     let receiver_fil_addr = system.rt.message().receiver();
-    let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).unwrap();
+    let receiver_eth_addr = system
+        .resolve_ethereum_address(&receiver_fil_addr)
+        .map_err(|_| ActorError::illegal_state("failed to resolve receiver eth address".into()))?;
 
     let mut exec_state =
         ExecutionState::new(*caller, receiver_eth_addr, value_received, input_data);
@@ -175,15 +195,30 @@ where
             system.flush()?;
             Ok(output.return_data.to_vec())
         }
-        Outcome::Revert => Err(ActorError::unchecked_with_data(
-            EVM_CONTRACT_REVERTED,
-            format!("contract reverted at {0}", output.pc),
-            IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
-        )),
+        Outcome::Revert => {
+            let data_block = IpldBlock::serialize_cbor(&BytesSer(&output.return_data))
+                .map_err(|_| ActorError::illegal_state("failed to encode revert data".into()))?;
+            Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_REVERTED,
+                format!("contract reverted at {0}", output.pc),
+                data_block,
+            ))
+        }
     }
 }
 
 impl EvmContractActor {
+    /// Legacy InvokeAsEoa has been removed; keep stub returning illegal_state.
+    pub fn invoke_as_eoa<RT>(
+        _rt: &RT,
+        _params: WithCodec<EoaInvokeParams, DAG_CBOR>,
+    ) -> Result<InvokeContractReturn, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        Err(ActorError::illegal_state("InvokeAsEoa has been removed on this branch".into()))
+    }
     pub fn constructor<RT>(rt: &RT, params: ConstructorParams) -> Result<(), ActorError>
     where
         RT: Runtime,
@@ -231,6 +266,89 @@ impl EvmContractActor {
         Ok(DelegateCallReturn { return_data })
     }
 
+    // invoke_as_eoa removed; VM uses invoke_as_eoa_with_root trampoline.
+
+    /// Execute delegate bytecode under authority context mounting the provided storage root.
+    /// Returns both output bytes and the updated storage root. This is intended to be called
+    /// only by the VM intercept path; immediate caller must be self.
+    pub fn invoke_as_eoa_with_root<RT>(
+        rt: &RT,
+        params: WithCodec<crate::InvokeAsEoaWithRootParams, DAG_CBOR>,
+    ) -> Result<crate::InvokeAsEoaWithRootReturn, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
+
+        let p = params.0;
+        let mut system = System::load(rt).map_err(|e| {
+            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
+        })?;
+
+        // Load bytecode to execute.
+        let bytecode = match load_bytecode(system.rt.store(), &p.code)? {
+            Some(b) => b,
+            None => {
+                // Nothing to execute; return the same root.
+                return Ok(crate::InvokeAsEoaWithRootReturn {
+                    output_data: Vec::new(),
+                    new_storage_root: p.initial_storage_root,
+                });
+            }
+        };
+
+        // Mount the provided authority storage root.
+        let actor_storage_root = system.flush_storage_root()?;
+        system.mount_storage_root(&p.initial_storage_root)?;
+        // Enter authority context (depth=1).
+        let prev_ctx = system.in_authority_context;
+        system.in_authority_context = true;
+
+        // Execute with explicit caller/receiver/value.
+        let mut exec_state = ExecutionState::new(p.caller, p.receiver, p.value, p.input);
+        let output = execute(&bytecode, &mut exec_state, &mut system)?;
+        match output.outcome {
+            Outcome::Return => {
+                let new_root = system.flush_storage_root()?;
+                system.mount_storage_root(&actor_storage_root)?;
+                system.in_authority_context = prev_ctx;
+                system.flush()?;
+                Ok(crate::InvokeAsEoaWithRootReturn {
+                    output_data: output.return_data.to_vec(),
+                    new_storage_root: new_root,
+                })
+            }
+            Outcome::Revert => {
+                // Restore and propagate revert via unchecked error with data encoded as raw bytes.
+                system.mount_storage_root(&actor_storage_root)?;
+                system.in_authority_context = prev_ctx;
+                let data_block = IpldBlock::serialize_cbor(&BytesSer(&output.return_data))
+                    .map_err(|_| {
+                        ActorError::illegal_state("failed to encode revert data".into())
+                    })?;
+                Err(ActorError::unchecked_with_data(
+                    EVM_CONTRACT_REVERTED,
+                    format!("contract reverted at {0}", output.pc),
+                    data_block,
+                ))
+            }
+        }
+    }
+
+    // This is a legacy stub for EVM.ApplyAndCall, which has been removed from the EVM actor
+    // in favor of EthAccount.ApplyAndCall combined with a VM intercept.
+    fn apply_and_call_legacy_stub<RT>(
+        _rt: &RT,
+        _params: WithCodec<crate::ApplyAndCallParams, DAG_CBOR>,
+    ) -> Result<crate::ApplyAndCallReturn, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        Err(ActorError::illegal_state("EVM.ApplyAndCall has been removed on this branch".into()))
+    }
+
     pub fn invoke_contract<RT>(
         rt: &RT,
         params: InvokeContractParams,
@@ -252,7 +370,10 @@ impl EvmContractActor {
         };
 
         let received_value = system.rt.message().value_received();
-        let caller = system.resolve_ethereum_address(&system.rt.message().caller()).unwrap();
+        let caller =
+            system.resolve_ethereum_address(&system.rt.message().caller()).map_err(|_| {
+                ActorError::illegal_state("failed to resolve caller eth address".into())
+            })?;
         let data = invoke_contract_inner(
             &mut system,
             params.input_data,
@@ -416,7 +537,28 @@ impl ActorCode for EvmContractActor {
         GetBytecodeHash => bytecode_hash,
         GetStorageAt => storage_at,
         InvokeContractDelegate => invoke_contract_delegate,
+        // Legacy ApplyAndCall/InvokeAsEoa removed; map to stubs returning illegal_state.
+        InvokeAsEoa => invoke_as_eoa,
+        ApplyAndCall => apply_and_call_legacy_stub,
+        // Keep only InvokeAsEoaWithRoot for VM intercepts.
+        InvokeAsEoaWithRoot => invoke_as_eoa_with_root,
         Resurrect => resurrect,
         _ => handle_filecoin_method,
     }
+}
+
+#[derive(
+    Clone, Debug, fvm_ipld_encoding::serde::Serialize, fvm_ipld_encoding::serde::Deserialize,
+)]
+pub struct EoaInvokeParams {
+    pub code: Cid,
+    #[serde(with = "fvm_ipld_encoding::strict_bytes")]
+    pub input: Vec<u8>,
+    pub caller: EthAddress,
+    pub receiver: EthAddress,
+    pub value: TokenAmount,
+}
+
+impl EvmContractActor {
+    // Note: EVM.ApplyAndCall has been removed; dispatch maps it to apply_and_call_removed.
 }

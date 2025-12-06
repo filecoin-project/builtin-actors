@@ -74,11 +74,12 @@ fn network_name() -> String {
 // Note that emcc while support by blst is not an option for us as it cannot
 // target wasm32-unknown-unknown
 fn check_c_compiler_does_wasm() {
-    // If CC is not set, default to "clang", else use the value from the environment.
-    let cc = match std::env::var_os("CC") {
-        Some(val) => val,
-        None => "clang".into(),
-    };
+    // Prefer a per-target CC for wasm if provided, then fall back to CC, then `clang`.
+    // This mirrors how many build systems allow per-target tool overrides and helps
+    // in environments where the system clang lacks wasm support (e.g., Apple clang).
+    let cc = std::env::var_os("CC_wasm32_unknown_unknown")
+        .or_else(|| std::env::var_os("CC"))
+        .unwrap_or_else(|| "clang".into());
 
     // First check cc actually runs / is in path
     let version_check = std::process::Command::new(&cc).arg("--version").output();
@@ -106,7 +107,8 @@ fn check_c_compiler_does_wasm() {
     if !has_wasm32 {
         eprintln!(
             "error: C compiler '{}' does not support wasm32-unknown-unknown target.\n\
-             Install LLVM/Clang with wasm32 support \n",
+             Set CC_wasm32_unknown_unknown or CC to a wasm-capable clang (e.g., Homebrew llvm).\n\
+             Install LLVM/Clang with wasm32 support.",
             cc.to_string_lossy()
         );
         std::process::exit(1);
@@ -114,6 +116,19 @@ fn check_c_compiler_does_wasm() {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // Allow skipping the heavy wasm bundle build during linting or local checks.
+    if std::env::var_os("SKIP_BUNDLE").is_some() {
+        let out_dir = std::env::var_os("OUT_DIR")
+            .as_ref()
+            .map(Path::new)
+            .map(|p| p.join("bundle"))
+            .expect("no OUT_DIR env var");
+        std::fs::create_dir_all(&out_dir)?;
+        let dst = out_dir.join("bundle.car");
+        std::fs::write(&dst, [])?;
+        println!("cargo:warning=SKIP_BUNDLE set; wrote placeholder {:?}", dst);
+        return Ok(());
+    }
     // Cargo executable location.
     let cargo = std::env::var_os("CARGO").expect("no CARGO env var");
     println!("cargo:warning=cargo: {:?}", &cargo);

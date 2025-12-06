@@ -151,6 +151,7 @@ pub struct State {
     ///
     /// See https://github.com/filecoin-project/ref-fvm/issues/1174 for some context.
     pub tombstone: Option<Tombstone>,
+    // EIP-7702 legacy delegation maps removed; delegation lives in EthAccount and VM intercept handles execution.
 }
 
 #[cfg(test)]

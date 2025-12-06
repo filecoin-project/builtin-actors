@@ -140,6 +140,7 @@ pub struct MockRuntime {
     pub chain_id: ChainID,
     pub id_addresses: RefCell<HashMap<Address, Address>>,
     pub delegated_addresses: RefCell<HashMap<ActorID, Address>>,
+    pub eth_delegate_to: RefCell<HashMap<ActorID, [u8; 20]>>,
     pub actor_code_cids: RefCell<HashMap<Address, Cid>>,
     pub new_actor_addr: RefCell<Option<Address>>,
     pub receiver: Address,
@@ -336,6 +337,7 @@ impl MockRuntime {
             chain_id: ChainID::from(0),
             id_addresses: Default::default(),
             delegated_addresses: Default::default(),
+            eth_delegate_to: Default::default(),
             actor_code_cids: Default::default(),
             new_actor_addr: Default::default(),
             receiver: Address::new_id(0),
@@ -370,16 +372,38 @@ pub struct ExpectCreateActor {
     pub predictable_address: Option<Address>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum ParamMatcher {
+    Any,
+    Exact(Option<IpldBlock>),
+}
+
+impl ParamMatcher {
+    pub fn matches(&self, actual: &Option<IpldBlock>) -> bool {
+        match self {
+            ParamMatcher::Any => true,
+            ParamMatcher::Exact(expected) => expected == actual,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ExpectedMessage {
     pub to: Address,
     pub method: MethodNum,
-    pub params: Option<IpldBlock>,
+    pub params: ParamMatcher,
     pub value: TokenAmount,
     pub gas_limit: Option<u64>,
     pub send_flags: SendFlags,
 
     // returns from applying expectedMessage
+    pub send_return: Option<IpldBlock>,
+    pub exit_code: ExitCode,
+    pub send_error: Option<ErrorNumber>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SendOutcome {
     pub send_return: Option<IpldBlock>,
     pub exit_code: ExitCode,
     pub send_error: Option<ErrorNumber>,
@@ -554,6 +578,11 @@ impl MockRuntime {
         self.id_addresses.borrow_mut().insert(target, Address::new_id(source));
     }
 
+    /// Test hook: set the EIP-7702 delegate_to address for the given actor id.
+    pub fn set_eth_delegate_to(&self, source: ActorID, delegate20: [u8; 20]) {
+        self.eth_delegate_to.borrow_mut().insert(source, delegate20);
+    }
+
     pub fn call<A: ActorCode>(
         &self,
         method_num: MethodNum,
@@ -687,13 +716,37 @@ impl MockRuntime {
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
             to,
             method,
-            params,
+            params: ParamMatcher::Exact(params),
             value,
             gas_limit,
             send_flags,
             send_return,
             exit_code,
             send_error,
+        })
+    }
+
+    /// Expect a send with any params (wildcard match). Useful when encoding is internal detail.
+    #[allow(dead_code)]
+    pub fn expect_send_any_params(
+        &self,
+        to: Address,
+        method: MethodNum,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        send_flags: SendFlags,
+        outcome: SendOutcome,
+    ) {
+        self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
+            to,
+            method,
+            params: ParamMatcher::Any,
+            value,
+            gas_limit,
+            send_flags,
+            send_return: outcome.send_return,
+            exit_code: outcome.exit_code,
+            send_error: outcome.send_error,
         })
     }
 
@@ -1029,6 +1082,11 @@ impl Runtime for MockRuntime {
         self.actor_code_cids.borrow().get(&Address::new_id(*id)).cloned()
     }
 
+    fn get_eth_delegate_to(&self, actor_id: ActorID) -> Result<Option<[u8; 20]>, ActorError> {
+        // Consult test hook mapping; default to None.
+        Ok(self.eth_delegate_to.borrow().get(&actor_id).copied())
+    }
+
     fn get_randomness_from_tickets(
         &self,
         tag: DomainSeparationTag,
@@ -1189,11 +1247,12 @@ impl Runtime for MockRuntime {
             "send to {} expected method {}, was {}",
             to, expected_msg.method, method
         );
-        assert_eq!(
-            expected_msg.params, params,
-            "send to {}:{} expected params {:?}, was {:?}",
-            to, method, expected_msg.params, params,
-        );
+        if !expected_msg.params.matches(&params) {
+            panic!(
+                "send to {}:{} expected params {:?}, was {:?}",
+                to, method, expected_msg.params, params
+            );
+        }
         assert_eq!(
             expected_msg.value, value,
             "send to {}:{} expected value {:?}, was {:?}",
