@@ -23,6 +23,7 @@ fvm_shared = { workspace = true }
 num-traits = { workspace = true }
 num-derive = { workspace = true }
 hex-literal = { workspace = true }
+k256 = { workspace = true, default-features = false, features = ["arithmetic"] }
 cid = { workspace = true }
 fil_actors_evm_shared = { workspace = true }
 rlp = { workspace = true }

@@ -792,6 +792,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "hex-literal",
+ "k256",
  "num-derive",
  "num-traits",
  "rlp 0.5.2",
