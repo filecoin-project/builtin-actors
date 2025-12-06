@@ -95,7 +95,7 @@ impl EthAccountActor {
         Ok(())
     }
 
-    fn is_high_s(sv: &[u8; 32]) -> bool {
+    fn is_high_s(s_value: &[u8; 32]) -> bool {
         // n/2 for secp256k1
         const N: [u8; 32] = [
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -109,7 +109,7 @@ impl EthAccountActor {
             n2[i] = (v / 2) as u8;
             carry = v % 2;
         }
-        sv > &n2
+        s_value > &n2
     }
 
     fn recover_authority(
