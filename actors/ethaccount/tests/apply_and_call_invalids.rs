@@ -3,9 +3,9 @@ use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::eip7702;
 use fil_actors_runtime::EAM_ACTOR_ID;
 use fil_actors_runtime::test_utils::*;
-use hex_literal::hex;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
+use hex_literal::hex;
 
 #[test]
 fn invalid_y_parity_and_lengths() {
@@ -107,7 +107,7 @@ fn rejects_high_s_and_overflowing_s() {
     {
         let mut rt = MockRuntime::new();
         rt.expect_validate_caller_any();
-        rt.set_delegated_address(ethaccount_id, eth_f4.clone());
+        rt.set_delegated_address(ethaccount_id, eth_f4);
         rt.caller.replace(Address::new_id(10));
         rt.receiver = Address::new_id(ethaccount_id);
 

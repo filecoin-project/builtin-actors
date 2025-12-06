@@ -776,7 +776,7 @@ dependencies = [
  "multihash",
  "num-derive",
  "num-traits",
- "rlp 0.6.1",
+ "rlp",
  "serde",
 ]
 
@@ -795,7 +795,7 @@ dependencies = [
  "k256",
  "num-derive",
  "num-traits",
- "rlp 0.5.2",
+ "rlp",
  "serde",
 ]
 
@@ -826,7 +826,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "rand 0.8.5",
- "rlp 0.6.1",
+ "rlp",
  "serde",
  "serde_json",
  "substrate-bn",
@@ -2096,16 +2096,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd124222d17ad93a644ed9d011a40f4fb64aa54275c08cc216524a9ea82fb09f"
 dependencies = [
  "digest",
-]
-
-[[package]]
-name = "rlp"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb919243f34364b6bd2fc10ef797edbfa75f33c252e7998527479c6d6b47e1ec"
-dependencies = [
- "bytes",
- "rustc-hex",
 ]
 
 [[package]]
