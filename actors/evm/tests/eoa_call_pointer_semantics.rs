@@ -69,9 +69,9 @@ exthash_a:
     let mut rt = util::construct_and_verify(bytecode);
 
     // Ensure A resolves to an Account/Placeholder type (EOA) in the runtime.
-    let a_f4: FilAddress = authority.into();
+    let authority_fil_addr: FilAddress = authority.into();
     let a_id = FilAddress::new_id(0xABCDu64);
-    rt.set_delegated_address(a_id.id().unwrap(), a_f4);
+    rt.set_delegated_address(a_id.id().unwrap(), authority_fil_addr);
     rt.set_address_actor_type(a_id, *PLACEHOLDER_ACTOR_CODE_ID);
 
     // Delegate B is this EVM actor (receiver) with known ETH f4 address.

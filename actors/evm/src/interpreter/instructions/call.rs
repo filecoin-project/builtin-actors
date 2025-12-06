@@ -202,7 +202,7 @@ pub fn call_generic<RT: Runtime>(
                         // We provide enough gas for the transfer to succeed in all case.
                         gas = TRANSFER_GAS_LIMIT;
                     }
-                    // EIP-7702 minimalized path: do not follow delegation internally.
+                    // EIP-7702 minimized path: do not follow delegation internally.
                     // VM intercept handles delegation for CALL/STATICCALL to EOAs, including depth limit and events.
                     let params = if input_data.is_empty() {
                         None

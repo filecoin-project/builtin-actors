@@ -211,14 +211,12 @@ impl EthAccountActor {
             Payload::Delegated(d) if d.namespace() == EAM_ACTOR_ID => {
                 let daddr = d.subaddress();
                 let mut eth_addr = [0u8; 20];
-                match daddr.len().cmp(&20) {
-                    std::cmp::Ordering::Equal => eth_addr.copy_from_slice(daddr),
-                    std::cmp::Ordering::Greater => {
-                        eth_addr.copy_from_slice(&daddr[daddr.len() - 20..])
-                    }
-                    std::cmp::Ordering::Less => {
-                        return Err(ActorError::illegal_state("EthAccount has non-20B f4".into()));
-                    }
+                if daddr.len() == 20 {
+                    eth_addr.copy_from_slice(daddr);
+                } else if daddr.len() > 20 {
+                    eth_addr.copy_from_slice(&daddr[daddr.len() - 20..]);
+                } else {
+                    return Err(ActorError::illegal_state("EthAccount has non-20B f4".into()));
                 }
                 eth_addr
             }
