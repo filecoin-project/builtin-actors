@@ -240,30 +240,21 @@ impl EthAccountActor {
         if tuples.len() > 64 {
             return Err(ActorError::illegal_argument("authorizationList exceeds tuple cap".into()));
         }
-        // Pre-check for duplicate authorities before expensive cryptographic operations.
-        // This check uses the EthAddress directly from the DelegationParam as a cheaper alternative
-        // to recovering the full authority via signature.
-        {
+        // Apply tuples that target this receiver only (WIP: single-authority per actor). Others are rejected.
+        rt.transaction::<State, _, _>(|st, rt: &_| {
             use std::collections::HashSet;
-            let mut seen: HashSet<[u8; 20]> = HashSet::new();
+            let mut seen_authorities: HashSet<[u8; 20]> = HashSet::new();
             for t in tuples.iter() {
-                // Perform cheap validation.
                 Self::validate_tuple(rt, t)?;
+                let authority = Self::recover_authority(rt, t)?;
                 let mut key = [0u8; 20];
-                key.copy_from_slice(t.address.as_ref()); // Use t.address for cheaper duplicate check
-                if !seen.insert(key) {
+                key.copy_from_slice(authority.as_ref());
+                if !seen_authorities.insert(key) {
                     return Err(ActorError::illegal_argument(
                         "duplicate authority in authorizationList".into(),
                     ));
                 }
-            }
-        }
 
-        // Apply tuples that target this receiver only (WIP: single-authority per actor). Others are rejected.
-        rt.transaction::<State, _, _>(|st, rt: &_| {
-            for t in tuples.iter() {
-                Self::validate_tuple(rt, t)?;
-                let authority = Self::recover_authority(rt, t)?;
                 // Pre-existence policy: reject if authority resolves to EVM contract.
                 if let Some(id) = rt.resolve_address(&Address::from(authority)) {
                     if let Some(code) = rt.get_actor_code_cid(&id) {
