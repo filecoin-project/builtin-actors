@@ -26,6 +26,7 @@ use k256::FieldBytes;
 use k256::Scalar;
 use k256::elliptic_curve::ff::PrimeField;
 use k256::elliptic_curve::scalar::IsHigh;
+use log::debug;
 use num_derive::FromPrimitive;
 
 #[cfg(feature = "fil-actor")]
@@ -335,7 +336,10 @@ impl EthAccountActor {
                 status: if resp.exit_code == ExitCode::OK { 1 } else { 0 },
                 output_data: resp.return_data.map(|b| b.data).unwrap_or_default(),
             }),
-            Err(_) => Ok(ApplyAndCallReturn { status: 0, output_data: Vec::new() }),
+            Err(e) => {
+                debug!("ApplyAndCall outer send failed: {:?}", e);
+                Ok(ApplyAndCallReturn { status: 0, output_data: Vec::new() })
+            }
         }
     }
 }

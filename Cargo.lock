@@ -793,6 +793,7 @@ dependencies = [
  "fvm_shared",
  "hex-literal",
  "k256",
+ "log",
  "num-derive",
  "num-traits",
  "rlp",
