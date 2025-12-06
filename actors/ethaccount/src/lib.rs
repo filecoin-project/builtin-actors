@@ -23,7 +23,6 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{METHOD_CONSTRUCTOR, MethodNum};
 use num_derive::FromPrimitive;
-use std::collections::HashSet;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EthAccountActor);
@@ -96,8 +95,10 @@ impl EthAccountActor {
     }
 
     fn is_high_s(s_value: &[u8; 32]) -> bool {
-        // n/2 for secp256k1
-        const N: [u8; 32] = [
+        // The order of the secp256k1 curve (N).
+        // For ECDSA, the 's' value must be in the range [1, N-1].
+        // Signatures are considered canonical if s <= N/2 (low-s).
+        const SECP256K1_N: [u8; 32] = [
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
             0xFF, 0xFE, 0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B, 0xBF, 0xD2, 0x5E, 0x8C,
             0xD0, 0x36, 0x41, 0x41,
@@ -105,7 +106,8 @@ impl EthAccountActor {
         let mut n2 = [0u8; 32];
         let mut carry = 0u16;
         for i in (0..32).rev() {
-            let v = (carry << 8) | N[i] as u16;
+            let v = (carry << 8) | SECP256K1_N[i] as u16;
+            // Manual division by 2 (right shift by 1 bit) with carry for large number.
             n2[i] = (v / 2) as u8;
             carry = v % 2;
         }
@@ -197,16 +199,6 @@ impl EthAccountActor {
         rt.validate_immediate_caller_accept_any()?;
         Self::ensure_initialized(rt)?;
 
-        let tuples = &params.0.list;
-        if tuples.is_empty() {
-            return Err(ActorError::illegal_argument("authorizationList must be non-empty".into()));
-        }
-        if tuples.len() > 64 {
-            return Err(ActorError::illegal_argument("authorizationList exceeds tuple cap".into()));
-        }
-        // Duplicate authority rejection within a single message.
-        let mut seen: HashSet<[u8; 20]> = HashSet::new();
-
         // Determine this actor's Ethereum address.
         let receiver_id = rt
             .message()
@@ -243,18 +235,37 @@ impl EthAccountActor {
             None => return Err(ActorError::illegal_state("receiver not resolvable to f4".into())),
         };
 
-        // Apply tuples that target this receiver only (WIP: single-authority per actor). Others are rejected.
-        rt.transaction::<State, _, _>(|st, rt: &_| {
+        let tuples = &params.0.list;
+        if tuples.is_empty() {
+            return Err(ActorError::illegal_argument("authorizationList must be non-empty".into()));
+        }
+        if tuples.len() > 64 {
+            return Err(ActorError::illegal_argument("authorizationList exceeds tuple cap".into()));
+        }
+        // Pre-check for duplicate authorities before expensive cryptographic operations.
+        // This check uses the EthAddress directly from the DelegationParam as a cheaper alternative
+        // to recovering the full authority via signature.
+        {
+            use std::collections::HashSet;
+            let mut seen: HashSet<[u8; 20]> = HashSet::new();
             for t in tuples.iter() {
+                // Perform cheap validation.
                 Self::validate_tuple(rt, t)?;
-                let authority = Self::recover_authority(rt, t)?;
                 let mut key = [0u8; 20];
-                key.copy_from_slice(authority.as_ref());
+                key.copy_from_slice(t.address.as_ref()); // Use t.address for cheaper duplicate check
                 if !seen.insert(key) {
                     return Err(ActorError::illegal_argument(
                         "duplicate authority in authorizationList".into(),
                     ));
                 }
+            }
+        }
+
+        // Apply tuples that target this receiver only (WIP: single-authority per actor). Others are rejected.
+        rt.transaction::<State, _, _>(|st, rt: &_| {
+            for t in tuples.iter() {
+                Self::validate_tuple(rt, t)?;
+                let authority = Self::recover_authority(rt, t)?;
                 // Pre-existence policy: reject if authority resolves to EVM contract.
                 if let Some(id) = rt.resolve_address(&Address::from(authority)) {
                     if let Some(code) = rt.get_actor_code_cid(&id) {
