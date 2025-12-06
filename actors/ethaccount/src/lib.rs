@@ -139,9 +139,9 @@ impl EthAccountActor {
         let pubkey = rt
             .recover_secp_public_key(&hash32, &sig)
             .map_err(|e| ActorError::illegal_argument(format!("signature recovery failed: {e}")))?;
-        let (keccak64, _len) = rt.hash_64(SupportedHashes::Keccak256, &pubkey[1..]);
+        let keccak_hash = rt.hash(SupportedHashes::Keccak256, &pubkey[1..]);
         let mut addr = [0u8; 20];
-        addr.copy_from_slice(&keccak64[12..32]);
+        addr.copy_from_slice(&keccak_hash[12..32]);
         Ok(EthAddress(addr))
     }
 
