@@ -205,34 +205,32 @@ impl EthAccountActor {
             .receiver()
             .id()
             .map_err(|_| ActorError::illegal_state("receiver not an id address".into()))?;
-        let receiver_eth20 = match rt.lookup_delegated_address(receiver_id) {
-            Some(Address { .. }) => {
-                // Extract last 20 bytes from f4 address payload; assuming EAM namespace.
-                match rt.lookup_delegated_address(receiver_id).map(|a| *a.payload()) {
-                    Some(Payload::Delegated(d)) if d.namespace() == EAM_ACTOR_ID => {
-                        let mut a = [0u8; 20];
-                        let daddr = d.subaddress();
-                        match daddr.len().cmp(&20) {
-                            std::cmp::Ordering::Equal => a.copy_from_slice(daddr),
-                            std::cmp::Ordering::Greater => {
-                                a.copy_from_slice(&daddr[daddr.len() - 20..])
-                            }
-                            std::cmp::Ordering::Less => {
-                                return Err(ActorError::illegal_state(
-                                    "EthAccount has non-20B f4".into(),
-                                ));
-                            }
-                        }
-                        a
+        let delegated_addr = rt.lookup_delegated_address(receiver_id)
+            .ok_or_else(|| ActorError::illegal_state("receiver not resolvable to f4".into()))?;
+        // Extract last 20 bytes from f4 address payload; assuming EAM namespace.
+        let payload = *delegated_addr.payload();
+        let receiver_eth20 = match payload {
+            Payload::Delegated(d) if d.namespace() == EAM_ACTOR_ID => {
+                let daddr = d.subaddress();
+                let mut eth_addr = [0u8; 20];
+                match daddr.len().cmp(&20) {
+                    std::cmp::Ordering::Equal => eth_addr.copy_from_slice(daddr),
+                    std::cmp::Ordering::Greater => {
+                        eth_addr.copy_from_slice(&daddr[daddr.len() - 20..])
                     }
-                    _ => {
+                    std::cmp::Ordering::Less => {
                         return Err(ActorError::illegal_state(
-                            "receiver has no EAM f4 address".into(),
+                            "EthAccount has non-20B f4".into(),
                         ));
                     }
                 }
+                eth_addr
             }
-            None => return Err(ActorError::illegal_state("receiver not resolvable to f4".into())),
+            _ => {
+                return Err(ActorError::illegal_state(
+                    "receiver has no EAM f4 address".into(),
+                ));
+            }
         };
 
         let tuples = &params.0.list;
