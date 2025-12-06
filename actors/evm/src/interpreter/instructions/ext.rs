@@ -82,11 +82,9 @@ pub fn extcodehash(
                 bytecode.push(fil_actors_evm_shared::eip7702::EIP7702_VERSION);
                 bytecode.extend_from_slice(d.as_ref());
                 let hash_bytes = system.rt.hash(SupportedHashes::Keccak256, &bytecode);
-                let hash = BytecodeHash::try_from(hash_bytes.as_slice()).map_err(|_| {
-                    ActorError::illegal_state(
-                        "extcodehash: failed to convert keccak256 to BytecodeHash".into(),
-                    )
-                })?;
+                let hash = BytecodeHash::try_from(hash_bytes.as_slice()).expect(
+                    "extcodehash: BytecodeHash::try_from() failed for delegated EOA pointer code; this should never happen as the bytecode is constructed deterministically (23 bytes from known constants + delegate address)"
+                );
                 return Ok(hash.into());
             }
             return Ok(BytecodeHash::EMPTY.into());
