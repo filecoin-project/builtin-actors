@@ -95,6 +95,46 @@ fn invalid_y_parity_and_lengths() {
         IpldBlock::serialize_dag_cbor(&params).unwrap(),
     );
     assert!(res.is_err());
+
+    // r length 0
+    let list = vec![eip7702::DelegationParam {
+        chain_id: 0,
+        address: EthAddress([0u8; 20]),
+        nonce: 0,
+        y_parity: 0,
+        r: vec![],
+        s: vec![1u8; 32],
+    }];
+    let params = eip7702::ApplyAndCallParams {
+        list,
+        call: eip7702::ApplyCall { to: EthAddress([0u8; 20]), value: vec![], input: vec![] },
+    };
+    rt.expect_validate_caller_any();
+    let res = rt.call::<ethaccount::EthAccountActor>(
+        ethaccount::Method::ApplyAndCall as u64,
+        IpldBlock::serialize_dag_cbor(&params).unwrap(),
+    );
+    assert!(res.is_err());
+
+    // s length 0
+    let list = vec![eip7702::DelegationParam {
+        chain_id: 0,
+        address: EthAddress([0u8; 20]),
+        nonce: 0,
+        y_parity: 0,
+        r: vec![1u8; 32],
+        s: vec![],
+    }];
+    let params = eip7702::ApplyAndCallParams {
+        list,
+        call: eip7702::ApplyCall { to: EthAddress([0u8; 20]), value: vec![], input: vec![] },
+    };
+    rt.expect_validate_caller_any();
+    let res = rt.call::<ethaccount::EthAccountActor>(
+        ethaccount::Method::ApplyAndCall as u64,
+        IpldBlock::serialize_dag_cbor(&params).unwrap(),
+    );
+    assert!(res.is_err());
 }
 
 #[test]

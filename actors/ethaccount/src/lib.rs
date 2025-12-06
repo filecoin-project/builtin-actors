@@ -73,12 +73,12 @@ impl EthAccountActor {
         if t.chain_id != 0 && fvm_shared::chainid::ChainID::from(t.chain_id) != rt.chain_id() {
             return Err(ActorError::illegal_argument("invalid chain id".into()));
         }
-        // Length checks first: r,s must be <= 32 bytes.
-        if t.r.len() > 32 {
-            return Err(ActorError::illegal_argument("r length exceeds 32".into()));
+        // Length checks: r,s must be 1..=32 bytes.
+        if t.r.is_empty() || t.r.len() > 32 {
+            return Err(ActorError::illegal_argument("r length must be 1..=32 bytes".into()));
         }
-        if t.s.len() > 32 {
-            return Err(ActorError::illegal_argument("s length exceeds 32".into()));
+        if t.s.is_empty() || t.s.len() > 32 {
+            return Err(ActorError::illegal_argument("s length must be 1..=32 bytes".into()));
         }
         // r/s non-zero
         if t.r.iter().all(|&b| b == 0) || t.s.iter().all(|&b| b == 0) {
