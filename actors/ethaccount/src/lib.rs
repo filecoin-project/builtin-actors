@@ -205,7 +205,8 @@ impl EthAccountActor {
             .receiver()
             .id()
             .map_err(|_| ActorError::illegal_state("receiver not an id address".into()))?;
-        let delegated_addr = rt.lookup_delegated_address(receiver_id)
+        let delegated_addr = rt
+            .lookup_delegated_address(receiver_id)
             .ok_or_else(|| ActorError::illegal_state("receiver not resolvable to f4".into()))?;
         // Extract last 20 bytes from f4 address payload; assuming EAM namespace.
         let payload = *delegated_addr.payload();
@@ -219,17 +220,13 @@ impl EthAccountActor {
                         eth_addr.copy_from_slice(&daddr[daddr.len() - 20..])
                     }
                     std::cmp::Ordering::Less => {
-                        return Err(ActorError::illegal_state(
-                            "EthAccount has non-20B f4".into(),
-                        ));
+                        return Err(ActorError::illegal_state("EthAccount has non-20B f4".into()));
                     }
                 }
                 eth_addr
             }
             _ => {
-                return Err(ActorError::illegal_state(
-                    "receiver has no EAM f4 address".into(),
-                ));
+                return Err(ActorError::illegal_state("receiver has no EAM f4 address".into()));
             }
         };
 
