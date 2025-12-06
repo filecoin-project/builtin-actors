@@ -336,8 +336,9 @@ impl EvmContractActor {
         }
     }
 
-    // Legacy ApplyAndCall route removed in favor of EthAccount.ApplyAndCall + VM intercept.
-    fn apply_and_call_removed<RT>(
+    // This is a legacy stub for EVM.ApplyAndCall, which has been removed from the EVM actor
+    // in favor of EthAccount.ApplyAndCall combined with a VM intercept.
+    fn apply_and_call_legacy_stub<RT>(
         _rt: &RT,
         _params: WithCodec<crate::ApplyAndCallParams, DAG_CBOR>,
     ) -> Result<crate::ApplyAndCallReturn, ActorError>
@@ -538,7 +539,7 @@ impl ActorCode for EvmContractActor {
         InvokeContractDelegate => invoke_contract_delegate,
         // Legacy ApplyAndCall/InvokeAsEoa removed; map to stubs returning illegal_state.
         InvokeAsEoa => invoke_as_eoa,
-        ApplyAndCall => apply_and_call_removed,
+        ApplyAndCall => apply_and_call_legacy_stub,
         // Keep only InvokeAsEoaWithRoot for VM intercepts.
         InvokeAsEoaWithRoot => invoke_as_eoa_with_root,
         Resurrect => resurrect,
@@ -559,55 +560,5 @@ pub struct EoaInvokeParams {
 }
 
 impl EvmContractActor {
-    #[allow(dead_code)]
-    fn validate_tuple(rt: &impl Runtime, t: &crate::DelegationParam) -> Result<(), ActorError> {
-        // chain id 0 or local
-        if t.chain_id != 0 && fvm_shared::chainid::ChainID::from(t.chain_id) != rt.chain_id() {
-            return Err(ActorError::illegal_argument("invalid chain id".into()));
-        }
-        // Length checks first: r,s must be <= 32 bytes.
-        if t.r.len() > 32 {
-            return Err(ActorError::illegal_argument("r length exceeds 32".into()));
-        }
-        if t.s.len() > 32 {
-            return Err(ActorError::illegal_argument("s length exceeds 32".into()));
-        }
-        // r/s non-zero
-        if t.r.iter().all(|&b| b == 0) || t.s.iter().all(|&b| b == 0) {
-            return Err(ActorError::illegal_argument("zero r/s".into()));
-        }
-        // y_parity 0 or 1
-        if t.y_parity != 0 && t.y_parity != 1 {
-            return Err(ActorError::illegal_argument("invalid y_parity".into()));
-        }
-        // low-s: s <= n/2, run on 32-byte left-padded S
-        let mut s_padded = [0u8; 32];
-        let s_in = &t.s;
-        let start = 32 - s_in.len();
-        s_padded[start..].copy_from_slice(s_in);
-        if Self::is_high_s(&s_padded) {
-            return Err(ActorError::illegal_argument("high-s not allowed".into()));
-        }
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    fn is_high_s(sv: &[u8; 32]) -> bool {
-        // n/2 as in Delegator
-        const N: [u8; 32] = [
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-            0xFF, 0xFE, 0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B, 0xBF, 0xD2, 0x5E, 0x8C,
-            0xD0, 0x36, 0x41, 0x41,
-        ];
-        let mut n2 = [0u8; 32];
-        let mut carry = 0u16;
-        for i in (0..32).rev() {
-            let v = (carry << 8) | N[i] as u16;
-            n2[i] = (v / 2) as u8;
-            carry = v % 2;
-        }
-        sv > &n2
-    }
-
     // Note: EVM.ApplyAndCall has been removed; dispatch maps it to apply_and_call_removed.
 }
