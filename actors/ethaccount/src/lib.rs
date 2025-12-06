@@ -279,10 +279,8 @@ impl EthAccountActor {
                 st.delegate_to = if is_zero_delegate { None } else { Some(t.address) };
                 // Bump nonce
                 st.auth_nonce = st.auth_nonce.saturating_add(1);
-                // Initialize storage root if absent. We check for both Cid::default() (uninitialized)
-                // and EMPTY_ARR_CID (explicitly initialized as an empty array) to cover different
-                // "absent" states of the storage root.
-                if st.evm_storage_root == Cid::default() || st.evm_storage_root == EMPTY_ARR_CID {
+                // Initialize storage root if absent (uninitialized).
+                if st.evm_storage_root == Cid::default() {
                     st.evm_storage_root = EMPTY_ARR_CID;
                 }
             }
