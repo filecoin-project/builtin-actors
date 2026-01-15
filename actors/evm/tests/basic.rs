@@ -396,7 +396,7 @@ fn test_secp256r1_precompile_all_solidity_functions() {
         rt.expect_gas_available(10_000_000_000u64);
         let result = util::invoke_contract(&rt, &hex::decode(selector).unwrap());
         println!("{} completed successfully", name);
-        assert!(result.is_empty() || !result.is_empty(), "{} should complete successfully", name);
+        assert!(result.is_empty(), "{} should not return data or revert", name);
     }
 
     // Test all failure functions (reduced to 5 functions)
@@ -411,6 +411,6 @@ fn test_secp256r1_precompile_all_solidity_functions() {
     for (name, selector) in fail_functions.iter() {
         rt.expect_gas_available(10_000_000_000u64);
         let result = util::invoke_contract(&rt, &hex::decode(selector).unwrap());
-        assert!(result.is_empty() || !result.is_empty(), "{} should complete successfully", name);
+        assert!(result.is_empty(), "{} should not return data or revert", name);
     }
 }

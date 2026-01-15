@@ -4,8 +4,8 @@
 //! secp256r1 curve support.
 //!
 //! The main purpose of this precompile is to verify ECDSA signatures that use the secp256r1, or
-//! P256 elliptic curve. The [`P256VERIFY`] const represents the implementation of this precompile,
-//! with the address that it is currently deployed at.
+//! P256 elliptic curve. The [`p256_verify`] function represents the implementation of this
+//! precompile.
 use fil_actors_runtime::runtime::Runtime;
 use p256::{
     EncodedPoint,
@@ -41,8 +41,8 @@ fn p256_verify_inner(input: &[u8]) -> PrecompileResult {
     }
 }
 
-/// Returns `Some(())` if the signature included in the input byte slice is
-/// valid, `None` otherwise.
+/// Returns `true` if the signature included in the input byte slice is
+/// valid, `false` otherwise.
 pub fn verify_impl(input: &[u8]) -> bool {
     if input.len() != 160 {
         return false;
