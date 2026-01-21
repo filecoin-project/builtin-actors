@@ -58,15 +58,20 @@ mod tests {
     use fvm_shared::econ::TokenAmount;
 
     #[test]
-    fn test_clz() {
+    fn test_clz_eip7939_vectors_unit() {
+        // Directly matches the EIP-7939 test cases.
         assert_eq!(clz(U256::ZERO), U256::from(256));
+        assert_eq!(clz(U256::ONE << 255), U256::ZERO);
         assert_eq!(clz(U256::MAX), U256::ZERO);
+        assert_eq!(clz(U256::ONE << 254), U256::ONE);
+        assert_eq!(clz((U256::ONE << 255) - U256::ONE), U256::ONE);
         assert_eq!(clz(U256::ONE), U256::from(255));
+    }
+
+    #[test]
+    fn test_clz_misc_unit() {
         // 2 is 10 binary, so 256 - 2 = 254
         assert_eq!(clz(U256::from(2)), U256::from(254));
-        // high bit set
-        let high_bit = U256::ONE << 255;
-        assert_eq!(clz(high_bit), U256::ZERO);
     }
 
     fn clz_via_evm(value: U256) -> U256 {
