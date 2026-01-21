@@ -52,7 +52,7 @@ pub fn clz(value: U256) -> U256 {
 mod tests {
     use super::*;
     use crate::interpreter::opcodes;
-    use crate::interpreter::{execution::Machine, system::System, Output};
+    use crate::interpreter::{Output, execution::Machine, system::System};
     use crate::{Bytecode, EthAddress, ExecutionState};
     use fil_actors_runtime::test_utils::MockRuntime;
     use fvm_shared::econ::TokenAmount;

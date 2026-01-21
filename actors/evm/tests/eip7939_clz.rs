@@ -86,4 +86,3 @@ fn eip7939_clz_vectors_end_to_end() {
         assert_eq!(ret.as_slice(), &u256_be_bytes(expected));
     }
 }
-
