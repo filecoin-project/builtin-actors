@@ -43,9 +43,26 @@ pub fn sar(shift: U256, mut value: U256) -> U256 {
     }
 }
 
+#[inline]
+pub fn clz(value: U256) -> U256 {
+    U256::from(value.leading_zeros())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_clz() {
+        assert_eq!(clz(U256::ZERO), U256::from(256));
+        assert_eq!(clz(U256::MAX), U256::ZERO);
+        assert_eq!(clz(U256::ONE), U256::from(255));
+        // 2 is 10 binary, so 256 - 2 = 254
+        assert_eq!(clz(U256::from(2)), U256::from(254));
+        // high bit set
+        let high_bit = U256::ONE << 255;
+        assert_eq!(clz(high_bit), U256::ZERO);
+    }
 
     #[test]
     fn test_shl() {
