@@ -40,7 +40,7 @@ impl<RT: Runtime, const N: usize> PrecompileTable<RT, N> {
 }
 
 pub fn is_reserved_precompile_address(addr: &EthAddress) -> bool {
-    // Special case for RIP-7212 secp256r1 precompile at 0x0100
+    // Special case for secp256r1 (P-256) `P256VERIFY` precompile at 0x0100 (EIP-7951 / RIP-7212 interface).
     if addr.0
         == [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -92,7 +92,7 @@ impl<RT: Runtime> Precompiles<RT> {
     ]);
 
     fn lookup_precompile(addr: &EthAddress) -> Option<PrecompileFn<RT>> {
-        // Special-case RIP-7212 precompile at 0x...0100
+        // Special-case secp256r1 (P-256) `P256VERIFY` precompile at 0x...0100 (EIP-7951 / RIP-7212 interface).
         if addr.0[0] == 0x00
             && addr.0[1..18] == [0u8; 17]
             && addr.0[18] == 0x01
