@@ -293,6 +293,11 @@ pub fn execute(
 mod tests {
     use crate::evm_unit_test;
 
+    #[test]
+    fn test_clz_opcode_value() {
+        assert_eq!(super::opcodes::CLZ, 0x1e);
+    }
+
     macro_rules! check_underflow_err {
         ($($ins:ident,)*) => {
             $(do_check_underflow_err!($ins);)*

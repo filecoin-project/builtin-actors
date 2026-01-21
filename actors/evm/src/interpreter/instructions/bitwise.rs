@@ -51,6 +51,11 @@ pub fn clz(value: U256) -> U256 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::interpreter::opcodes;
+    use crate::interpreter::{execution::Machine, system::System, Output};
+    use crate::{Bytecode, EthAddress, ExecutionState};
+    use fil_actors_runtime::test_utils::MockRuntime;
+    use fvm_shared::econ::TokenAmount;
 
     #[test]
     fn test_clz() {
@@ -62,6 +67,51 @@ mod tests {
         // high bit set
         let high_bit = U256::ONE << 255;
         assert_eq!(clz(high_bit), U256::ZERO);
+    }
+
+    fn clz_via_evm(value: U256) -> U256 {
+        let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+
+        let mut state = ExecutionState::new(
+            EthAddress::from_id(1000),
+            EthAddress::from_id(1000),
+            TokenAmount::from_atto(0),
+            Vec::new(),
+        );
+
+        let mut imm = [0u8; 32];
+        value.write_as_big_endian(&mut imm);
+
+        let mut code = Vec::with_capacity(1 + 32 + 1);
+        code.push(opcodes::PUSH32);
+        code.extend_from_slice(&imm);
+        code.push(opcodes::CLZ);
+
+        let mut system = System::new(&rt, false);
+        let bytecode = Bytecode::new(code);
+        let mut machine = Machine {
+            system: &mut system,
+            state: &mut state,
+            bytecode: &bytecode,
+            pc: 0,
+            output: Output::default(),
+        };
+
+        machine.step().expect("PUSH32 step failed");
+        machine.step().expect("CLZ step failed");
+        machine.state.stack.pop_many::<1>().expect("missing CLZ result")[0]
+    }
+
+    #[test]
+    fn test_clz_eip7939_vectors() {
+        // From EIP-7939 test cases.
+        assert_eq!(clz_via_evm(U256::ZERO), U256::from(256));
+        assert_eq!(clz_via_evm(U256::ONE << 255), U256::ZERO);
+        assert_eq!(clz_via_evm(U256::MAX), U256::ZERO);
+        assert_eq!(clz_via_evm(U256::ONE << 254), U256::ONE);
+        assert_eq!(clz_via_evm((U256::ONE << 255) - U256::ONE), U256::ONE);
+        assert_eq!(clz_via_evm(U256::ONE), U256::from(255));
     }
 
     #[test]
