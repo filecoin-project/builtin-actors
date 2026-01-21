@@ -125,6 +125,7 @@ pub mod opcodes {
         0x1b: SHL,
         0x1c: SHR,
         0x1d: SAR,
+        0x1e: CLZ,
         0x20: KECCAK256,
         0x30: ADDRESS,
         0x31: BALANCE,
@@ -292,6 +293,11 @@ pub fn execute(
 mod tests {
     use crate::evm_unit_test;
 
+    #[test]
+    fn test_clz_opcode_value() {
+        assert_eq!(super::opcodes::CLZ, 0x1e);
+    }
+
     macro_rules! check_underflow_err {
         ($($ins:ident,)*) => {
             $(do_check_underflow_err!($ins);)*
@@ -415,6 +421,7 @@ mod tests {
             CODECOPY,
             CREATE,
             CREATE2,
+            CLZ,
             RETURN,
             REVERT,
             SELFDESTRUCT,
