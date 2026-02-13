@@ -733,13 +733,13 @@ fn rescheduling_no_sectors_as_recovered_leaves_the_queue_empty() {
 fn empty_expiration_queue_with_quantizing(
     rt: &MockRuntime,
     quant: QuantSpec,
-) -> ExpirationQueue<MemoryBlockstore> {
+) -> ExpirationQueue<'_, MemoryBlockstore> {
     let empty_array =
         Amt::<(), _>::new_with_bit_width(&rt.store, TEST_AMT_BITWIDTH).flush().unwrap();
 
     ExpirationQueue::new(&*rt.store, &empty_array, quant).unwrap()
 }
 
-fn empty_expiration_queue(rt: &MockRuntime) -> ExpirationQueue<MemoryBlockstore> {
+fn empty_expiration_queue(rt: &MockRuntime) -> ExpirationQueue<'_, MemoryBlockstore> {
     empty_expiration_queue_with_quantizing(rt, NO_QUANTIZATION)
 }

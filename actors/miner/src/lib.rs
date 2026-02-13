@@ -418,8 +418,7 @@ impl Actor {
             if rt.message().caller() == info.owner || info.pending_owner_address.is_none() {
                 rt.validate_immediate_caller_is(std::iter::once(&info.owner))?;
                 info.pending_owner_address = Some(new_address);
-            } else {
-                let pending_address = info.pending_owner_address.unwrap();
+            } else if let Some(pending_address) = info.pending_owner_address {
                 rt.validate_immediate_caller_is(std::iter::once(&pending_address))?;
                 if new_address != pending_address {
                     return Err(actor_error!(
@@ -442,10 +441,10 @@ impl Actor {
             }
 
             // Clear any no-op change
-            if let Some(p_addr) = info.pending_owner_address {
-                if p_addr == info.owner {
-                    info.pending_owner_address = None;
-                }
+            if let Some(p_addr) = info.pending_owner_address
+                && p_addr == info.owner
+            {
+                info.pending_owner_address = None;
             }
 
             state.save_info(rt.store(), &info).map_err(|e| {
@@ -1189,13 +1188,12 @@ impl Actor {
             })?;
 
         request_update_power(rt, power_delta)?;
-        if !to_reward.is_zero() {
-            if let Err(e) =
+        if !to_reward.is_zero()
+            && let Err(e) =
                 extract_send_result(rt.send_simple(&reporter, METHOD_SEND, None, to_reward.clone()))
-            {
-                error!("failed to send reward: {}", e);
-                to_burn += to_reward;
-            }
+        {
+            error!("failed to send reward: {}", e);
+            to_burn += to_reward;
         }
 
         burn_funds(rt, to_burn)?;
@@ -1296,10 +1294,10 @@ impl Actor {
                 ));
             }
 
-            if let Some(commd) = &precommit.unsealed_cid.0 {
-                if !is_unsealed_sector(commd) {
-                    return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
-                }
+            if let Some(commd) = &precommit.unsealed_cid.0
+                && !is_unsealed_sector(commd)
+            {
+                return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
             }
 
             // Require sector lifetime meets minimum by assuming activation happens at last epoch permitted for seal proof.

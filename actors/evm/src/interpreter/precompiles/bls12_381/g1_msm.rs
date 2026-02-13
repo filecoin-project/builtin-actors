@@ -30,7 +30,7 @@ pub fn bls12_g1msm<RT: Runtime>(
     // Validate that the input length is non-zero and an exact multiple of the per-pair length.
     let input_len = input.len();
 
-    if input.is_empty() || input_len % G1_MSM_INPUT_LENGTH != 0 {
+    if input.is_empty() || !input_len.is_multiple_of(G1_MSM_INPUT_LENGTH) {
         return Err(PrecompileError::IncorrectInputSize);
     }
 

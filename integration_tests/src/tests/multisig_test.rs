@@ -306,7 +306,7 @@ pub fn swap_self_2_of_3_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (alice, bob, chuck, dinesh) = (addrs[0], addrs[1], addrs[2], addrs[3]);
 
-    let msig_addr = create_msig(v, &vec![alice, bob, chuck], 2);
+    let msig_addr = create_msig(v, &[alice, bob, chuck], 2);
 
     // Case 1: swapped out is proposer, swap alice for dinesh
     let swap_params = SwapSignerParams { from: alice, to: dinesh };
@@ -411,7 +411,7 @@ fn check_txs(v: &dyn VM, msig_addr: Address, mut expect_txns: Vec<(TxnID, Transa
         Ok(())
     })
     .unwrap();
-    expect_txns.sort_by_key(|(TxnID(id), _txn)| (*id));
-    actual_txns.sort_by_key(|(TxnID(id), _txn)| (*id));
+    expect_txns.sort_by_key(|(TxnID(id), _txn)| *id);
+    actual_txns.sort_by_key(|(TxnID(id), _txn)| *id);
     assert_eq!(expect_txns, actual_txns);
 }

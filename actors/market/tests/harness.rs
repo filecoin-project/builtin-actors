@@ -1338,7 +1338,13 @@ pub fn publish_and_activate_deal(
 ) -> (DealID, DealProposal) {
     let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(rt, addrs, &[deal.clone()], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
+    let deal_ids = publish_deals(
+        rt,
+        addrs,
+        std::slice::from_ref(&deal),
+        TokenAmount::zero(),
+        NO_ALLOCATION_ID,
+    ); // unverified deal
     activate_deals(rt, sector_expiry, addrs.provider, current_epoch, sector_number, &deal_ids);
     (deal_ids[0], deal)
 }
@@ -1377,7 +1383,13 @@ pub fn generate_and_publish_deal(
 ) -> (DealID, DealProposal) {
     let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(rt, addrs, &[deal.clone()], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
+    let deal_ids = publish_deals(
+        rt,
+        addrs,
+        std::slice::from_ref(&deal),
+        TokenAmount::zero(),
+        NO_ALLOCATION_ID,
+    ); // unverified deal
     (deal_ids[0], deal)
 }
 
@@ -1627,10 +1639,10 @@ pub fn terminate_deals(
     if let Some(deal_ids) = deal_ids {
         for deal_id in deal_ids {
             let d = find_deal_proposal(rt, deal_id);
-            if let Some(d) = d {
-                if curr_epoch < d.end_epoch {
-                    total_slashed += d.provider_collateral.clone();
-                }
+            if let Some(d) = d
+                && curr_epoch < d.end_epoch
+            {
+                total_slashed += d.provider_collateral.clone();
             }
         }
     }

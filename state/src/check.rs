@@ -242,8 +242,8 @@ fn check_miner_against_power(
                             ),
                         );
                         if payload.event_type == CRON_EVENT_PROVING_DEADLINE {
-                            if proving_period_cron.is_some() {
-                                acc.add(format!("miner {address} has duplicate proving period crons at epoch {} and {}", proving_period_cron.as_ref().unwrap().epoch, event.epoch));
+                            if let Some(proving_period) = &proving_period_cron {
+                                acc.add(format!("miner {address} has duplicate proving period crons at epoch {} and {}", proving_period.epoch, event.epoch));
                             }
                             proving_period_cron = Some(event);
                         }

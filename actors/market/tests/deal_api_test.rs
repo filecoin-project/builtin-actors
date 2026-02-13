@@ -42,7 +42,7 @@ fn proposal_data() {
     let id = publish_deals(
         &rt,
         &MinerAddresses::default(),
-        &[proposal.clone()],
+        std::slice::from_ref(&proposal),
         TokenAmount::zero(),
         next_allocation_id,
     )[0];

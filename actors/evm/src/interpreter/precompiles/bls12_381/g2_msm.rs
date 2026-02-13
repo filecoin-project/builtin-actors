@@ -22,7 +22,7 @@ pub fn bls12_g2msm<RT: Runtime>(
 ) -> PrecompileResult {
     // Validate input length: must be non-zero and an exact multiple of G2_MSM_INPUT_LENGTH.
     let input_len = input.len();
-    if input.is_empty() || input_len % G2_MSM_INPUT_LENGTH != 0 {
+    if input.is_empty() || !input_len.is_multiple_of(G2_MSM_INPUT_LENGTH) {
         return Err(PrecompileError::IncorrectInputSize);
     }
 

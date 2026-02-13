@@ -121,11 +121,11 @@ impl<'invocation> InvocationCtx<'invocation> {
         &'invocation self,
         target: &Address,
     ) -> Result<(ActorState, Address), ActorError> {
-        if let Some(a) = self.v.resolve_id_address(target) {
-            if let Some(act) = self.v.actor(&a) {
-                return Ok((act, a));
-            }
-        };
+        if let Some(a) = self.v.resolve_id_address(target)
+            && let Some(act) = self.v.actor(&a)
+        {
+            return Ok((act, a));
+        }
 
         // Address does not yet exist, create it
         let is_account = match target.payload() {
@@ -466,10 +466,10 @@ impl Runtime for InvocationCtx<'_> {
     }
 
     fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
-        if let Some(normalize_addr) = self.v.resolve_id_address(addr) {
-            if let &Payload::ID(id) = normalize_addr.payload() {
-                return Some(id);
-            }
+        if let Some(normalize_addr) = self.v.resolve_id_address(addr)
+            && let &Payload::ID(id) = normalize_addr.payload()
+        {
+            return Some(id);
         }
         None
     }

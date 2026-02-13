@@ -3489,7 +3489,7 @@ pub fn test_sector(
 pub fn sectors_arr_mbs(
     store: &'_ MemoryBlockstore,
     sectors_info: Vec<SectorOnChainInfo>,
-) -> Sectors<MemoryBlockstore> {
+) -> Sectors<'_, MemoryBlockstore> {
     let empty_array =
         Amt::<(), _>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH).flush().unwrap();
     let mut sectors = Sectors::load(store, &empty_array).unwrap();
