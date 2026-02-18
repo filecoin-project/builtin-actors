@@ -50,7 +50,7 @@ jobs:
         name: code-coverage-report
         path: llvm-show/*
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70 # v3.1.1
+      uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
       with:
         files: lcov.info
         token: ${{ secrets.CODECOV_TOKEN }}
