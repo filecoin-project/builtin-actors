@@ -1,7 +1,6 @@
 [advisories]
 ignore = [
    { id = "RUSTSEC-2024-0436", reason = "paste@1.0.15 excluded pending removal from alloy-core and syn-solidity; see https://github.com/alloy-rs/core/issues/897" },
-   { id = "RUSTSEC-2025-0014", reason = "humantime@2.1.0 is excluded pending an update of pretty_env_logger to use env_logger@0.11 which removes it" },
 ]
 
 [licenses]
