@@ -34,7 +34,7 @@ jobs:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
     steps:
     - name: Checking out builtin-actors
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         ref: ${{ inputs.release_ref || github.ref }}
     - name: Writing bundle
