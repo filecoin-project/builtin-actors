@@ -61,11 +61,11 @@ impl ExpectInvocation {
         let id = format!("[{}→{}:{}]", invoc.from, invoc.to, invoc.method);
         self.quick_match(invoc, String::new());
 
-        if self.error_number.is_some() && self.return_value.is_some() {
+        if let Some(error_number) = self.error_number
+            && self.return_value.is_some()
+        {
             panic!(
-                "{} malformed expectation: expected error_number {} but also expected return_value",
-                id,
-                self.error_number.unwrap()
+                "{id} malformed expectation: expected error_number {error_number} but also expected return_value",
             );
         }
 

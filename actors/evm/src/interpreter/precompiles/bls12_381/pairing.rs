@@ -23,7 +23,7 @@ pub fn bls12_pairing<RT: Runtime>(
     let input_len = input.len();
 
     // Input length must be non-zero and multiple of the pairing input length
-    if input_len == 0 || input_len % PAIRING_INPUT_LENGTH != 0 {
+    if input_len == 0 || !input_len.is_multiple_of(PAIRING_INPUT_LENGTH) {
         return Err(PrecompileError::IncorrectInputSize);
     }
 
