@@ -75,13 +75,13 @@ testing-fake-proofs = []
 [workspace.dependencies]
 # Common
 serde = { version = "1.0", features = ["derive"] }
-anyhow = "1.0.98"
+anyhow = "1.0.101"
 bitflags = "2.9.0"
 num = { version = "0.4", features = ["serde"] }
 num-derive = "0.4.2"
 num-traits = "0.2.19"
 lazy_static = "1.5.0"
-log = { version = "0.4.27", features = ["std"] }
+log = { version = "0.4.29", features = ["std"] }
 byteorder = "1.5.0"
 itertools = "0.14.0"
 indexmap = { version = "2.9.0" }
@@ -94,8 +94,8 @@ serde_json = "1.0"
 regex = "1"
 test-case = "3.3.1"
 bimap = "0.6.3"
-castaway = "0.2.3"
-thiserror = "2.0.12"
+castaway = "0.2.4"
+thiserror = "2.0.18"
 pretty_env_logger = "0.5.0"
 serde_repr = "0.1.20"
 unsigned-varint = "0.8.0"
@@ -136,7 +136,7 @@ fvm_ipld_encoding = "0.5.3"
 fvm_ipld_blockstore = "0.3.1"
 fvm_ipld_hamt = "0.10.4"
 fvm_ipld_kamt = "0.4.5"
-fvm_ipld_amt = "0.7.4"
+fvm_ipld_amt = "0.7.5"
 fvm_ipld_bitfield = "0.7.2"
 
 # workspace
