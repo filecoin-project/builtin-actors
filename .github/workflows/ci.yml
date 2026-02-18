@@ -43,7 +43,7 @@ jobs:
     - name: Installing the toolchain
       run: make toolchain
     - name: Install cargo-nextest
-      uses: taiki-e/install-action@c07504cae06f832dc8de08911c9a9c5cddb0d2d3 # v2.56.13
+      uses: taiki-e/install-action@70e00552f3196d9a4c7dde7c57ef4c4830d422dd # v2.68.2
       with:
         tool: cargo-nextest
     - name: Running tests
