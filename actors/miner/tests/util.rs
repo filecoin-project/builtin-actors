@@ -637,6 +637,10 @@ impl ActorHarness {
             aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
             proving_deadline,
             require_activation_success: true,
+
+            sealer_id_actor: None,
+            sealer_id_verifier_signature: None,
+            final_sector_numbers: None,
         }
     }
 
