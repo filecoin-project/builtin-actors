@@ -2015,7 +2015,7 @@ impl Actor {
         } else if partition.faults.get(params.sector_number) {
             SectorStatusCode::Faulty
         } else {
-            SectorStatusCode::Live
+            SectorStatusCode::Active
         };
 
         let sector_location =
@@ -2086,7 +2086,7 @@ impl Actor {
         let faulty = partition.faults.get(params.sector_number);
 
         let valid = match params.status {
-            SectorStatusCode::Live => !terminated && !faulty,
+            SectorStatusCode::Active => !terminated && !faulty,
             SectorStatusCode::Dead => terminated,
             SectorStatusCode::Faulty => faulty,
         };

@@ -682,8 +682,8 @@ pub struct ValidateSectorStatusReturn {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SectorStatusCode {
-    /// Sector is live (not terminated, includes faulty sectors)
-    Live,
+    /// Sector is active (not terminated, not faulty)
+    Active,
     /// Sector is not live (terminated or never committed)
     Dead,
     /// Sector is currently faulty

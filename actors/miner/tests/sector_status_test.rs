@@ -32,7 +32,7 @@ fn generate_sector_location_live_sector() {
     let sector_number = sectors[0].sector_number;
 
     let (status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
-    assert_eq!(status, SectorStatusCode::Live);
+    assert_eq!(status, SectorStatusCode::Active);
 
     let is_valid =
         h.validate_sector_status(&rt, sector_number, status, aux_data).unwrap();
@@ -102,7 +102,7 @@ fn validate_fails_with_invalid_aux_data() {
     let result = h.validate_sector_status(
         &rt,
         sector_number,
-        SectorStatusCode::Live,
+        SectorStatusCode::Active,
         invalid_aux_data,
     );
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
@@ -137,7 +137,7 @@ fn validate_fails_with_sector_not_found_at_location() {
     let (_status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
 
     // try to validate different sector number with same aux_data — should error
-    let result = h.validate_sector_status(&rt, 999, SectorStatusCode::Live, aux_data);
+    let result = h.validate_sector_status(&rt, 999, SectorStatusCode::Active, aux_data);
     expect_abort(ExitCode::USR_NOT_FOUND, result);
 
     h.check_state(&rt);
@@ -291,7 +291,7 @@ fn validate_faulty_sector_as_live_or_dead_returns_false() {
     let (_status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
 
     let is_valid =
-        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Live, aux_data.clone()).unwrap();
+        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Active, aux_data.clone()).unwrap();
     assert!(!is_valid);
 
     let is_valid =
@@ -319,7 +319,7 @@ fn validate_dead_sector_as_live_or_faulty_returns_false() {
     let (_status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
 
     let is_valid =
-        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Live, aux_data.clone()).unwrap();
+        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Active, aux_data.clone()).unwrap();
     assert!(!is_valid);
 
     let is_valid = h
@@ -362,7 +362,7 @@ fn validate_live_or_faulty_at_no_location_returns_false() {
     let aux_data = fvm_ipld_encoding::to_vec(&no_location).unwrap();
 
     let is_valid = h
-        .validate_sector_status(&rt, sector_number, SectorStatusCode::Live, aux_data.clone())
+        .validate_sector_status(&rt, sector_number, SectorStatusCode::Active, aux_data.clone())
         .unwrap();
     assert!(!is_valid);
 
