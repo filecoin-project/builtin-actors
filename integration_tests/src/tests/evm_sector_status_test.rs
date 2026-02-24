@@ -47,25 +47,13 @@ pub fn evm_sector_status_test(v: &dyn VM) {
     // Precommit and prove a sector
     let sector_number: SectorNumber = 100;
 
-    let manifests: Vec<SectorActivationManifest> = vec![SectorActivationManifest {
-        sector_number,
-        pieces: vec![],
-    }];
+    let manifests: Vec<SectorActivationManifest> =
+        vec![SectorActivationManifest { sector_number, pieces: vec![] }];
 
     let meta: Vec<PrecommitMetadata> =
         vec![PrecommitMetadata { deals: vec![], commd: CompactCommD::empty() }];
 
-    precommit_sectors_v2(
-        v,
-        1,
-        meta,
-        &worker,
-        &miner_addr,
-        seal_proof,
-        sector_number,
-        true,
-        None,
-    );
+    precommit_sectors_v2(v, 1, meta, &worker, &miner_addr, seal_proof, sector_number, true, None);
 
     // Advance time to prove commit epoch
     let policy = Policy::default();
@@ -105,11 +93,7 @@ pub fn evm_sector_status_test(v: &dyn VM) {
             IpldBlock::serialize_cbor(&gen_params).unwrap(),
         )
         .unwrap();
-    assert!(
-        gen_result.code.is_success(),
-        "GenerateSectorLocation failed: {}",
-        gen_result.message
-    );
+    assert!(gen_result.code.is_success(), "GenerateSectorLocation failed: {}", gen_result.message);
 
     let gen_return: GenerateSectorLocationReturn =
         gen_result.ret.unwrap().deserialize().expect("Failed to decode GenerateSectorLocation");
@@ -117,9 +101,8 @@ pub fn evm_sector_status_test(v: &dyn VM) {
     assert!(!gen_return.aux_data.is_empty(), "Expected non-empty aux_data");
 
     // Deploy SectorStatusChecker EVM contract
-    let hex_str =
-        std::fs::read_to_string("../actors/evm/tests/contracts/SectorStatusChecker.hex")
-            .expect("Failed to read contract bytecode hex file");
+    let hex_str = std::fs::read_to_string("../actors/evm/tests/contracts/SectorStatusChecker.hex")
+        .expect("Failed to read contract bytecode hex file");
     let contract_bytecode =
         hex::decode(hex_str.trim()).expect("Failed to decode contract bytecode hex");
 
@@ -162,16 +145,11 @@ pub fn evm_sector_status_test(v: &dyn VM) {
             Some(serialize_ok(&ContractParams(call_params))),
         )
         .unwrap();
-    assert!(
-        result.code.is_success(),
-        "validateSectorStatus failed: {}",
-        result.message
-    );
+    assert!(result.code.is_success(), "validateSectorStatus failed: {}", result.message);
 
     let return_data: BytesDe = result.ret.unwrap().deserialize().unwrap();
-    let valid =
-        SectorStatusChecker::validateSectorStatusCall::abi_decode_returns(&return_data.0)
-            .expect("Failed to decode validateSectorStatus return");
+    let valid = SectorStatusChecker::validateSectorStatusCall::abi_decode_returns(&return_data.0)
+        .expect("Failed to decode validateSectorStatus return");
     assert!(valid, "Expected sector status Active to be valid");
 
     // Check that "Dead" status is invalid for this active sector
@@ -199,9 +177,8 @@ pub fn evm_sector_status_test(v: &dyn VM) {
     );
 
     let return_data: BytesDe = result.ret.unwrap().deserialize().unwrap();
-    let valid =
-        SectorStatusChecker::validateSectorStatusCall::abi_decode_returns(&return_data.0)
-            .expect("Failed to decode validateSectorStatus return");
+    let valid = SectorStatusChecker::validateSectorStatusCall::abi_decode_returns(&return_data.0)
+        .expect("Failed to decode validateSectorStatus return");
     assert!(!valid, "Expected sector status Dead to be invalid");
 
     // Check that "Faulty" status is invalid for this active sector
@@ -229,17 +206,14 @@ pub fn evm_sector_status_test(v: &dyn VM) {
     );
 
     let return_data: BytesDe = result.ret.unwrap().deserialize().unwrap();
-    let valid =
-        SectorStatusChecker::validateSectorStatusCall::abi_decode_returns(&return_data.0)
-            .expect("Failed to decode validateSectorStatus return");
+    let valid = SectorStatusChecker::validateSectorStatusCall::abi_decode_returns(&return_data.0)
+        .expect("Failed to decode validateSectorStatus return");
     assert!(!valid, "Expected sector status Faulty to be invalid");
 
     // Step 3: Call getNominalSectorExpiration on the contract
-    let call_params = SectorStatusChecker::getNominalSectorExpirationCall::new((
-        miner_id,
-        sector_number,
-    ))
-    .abi_encode();
+    let call_params =
+        SectorStatusChecker::getNominalSectorExpirationCall::new((miner_id, sector_number))
+            .abi_encode();
 
     let result = v
         .execute_message(
@@ -250,11 +224,7 @@ pub fn evm_sector_status_test(v: &dyn VM) {
             Some(serialize_ok(&ContractParams(call_params))),
         )
         .unwrap();
-    assert!(
-        result.code.is_success(),
-        "getNominalSectorExpiration failed: {}",
-        result.message
-    );
+    assert!(result.code.is_success(), "getNominalSectorExpiration failed: {}", result.message);
 
     let return_data: BytesDe = result.ret.unwrap().deserialize().unwrap();
     let expiration =
