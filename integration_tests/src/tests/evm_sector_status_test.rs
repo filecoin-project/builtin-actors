@@ -144,11 +144,12 @@ pub fn evm_sector_status_test(v: &dyn VM) {
     let contract_addr = create_return.robust_address.unwrap();
 
     // Step 2: Call validateSectorStatus on the contract with aux_data from step 1
+    let aux_data = gen_return.aux_data;
     let call_params = SectorStatusChecker::validateSectorStatusCall::new((
         miner_id,
         sector_number,
         String::from("Active"),
-        AlloyBytes::from(gen_return.aux_data),
+        AlloyBytes::from(aux_data.clone()),
     ))
     .abi_encode();
 
@@ -172,6 +173,66 @@ pub fn evm_sector_status_test(v: &dyn VM) {
         SectorStatusChecker::validateSectorStatusCall::abi_decode_returns(&return_data.0)
             .expect("Failed to decode validateSectorStatus return");
     assert!(valid, "Expected sector status Active to be valid");
+
+    // Check that "Dead" status is invalid for this active sector
+    let call_params = SectorStatusChecker::validateSectorStatusCall::new((
+        miner_id,
+        sector_number,
+        String::from("Dead"),
+        AlloyBytes::from(aux_data.clone()),
+    ))
+    .abi_encode();
+
+    let result = v
+        .execute_message(
+            &worker,
+            &contract_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(serialize_ok(&ContractParams(call_params))),
+        )
+        .unwrap();
+    assert!(
+        result.code.is_success(),
+        "validateSectorStatus (Dead) call failed: {}",
+        result.message
+    );
+
+    let return_data: BytesDe = result.ret.unwrap().deserialize().unwrap();
+    let valid =
+        SectorStatusChecker::validateSectorStatusCall::abi_decode_returns(&return_data.0)
+            .expect("Failed to decode validateSectorStatus return");
+    assert!(!valid, "Expected sector status Dead to be invalid");
+
+    // Check that "Faulty" status is invalid for this active sector
+    let call_params = SectorStatusChecker::validateSectorStatusCall::new((
+        miner_id,
+        sector_number,
+        String::from("Faulty"),
+        AlloyBytes::from(aux_data.clone()),
+    ))
+    .abi_encode();
+
+    let result = v
+        .execute_message(
+            &worker,
+            &contract_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(serialize_ok(&ContractParams(call_params))),
+        )
+        .unwrap();
+    assert!(
+        result.code.is_success(),
+        "validateSectorStatus (Faulty) call failed: {}",
+        result.message
+    );
+
+    let return_data: BytesDe = result.ret.unwrap().deserialize().unwrap();
+    let valid =
+        SectorStatusChecker::validateSectorStatusCall::abi_decode_returns(&return_data.0)
+            .expect("Failed to decode validateSectorStatus return");
+    assert!(!valid, "Expected sector status Faulty to be invalid");
 
     // Step 3: Call getNominalSectorExpiration on the contract
     let call_params = SectorStatusChecker::getNominalSectorExpirationCall::new((
