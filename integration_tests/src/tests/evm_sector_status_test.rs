@@ -3,7 +3,8 @@ use alloy_core::sol;
 use alloy_core::sol_types::SolCall;
 use export_macro::vm_test;
 use fil_actor_miner::{
-    CompactCommD, Method as MinerMethod, ProveCommitSectors3Params, SectorActivationManifest,
+    CompactCommD, GenerateSectorLocationParams, GenerateSectorLocationReturn,
+    Method as MinerMethod, ProveCommitSectors3Params, SectorActivationManifest, SectorStatusCode,
 };
 use fil_actors_runtime::{EAM_ACTOR_ADDR, runtime::Policy};
 use fvm_ipld_encoding::{BytesDe, RawBytes, ipld_block::IpldBlock};
@@ -93,6 +94,28 @@ pub fn evm_sector_status_test(v: &dyn VM) {
         .unwrap();
     assert!(prove_result.code.is_success(), "ProveCommit failed: {}", prove_result.message);
 
+    // Step 1: Call GenerateSectorLocation directly on the miner actor (off-chain query)
+    let gen_params = GenerateSectorLocationParams { sector_number };
+    let gen_result = v
+        .execute_message(
+            &worker,
+            &miner_addr,
+            &TokenAmount::zero(),
+            MinerMethod::GenerateSectorLocationExported as u64,
+            IpldBlock::serialize_cbor(&gen_params).unwrap(),
+        )
+        .unwrap();
+    assert!(
+        gen_result.code.is_success(),
+        "GenerateSectorLocation failed: {}",
+        gen_result.message
+    );
+
+    let gen_return: GenerateSectorLocationReturn =
+        gen_result.ret.unwrap().deserialize().expect("Failed to decode GenerateSectorLocation");
+    assert_eq!(gen_return.status, SectorStatusCode::Active, "Expected Active status");
+    assert!(!gen_return.aux_data.is_empty(), "Expected non-empty aux_data");
+
     // Deploy SectorStatusChecker EVM contract
     let hex_str =
         std::fs::read_to_string("../actors/evm/tests/contracts/SectorStatusChecker.hex")
@@ -120,44 +143,12 @@ pub fn evm_sector_status_test(v: &dyn VM) {
         create_result.ret.unwrap().deserialize().expect("Failed to decode create return");
     let contract_addr = create_return.robust_address.unwrap();
 
-    // Step 1: Call generateSectorLocation
-    let call_params = SectorStatusChecker::generateSectorLocationCall::new((
-        miner_id,
-        sector_number,
-    ))
-    .abi_encode();
-
-    let result = v
-        .execute_message(
-            &worker,
-            &contract_addr,
-            &TokenAmount::zero(),
-            fil_actor_evm::Method::InvokeContract as u64,
-            Some(serialize_ok(&ContractParams(call_params))),
-        )
-        .unwrap();
-    assert!(
-        result.code.is_success(),
-        "generateSectorLocation failed: {}",
-        result.message
-    );
-
-    let return_data: BytesDe = result.ret.unwrap().deserialize().unwrap();
-    let gen_ret =
-        SectorStatusChecker::generateSectorLocationCall::abi_decode_returns(&return_data.0)
-            .expect("Failed to decode generateSectorLocation return");
-
-    assert_eq!(gen_ret.status, "Active", "Expected Active status for proven sector");
-    assert!(!gen_ret.auxData.is_empty(), "Expected non-empty aux_data");
-
-    let aux_data: Vec<u8> = gen_ret.auxData.to_vec();
-
-    // Step 2: Call validateSectorStatus with the returned aux_data
+    // Step 2: Call validateSectorStatus on the contract with aux_data from step 1
     let call_params = SectorStatusChecker::validateSectorStatusCall::new((
         miner_id,
         sector_number,
         String::from("Active"),
-        AlloyBytes::from(aux_data),
+        AlloyBytes::from(gen_return.aux_data),
     ))
     .abi_encode();
 
@@ -182,7 +173,7 @@ pub fn evm_sector_status_test(v: &dyn VM) {
             .expect("Failed to decode validateSectorStatus return");
     assert!(valid, "Expected sector status Active to be valid");
 
-    // Step 3: Call getNominalSectorExpiration
+    // Step 3: Call getNominalSectorExpiration on the contract
     let call_params = SectorStatusChecker::getNominalSectorExpirationCall::new((
         miner_id,
         sector_number,
