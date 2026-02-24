@@ -55,8 +55,9 @@ use fil_actor_miner::{
     DataActivationNotification, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, FaultDeclaration,
-    GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
-    GetMultiaddrsReturn, GetPeerIDReturn, Method, Method as MinerMethod,
+    GenerateSectorLocationParams, GenerateSectorLocationReturn, GetAvailableBalanceReturn,
+    GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn,
+    GetNominalSectorExpirationReturn, GetPeerIDReturn, Method, Method as MinerMethod,
     MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION, Partition,
     PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
     PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
@@ -64,9 +65,10 @@ use fil_actor_miner::{
     RecoveryDeclaration, ReportConsensusFaultParams, SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH,
     SectorActivationManifest, SectorChanges, SectorContentChangedParams,
     SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
-    TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, WindowedPoSt,
-    WithdrawBalanceParams, WithdrawBalanceReturn, consensus_fault_penalty, ext,
+    SectorReturn, SectorStatusCode, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
+    TerminateSectorsParams, TerminationDeclaration, ValidateSectorStatusParams,
+    ValidateSectorStatusReturn, VerifiedAllocationKey, WindowedPoSt, WithdrawBalanceParams,
+    WithdrawBalanceReturn, consensus_fault_penalty, ext,
     ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
     ext::power::UPDATE_CLAIMED_POWER_METHOD,
     ext::verifreg::{
@@ -2834,6 +2836,58 @@ impl ActorHarness {
             .deserialize()?;
         rt.verify();
         Ok(available_balance_ret.available_balance)
+    }
+
+    pub fn generate_sector_location(
+        &self,
+        rt: &MockRuntime,
+        sector_number: SectorNumber,
+    ) -> Result<(SectorStatusCode, Vec<u8>), ActorError> {
+        let params = GenerateSectorLocationParams { sector_number };
+        rt.expect_validate_caller_any();
+        let result = rt.call::<Actor>(
+            Method::GenerateSectorLocationExported as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        rt.verify();
+
+        let return_value: GenerateSectorLocationReturn = result.unwrap().deserialize().unwrap();
+        Ok((return_value.status, return_value.aux_data))
+    }
+
+    pub fn validate_sector_status(
+        &self,
+        rt: &MockRuntime,
+        sector_number: SectorNumber,
+        status: SectorStatusCode,
+        aux_data: Vec<u8>,
+    ) -> Result<bool, ActorError> {
+        let params = ValidateSectorStatusParams { sector_number, status, aux_data };
+        rt.expect_validate_caller_any();
+        let result = rt.call::<Actor>(
+            Method::ValidateSectorStatusExported as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        rt.verify();
+
+        let return_value: ValidateSectorStatusReturn = result.unwrap().deserialize().unwrap();
+        Ok(return_value.valid)
+    }
+
+    pub fn get_nominal_sector_expiration(
+        &self,
+        rt: &MockRuntime,
+        sector_number: SectorNumber,
+    ) -> Result<ChainEpoch, ActorError> {
+        rt.expect_validate_caller_any();
+        let result = rt.call::<Actor>(
+            Method::GetNominalSectorExpirationExported as u64,
+            IpldBlock::serialize_cbor(&sector_number).unwrap(),
+        )?;
+        rt.verify();
+
+        let return_value: GetNominalSectorExpirationReturn = result.unwrap().deserialize().unwrap();
+        Ok(return_value.expiration)
     }
 }
 
