@@ -75,7 +75,7 @@ testing-fake-proofs = []
 [workspace.dependencies]
 # Common
 serde = { version = "1.0", features = ["derive"] }
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 bitflags = "2.9.0"
 num = { version = "0.4", features = ["serde"] }
 num-derive = "0.4.2"
@@ -121,7 +121,7 @@ cid = { version = "0.11.1", default-features = false, features = [
 multihash = { version = "0.19.3", default-features = false }
 multihash-codetable = { version = "0.1.4", default-features = false }
 multihash-derive = { version = "0.9.1", default-features = false }
-ipld-core = { version = "0.4.2", features = ["serde"] }
+ipld-core = { version = "0.4.3", features = ["serde"] }
 integer-encoding = { version = "4.0.2", default-features = false }
 
 # actor-utils
