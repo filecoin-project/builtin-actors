@@ -164,8 +164,7 @@ pub enum Method {
     InitialPledgeExported = frc42_dispatch::method_hash!("InitialPledge"),
     GenerateSectorLocationExported = frc42_dispatch::method_hash!("GenerateSectorLocation"),
     ValidateSectorStatusExported = frc42_dispatch::method_hash!("ValidateSectorStatus"),
-    GetNominalSectorExpirationExported =
-        frc42_dispatch::method_hash!("GetNominalSectorExpiration"),
+    GetNominalSectorExpirationExported = frc42_dispatch::method_hash!("GetNominalSectorExpiration"),
 }
 
 pub const SECTOR_CONTENT_CHANGED: MethodNum = frc42_dispatch::method_hash!("SectorContentChanged");
@@ -1993,8 +1992,7 @@ impl Actor {
         // completely removed from state or does not exist.
         let sector_info = state.get_sector(rt.store(), params.sector_number)?;
         if sector_info.is_none() {
-            let sector_location =
-                SectorLocation { deadline: NO_DEADLINE, partition: NO_PARTITION };
+            let sector_location = SectorLocation { deadline: NO_DEADLINE, partition: NO_PARTITION };
             let aux_data = fvm_ipld_encoding::to_vec(&sector_location)
                 .map_err(|e| actor_error!(illegal_state, e.description))?;
             return Ok(GenerateSectorLocationReturn { status: SectorStatusCode::Dead, aux_data });

@@ -56,19 +56,19 @@ use fil_actor_miner::{
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, FaultDeclaration,
     GenerateSectorLocationParams, GenerateSectorLocationReturn, GetAvailableBalanceReturn,
-    GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn, GetPeerIDReturn, Method,
-    Method as MinerMethod, MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION,
-    Partition, PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn,
-    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
-    PreCommitSectorParams, ProveCommitSectorParams, ProveCommitSectors3Params,
-    ProveCommitSectors3Return, QuantSpec, RecoveryDeclaration, ReportConsensusFaultParams,
-    SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH, SectorActivationManifest, SectorChanges,
-    SectorContentChangedParams, SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, SectorReturn, SectorStatusCode, SectorUpdateManifest, Sectors,
-    State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
-    GetNominalSectorExpirationReturn, ValidateSectorStatusParams, ValidateSectorStatusReturn,
-    VerifiedAllocationKey,
-    WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, consensus_fault_penalty, ext,
+    GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn,
+    GetNominalSectorExpirationReturn, GetPeerIDReturn, Method, Method as MinerMethod,
+    MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION, Partition,
+    PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
+    PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
+    ProveCommitSectorParams, ProveCommitSectors3Params, ProveCommitSectors3Return, QuantSpec,
+    RecoveryDeclaration, ReportConsensusFaultParams, SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH,
+    SectorActivationManifest, SectorChanges, SectorContentChangedParams,
+    SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
+    SectorReturn, SectorStatusCode, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
+    TerminateSectorsParams, TerminationDeclaration, ValidateSectorStatusParams,
+    ValidateSectorStatusReturn, VerifiedAllocationKey, WindowedPoSt, WithdrawBalanceParams,
+    WithdrawBalanceReturn, consensus_fault_penalty, ext,
     ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
     ext::power::UPDATE_CLAIMED_POWER_METHOD,
     ext::verifreg::{
@@ -2886,8 +2886,7 @@ impl ActorHarness {
         )?;
         rt.verify();
 
-        let return_value: GetNominalSectorExpirationReturn =
-            result.unwrap().deserialize().unwrap();
+        let return_value: GetNominalSectorExpirationReturn = result.unwrap().deserialize().unwrap();
         Ok(return_value.expiration)
     }
 }

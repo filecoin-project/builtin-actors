@@ -34,8 +34,7 @@ fn generate_sector_location_live_sector() {
     let (status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
     assert_eq!(status, SectorStatusCode::Active);
 
-    let is_valid =
-        h.validate_sector_status(&rt, sector_number, status, aux_data).unwrap();
+    let is_valid = h.validate_sector_status(&rt, sector_number, status, aux_data).unwrap();
     assert!(is_valid);
 
     h.check_state(&rt);
@@ -59,8 +58,7 @@ fn generate_sector_location_terminated_not_compacted() {
     let (status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
     assert_eq!(status, SectorStatusCode::Dead);
 
-    let is_valid =
-        h.validate_sector_status(&rt, sector_number, status, aux_data).unwrap();
+    let is_valid = h.validate_sector_status(&rt, sector_number, status, aux_data).unwrap();
     assert!(is_valid);
 
     h.check_state(&rt);
@@ -81,9 +79,8 @@ fn validate_live_sector_as_dead_or_faulty_returns_false() {
         .unwrap();
     assert!(!is_valid);
 
-    let is_valid = h
-        .validate_sector_status(&rt, sector_number, SectorStatusCode::Faulty, aux_data)
-        .unwrap();
+    let is_valid =
+        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Faulty, aux_data).unwrap();
     assert!(!is_valid);
 
     h.check_state(&rt);
@@ -99,12 +96,8 @@ fn validate_fails_with_invalid_aux_data() {
 
     // try to validate with invalid aux_data
     let invalid_aux_data = vec![1, 2, 3, 4]; // Invalid CBOR
-    let result = h.validate_sector_status(
-        &rt,
-        sector_number,
-        SectorStatusCode::Active,
-        invalid_aux_data,
-    );
+    let result =
+        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Active, invalid_aux_data);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
 
     h.check_state(&rt);
@@ -170,14 +163,12 @@ fn validate_detects_swapped_sector_number() {
     let (_, _) = h.terminate_sectors(&rt, &terminate_bf, expected_fee);
 
     // Test 9a: Try to validate sector 2 with sector 1's status
-    let is_valid_9a =
-        h.validate_sector_status(&rt, sector2, status1, aux_data1.clone()).unwrap();
+    let is_valid_9a = h.validate_sector_status(&rt, sector2, status1, aux_data1.clone()).unwrap();
     assert!(!is_valid_9a);
 
     // Test 9b: Try to validate sector 1 with sector 2's status
     let (status2, _aux_data2) = h.generate_sector_location(&rt, sector2).unwrap();
-    let is_valid_9b =
-        h.validate_sector_status(&rt, sector1, status2, aux_data1.clone()).unwrap();
+    let is_valid_9b = h.validate_sector_status(&rt, sector1, status2, aux_data1.clone()).unwrap();
     assert!(!is_valid_9b);
 
     h.check_state(&rt);
@@ -245,8 +236,7 @@ fn validate_dead_sector_no_location() {
     let (status, aux_data) = h.generate_sector_location(&rt, 999).unwrap();
     assert_eq!(status, SectorStatusCode::Dead);
 
-    let is_valid =
-        h.validate_sector_status(&rt, 999, SectorStatusCode::Dead, aux_data).unwrap();
+    let is_valid = h.validate_sector_status(&rt, 999, SectorStatusCode::Dead, aux_data).unwrap();
     assert!(is_valid);
 
     h.check_state(&rt);
@@ -268,9 +258,8 @@ fn validate_faulty_sector() {
     let (status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
     assert_eq!(status, SectorStatusCode::Faulty);
 
-    let is_valid = h
-        .validate_sector_status(&rt, sector_number, SectorStatusCode::Faulty, aux_data)
-        .unwrap();
+    let is_valid =
+        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Faulty, aux_data).unwrap();
     assert!(is_valid);
 
     h.check_state(&rt);
@@ -290,8 +279,9 @@ fn validate_faulty_sector_as_live_or_dead_returns_false() {
 
     let (_status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
 
-    let is_valid =
-        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Active, aux_data.clone()).unwrap();
+    let is_valid = h
+        .validate_sector_status(&rt, sector_number, SectorStatusCode::Active, aux_data.clone())
+        .unwrap();
     assert!(!is_valid);
 
     let is_valid =
@@ -318,13 +308,13 @@ fn validate_dead_sector_as_live_or_faulty_returns_false() {
 
     let (_status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
 
-    let is_valid =
-        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Active, aux_data.clone()).unwrap();
+    let is_valid = h
+        .validate_sector_status(&rt, sector_number, SectorStatusCode::Active, aux_data.clone())
+        .unwrap();
     assert!(!is_valid);
 
-    let is_valid = h
-        .validate_sector_status(&rt, sector_number, SectorStatusCode::Faulty, aux_data)
-        .unwrap();
+    let is_valid =
+        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Faulty, aux_data).unwrap();
     assert!(!is_valid);
 
     h.check_state(&rt);
@@ -366,9 +356,8 @@ fn validate_live_or_faulty_at_no_location_returns_false() {
         .unwrap();
     assert!(!is_valid);
 
-    let is_valid = h
-        .validate_sector_status(&rt, sector_number, SectorStatusCode::Faulty, aux_data)
-        .unwrap();
+    let is_valid =
+        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Faulty, aux_data).unwrap();
     assert!(!is_valid);
 
     h.check_state(&rt);
