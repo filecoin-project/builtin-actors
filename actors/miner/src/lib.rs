@@ -1792,11 +1792,12 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "aggregate proof type must be SnarkPackV2"));
         }
 
-        let (validation_batch, proof_inputs, sector_numbers) = validate_ni_sectors(
+        let (validation_batch, proof_inputs, sector_numbers, sealer_numbers) = validate_ni_sectors(
             rt,
             &params.sectors,
             params.seal_proof_type,
             params.require_activation_success,
+            params.sealer_id_actor,
         )?;
 
         if validation_batch.success_count == 0 {
@@ -1814,6 +1815,17 @@ impl Actor {
             params.aggregate_proof_type,
             &params.aggregate_proof,
         )?;
+
+        if let Some(sealer_id_actor) = params.sealer_id_actor {
+            let Some(sig) = params.sealer_id_verifier_signature else {
+                return Err(actor_error!(illegal_argument, "sealer id verifier signature is required when using Sealer ID"));
+            };
+            let Some(sealer_numbers) = sealer_numbers else {
+                return Err(actor_error!(illegal_argument, "sealer numbers are required when using Sealer ID"));
+            };
+
+            validate_sealer_id_numbers(rt, sealer_id_actor, sig, &sealer_numbers)?;
+        }
 
         // With no data, QA power = raw power
         let qa_sector_power = raw_power_for_sector(info.sector_size);
@@ -4584,22 +4596,29 @@ fn validate_ni_sectors(
     sectors: &[SectorNIActivationInfo],
     seal_proof_type: RegisteredSealProof,
     all_or_nothing: bool,
-) -> Result<(BatchReturn, Vec<SectorSealProofInput>, BitField), ActorError> {
+    sealer_id_actor: Option<ActorID>,
+) -> Result<(BatchReturn, Vec<SectorSealProofInput>, BitField, Option<BitField>), ActorError> {
     let receiver = rt.message().receiver();
-    let miner_id = receiver.id().unwrap();
     let curr_epoch = rt.curr_epoch();
     let activation_epoch = curr_epoch;
     let challenge_earliest = curr_epoch - rt.policy().max_prove_commit_ni_randomness_lookback;
     let unsealed_cid = CompactCommD::empty().get_cid(seal_proof_type).unwrap();
     let entropy = serialize(&receiver, "address for get verify info")?;
 
+    let expected_sealer_id = match sealer_id_actor {
+        Some(sealer_id) => sealer_id,
+        None => receiver.id().unwrap(),
+    };
+
     if sectors.is_empty() {
-        return Ok((BatchReturn::empty(), vec![], BitField::new()));
+        return Ok((BatchReturn::empty(), vec![], BitField::new(), None));
     }
     let mut batch = BatchReturnGen::new(sectors.len());
 
     let mut verify_infos = vec![];
     let mut sector_numbers = BitField::new();
+    let mut sealing_numbers = BitField::new();
+
     for (i, sector) in sectors.iter().enumerate() {
         let mut fail_validation = false;
 
@@ -4618,6 +4637,28 @@ fn validate_ni_sectors(
 
         sector_numbers.set(sector.sector_number);
 
+        if sealer_id_actor.is_none() && sector.sector_number != sector.sealing_number {
+            warn!("sealing number must be same as sector number for all sectors");
+            fail_validation = true;
+        }
+
+        if sealer_id_actor.is_some() {
+            if sealing_numbers.get(sector.sealing_number) {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "duplicate sealing number {}",
+                    sector.sealing_number
+                ));
+            }
+
+            if sector.sealing_number > MAX_SECTOR_NUMBER {
+                warn!("sealing number {} out of range 0..(2^63-1)", sector.sealing_number);
+                fail_validation = true;
+            }
+    
+            sealing_numbers.set(sector.sealing_number);
+        }
+
         if let Err(err) = validate_expiration(
             rt.policy(),
             curr_epoch,
@@ -4629,13 +4670,8 @@ fn validate_ni_sectors(
             fail_validation = true;
         }
 
-        if sector.sealer_id != miner_id {
-            warn!("sealer must be the same as the receiver actor for all sectors");
-            fail_validation = true;
-        }
-
-        if sector.sector_number != sector.sealing_number {
-            warn!("sealing number must be same as sector number for all sectors");
+        if sector.sealer_id != expected_sealer_id {
+            warn!("sealer must be the same as the expected sealer ID for all sectors");
             fail_validation = true;
         }
 
@@ -4693,7 +4729,12 @@ fn validate_ni_sectors(
         }
     }
 
-    Ok((batch.generate(), verify_infos, sector_numbers))
+    let out_sealing_numbers = match sealer_id_actor {
+        Some(_) => Some(sealing_numbers),
+        None => None,
+    };
+
+    Ok((batch.generate(), verify_infos, sector_numbers, out_sealing_numbers))
 }
 
 // Validates a batch of sector sealing proofs.
@@ -4758,7 +4799,7 @@ fn validate_seal_aggregate_proof(
 fn verify_aggregate_seal(
     rt: &impl Runtime,
     proof_inputs: &[SectorSealProofInput],
-    miner_actor_id: ActorID,
+    sealer_id: ActorID,
     seal_proof: RegisteredSealProof,
     aggregate_proof: RegisteredAggregateProof,
     proof_bytes: &RawBytes,
@@ -4767,13 +4808,44 @@ fn verify_aggregate_seal(
         proof_inputs.iter().map(|pi| pi.to_aggregate_seal_verify_info()).collect();
 
     rt.verify_aggregate_seals(&AggregateSealVerifyProofAndInfos {
-        miner: miner_actor_id,
+        miner: sealer_id,
         seal_proof,
         aggregate_proof,
         proof: proof_bytes.clone().into(),
         infos: seal_verify_inputs,
     })
     .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")
+}
+
+fn validate_sealer_id_numbers(
+    rt: &impl Runtime,
+    sealer_id_actor: ActorID,
+    sealer_id_verifier_signature: Vec<u8>,
+    sealer_numbers: &BitField,
+) -> Result<(), ActorError> {
+    let params = ext::sealer::ActivateSectorParams {
+        sector_numbers: sealer_numbers.clone(),
+        verifier_signature: sealer_id_verifier_signature,
+    };
+
+    assert_eq(rt.get_code_cid_for_type(Type::Sealer), rt.get_actor_code_cid(sealer_id_actor)).
+
+    let result = rt.send_simple(
+        &Address::new_id(sealer_id_actor),
+        ext::sealer::ACTIVATE_SECTORS_METHOD,
+        IpldBlock::serialize_cbor(&params)?,
+        TokenAmount::zero(),
+    )?;
+
+    if !result.exit_code.is_success() {
+        return Err(ActorError::checked(
+            result.exit_code,
+            "failed to verify Sealer ID sector numbers".to_string(),
+            None,
+        ));
+    }
+
+    Ok(())
 }
 
 fn verify_deals(
