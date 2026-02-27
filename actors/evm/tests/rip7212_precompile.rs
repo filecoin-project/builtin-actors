@@ -2,11 +2,46 @@ mod asm;
 mod util;
 
 use fvm_shared::{METHOD_SEND, address::Address as FILAddress, econ::TokenAmount, error::ExitCode};
+use serde::Deserialize;
 
-fn p256_input() -> Vec<u8> {
-    // Using a well-known test vector from the daimo-eth/p256-verifier test suite
-    // Test case: valid secp256r1 ECDSA signature verification
-    hex::decode("4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d604aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e").unwrap()
+const TESTDATA_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/precompile-testdata/eip7951_p256verify.json");
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Eip7951TestVector {
+    name: String,
+    input: String,
+    expected: String,
+    gas: u64,
+    #[serde(default)]
+    no_benchmark: bool,
+}
+
+fn load_p256_vectors() -> Vec<Eip7951TestVector> {
+    let testdata =
+        std::fs::read_to_string(TESTDATA_PATH).expect("failed to read EIP-7951 test vector file");
+    serde_json::from_str(&testdata).expect("failed to parse EIP-7951 test vectors")
+}
+
+fn sample_success_vector() -> Eip7951TestVector {
+    load_p256_vectors()
+        .into_iter()
+        .find(|vector| !vector.no_benchmark && !vector.expected.is_empty())
+        .expect("expected at least one successful EIP-7951 test vector")
+}
+
+fn sample_failure_vector() -> Eip7951TestVector {
+    load_p256_vectors()
+        .into_iter()
+        .find(|vector| !vector.no_benchmark && vector.expected.is_empty())
+        .expect("expected at least one failing EIP-7951 test vector")
+}
+
+fn decode_hex(value: &str, kind: &str, vector: &Eip7951TestVector) -> Vec<u8> {
+    hex::decode(value).unwrap_or_else(|error| {
+        panic!("failed to decode {kind} for {} (gas={}): {error}", vector.name, vector.gas)
+    })
 }
 
 fn p256_verify_contract_call() -> Vec<u8> {
@@ -59,15 +94,34 @@ return
 }
 
 #[test]
-fn rip7212_call_success() {
+fn rip7212_call_success_vector() {
     let rt = util::construct_and_verify(p256_verify_contract_call());
 
-    let input = p256_input();
+    let vector = sample_success_vector();
+    let input = decode_hex(&vector.input, "input", &vector);
+    let expected = decode_hex(&vector.expected, "expected", &vector);
+
+    assert_eq!(expected.len(), 32, "success vectors must return 32-byte output");
+    assert_eq!(expected[31], 1, "success vectors must end with 0x01");
+
     let result = util::invoke_contract(&rt, &input);
-    let mut expected = [0u8; 32];
-    expected[31] = 1;
     assert_eq!(result[0], util::PrecompileExit::Success as u8);
-    assert_eq!(&result[1..], &expected);
+    assert_eq!(&result[1..], expected.as_slice());
+}
+
+#[test]
+fn rip7212_call_failure_vector_returns_empty() {
+    let rt = util::construct_and_verify(p256_verify_contract_call());
+
+    let vector = sample_failure_vector();
+    let input = decode_hex(&vector.input, "input", &vector);
+    let expected = decode_hex(&vector.expected, "expected", &vector);
+
+    assert!(expected.is_empty(), "failure vectors must expect empty output");
+
+    let result = util::invoke_contract(&rt, &input);
+    assert_eq!(result[0], util::PrecompileExit::Success as u8);
+    assert_eq!(&result[1..], expected.as_slice());
 }
 
 #[test]
@@ -132,9 +186,9 @@ fn rip7212_call_with_value_transfers_on_success() {
     let rt = util::construct_and_verify(p256_verify_contract_call_value());
     rt.set_balance(TokenAmount::from_atto(100));
 
-    let input = p256_input();
-    let mut expected = [0u8; 32];
-    expected[31] = 1;
+    let vector = sample_success_vector();
+    let input = decode_hex(&vector.input, "input", &vector);
+    let expected = decode_hex(&vector.expected, "expected", &vector);
 
     let addr = fil_actors_evm_shared::address::EthAddress(hex_literal::hex!(
         "0000000000000000000000000000000000000100"
@@ -152,5 +206,5 @@ fn rip7212_call_with_value_transfers_on_success() {
 
     let result = util::invoke_contract(&rt, &input);
     assert_eq!(result[0], util::PrecompileExit::Success as u8);
-    assert_eq!(&result[1..], &expected);
+    assert_eq!(&result[1..], expected.as_slice());
 }

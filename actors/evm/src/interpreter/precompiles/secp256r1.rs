@@ -77,99 +77,108 @@ mod test {
     use crate::interpreter::System;
     use crate::interpreter::precompiles::PrecompileContext;
     use fil_actors_runtime::test_utils::MockRuntime;
-    use rstest::rstest;
+    use serde::Deserialize;
 
-    #[rstest]
-    // Test vectors from https://github.com/daimo-eth/p256-verifier/tree/master/test-vectors
-    #[case::ok_1(
-        "4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d604aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e",
-        true
-    )]
-    #[case::ok_2(
-        "3fec5769b5cf4e310a7d150508e82fb8e3eda1c2c94c61492d3bd8aea99e06c9e22466e928fdccef0de49e3503d2657d00494a00e764fd437bdafa05f5922b1fbbb77c6817ccf50748419477e843d5bac67e6a70e97dde5a57e0c983b777e1ad31a80482dadf89de6302b1988c82c29544c9c07bb910596158f6062517eb089a2f54c9a0f348752950094d3228d3b940258c75fe2a413cb70baa21dc2e352fc5",
-        true
-    )]
-    #[case::ok_3(
-        "e775723953ead4a90411a02908fd1a629db584bc600664c609061f221ef6bf7c440066c8626b49daaa7bf2bcc0b74be4f7a1e3dcf0e869f1542fe821498cbf2de73ad398194129f635de4424a07ca715838aefe8fe69d1a391cfa70470795a80dd056866e6e1125aff94413921880c437c9e2570a28ced7267c8beef7e9b2d8d1547d76dfcf4bee592f5fefe10ddfb6aeb0991c5b9dbbee6ec80d11b17c0eb1a",
-        true
-    )]
-    #[case::ok_4(
-        "b5a77e7a90aa14e0bf5f337f06f597148676424fae26e175c6e5621c34351955289f319789da424845c9eac935245fcddd805950e2f02506d09be7e411199556d262144475b1fa46ad85250728c600c53dfd10f8b3f4adf140e27241aec3c2da3a81046703fccf468b48b145f939efdbb96c3786db712b3113bb2488ef286cdcef8afe82d200a5bb36b5462166e8ce77f2d831a52ef2135b2af188110beaefb1",
-        true
-    )]
-    #[case::ok_5(
-        "858b991cfd78f16537fe6d1f4afd10273384db08bdfc843562a22b0626766686f6aec8247599f40bfe01bec0e0ecf17b4319559022d4d9bf007fe929943004eb4866760dedf31b7c691f5ce665f8aae0bda895c23595c834fecc2390a5bcc203b04afcacbb4280713287a2d0c37e23f7513fab898f2c1fefa00ec09a924c335d9b629f1d4fb71901c3e59611afbfea354d101324e894c788d1c01f00b3c251b2",
-        true
-    )]
-    #[case::fail_wrong_msg_1(
-        "3cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d604aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e",
-        false
-    )]
-    #[case::fail_wrong_msg_2(
-        "afec5769b5cf4e310a7d150508e82fb8e3eda1c2c94c61492d3bd8aea99e06c9e22466e928fdccef0de49e3503d2657d00494a00e764fd437bdafa05f5922b1fbbb77c6817ccf50748419477e843d5bac67e6a70e97dde5a57e0c983b777e1ad31a80482dadf89de6302b1988c82c29544c9c07bb910596158f6062517eb089a2f54c9a0f348752950094d3228d3b940258c75fe2a413cb70baa21dc2e352fc5",
-        false
-    )]
-    #[case::fail_wrong_msg_3(
-        "f775723953ead4a90411a02908fd1a629db584bc600664c609061f221ef6bf7c440066c8626b49daaa7bf2bcc0b74be4f7a1e3dcf0e869f1542fe821498cbf2de73ad398194129f635de4424a07ca715838aefe8fe69d1a391cfa70470795a80dd056866e6e1125aff94413921880c437c9e2570a28ced7267c8beef7e9b2d8d1547d76dfcf4bee592f5fefe10ddfb6aeb0991c5b9dbbee6ec80d11b17c0eb1a",
-        false
-    )]
-    #[case::fail_wrong_msg_4(
-        "c5a77e7a90aa14e0bf5f337f06f597148676424fae26e175c6e5621c34351955289f319789da424845c9eac935245fcddd805950e2f02506d09be7e411199556d262144475b1fa46ad85250728c600c53dfd10f8b3f4adf140e27241aec3c2da3a81046703fccf468b48b145f939efdbb96c3786db712b3113bb2488ef286cdcef8afe82d200a5bb36b5462166e8ce77f2d831a52ef2135b2af188110beaefb1",
-        false
-    )]
-    #[case::fail_wrong_msg_5(
-        "958b991cfd78f16537fe6d1f4afd10273384db08bdfc843562a22b0626766686f6aec8247599f40bfe01bec0e0ecf17b4319559022d4d9bf007fe929943004eb4866760dedf31b7c691f5ce665f8aae0bda895c23595c834fecc2390a5bcc203b04afcacbb4280713287a2d0c37e23f7513fab898f2c1fefa00ec09a924c335d9b629f1d4fb71901c3e59611afbfea354d101324e894c788d1c01f00b3c251b2",
-        false
-    )]
-    #[case::fail_short_input_1("4cee90eb86eaa050036147a12d49004b6a", false)]
-    #[case::fail_short_input_2(
-        "4cee90eb86eaa050036147a12d49004b6a958b991cfd78f16537fe6d1f4afd10273384db08bdfc843562a22b0626766686f6aec8247599f40bfe01bec0e0ecf17b4319559022d4d9bf007fe929943004eb4866760dedf319",
-        false
-    )]
-    #[case::fail_long_input(
-        "4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d604aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e00",
-        false
-    )]
-    #[case::fail_invalid_sig(
-        "4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4dffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff4aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e",
-        false
-    )]
-    #[case::fail_invalid_pubkey(
-        "4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d6000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-        false
-    )]
-    fn test_sig_verify(#[case] input: &str, #[case] expect_success: bool) {
+    const TESTDATA_PATH: &str =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/precompile-testdata/eip7951_p256verify.json");
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "PascalCase")]
+    struct Eip7951TestVector {
+        name: String,
+        input: String,
+        expected: String,
+        gas: u64,
+        #[serde(default)]
+        no_benchmark: bool,
+    }
+
+    fn load_test_vectors() -> Vec<Eip7951TestVector> {
+        let testdata = std::fs::read_to_string(TESTDATA_PATH)
+            .expect("failed to read EIP-7951 test vector file");
+        serde_json::from_str(&testdata).expect("failed to parse EIP-7951 test vectors")
+    }
+
+    #[test]
+    fn eip7951_vectors_conformance() {
         let rt = MockRuntime::default();
         rt.in_call.replace(true);
         let mut system = System::create(&rt).unwrap();
 
-        // let input = Bytes::from_hex(input).unwrap();
-        let input_bytes = hex::decode(input).unwrap();
-        let outcome = p256_verify(&mut system, &input_bytes, PrecompileContext::default()).unwrap();
+        let test_vectors = load_test_vectors();
+        assert!(!test_vectors.is_empty(), "EIP-7951 test vector set must not be empty");
 
-        let expected_result = if expect_success {
-            // Return 32 bytes with last byte set to 1 for success
-            B256::with_last_byte(1).to_vec()
-        } else {
-            // Return empty vector for failure
-            vec![]
-        };
-        assert_eq!(outcome, expected_result);
+        for (index, vector) in
+            test_vectors.iter().enumerate().filter(|(_, vector)| !vector.no_benchmark)
+        {
+            let input = hex::decode(&vector.input).unwrap_or_else(|error| {
+                panic!("failed to decode input for {index} ({}): {error}", vector.name)
+            });
+            let expected = hex::decode(&vector.expected).unwrap_or_else(|error| {
+                panic!("failed to decode expected for {index} ({}): {error}", vector.name)
+            });
+
+            let outcome = p256_verify(&mut system, &input, PrecompileContext::default())
+                .unwrap_or_else(|error| {
+                    panic!("precompile call failed for {index} ({}): {error}", vector.name)
+                });
+
+            assert_eq!(
+                outcome, expected,
+                "output mismatch for vector {index} ({}), gas={}",
+                vector.name, vector.gas
+            );
+
+            if expected.is_empty() {
+                assert!(
+                    outcome.is_empty(),
+                    "failure vector must return empty output for {index} ({})",
+                    vector.name
+                );
+            } else {
+                assert_eq!(
+                    outcome.len(),
+                    32,
+                    "success output must be 32 bytes for {index} ({})",
+                    vector.name
+                );
+                assert_eq!(
+                    outcome[31], 1,
+                    "success output must end with 0x01 for {index} ({})",
+                    vector.name
+                );
+                assert!(
+                    outcome[..31].iter().all(|byte| *byte == 0),
+                    "success output must be zero-padded for {index} ({})",
+                    vector.name
+                );
+            }
+        }
     }
 
-    #[rstest]
-    #[case::ok_1(
-        "b5a77e7a90aa14e0bf5f337f06f597148676424fae26e175c6e5621c34351955289f319789da424845c9eac935245fcddd805950e2f02506d09be7e411199556d262144475b1fa46ad85250728c600c53dfd10f8b3f4adf140e27241aec3c2da3a81046703fccf468b48b145f939efdbb96c3786db712b3113bb2488ef286cdcef8afe82d200a5bb36b5462166e8ce77f2d831a52ef2135b2af188110beaefb1",
-        true
-    )]
-    #[case::fail_1(
-        "b5a77e7a90aa14e0bf5f337f06f597148676424fae26e175c6e5621c34351955289f319789da424845c9eac935245fcddd805950e2f02506d09be7e411199556d262144475b1fa46ad85250728c600c53dfd10f8b3f4adf140e27241aec3c2daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaef8afe82d200a5bb36b5462166e8ce77f2d831a52ef2135b2af188110beaefb1",
-        false
-    )]
-    fn test_verify_impl(#[case] input: &str, #[case] expect_success: bool) {
-        let input_bytes = hex::decode(input).unwrap();
-        let result = verify_impl(&input_bytes);
+    #[test]
+    fn verify_impl_matches_vector_expectations() {
+        for (index, vector) in
+            load_test_vectors().iter().enumerate().filter(|(_, vector)| !vector.no_benchmark)
+        {
+            let input = hex::decode(&vector.input).unwrap_or_else(|error| {
+                panic!("failed to decode input for {index} ({}): {error}", vector.name)
+            });
+            let expect_success = !vector.expected.is_empty();
 
-        assert_eq!(result, expect_success);
+            assert_eq!(
+                verify_impl(&input),
+                expect_success,
+                "verify_impl mismatch for vector {index} ({})",
+                vector.name
+            );
+        }
+    }
+
+    #[test]
+    fn verify_impl_rejects_non_160_byte_inputs() {
+        assert!(!verify_impl(&[0u8; 10]));
+        assert!(!verify_impl(&[0u8; 159]));
+        assert!(!verify_impl(&[0u8; 161]));
     }
 }
