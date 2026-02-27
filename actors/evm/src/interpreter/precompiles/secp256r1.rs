@@ -10,8 +10,8 @@
 //! precompile.
 use fil_actors_runtime::runtime::Runtime;
 use p256::{
-    ecdsa::{signature::hazmat::PrehashVerifier, Signature, VerifyingKey},
     EncodedPoint,
+    ecdsa::{Signature, VerifyingKey, signature::hazmat::PrehashVerifier},
 };
 
 use alloy_core::primitives::{B256, B512};
@@ -74,8 +74,8 @@ pub(crate) fn verify_signature(msg: [u8; 32], sig: [u8; 64], pk: [u8; 64]) -> Op
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::interpreter::precompiles::PrecompileContext;
     use crate::interpreter::System;
+    use crate::interpreter::precompiles::PrecompileContext;
     use fil_actors_runtime::test_utils::MockRuntime;
     use serde::Deserialize;
 

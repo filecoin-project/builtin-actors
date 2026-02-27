@@ -1,7 +1,7 @@
 mod asm;
 mod util;
 
-use fvm_shared::{address::Address as FILAddress, econ::TokenAmount, error::ExitCode, METHOD_SEND};
+use fvm_shared::{METHOD_SEND, address::Address as FILAddress, econ::TokenAmount, error::ExitCode};
 use serde::Deserialize;
 
 const TESTDATA_PATH: &str =
