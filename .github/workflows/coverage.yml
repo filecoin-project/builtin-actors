@@ -45,7 +45,7 @@ jobs:
         # Create file to be uploaded to codecov
         llvm-cov export --ignore-filename-regex=".cargo|.rustup|/rustc|./tests" --format=lcov --instr-profile=default.profdata ${OBJECT_OPTIONS[@]} > lcov.info
     - name: Archive code coverage results
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: code-coverage-report
         path: llvm-show/*
