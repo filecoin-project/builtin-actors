@@ -162,6 +162,9 @@ pub enum Method {
     GetMultiaddrsExported = frc42_dispatch::method_hash!("GetMultiaddrs"),
     MaxTerminationFeeExported = frc42_dispatch::method_hash!("MaxTerminationFee"),
     InitialPledgeExported = frc42_dispatch::method_hash!("InitialPledge"),
+    GenerateSectorLocationExported = frc42_dispatch::method_hash!("GenerateSectorLocation"),
+    ValidateSectorStatusExported = frc42_dispatch::method_hash!("ValidateSectorStatus"),
+    GetNominalSectorExpirationExported = frc42_dispatch::method_hash!("GetNominalSectorExpiration"),
 }
 
 pub const SECTOR_CONTENT_CHANGED: MethodNum = frc42_dispatch::method_hash!("SectorContentChanged");
@@ -1970,6 +1973,139 @@ impl Actor {
         let state: State = rt.state()?;
 
         Ok(InitialPledgeReturn { initial_pledge: state.initial_pledge })
+    }
+
+    /// Generates sector location and status information.
+    /// This is an expensive operation that searches through all deadlines and partitions
+    /// to find a sector. Designed to be called offline.
+    /// Returns (NO_DEADLINE, NO_PARTITION) if the sector is not tracked in any partition
+    /// (e.g. compacted terminated sector or never committed).
+    fn generate_sector_location(
+        rt: &impl Runtime,
+        params: GenerateSectorLocationParams,
+    ) -> Result<GenerateSectorLocationReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+
+        let state: State = rt.state()?;
+
+        // Check sectors AMT first to preempt expensive search when sector is
+        // completely removed from state or does not exist.
+        let sector_info = state.get_sector(rt.store(), params.sector_number)?;
+        if sector_info.is_none() {
+            let sector_location = SectorLocation { deadline: NO_DEADLINE, partition: NO_PARTITION };
+            let aux_data = fvm_ipld_encoding::to_vec(&sector_location)
+                .map_err(|e| actor_error!(illegal_state, e.description))?;
+            return Ok(GenerateSectorLocationReturn { status: SectorStatusCode::Dead, aux_data });
+        }
+
+        // It is an invariant that all sectors in the AMT have a valid partition.
+        let (deadline_idx, partition_idx) = state
+            .find_sector(rt.store(), params.sector_number)
+            .map_err(|e| actor_error!(illegal_state, "failed to find sector location: {}", e))?;
+
+        // Load partition to determine status
+        let deadlines = state.load_deadlines(rt.store())?;
+        let deadline = deadlines.load_deadline(rt.store(), deadline_idx)?;
+        let partition = deadline.load_partition(rt.store(), partition_idx)?;
+
+        let current_status = if partition.terminated.get(params.sector_number) {
+            SectorStatusCode::Dead
+        } else if partition.faults.get(params.sector_number) {
+            SectorStatusCode::Faulty
+        } else {
+            SectorStatusCode::Active
+        };
+
+        let sector_location =
+            SectorLocation { deadline: deadline_idx as i64, partition: partition_idx as i64 };
+        let aux_data = fvm_ipld_encoding::to_vec(&sector_location)
+            .map_err(|e| actor_error!(illegal_state, e.description))?;
+
+        Ok(GenerateSectorLocationReturn { status: current_status, aux_data })
+    }
+
+    /// Validates sector status using pre-computed location data.
+    /// This is a cheap operation that directly loads the partition using provided
+    /// location indices and checks if the current status matches the expected status.
+    fn validate_sector_status(
+        rt: &impl Runtime,
+        params: ValidateSectorStatusParams,
+    ) -> Result<ValidateSectorStatusReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+
+        let state: State = rt.state()?;
+
+        // Deserialize aux_data to extract sector location
+        let sector_location: SectorLocation = fvm_ipld_encoding::from_slice(&params.aux_data)
+            .map_err(|e| actor_error!(illegal_argument, "invalid aux_data: {}", e))?;
+
+        let no_deadline = sector_location.deadline == NO_DEADLINE;
+        let no_partition = sector_location.partition == NO_PARTITION;
+
+        // Mixed NO/non-NO is an invalid location
+        if no_deadline != no_partition {
+            return Err(actor_error!(
+                illegal_argument,
+                "invalid sector location: deadline and partition must both be NO or both be set"
+            ));
+        }
+
+        if no_deadline {
+            // (NO_DEADLINE, NO_PARTITION) is always a valid "found" location.
+            // Live and Faulty sectors are trivially never at this location.
+            if params.status != SectorStatusCode::Dead {
+                return Ok(ValidateSectorStatusReturn { valid: false });
+            }
+            // For Dead, verify sector is NOT in sectors AMT
+            let sector_info = state.get_sector(rt.store(), params.sector_number)?;
+            return Ok(ValidateSectorStatusReturn { valid: sector_info.is_none() });
+        }
+
+        // Load partition directly using provided location indices
+        let deadlines =
+            state.load_deadlines(rt.store()).map_err(|e| e.wrap("failed to load deadlines"))?;
+        let deadline = deadlines
+            .load_deadline(rt.store(), sector_location.deadline as u64)
+            .map_err(|e| e.wrap("failed to load deadline"))?;
+        let partition = deadline.load_partition(rt.store(), sector_location.partition as u64)?;
+
+        // Sector must exist at the provided location
+        if !partition.sectors.get(params.sector_number) {
+            return Err(actor_error!(
+                not_found,
+                "sector {} not found at deadline {} partition {}",
+                params.sector_number,
+                sector_location.deadline,
+                sector_location.partition
+            ));
+        }
+
+        let terminated = partition.terminated.get(params.sector_number);
+        let faulty = partition.faults.get(params.sector_number);
+
+        let valid = match params.status {
+            SectorStatusCode::Active => !terminated && !faulty,
+            SectorStatusCode::Dead => terminated,
+            SectorStatusCode::Faulty => faulty,
+        };
+
+        Ok(ValidateSectorStatusReturn { valid })
+    }
+
+    /// Returns the nominal sector expiration epoch from the sectors AMT.
+    /// Fails if the sector is not present in the sectors AMT.
+    fn get_nominal_sector_expiration(
+        rt: &impl Runtime,
+        params: SectorNumber,
+    ) -> Result<GetNominalSectorExpirationReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+
+        let state: State = rt.state()?;
+        let sector_info = state
+            .get_sector(rt.store(), params)?
+            .ok_or_else(|| actor_error!(not_found, "sector {} not found", params))?;
+
+        Ok(GetNominalSectorExpirationReturn { expiration: sector_info.expiration })
     }
 
     fn check_sector_proven(
@@ -5659,6 +5795,9 @@ impl ActorCode for Actor {
         ProveCommitSectorsNI => prove_commit_sectors_ni,
         MaxTerminationFeeExported => max_termination_fee,
         InitialPledgeExported => initial_pledge,
+        GenerateSectorLocationExported => generate_sector_location,
+        ValidateSectorStatusExported => validate_sector_status,
+        GetNominalSectorExpirationExported => get_nominal_sector_expiration,
     }
 }
 
