@@ -2051,14 +2051,20 @@ impl Actor {
         }
 
         if no_deadline {
-            // (NO_DEADLINE, NO_PARTITION) is always a valid "found" location.
-            // Live and Faulty sectors are trivially never at this location.
-            if params.status != SectorStatusCode::Dead {
-                return Ok(ValidateSectorStatusReturn { valid: false });
-            }
-            // For Dead, verify sector is NOT in sectors AMT
+            // (NO_DEADLINE, NO_PARTITION) can invalidate Live and Faulty sectors
+            // and validate Dead sectors if sector is "found" here.
+            // But it cannot confirm status if not found and will error
             let sector_info = state.get_sector(rt.store(), params.sector_number)?;
-            return Ok(ValidateSectorStatusReturn { valid: sector_info.is_none() });
+            if sector_info.is_none() {
+                return Ok(ValidateSectorStatusReturn {
+                    valid: params.status == SectorStatusCode::Dead,
+                });
+            }
+            return Err(actor_error!(
+                not_found,
+                "sector {} not found at NO_DEADLINE, NO_PARTITION",
+                params.sector_number
+            ));
         }
 
         // Load partition directly using provided location indices

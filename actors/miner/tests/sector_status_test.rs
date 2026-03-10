@@ -341,7 +341,7 @@ fn validate_fails_with_mixed_no_location() {
 }
 
 #[test]
-fn validate_live_or_faulty_at_no_location_returns_false() {
+fn validate_at_no_location_errors_when_sector_in_amt() {
     let (mut h, rt) = setup();
 
     let sectors =
@@ -351,13 +351,35 @@ fn validate_live_or_faulty_at_no_location_returns_false() {
     let no_location = SectorLocation { deadline: NO_DEADLINE, partition: NO_PARTITION };
     let aux_data = fvm_ipld_encoding::to_vec(&no_location).unwrap();
 
-    let is_valid = h
-        .validate_sector_status(&rt, sector_number, SectorStatusCode::Active, aux_data.clone())
-        .unwrap();
-    assert!(!is_valid);
+    // Sector is in AMT but location is NO — cannot determine status, should error
+    let result =
+        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Active, aux_data.clone());
+    expect_abort(ExitCode::USR_NOT_FOUND, result);
+
+    let result =
+        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Faulty, aux_data.clone());
+    expect_abort(ExitCode::USR_NOT_FOUND, result);
+
+    let result = h.validate_sector_status(&rt, sector_number, SectorStatusCode::Dead, aux_data);
+    expect_abort(ExitCode::USR_NOT_FOUND, result);
+
+    h.check_state(&rt);
+}
+
+#[test]
+fn validate_at_no_location_for_nonexistent_sector() {
+    let (mut h, rt) = setup();
+    h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![vec![10]], true);
+
+    // Sector 999 not in AMT — NO location can determine it's not Active/Faulty
+    let no_location = SectorLocation { deadline: NO_DEADLINE, partition: NO_PARTITION };
+    let aux_data = fvm_ipld_encoding::to_vec(&no_location).unwrap();
 
     let is_valid =
-        h.validate_sector_status(&rt, sector_number, SectorStatusCode::Faulty, aux_data).unwrap();
+        h.validate_sector_status(&rt, 999, SectorStatusCode::Active, aux_data.clone()).unwrap();
+    assert!(!is_valid);
+
+    let is_valid = h.validate_sector_status(&rt, 999, SectorStatusCode::Faulty, aux_data).unwrap();
     assert!(!is_valid);
 
     h.check_state(&rt);
