@@ -43,6 +43,8 @@ pub fn sar(shift: U256, mut value: U256) -> U256 {
     }
 }
 
+/// Implements EIP-7939 `CLZ`, returning the number of leading zero bits in a 256-bit word.
+/// `CLZ(0)` returns 256.
 #[inline]
 pub fn clz(value: U256) -> U256 {
     U256::from(value.leading_zeros())
@@ -57,21 +59,15 @@ mod tests {
     use fil_actors_runtime::test_utils::MockRuntime;
     use fvm_shared::econ::TokenAmount;
 
-    #[test]
-    fn test_clz_eip7939_vectors_unit() {
-        // Directly matches the EIP-7939 test cases.
-        assert_eq!(clz(U256::ZERO), U256::from(256));
-        assert_eq!(clz(U256::ONE << 255), U256::ZERO);
-        assert_eq!(clz(U256::MAX), U256::ZERO);
-        assert_eq!(clz(U256::ONE << 254), U256::ONE);
-        assert_eq!(clz((U256::ONE << 255) - U256::ONE), U256::ONE);
-        assert_eq!(clz(U256::ONE), U256::from(255));
+    mod test_vectors {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/test_vectors.rs"));
     }
 
     #[test]
-    fn test_clz_misc_unit() {
-        // 2 is 10 binary, so 256 - 2 = 254
-        assert_eq!(clz(U256::from(2)), U256::from(254));
+    fn test_clz_eip7939_vectors_unit() {
+        for (input, expected) in test_vectors::clz_eip7939_test_vectors() {
+            assert_eq!(clz(input), expected);
+        }
     }
 
     fn clz_via_evm(value: U256) -> U256 {
@@ -109,14 +105,10 @@ mod tests {
     }
 
     #[test]
-    fn test_clz_eip7939_vectors() {
-        // From EIP-7939 test cases.
-        assert_eq!(clz_via_evm(U256::ZERO), U256::from(256));
-        assert_eq!(clz_via_evm(U256::ONE << 255), U256::ZERO);
-        assert_eq!(clz_via_evm(U256::MAX), U256::ZERO);
-        assert_eq!(clz_via_evm(U256::ONE << 254), U256::ONE);
-        assert_eq!(clz_via_evm((U256::ONE << 255) - U256::ONE), U256::ONE);
-        assert_eq!(clz_via_evm(U256::ONE), U256::from(255));
+    fn test_clz_eip7939_vectors_via_evm() {
+        for (input, expected) in test_vectors::clz_eip7939_test_vectors() {
+            assert_eq!(clz_via_evm(input), expected);
+        }
     }
 
     #[test]
