@@ -122,7 +122,7 @@ multihash = { version = "0.19.3", default-features = false }
 multihash-codetable = { version = "0.1.4", default-features = false }
 multihash-derive = { version = "0.9.1", default-features = false }
 ipld-core = { version = "0.4.3", features = ["serde"] }
-integer-encoding = { version = "4.0.2", default-features = false }
+integer-encoding = { version = "4.1.0", default-features = false }
 
 # actor-utils
 fvm_actor_utils = "14.0.0"
