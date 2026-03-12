@@ -43,9 +43,73 @@ pub fn sar(shift: U256, mut value: U256) -> U256 {
     }
 }
 
+/// Implements EIP-7939 `CLZ`, returning the number of leading zero bits in a 256-bit word.
+/// `CLZ(0)` returns 256.
+#[inline]
+pub fn clz(value: U256) -> U256 {
+    U256::from(value.leading_zeros())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::interpreter::opcodes;
+    use crate::interpreter::{Output, execution::Machine, system::System};
+    use crate::{Bytecode, EthAddress, ExecutionState};
+    use fil_actors_runtime::test_utils::MockRuntime;
+    use fvm_shared::econ::TokenAmount;
+
+    mod test_vectors {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/test_vectors.rs"));
+    }
+
+    #[test]
+    fn test_clz_eip7939_vectors_unit() {
+        for (input, expected) in test_vectors::clz_eip7939_test_vectors() {
+            assert_eq!(clz(input), expected);
+        }
+    }
+
+    fn clz_via_evm(value: U256) -> U256 {
+        let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+
+        let mut state = ExecutionState::new(
+            EthAddress::from_id(1000),
+            EthAddress::from_id(1000),
+            TokenAmount::from_atto(0),
+            Vec::new(),
+        );
+
+        let mut imm = [0u8; 32];
+        value.write_as_big_endian(&mut imm);
+
+        let mut code = Vec::with_capacity(1 + 32 + 1);
+        code.push(opcodes::PUSH32);
+        code.extend_from_slice(&imm);
+        code.push(opcodes::CLZ);
+
+        let mut system = System::new(&rt, false);
+        let bytecode = Bytecode::new(code);
+        let mut machine = Machine {
+            system: &mut system,
+            state: &mut state,
+            bytecode: &bytecode,
+            pc: 0,
+            output: Output::default(),
+        };
+
+        machine.step().expect("PUSH32 step failed");
+        machine.step().expect("CLZ step failed");
+        machine.state.stack.pop_many::<1>().expect("missing CLZ result")[0]
+    }
+
+    #[test]
+    fn test_clz_eip7939_vectors_via_evm() {
+        for (input, expected) in test_vectors::clz_eip7939_test_vectors() {
+            assert_eq!(clz_via_evm(input), expected);
+        }
+    }
 
     #[test]
     fn test_shl() {
