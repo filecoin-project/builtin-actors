@@ -28,6 +28,8 @@ type PrecompileFn<RT> = fn(&mut System<RT>, &[u8], PrecompileContext) -> Precomp
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>;
 
 pub const NATIVE_PRECOMPILE_ADDRESS_PREFIX: u8 = 0xFE;
+const P256VERIFY_PRECOMPILE_ADDRESS: EthAddress =
+    EthAddress(hex_literal::hex!("0000000000000000000000000000000000000100"));
 
 struct PrecompileTable<RT: Runtime, const N: usize>([Option<PrecompileFn<RT>>; N]);
 
@@ -40,13 +42,8 @@ impl<RT: Runtime, const N: usize> PrecompileTable<RT, N> {
 }
 
 pub fn is_reserved_precompile_address(addr: &EthAddress) -> bool {
-    // Special case for secp256r1 (P-256) `P256VERIFY` precompile at 0x0100 (EIP-7951 / RIP-7212 interface).
-    if addr.0
-        == [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
-        ]
-    {
+    // Special case for the secp256r1 (P-256) `P256VERIFY` precompile at 0x0100.
+    if addr.0 == P256VERIFY_PRECOMPILE_ADDRESS.0 {
         return true;
     }
 
@@ -92,12 +89,8 @@ impl<RT: Runtime> Precompiles<RT> {
     ]);
 
     fn lookup_precompile(addr: &EthAddress) -> Option<PrecompileFn<RT>> {
-        // Special-case secp256r1 (P-256) `P256VERIFY` precompile at 0x...0100 (EIP-7951 / RIP-7212 interface).
-        if addr.0[0] == 0x00
-            && addr.0[1..18] == [0u8; 17]
-            && addr.0[18] == 0x01
-            && addr.0[19] == 0x00
-        {
+        // Special-case the secp256r1 (P-256) `P256VERIFY` precompile at 0x0100.
+        if addr.0 == P256VERIFY_PRECOMPILE_ADDRESS.0 {
             return Some(p256_verify::<RT>);
         }
 
@@ -215,7 +208,7 @@ mod test {
 
     use crate::interpreter::precompiles::is_reserved_precompile_address;
 
-    use super::Precompiles;
+    use super::{P256VERIFY_PRECOMPILE_ADDRESS, Precompiles};
 
     #[test]
     fn is_native_precompile() {
@@ -239,8 +232,8 @@ mod test {
     }
 
     #[test]
-    fn is_rip_7212_precompile() {
-        let addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000100"));
+    fn is_p256verify_precompile() {
+        let addr = P256VERIFY_PRECOMPILE_ADDRESS;
         assert!(Precompiles::<MockRuntime>::is_precompile(&addr));
         assert!(is_reserved_precompile_address(&addr));
     }

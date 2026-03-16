@@ -44,7 +44,7 @@ fn decode_hex(value: &str, kind: &str, vector: &Eip7951TestVector) -> Vec<u8> {
     })
 }
 
-fn p256_verify_contract_call() -> Vec<u8> {
+fn p256verify_contract_call() -> Vec<u8> {
     // Call 0x0100 precompile with calldata as input (exact 160 bytes)
     let init = "";
     let body = r#"
@@ -90,12 +90,12 @@ add
 push1 0x00
 return
 "#;
-    asm::new_contract("rip7212-precompile-caller", init, body).unwrap()
+    asm::new_contract("p256verify-precompile-caller", init, body).unwrap()
 }
 
 #[test]
-fn rip7212_call_success_vector() {
-    let rt = util::construct_and_verify(p256_verify_contract_call());
+fn p256verify_call_success_vector() {
+    let rt = util::construct_and_verify(p256verify_contract_call());
 
     let vector = sample_success_vector();
     let input = decode_hex(&vector.input, "input", &vector);
@@ -110,8 +110,8 @@ fn rip7212_call_success_vector() {
 }
 
 #[test]
-fn rip7212_call_failure_vector_returns_empty() {
-    let rt = util::construct_and_verify(p256_verify_contract_call());
+fn p256verify_call_failure_vector_returns_empty() {
+    let rt = util::construct_and_verify(p256verify_contract_call());
 
     let vector = sample_failure_vector();
     let input = decode_hex(&vector.input, "input", &vector);
@@ -125,15 +125,15 @@ fn rip7212_call_failure_vector_returns_empty() {
 }
 
 #[test]
-fn rip7212_invalid_input_returns_empty() {
-    let rt = util::construct_and_verify(p256_verify_contract_call());
+fn p256verify_invalid_input_returns_empty() {
+    let rt = util::construct_and_verify(p256verify_contract_call());
     let input = vec![0u8; 10];
     let result = util::invoke_contract(&rt, &input);
     assert_eq!(result[0], util::PrecompileExit::Success as u8);
     assert!(result[1..].is_empty());
 }
 
-fn p256_verify_contract_call_value() -> Vec<u8> {
+fn p256verify_contract_call_value() -> Vec<u8> {
     let init = "";
     let body = r#"
 
@@ -178,12 +178,12 @@ add
 push1 0x00
 return
 "#;
-    asm::new_contract("rip7212-precompile-caller-value", init, body).unwrap()
+    asm::new_contract("p256verify-precompile-caller-value", init, body).unwrap()
 }
 
 #[test]
-fn rip7212_call_with_value_transfers_on_success() {
-    let rt = util::construct_and_verify(p256_verify_contract_call_value());
+fn p256verify_call_with_value_transfers_on_success() {
+    let rt = util::construct_and_verify(p256verify_contract_call_value());
     rt.set_balance(TokenAmount::from_atto(100));
 
     let vector = sample_success_vector();

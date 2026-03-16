@@ -1,9 +1,8 @@
 //! # secp256r1 (P-256) Precompile (`P256VERIFY`, `0x0100`)
 //!
-//! This module implements secp256r1 (P-256) ECDSA signature verification for the FEVM precompile at `0x0100`.
-//!
-//! The precompile is specified by Ethereum's [EIP-7951](https://eips.ethereum.org/EIPS/eip-7951) and is interface-compatible
-//! with [RIP-7212](https://github.com/ethereum/RIPs/blob/master/RIPS/rip-7212.md).
+//! This module implements the
+//! [EIP-7951](https://eips.ethereum.org/EIPS/eip-7951) secp256r1 (P-256)
+//! ECDSA verification precompile for FEVM at `0x0100`.
 //!
 //! The main purpose of this precompile is to verify ECDSA signatures that use the secp256r1, or
 //! P256 elliptic curve. The [`p256_verify`] function represents the implementation of this
