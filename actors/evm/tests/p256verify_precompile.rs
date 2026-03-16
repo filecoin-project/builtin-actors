@@ -38,6 +38,11 @@ fn sample_failure_vector() -> Eip7951TestVector {
         .expect("expected at least one failing EIP-7951 test vector")
 }
 
+fn sample_success_input() -> Vec<u8> {
+    let vector = sample_success_vector();
+    decode_hex(&vector.input, "input", &vector)
+}
+
 fn decode_hex(value: &str, kind: &str, vector: &Eip7951TestVector) -> Vec<u8> {
     hex::decode(value).unwrap_or_else(|error| {
         panic!("failed to decode {kind} for {} (gas={}): {error}", vector.name, vector.gas)
@@ -45,7 +50,7 @@ fn decode_hex(value: &str, kind: &str, vector: &Eip7951TestVector) -> Vec<u8> {
 }
 
 fn p256verify_contract_call() -> Vec<u8> {
-    // Call 0x0100 precompile with calldata as input (exact 160 bytes)
+    // Call 0x0100 precompile with the full calldata payload.
     let init = "";
     let body = r#"
 
@@ -59,8 +64,8 @@ push1 0x20
 # out off
 push2 0xA000
 
-# in size (160)
-push1 0xA0
+# in size
+calldatasize
 # in off
 push1 0x00
 
@@ -128,6 +133,32 @@ fn p256verify_call_failure_vector_returns_empty() {
 fn p256verify_invalid_input_returns_empty() {
     let rt = util::construct_and_verify(p256verify_contract_call());
     let input = vec![0u8; 10];
+    let result = util::invoke_contract(&rt, &input);
+    assert_eq!(result[0], util::PrecompileExit::Success as u8);
+    assert!(result[1..].is_empty());
+}
+
+#[test]
+fn p256verify_truncated_input_returns_empty() {
+    let rt = util::construct_and_verify(p256verify_contract_call());
+    let mut input = sample_success_input();
+    input.pop();
+
+    assert_eq!(input.len(), 159);
+
+    let result = util::invoke_contract(&rt, &input);
+    assert_eq!(result[0], util::PrecompileExit::Success as u8);
+    assert!(result[1..].is_empty());
+}
+
+#[test]
+fn p256verify_excess_input_returns_empty() {
+    let rt = util::construct_and_verify(p256verify_contract_call());
+    let mut input = sample_success_input();
+    input.push(0);
+
+    assert_eq!(input.len(), 161);
+
     let result = util::invoke_contract(&rt, &input);
     assert_eq!(result[0], util::PrecompileExit::Success as u8);
     assert!(result[1..].is_empty());
