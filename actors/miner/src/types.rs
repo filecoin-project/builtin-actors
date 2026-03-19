@@ -682,6 +682,7 @@ pub struct ValidateSectorStatusReturn {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
+#[repr(u8)]
 pub enum SectorStatusCode {
     /// Sector is not live (terminated or never committed)
     Dead = 0,
