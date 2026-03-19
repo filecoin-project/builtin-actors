@@ -20,15 +20,14 @@ contract SectorStatusChecker {
     function validateSectorStatus(
         uint64 minerActorId,
         uint64 sectorNumber,
-        string memory status,
+        uint8 status,
         bytes memory auxData
     ) public returns (bool valid) {
         // CBOR encode ValidateSectorStatusParams: array(3) [ uint64, text, bytes ]
-        bytes memory statusBytes = bytes(status);
-        FilecoinCBOR.CBORBuffer memory buf = FilecoinCBOR.createCBOR(64 + statusBytes.length + auxData.length);
+        FilecoinCBOR.CBORBuffer memory buf = FilecoinCBOR.createCBOR(64 + 8 + auxData.length);
         FilecoinCBOR.startFixedArray(buf, 3);
         FilecoinCBOR.writeUInt64(buf, sectorNumber);
-        FilecoinCBOR.writeTextString(buf, status);
+        FilecoinCBOR.writeUInt64(buf, uint64(status));
         FilecoinCBOR.writeByteString(buf, auxData);
 
         (int256 exit, bytes memory ret) = FilecoinCBOR.callById(

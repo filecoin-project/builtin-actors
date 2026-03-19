@@ -131,7 +131,7 @@ pub fn evm_sector_status_test(v: &dyn VM) {
     let call_params = SectorStatusChecker::validateSectorStatusCall::new((
         miner_id,
         sector_number,
-        String::from("Active"),
+        SectorStatusCode::Active as u8,
         AlloyBytes::from(aux_data.clone()),
     ))
     .abi_encode();
@@ -156,7 +156,7 @@ pub fn evm_sector_status_test(v: &dyn VM) {
     let call_params = SectorStatusChecker::validateSectorStatusCall::new((
         miner_id,
         sector_number,
-        String::from("Dead"),
+        SectorStatusCode::Dead as uint8,
         AlloyBytes::from(aux_data.clone()),
     ))
     .abi_encode();
@@ -185,7 +185,7 @@ pub fn evm_sector_status_test(v: &dyn VM) {
     let call_params = SectorStatusChecker::validateSectorStatusCall::new((
         miner_id,
         sector_number,
-        String::from("Faulty"),
+        SectorStatusCode::Faulty as u8,
         AlloyBytes::from(aux_data.clone()),
     ))
     .abi_encode();

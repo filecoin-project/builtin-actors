@@ -34,15 +34,15 @@ library FilecoinCBOR {
     /* *** Actor call helpers *** */
 
     function callById(
-        uint64 target,
+        uint64 target_actor_id,
         uint256 method_num,
-        uint64 codec,
+                uint64 codec,
         bytes memory raw_request,
         uint256 value,
         bool static_call
     ) internal returns (int256, bytes memory) {
         (bool success, bytes memory data) = address(CALL_ACTOR_ID).delegatecall(
-            abi.encode(uint64(method_num), value, static_call ? READ_ONLY_FLAG : DEFAULT_FLAG, codec, raw_request, target)
+            abi.encode(uint64(method_num), value, static_call ? READ_ONLY_FLAG : DEFAULT_FLAG, codec, raw_request, target_actor_id)
         );
         require(success, "delegatecall failed");
         return readRespData(data);
