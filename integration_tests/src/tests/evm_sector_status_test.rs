@@ -156,7 +156,7 @@ pub fn evm_sector_status_test(v: &dyn VM) {
     let call_params = SectorStatusChecker::validateSectorStatusCall::new((
         miner_id,
         sector_number,
-        SectorStatusCode::Dead as uint8,
+        SectorStatusCode::Dead as u8,
         AlloyBytes::from(aux_data.clone()),
     ))
     .abi_encode();
