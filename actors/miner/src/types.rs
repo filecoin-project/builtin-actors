@@ -666,3 +666,54 @@ pub struct MaxTerminationFeeReturn {
 pub struct InitialPledgeReturn {
     pub initial_pledge: TokenAmount,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct GenerateSectorLocationReturn {
+    pub status: SectorStatusCode,
+    #[serde(with = "strict_bytes")]
+    pub aux_data: Vec<u8>, // CBOR-encoded SectorLocation
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ValidateSectorStatusReturn {
+    pub valid: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SectorStatusCode {
+    /// Sector is active (not terminated, not faulty)
+    Active,
+    /// Sector is not live (terminated or never committed)
+    Dead,
+    /// Sector is currently faulty
+    Faulty,
+}
+
+pub const NO_DEADLINE: i64 = -1;
+pub const NO_PARTITION: i64 = -1;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorLocation {
+    pub deadline: i64,
+    pub partition: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct GenerateSectorLocationParams {
+    pub sector_number: SectorNumber,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ValidateSectorStatusParams {
+    pub sector_number: SectorNumber,
+    pub status: SectorStatusCode,
+    #[serde(with = "strict_bytes")]
+    pub aux_data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetNominalSectorExpirationReturn {
+    pub expiration: ChainEpoch,
+}

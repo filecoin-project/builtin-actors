@@ -67,8 +67,6 @@ pub fn batch_onboarding_test(v: &dyn VM) {
     // Sectors are still proven in the order of pre-commitment.
 
     let mut next_sector_no: SectorNumber = 0;
-    #[allow(unused_variables)]
-    let mut pre_committed_count = 0;
 
     let vec_onboarding = vec![
         Onboarding::new(0, 10, 0, 0),
@@ -99,7 +97,6 @@ pub fn batch_onboarding_test(v: &dyn VM) {
             );
             precommmits.append(&mut new_precommits);
             next_sector_no += item.pre_commit_sector_count as u64;
-            pre_committed_count += item.pre_commit_sector_count;
         }
 
         if item.prove_commit_sector_count > 0 {

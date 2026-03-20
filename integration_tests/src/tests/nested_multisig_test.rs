@@ -189,8 +189,8 @@ fn check_txs(v: &dyn VM, msig_addr: Address, mut expect_txns: Vec<(TxnID, Transa
         Ok(())
     })
     .unwrap();
-    expect_txns.sort_by_key(|(TxnID(id), _txn)| (*id));
-    actual_txns.sort_by_key(|(TxnID(id), _txn)| (*id));
+    expect_txns.sort_by_key(|(TxnID(id), _txn)| *id);
+    actual_txns.sort_by_key(|(TxnID(id), _txn)| *id);
     assert_eq!(expect_txns, actual_txns);
 }
 

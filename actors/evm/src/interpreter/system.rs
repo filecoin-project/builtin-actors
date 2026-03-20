@@ -52,7 +52,7 @@ pub struct StateHashAlgorithm;
 /// the words backing `U256` are in little endian order, and we need them in big endian for
 /// the nibbles to be co-located in the tree.
 impl AsHashedKey<U256, 32> for StateHashAlgorithm {
-    fn as_hashed_key(key: &U256) -> Cow<HashedKey<32>> {
+    fn as_hashed_key(key: &U256) -> Cow<'_, HashedKey<32>> {
         Cow::Owned(key.to_big_endian())
     }
 }

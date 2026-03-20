@@ -11,7 +11,7 @@ use fil_actors_runtime::runtime::Policy;
 use super::{Deadline, SectorOnChainInfo};
 
 fn div_rounding_up(dividend: u64, divisor: u64) -> u64 {
-    dividend / divisor + u64::from(dividend % divisor > 0)
+    dividend / divisor + u64::from(!dividend.is_multiple_of(divisor))
 }
 
 struct DeadlineAssignmentInfo {
@@ -36,7 +36,7 @@ impl DeadlineAssignmentInfo {
     }
 
     fn is_full_now(&self, partition_size: u64) -> bool {
-        self.total_sectors % partition_size == 0
+        self.total_sectors.is_multiple_of(partition_size)
     }
 
     fn max_partitions_reached(&self, partition_size: u64, max_partitions: u64) -> bool {

@@ -222,7 +222,7 @@ pub(super) fn ec_pairing<RT: Runtime>(
 
     // This precompile is strange in that it doesn't automatically "pad" the input.
     // So we have to check the sizes.
-    if input.len() % GROUP_BYTE_LEN != 0 {
+    if !input.len().is_multiple_of(GROUP_BYTE_LEN) {
         return Err(PrecompileError::IncorrectInputSize);
     }
 

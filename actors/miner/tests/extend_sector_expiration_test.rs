@@ -134,7 +134,7 @@ fn rejects_extension_past_max_for_seal_proof() {
     let (mut h, rt) = setup();
     let mut sector = commit_sector(&mut h, &rt);
     // and prove it once to activate it.
-    h.advance_and_submit_posts(&rt, &vec![sector.clone()]);
+    h.advance_and_submit_posts(&rt, &[sector.clone()]);
 
     let max_lifetime = seal_proof_sector_maximum_lifetime(sector.seal_proof).unwrap();
 
@@ -184,7 +184,7 @@ fn updates_expiration_with_valid_params() {
     let (mut h, rt) = setup();
 
     let old_sector = commit_sector(&mut h, &rt);
-    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
 
     let state: State = rt.get_state();
 
@@ -460,7 +460,7 @@ fn updates_many_sectors() {
 fn supports_extensions_off_deadline_boundary() {
     let (mut h, rt) = setup();
     let old_sector = commit_sector(&mut h, &rt);
-    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
 
     let state: State = rt.get_state();
     let (deadline_index, partition_index) =
@@ -533,7 +533,7 @@ fn update_expiration2_multiple_claims() {
         test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
-    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
 
     let state: State = rt.get_state();
 
@@ -621,7 +621,7 @@ fn update_expiration2_failure_cases() {
         test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
-    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
 
     let state: State = rt.get_state();
 
@@ -804,7 +804,7 @@ fn extend_expiration2_drop_claims() {
         assert_eq!(old_sector.daily_fee, entry.fee_deduction);
     }
 
-    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -946,7 +946,7 @@ fn update_expiration2_drop_claims_failure_cases() {
         test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
-    h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
 
     let state: State = rt.get_state();
 
@@ -1049,7 +1049,6 @@ fn update_expiration2_drop_claims_failure_cases() {
         h.extend_sectors2(&rt, params, claims.clone()),
     );
     rt.reset();
-    claim1.sector = old_sector.sector_number;
 }
 
 fn commit_sector_verified_deals(
