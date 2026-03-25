@@ -16,6 +16,8 @@ mod evm_test;
 pub use evm_test::*;
 mod evm_notification_test;
 pub use evm_notification_test::*;
+mod evm_sector_status_test;
+pub use evm_sector_status_test::*;
 mod extend_sectors_test;
 pub use extend_sectors_test::*;
 mod market_miner_withdrawal_test;
