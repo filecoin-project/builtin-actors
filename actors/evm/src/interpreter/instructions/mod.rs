@@ -238,6 +238,7 @@ def_primop! { BYTE(a, b) => bitwise::byte }
 def_primop! { SHL(a, b) => bitwise::shl }
 def_primop! { SHR(a, b) => bitwise::shr }
 def_primop! { SAR(a, b) => bitwise::sar }
+def_primop! { CLZ(a) => bitwise::clz }
 // dup
 def_stackop! { DUP1 => stack::dup::<1> }
 def_stackop! { DUP2 => stack::dup::<2> }
