@@ -60,11 +60,11 @@ fn test_prevrandao() {
         rt.reset();
     }
 
-    let mut rand = thread_rng();
+    let mut rand = rand::rng();
 
     // actual random value
     {
-        let expected: [u8; 32] = rand.r#gen();
+        let expected: [u8; 32] = rand.random();
         rt.expect_get_randomness_from_beacon(
             fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
             101,
@@ -80,7 +80,7 @@ fn test_prevrandao() {
 
     // check cache
     {
-        let expected: [u8; 32] = rand.r#gen();
+        let expected: [u8; 32] = rand.random();
         rt.expect_get_randomness_from_beacon(
             fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
             101,
