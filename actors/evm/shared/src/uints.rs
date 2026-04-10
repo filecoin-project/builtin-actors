@@ -220,10 +220,10 @@ mod tests {
         let one_hundred = U256::from(100);
         let fifty = U256::from(50);
         let two = U256::from(2);
-        let neg_one_hundred = U256::from(100);
-        let minus_one = U256::from(1);
+        let minus_one = U256::from(1).i256_neg();
+        let neg_one_hundred = U256::from(100).i256_neg();
         let max_value = U256::from(2).pow(255.into()) - 1;
-        let neg_max_value = U256::from(2).pow(255.into()) - 1;
+        let neg_max_value = max_value.i256_neg();
 
         assert_eq!(U256::I256_MIN.i256_div(&minus_one), U256::I256_MIN);
         assert_eq!(U256::I256_MIN.i256_div(&one), U256::I256_MIN);
