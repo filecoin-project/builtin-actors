@@ -112,8 +112,12 @@ where
         };
 
         set.delete(&value)?;
-        let new_root = set.flush()?;
-        self.outer.set(key, new_root)?;
+        if set.collect_keys()?.is_empty() {
+            self.outer.delete(key)?;
+        } else {
+            let new_root = set.flush()?;
+            self.outer.set(key, new_root)?;
+        }
         Ok(())
     }
 
