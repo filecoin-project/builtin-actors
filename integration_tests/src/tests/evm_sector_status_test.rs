@@ -67,8 +67,8 @@ pub fn evm_sector_status_test(v: &dyn VM) {
         sector_proofs: proofs,
         aggregate_proof: RawBytes::default(),
         aggregate_proof_type: None,
-        require_activation_success: false,
-        require_notification_success: false,
+        require_activation_success: true,
+        require_notification_success: true,
     };
 
     let prove_result = v

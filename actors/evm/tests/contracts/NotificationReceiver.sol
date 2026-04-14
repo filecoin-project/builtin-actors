@@ -66,12 +66,11 @@ contract NotificationReceiver {
     // Handle incoming Filecoin method calls
     // This is the main entry point for receiving notifications from the miner actor
     function handle_filecoin_method(uint64 method, uint64 inCodec, bytes memory params) public returns (uint64, uint64,bytes memory) {
-        // 0x51 is IPLD CBOR codec
-        require(inCodec == 0x51, "Invalid codec");
+        require(inCodec == FilecoinCBOR.CBOR_CODEC, "Invalid codec");
         // Check if this is a sector content changed notification
         if (method == SECTOR_CONTENT_CHANGED) {
             bytes memory ret = processSectorContentChanged(params);
-            uint64 codec = 0x51;
+            uint64 codec = FilecoinCBOR.CBOR_CODEC;
             return (0, codec, ret);
         }
 
