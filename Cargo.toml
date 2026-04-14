@@ -127,7 +127,7 @@ integer-encoding = { version = "4.1.0", default-features = false }
 # actor-utils
 fvm_actor_utils = "14.0.0"
 frc42_dispatch = "10.0.0"
-frc46_token = "14.0.0"
+frc46_token = "14.1.0"
 
 # FVM
 fvm_sdk = "~4.7"

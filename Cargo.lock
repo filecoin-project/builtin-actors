@@ -1237,9 +1237,9 @@ dependencies = [
 
 [[package]]
 name = "frc46_token"
-version = "14.0.0"
+version = "14.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74fddbac1d5221744443ce7dab4b991d4e8f3722d671c851c08ca6e95858c4b1"
+checksum = "891f9917156c52c5c1c3f95e083e3e21370b8044164ebf7894f74c02fa5c4a18"
 dependencies = [
  "cid",
  "frc42_dispatch",
