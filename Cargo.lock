@@ -60,7 +60,7 @@ dependencies = [
  "alloy-sol-macro-input",
  "const-hex",
  "heck 0.5.0",
- "indexmap 2.9.0",
+ "indexmap 2.13.1",
  "proc-macro-error2",
  "proc-macro2",
  "quote",
@@ -804,7 +804,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "once_cell",
- "rand 0.8.5",
+ "rand 0.9.4",
  "serde",
  "serde_json",
  "substrate-bn",
@@ -888,7 +888,7 @@ dependencies = [
  "multihash-derive",
  "num-derive",
  "num-traits",
- "rand 0.8.5",
+ "rand 0.9.4",
  "serde",
  "serde_repr",
  "test-case",
@@ -907,7 +907,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
- "indexmap 2.9.0",
+ "indexmap 2.13.1",
  "integer-encoding",
  "lazy_static",
  "num-derive",
@@ -952,7 +952,7 @@ dependencies = [
  "fvm_ipld_hamt",
  "fvm_shared",
  "hex-literal",
- "indexmap 2.9.0",
+ "indexmap 2.13.1",
  "integer-encoding",
  "lazy_static",
  "log",
@@ -1066,7 +1066,7 @@ dependencies = [
  "fvm_shared",
  "hex",
  "hex-literal",
- "indexmap 2.9.0",
+ "indexmap 2.13.1",
  "integer-encoding",
  "k256",
  "lazy_static",
@@ -1074,8 +1074,8 @@ dependencies = [
  "multihash-codetable",
  "num-derive",
  "num-traits",
- "rand 0.8.5",
- "rand_chacha",
+ "rand 0.9.4",
+ "rand_chacha 0.9.0",
  "regex",
  "serde",
  "test-case",
@@ -1115,7 +1115,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "pretty_env_logger",
- "rand 0.8.5",
+ "rand 0.9.4",
  "regex",
  "serde",
  "serde_repr",
@@ -1238,9 +1238,9 @@ dependencies = [
 
 [[package]]
 name = "frc46_token"
-version = "14.0.0"
+version = "14.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74fddbac1d5221744443ce7dab4b991d4e8f3722d671c851c08ca6e95858c4b1"
+checksum = "891f9917156c52c5c1c3f95e083e3e21370b8044164ebf7894f74c02fa5c4a18"
 dependencies = [
  "cid",
  "frc42_dispatch",
@@ -1446,6 +1446,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "getrandom"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "r-efi",
+ "wasip2",
+]
+
+[[package]]
 name = "glob"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1470,9 +1482,9 @@ checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
 name = "hashbrown"
-version = "0.15.2"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
+checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
 
 [[package]]
 name = "heck"
@@ -1547,12 +1559,12 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.9.0"
+version = "2.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
+checksum = "45a8a2b9cb3e0b0c1803dbb0758ffac5de2f425b23c28f518faabd9d805342ff"
 dependencies = [
  "equivalent",
- "hashbrown 0.15.2",
+ "hashbrown 0.16.1",
 ]
 
 [[package]]
@@ -1947,7 +1959,7 @@ dependencies = [
  "bitflags",
  "num-traits",
  "rand 0.8.5",
- "rand_chacha",
+ "rand_chacha 0.3.1",
  "rand_xorshift",
  "unarray",
 ]
@@ -1962,24 +1974,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "r-efi"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+
+[[package]]
 name = "rand"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
 dependencies = [
  "libc",
- "rand_chacha",
+ "rand_chacha 0.3.1",
  "rand_core 0.6.4",
 ]
 
 [[package]]
 name = "rand"
-version = "0.9.0"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
+checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
 dependencies = [
+ "rand_chacha 0.9.0",
  "rand_core 0.9.3",
- "zerocopy",
 ]
 
 [[package]]
@@ -1993,12 +2011,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_chacha"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.9.3",
+]
+
+[[package]]
 name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
- "getrandom",
+ "getrandom 0.2.15",
 ]
 
 [[package]]
@@ -2006,6 +2034,9 @@ name = "rand_core"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99d9a13982dcf210057a8a78572b2217b667c3beacbf3a0d8b454f6f82837d38"
+dependencies = [
+ "getrandom 0.3.4",
+]
 
 [[package]]
 name = "rand_xorshift"
@@ -2082,7 +2113,7 @@ checksum = "c141e807189ad38a07276942c6623032d3753c8859c146104ac2e4d68865945a"
 dependencies = [
  "proptest",
  "rand 0.8.5",
- "rand 0.9.0",
+ "rand 0.9.4",
  "ruint-macro",
  "serde_core",
  "valuable",
@@ -2502,7 +2533,7 @@ version = "0.22.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17b4795ff5edd201c7cd6dca065ae59972ce77d1b80fa0a84d94950ece7d1474"
 dependencies = [
- "indexmap 2.9.0",
+ "indexmap 2.13.1",
  "toml_datetime",
  "winnow",
 ]
@@ -2581,8 +2612,8 @@ dependencies = [
  "multihash-derive",
  "num-derive",
  "num-traits",
- "rand 0.8.5",
- "rand_chacha",
+ "rand 0.9.4",
+ "rand_chacha 0.9.0",
  "serde",
 ]
 
@@ -2591,6 +2622,15 @@ name = "wasi"
 version = "0.11.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
+
+[[package]]
+name = "wasip2"
+version = "1.0.2+wasi-0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9517f9239f02c069db75e65f174b3da828fe5f5b945c4dd26bd25d89c03ebcf5"
+dependencies = [
+ "wit-bindgen",
+]
 
 [[package]]
 name = "winapi-util"
@@ -2682,6 +2722,12 @@ checksum = "63d3fcd9bba44b03821e7d699eeee959f3126dcc4aa8e4ae18ec617c2a5cea10"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "wit-bindgen"
+version = "0.51.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7249219f66ced02969388cf2bb044a09756a083d0fab1e566056b04d9fbcaa5"
 
 [[package]]
 name = "zerocopy"

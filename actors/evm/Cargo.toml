@@ -42,7 +42,7 @@ fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-defau
 etk-asm = { workspace = true }
 alloy-core = { workspace = true }
 serde_json = { workspace = true }
-rand = { workspace = true }
+rand = { workspace = true, features = ["thread_rng"] }
 once_cell = { workspace = true }
 
 
