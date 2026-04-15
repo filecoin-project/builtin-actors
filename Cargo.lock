@@ -892,6 +892,7 @@ dependencies = [
  "num-traits",
  "rand 0.9.4",
  "serde",
+ "serde_repr",
  "test-case",
 ]
 

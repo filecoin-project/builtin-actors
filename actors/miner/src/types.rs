@@ -18,6 +18,7 @@ use fvm_shared::sector::{
     RegisteredUpdateProof, SectorNumber, SectorSize, StoragePower,
 };
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::{BatchReturn, DealWeight};
@@ -680,14 +681,15 @@ pub struct ValidateSectorStatusReturn {
     pub valid: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
+#[repr(u8)]
 pub enum SectorStatusCode {
-    /// Sector is active (not terminated, not faulty)
-    Active,
     /// Sector is not live (terminated or never committed)
-    Dead,
+    Dead = 0,
+    /// Sector is active (not terminated, not faulty)
+    Active = 1,
     /// Sector is currently faulty
-    Faulty,
+    Faulty = 2,
 }
 
 pub const NO_DEADLINE: i64 = -1;

@@ -24,6 +24,7 @@ fvm_ipld_hamt = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 serde = { workspace = true }
+serde_repr = { workspace = true }
 cid = { workspace = true }
 anyhow = { workspace = true }
 multihash = { workspace = true }

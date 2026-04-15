@@ -19,7 +19,7 @@ test-contracts: $(TEST_CONTRACTS_HEX)
 
 # Compile a Solidity test contract
 $(TEST_CONTRACTS_DIR)/%.hex: $(TEST_CONTRACTS_DIR)/%.sol | solc
-	solc --bin $< | sed '4q;d' | tr -d '\n' > $@
+	solc --bin $< | grep -E '^[0-9a-f]+$$' | tail -1 | tr -d '\n' > $@
 
 $(TEST_CONTRACTS_DIR)/callvariants.hex: $(TEST_CONTRACTS_DIR)/callvariants.eas $(TEST_CONTRACTS_DIR)/callvariants_body.eas
 	eas $(TEST_CONTRACTS_DIR)/callvariants.eas | tr -d '\n' > $(TEST_CONTRACTS_DIR)/callvariants.hex
