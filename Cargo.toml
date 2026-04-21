@@ -114,13 +114,13 @@ rlp = { version = "0.6.1", default-features = false }
 substrate-bn = { version = "0.6.0", default-features = false }
 
 # IPLD/Encoding
-cid = { version = "0.11.1", default-features = false, features = [
+cid = { version = "0.11.2", default-features = false, features = [
      "serde",
      "std",
 ] }
 multihash = { version = "0.19.3", default-features = false }
 multihash-codetable = { version = "0.1.4", default-features = false }
-multihash-derive = { version = "0.9.1", default-features = false }
+multihash-derive = { version = "0.9.2", default-features = false }
 ipld-core = { version = "0.4.3", features = ["serde"] }
 integer-encoding = { version = "4.1.0", default-features = false }
 
@@ -133,10 +133,10 @@ frc46_token = "14.1.0"
 fvm_sdk = "~4.7"
 fvm_shared = "~4.7"
 fvm_ipld_encoding = "0.5.3"
-fvm_ipld_blockstore = "0.3.1"
-fvm_ipld_hamt = "0.10.4"
+fvm_ipld_blockstore = "0.3.2"
+fvm_ipld_hamt = "0.10.5"
 fvm_ipld_kamt = "0.4.5"
-fvm_ipld_amt = "0.7.5"
+fvm_ipld_amt = "0.7.6"
 fvm_ipld_bitfield = "0.7.2"
 
 # workspace
