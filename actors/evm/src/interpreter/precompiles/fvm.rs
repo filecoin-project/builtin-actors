@@ -138,7 +138,11 @@ pub(super) fn call_actor_shared<RT: Runtime>(
     let value: U256 = input_params.read_value()?;
 
     let flags: u64 = input_params.read_value()?;
-    let flags = SendFlags::from_bits(flags).ok_or(PrecompileError::InvalidInput)?;
+    let mut flags = SendFlags::from_bits(flags).ok_or(PrecompileError::InvalidInput)?;
+
+    if system.readonly {
+        flags |= SendFlags::READ_ONLY;
+    }
 
     let codec: u64 = input_params.read_value()?;
 
