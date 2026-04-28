@@ -247,13 +247,12 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "cid"
-version = "0.11.2"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbb4913a732503de004e94ce7a4e7119ffc55d1727cc9979ac3b52f511e6578c"
+checksum = "21a304f95f84d169a6f31c4d0a30d784643aaa0bbc9c1e449a2c23e963ec4971"
 dependencies = [
  "multibase",
  "multihash",
- "no_std_io2",
  "serde",
  "serde_bytes",
  "unsigned-varint",
@@ -730,7 +729,8 @@ dependencies = [
 [[package]]
 name = "fil_actor_bundler"
 version = "8.1.0"
-source = "git+https://github.com/hanabi1224/builtin-actors-bundler.git?branch=hm%2Fno-core2#88ae74bbd6778d46eaa29ddc7e5d17385f774bdf"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ee74a23eeee16b761e3afd12f31f57fc04853efd3190bfc3b09121902620eff"
 dependencies = [
  "anyhow",
  "cid",
@@ -1785,25 +1785,23 @@ dependencies = [
 
 [[package]]
 name = "multihash"
-version = "0.19.4"
+version = "0.19.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89ace881e3f514092ce9efbcb8f413d0ad9763860b828981c2de51ddc666936c"
+checksum = "577c63b00ad74d57e8c9aa870b5fccebf2fd64a308a5aee9f1bb88e4aea19447"
 dependencies = [
- "no_std_io2",
  "serde",
  "unsigned-varint",
 ]
 
 [[package]]
 name = "multihash-codetable"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "facfe64780489b29aae20d32d0245219f4a8167f91193f7061589f5dae9ba307"
+checksum = "60384411b100398c5b2fdca476eed82e9898d09f2c60d1b1b66c5080ebe06118"
 dependencies = [
  "blake2b_simd",
  "digest 0.11.2",
  "multihash-derive",
- "no_std_io2",
  "ripemd",
  "sha2 0.11.0",
  "sha3 0.11.0",
@@ -1811,35 +1809,25 @@ dependencies = [
 
 [[package]]
 name = "multihash-derive"
-version = "0.9.2"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0576e09c49157d1910e522e595d2b32749b029dd0bc10ff6967d588490c30348"
+checksum = "4723acdce756db211a53f01b3419dbdf63cb48cef5df86260f55309364735fbf"
 dependencies = [
  "multihash",
  "multihash-derive-impl",
- "no_std_io2",
 ]
 
 [[package]]
 name = "multihash-derive-impl"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3dc7141bd06405929948754f0628d247f5ca1865be745099205e5086da957cb"
+checksum = "f932556f78452e5604cef711349d337ec081a9aa3c96e67b3127c8f5df05d550"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
  "synstructure",
-]
-
-[[package]]
-name = "no_std_io2"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a3564ce7035b1e4778d8cb6cacebb5d766b5e8fe5a75b9e441e33fb61a872c6"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
