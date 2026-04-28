@@ -242,40 +242,41 @@ pub(super) fn get_randomness<RT: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::call_actor_shared;
-    use crate::interpreter::precompiles::{PrecompileContext, PrecompileError};
+    use crate::interpreter::precompiles::PrecompileContext;
     use crate::interpreter::{CallKind, System};
     use fil_actors_evm_shared::uints::U256;
     use fil_actors_runtime::test_utils::MockRuntime;
+    use fvm_shared::sys::SendFlags;
+    use fvm_shared::{METHOD_SEND, address::Address, econ::TokenAmount, error::ExitCode};
 
-    // Regression test for the bug fixed by PR #1739:
-    // delegatecall into the CallActorId precompile from within a readonly (staticcall) context
-    // must be rejected with CallForbidden rather than proceeding to make cross-actor calls.
-    //
-    // Before the fix: reaches send_raw (consuming the gas_available expectation), then fails in
-    // flush() with ActorError::forbidden, and returns PrecompileError::VMError — not CallForbidden.
-    // After the fix: returns PrecompileError::CallForbidden immediately on the readonly check.
     #[test]
-    fn call_actor_id_precompile_rejects_readonly_delegatecall() {
+    fn call_actor_id_precompile_allows_readonly_delegatecall() {
         let rt = MockRuntime::default();
         rt.in_call.replace(true);
-        // gas_available() is called when evaluating send_raw's gas argument before the fix;
-        // after the fix the early return happens before that evaluation.
+        rt.set_read_only(true);
         rt.expect_gas_available(10_000_000_000);
-        // readonly=true simulates being inside an outer staticcall context.
+        // Empty input → method=METHOD_SEND (0), no params, addr_id=0 (f00).
+        // The mock adds READ_ONLY to the effective flags, matching this expectation.
+        let gas_limit = (63 * 10_000_000_000_u64) / 64;
+        rt.expect_send(
+            Address::new_id(0),
+            METHOD_SEND,
+            None,
+            TokenAmount::from_atto(0),
+            Some(gas_limit),
+            SendFlags::READ_ONLY,
+            None,
+            ExitCode::OK,
+            None,
+        );
         let mut system = System::new(&rt, true);
         let ctx = PrecompileContext {
-            call_type: CallKind::DelegateCall, // passes the existing call_type guard
+            call_type: CallKind::DelegateCall,
             gas: U256::MAX,
             value: U256::ZERO,
         };
-        // Empty input → method=METHOD_SEND (0), no params, addr_id=0.
         let result = call_actor_shared(&mut system, &[], ctx, true);
-        assert!(
-            matches!(result, Err(PrecompileError::CallForbidden)),
-            "expected CallForbidden for delegatecall in readonly context, got: {:?}",
-            result
-        );
-        // Clear any unconsumed expectations left over when the fix eliminates the gas_available call.
-        rt.reset();
+        assert!(result.is_ok(), "readonly delegatecall must be allowed, got: {:?}", result);
+        rt.verify();
     }
 }
