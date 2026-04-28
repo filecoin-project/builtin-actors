@@ -1174,7 +1174,8 @@ impl Runtime for MockRuntime {
         send_flags: SendFlags,
     ) -> Result<Response, SendError> {
         self.require_in_call();
-        let send_flags = if self.read_only() { send_flags | SendFlags::READ_ONLY } else { send_flags };
+        let send_flags =
+            if self.read_only() { send_flags | SendFlags::READ_ONLY } else { send_flags };
         if *self.in_transaction.borrow() {
             return Ok(Response { exit_code: ExitCode::USR_ASSERTION_FAILED, return_data: None });
         }
