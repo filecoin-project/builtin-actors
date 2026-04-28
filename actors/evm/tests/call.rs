@@ -747,8 +747,10 @@ fn call_actor_id_delegatecall_in_readonly_context_propagates_read_only() {
     let rt = util::construct_and_verify(contract);
     let actual_id_addr = 1234u64;
 
-    let mut call_params = CallActorParams::default();
-    call_params.addr_offset = U256::from(actual_id_addr);
+    let call_params = CallActorParams {
+        addr_offset: U256::from(actual_id_addr),
+        ..Default::default()
+    };
 
     let mut test = util::PrecompileTest {
         precompile_address: util::NativePrecompile::CallActorId.eth_address(),
