@@ -9,6 +9,7 @@ mod evm_notification_test;
 mod evm_sector_status_test;
 mod evm_test;
 mod extend_sectors_test;
+mod fip1249_test;
 mod init_test;
 mod market_miner_withdrawal_test;
 mod multisig_test;

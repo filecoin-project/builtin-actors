@@ -5,14 +5,12 @@ use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
-use num_traits::Zero;
 
 use fil_actor_market::BatchActivateDealsResult;
 use fil_actor_market::ext::miner::{PieceReturn, SectorChanges};
-use fil_actor_market::{DealProposal, EX_DEAL_EXPIRED, NO_ALLOCATION_ID, SectorDeals};
+use fil_actor_market::{DealProposal, EX_DEAL_EXPIRED, SectorDeals};
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
@@ -35,8 +33,6 @@ fn reject_caller_not_provider() {
         &rt,
         &addrs,
         std::slice::from_ref(&deal),
-        TokenAmount::zero(),
-        NO_ALLOCATION_ID,
     )[0];
 
     assert_activation_failure(&rt, deal_id, &deal, 1, sector_expiry, ExitCode::USR_FORBIDDEN);
@@ -71,8 +67,6 @@ fn reject_deal_already_active() {
         &rt,
         &addrs,
         std::slice::from_ref(&deal),
-        TokenAmount::zero(),
-        NO_ALLOCATION_ID,
     )[0];
     let sno = 7;
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, sno, &[deal_id]);
@@ -104,8 +98,6 @@ fn reject_proposal_expired() {
         &rt,
         &addrs,
         std::slice::from_ref(&deal),
-        TokenAmount::zero(),
-        NO_ALLOCATION_ID,
     )[0];
 
     let current = end_epoch + 25;

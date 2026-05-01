@@ -4,12 +4,11 @@ use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
 };
 use fil_actor_miner::max_prove_commit_duration;
-use fil_actor_verifreg::{AddVerifiedClientParams, Method as VerifregMethod};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR, test_utils::*,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, test_utils::*,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
@@ -19,7 +18,7 @@ use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use fvm_shared::sector::RegisteredSealProof;
 use vm_api::VM;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, serialize_ok};
@@ -30,7 +29,6 @@ use crate::expects::Expect;
 use crate::TEST_FAUCET_ADDR;
 use crate::util::{
     assert_invariants, bf_all, create_accounts, create_accounts_seeded, create_miner,
-    verifreg_add_verifier,
 };
 use export_macro::vm_test;
 
@@ -49,7 +47,7 @@ const DEAL_LIFETIME: ChainEpoch = 181 * EPOCHS_IN_DAY;
 // create miner and client and add collateral
 fn setup(v: &dyn VM) -> (Addrs, ChainEpoch) {
     let addrs = create_accounts(v, 7, &TokenAmount::from_whole(10_000));
-    let (worker, client1, client2, not_miner, cheap_client, verifier, verified_client) =
+    let (worker, client1, client2, not_miner, cheap_client, _verifier, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3], addrs[4], addrs[5], addrs[6]);
     let owner = worker;
 
@@ -66,20 +64,8 @@ fn setup(v: &dyn VM) -> (Addrs, ChainEpoch) {
     )
     .0;
 
-    // setup verified client
-    verifreg_add_verifier(v, &verifier, StoragePower::from((32_u64 << 40) as u128));
-    let add_client_params = AddVerifiedClientParams {
-        address: verified_client,
-        allowance: StoragePower::from(1_u64 << 32),
-    };
-    apply_ok(
-        v,
-        &verifier,
-        &VERIFIED_REGISTRY_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        VerifregMethod::AddVerifiedClient as u64,
-        Some(add_client_params),
-    );
+    // FIP-1249: verifreg minting is deprecated, no need to set up verifier/verified client
+    // The verified_client is just a regular account with market balance.
 
     let client_collateral = TokenAmount::from_whole(100);
     apply_ok(
@@ -340,13 +326,13 @@ pub fn psd_verified_deal_fails_getting_datacap_test(v: &dyn VM) {
     let mut batcher = DealBatcher::new(v, opts.clone());
 
     batcher.stage(a.verified_client, a.maddr);
-    // good verified deal that uses up all data cap
+    // FIP-1249: market no longer does datacap ops, so verified deals just work without datacap
     batcher.stage_with_opts(
         a.verified_client,
         a.maddr,
         DealOptions { piece_size: PaddedPieceSize(1 << 32), verified: true, ..opts.clone() },
     );
-    // bad verified deal, no data cap left
+    // This deal also succeeds now since market doesn't check datacap
     batcher.stage_with_opts(
         a.verified_client,
         a.maddr,
@@ -355,7 +341,7 @@ pub fn psd_verified_deal_fails_getting_datacap_test(v: &dyn VM) {
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
-    assert_eq!(vec![0, 1], good_inputs);
+    assert_eq!(vec![0, 1, 2], good_inputs);
 
     assert_invariants(v, &Policy::default(), None)
 }
@@ -396,7 +382,7 @@ pub fn psd_random_assortment_of_failures_test(v: &dyn VM) {
     batcher.stage(broke_client, a.maddr);
     // provider addr does not match
     batcher.stage(a.client1, a.client2);
-    // insufficient data cap
+    // FIP-1249: market no longer checks datacap, so this verified deal now succeeds
     batcher.stage_with_opts(
         a.verified_client,
         a.maddr,
@@ -414,7 +400,7 @@ pub fn psd_random_assortment_of_failures_test(v: &dyn VM) {
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
-    assert_eq!(vec![0, 2, 8], good_inputs);
+    assert_eq!(vec![0, 2, 5, 8], good_inputs);
 
     assert_invariants(v, &Policy::default(), None)
 }
@@ -432,7 +418,9 @@ pub fn psd_all_deals_are_bad_test(v: &dyn VM) {
         DealOptions { provider_collateral: TokenAmount::zero(), ..opts.clone() },
     );
     batcher.stage(a.client1, a.client2);
-    batcher.stage_with_opts(a.client1, a.maddr, DealOptions { verified: true, ..opts.clone() });
+    // FIP-1249: verified deal without datacap now succeeds since market doesn't check datacap.
+    // Replace with another bad deal to keep the "all bad" semantics.
+    batcher.stage(bad_client, a.maddr);
     batcher.stage(bad_client, a.maddr);
     batcher.stage_with_opts(
         a.client1,

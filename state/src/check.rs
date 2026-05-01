@@ -404,6 +404,11 @@ fn check_verifreg_against_miners(
         // Find sectors associated with claims.
         // A claim might not have a sector if the sector was terminated and cleaned up.
         if let Some(sector) = miner_summary.live_data_sectors.get(&claim.sector) {
+            // Sectors with FULL_QA_POWER get 10x QAP regardless of claims,
+            // so skip all claim-to-sector validation for them.
+            if sector.full_qa_power {
+                continue;
+            }
             acc.require(
                 sector.sector_start <= claim.term_start,
                 format!(

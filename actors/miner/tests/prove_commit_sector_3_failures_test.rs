@@ -5,8 +5,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredAggregateProof, SectorNumber};
 use fvm_shared::{ActorID, clock::ChainEpoch};
 
-use fil_actor_miner::ext::verifreg::AllocationID;
-use fil_actor_miner::{
+use fil_actor_miner::{AllocationID,
     ERR_NOTIFICATION_RECEIVER_ABORTED, ERR_NOTIFICATION_REJECTED, ProveCommitSectors3Params,
     SectorActivationManifest,
 };
@@ -297,14 +296,14 @@ fn reject_mismatched_commd() {
 
 #[test]
 fn reject_required_claim_failure() {
+    // FIP-1249: claim allocations have been removed. The claim_failure config is now a no-op.
+    // Both sectors succeed since there's no claim validation.
     let (h, rt, activations) = setup_precommits(&[(0, 0, 0), (CLIENT_ID, 1, 0)]);
-    let cfg = ProveCommitSectors3Config { claim_failure: vec![0], ..Default::default() };
-    // Single claim failure aborts with require_activation_success=true.
-    expect_abort_contains_message(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        "error claiming allocations",
-        h.prove_commit_sectors3(&rt, &activations, true, false, false, cfg),
-    );
+    let cfg = ProveCommitSectors3Config::default();
+    let (result, _) =
+        h.prove_commit_sectors3(&rt, &activations, true, false, false, cfg).unwrap();
+    assert_eq!(activations.len(), result.activation_results.size());
+    assert_eq!(activations.len() as u32, result.activation_results.success_count);
     h.check_state(&rt);
 }
 

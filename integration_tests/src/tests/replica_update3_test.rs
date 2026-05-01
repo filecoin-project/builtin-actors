@@ -21,11 +21,8 @@ use fil_actor_miner::{
     SectorOnChainInfoFlags, SectorUpdateManifest, Sectors, State as MinerState,
     TerminateSectorsParams, TerminationDeclaration, max_prove_commit_duration, power_for_sector,
 };
-use fil_actor_miner::{Method as MinerMethod, VerifiedAllocationKey};
-use fil_actor_verifreg::{
-    AllocationClaim, AllocationRequest, ClaimAllocationsParams, Method as VerifregMethod,
-    SectorAllocationClaims,
-};
+use fil_actor_miner::Method as MinerMethod;
+use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::Array;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
@@ -43,13 +40,13 @@ use crate::expects::Expect;
 use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_index,
     advance_to_proving_deadline, assert_invariants, check_sector_active, check_sector_faulty,
-    create_accounts, create_miner, cron_tick, datacap_create_allocations, deadline_state,
+    create_accounts, create_miner, cron_tick, deadline_state,
     declare_recovery, expect_invariants, get_deal_weights, get_network_stats,
     invariant_failure_patterns, make_bitfield, make_piece_manifests_from_deal_ids,
     market_add_balance, market_list_deals, market_list_sectors_deals, market_publish_deal,
     miner_balance, miner_power, miner_prove_sector, override_compute_unsealed_sector_cid,
     piece_change, precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_list_claims,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
 #[vm_test]
@@ -1471,7 +1468,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let sector_size = seal_proof.sector_size().unwrap();
-    let (owner, worker, verifier, client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let (owner, worker, _verifier, client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let worker_id = worker.id().unwrap();
     let client_id = client.id().unwrap();
     let (maddr, _) = create_miner(
@@ -1483,7 +1480,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     );
     let miner_id = maddr.id().unwrap();
     let claim_term_min = 2 * EPOCHS_IN_YEAR;
-    let claim_term_max = claim_term_min + 90 * EPOCHS_IN_DAY;
+    let _claim_term_max = claim_term_min + 90 * EPOCHS_IN_DAY;
 
     // Commit capacity sectors
     // Onboard a batch of sectors with a mix of data pieces, claims, and deals.
@@ -1536,34 +1533,9 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     advance_by_deadline_to_index(v, &maddr, dlinfo.index + 1);
     let update_epoch = v.epoch();
 
-    // Note: the allocation and claim configuration here are duplicated from the prove_commit2 test.
-    // Register verifier and verified clients
-    let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(v, &verifier, &datacap * 2);
-    verifreg_add_client(v, &verifier, &client, datacap);
-
-    // Publish two verified allocations for half a sector each.
+    // FIP-1249: verifreg minting deprecated, no need to set up verifier/verified client
     let full_piece_size = PaddedPieceSize(sector_size as u64);
     let half_piece_size = PaddedPieceSize(sector_size as u64 / 2);
-    let allocs = vec![
-        AllocationRequest {
-            provider: miner_id,
-            data: make_piece_cid(b"s2p1"),
-            size: half_piece_size,
-            term_min: claim_term_min,
-            term_max: claim_term_max,
-            expiration: 30 * EPOCHS_IN_DAY,
-        },
-        AllocationRequest {
-            provider: miner_id,
-            data: make_piece_cid(b"s2p2"),
-            size: half_piece_size,
-            term_min: claim_term_min,
-            term_max: claim_term_max,
-            expiration: 30 * EPOCHS_IN_DAY,
-        },
-    ];
-    let alloc_ids_s2 = datacap_create_allocations(v, &client, &allocs);
 
     // Publish a full-size deal
     let market_collateral = TokenAmount::from_whole(100);
@@ -1575,19 +1547,17 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     batcher.stage_with_label(client, maddr, "s3p1".to_string());
     let deal_ids_s3 = batcher.publish_ok(worker).ids;
 
-    // Publish a half-size verified deal.
-    // This creates a verified allocation automatically.
+    // Publish a half-size deal (FIP-1249: verified flag ignored)
     let opts = DealOptions {
         deal_start,
         piece_size: half_piece_size,
         verified: true,
-        deal_lifetime: claim_term_min, // The implicit claim term must fit sector life
+        deal_lifetime: claim_term_min,
         ..DealOptions::default()
     };
     let mut batcher = DealBatcher::new(v, opts);
     batcher.stage_with_label(client, maddr, "s4p1".to_string());
     let deal_ids_s4 = batcher.publish_ok(worker).ids;
-    let alloc_ids_s4 = [alloc_ids_s2[alloc_ids_s2.len() - 1] + 1];
 
     // Update all sectors with a mix of data pieces, claims, and deals.
     let first_sector_number: SectorNumber = 100;
@@ -1613,24 +1583,25 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
             }],
             new_sealed_cid: make_sealed_cid(b"s1"),
         },
-        // Sector 2: two pieces for verified claims.
+        // Sector 2: two pieces, no verified claims (FIP-1249)
         SectorUpdateManifest {
             sector: first_sector_number + 2,
             deadline,
             partition,
-            pieces: allocs
-                .iter()
-                .enumerate()
-                .map(|(i, alloc)| PieceActivationManifest {
-                    cid: alloc.data,
-                    size: alloc.size,
-                    verified_allocation_key: Some(VerifiedAllocationKey {
-                        client: client_id,
-                        id: alloc_ids_s2[i],
-                    }),
+            pieces: vec![
+                PieceActivationManifest {
+                    cid: make_piece_cid(b"s2p1"),
+                    size: half_piece_size,
+                    verified_allocation_key: None,
                     notify: vec![],
-                })
-                .collect(),
+                },
+                PieceActivationManifest {
+                    cid: make_piece_cid(b"s2p2"),
+                    size: half_piece_size,
+                    verified_allocation_key: None,
+                    notify: vec![],
+                },
+            ],
             new_sealed_cid: make_sealed_cid(b"s2"),
         },
         // Sector 3: a full-size, unverified deal
@@ -1649,7 +1620,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
             }],
             new_sealed_cid: make_sealed_cid(b"s3"),
         },
-        // Sector 4: a half-sized, verified deal, and implicit empty space
+        // Sector 4: a half-sized deal (FIP-1249: no verified allocation)
         SectorUpdateManifest {
             sector: first_sector_number + 4,
             deadline,
@@ -1657,10 +1628,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
             pieces: vec![PieceActivationManifest {
                 cid: make_piece_cid(b"s4p1"),
                 size: half_piece_size,
-                verified_allocation_key: Some(VerifiedAllocationKey {
-                    client: client_id,
-                    id: alloc_ids_s4[0],
-                }),
+                verified_allocation_key: None,
                 notify: vec![DataActivationNotification {
                     address: STORAGE_MARKET_ACTOR_ADDR,
                     payload: serialize(&deal_ids_s4[0], "deal id").unwrap(),
@@ -1670,42 +1638,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         },
     ];
 
-    let claim_event_1 = Expect::build_verifreg_claim_event(
-        "claim",
-        alloc_ids_s2[0],
-        client_id,
-        miner_id,
-        &allocs[0].data,
-        allocs[0].size.0,
-        claim_term_min,
-        claim_term_max,
-        v.epoch(),
-        first_sector_number + 2,
-    );
-    let claim_event_2 = Expect::build_verifreg_claim_event(
-        "claim",
-        alloc_ids_s2[1],
-        client_id,
-        miner_id,
-        &allocs[1].data,
-        allocs[1].size.0,
-        claim_term_min,
-        claim_term_max,
-        v.epoch(),
-        first_sector_number + 2,
-    );
-    let claim_event_3 = Expect::build_verifreg_claim_event(
-        "claim",
-        alloc_ids_s4[0],
-        client_id,
-        miner_id,
-        &manifests[4].pieces[0].cid,
-        manifests[4].pieces[0].size.0,
-        claim_term_min,
-        claim_term_max,
-        v.epoch(),
-        first_sector_number + 4,
-    );
+    // FIP-1249: No claim events since miner doesn't call verifreg
 
     // Replica update
     let update_proof = seal_proof.registered_update_proof().unwrap();
@@ -1727,7 +1660,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         MinerMethod::ProveReplicaUpdates3 as u64,
         Some(params.clone()),
     );
-    let expected_power = StoragePower::from(
+    let _expected_power = StoragePower::from(
         manifests
             .iter()
             .flat_map(|m| m.pieces.iter().filter(|p| p.verified_allocation_key.is_some()))
@@ -1759,63 +1692,15 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         })
         .collect();
 
+    // FIP-1249: No verifreg calls, no power/pledge change (sectors already have FULL_QA_POWER)
     ExpectInvocation {
         from: worker_id,
         to: maddr,
         method: MinerMethod::ProveReplicaUpdates3 as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         subinvocs: Some(vec![
-            // Verified claims
-            ExpectInvocation {
-                from: miner_id,
-                to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                method: VerifregMethod::ClaimAllocations as u64,
-                params: Some(
-                    IpldBlock::serialize_cbor(&ClaimAllocationsParams {
-                        sectors: vec![
-                            no_claims(first_sector_number, sector_expiry),
-                            no_claims(first_sector_number + 1, sector_expiry),
-                            SectorAllocationClaims {
-                                sector: first_sector_number + 2,
-                                expiry: sector_expiry,
-                                claims: vec![
-                                    AllocationClaim {
-                                        client: client_id,
-                                        allocation_id: alloc_ids_s2[0],
-                                        data: allocs[0].data,
-                                        size: allocs[0].size,
-                                    },
-                                    AllocationClaim {
-                                        client: client_id,
-                                        allocation_id: alloc_ids_s2[1],
-                                        data: allocs[1].data,
-                                        size: allocs[1].size,
-                                    },
-                                ],
-                            },
-                            no_claims(first_sector_number + 3, sector_expiry),
-                            SectorAllocationClaims {
-                                sector: first_sector_number + 4,
-                                expiry: sector_expiry,
-                                claims: vec![AllocationClaim {
-                                    client: client_id,
-                                    allocation_id: alloc_ids_s4[0],
-                                    data: make_piece_cid(b"s4p1"),
-                                    size: half_piece_size,
-                                }],
-                            },
-                        ],
-                        all_or_nothing: true,
-                    })
-                    .unwrap(),
-                ),
-                events: Some(vec![claim_event_1, claim_event_2, claim_event_3]),
-                ..Default::default()
-            },
             Expect::reward_this_epoch(miner_id),
             Expect::power_current_total(miner_id),
-            Expect::power_update_pledge(miner_id, None),
-            Expect::power_update_claim(miner_id, PowerPair::new(BigInt::zero(), expected_power)),
             // Market notifications.
             ExpectInvocation {
                 from: miner_id,
@@ -1877,19 +1762,15 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     assert_eq!(BigInt::zero(), sectors[0].verified_deal_weight);
     assert_eq!(full_sector_weight, sectors[1].deal_weight);
     assert_eq!(BigInt::zero(), sectors[1].verified_deal_weight);
-    assert_eq!(BigInt::zero(), sectors[2].deal_weight);
-    assert_eq!(full_sector_weight, sectors[2].verified_deal_weight);
+    // FIP-1249: Without verified_allocation_key, deal weight goes to deal_weight
+    assert_eq!(full_sector_weight, sectors[2].deal_weight);
+    assert_eq!(BigInt::zero(), sectors[2].verified_deal_weight);
     assert_eq!(full_sector_weight, sectors[3].deal_weight);
     assert_eq!(BigInt::zero(), sectors[3].verified_deal_weight);
-    assert_eq!(BigInt::zero(), sectors[4].deal_weight);
-    assert_eq!(full_sector_weight / 2, sectors[4].verified_deal_weight);
+    assert_eq!(full_sector_weight / 2, sectors[4].deal_weight);
+    assert_eq!(BigInt::zero(), sectors[4].verified_deal_weight);
 
-    // Brief checks on state consistency between actors.
-    let claims = verifreg_list_claims(v, miner_id);
-    assert_eq!(claims.len(), 3);
-    assert_eq!(first_sector_number + 2, claims[&alloc_ids_s2[0]].sector);
-    assert_eq!(first_sector_number + 2, claims[&alloc_ids_s2[1]].sector);
-    assert_eq!(first_sector_number + 4, claims[&alloc_ids_s4[0]].sector);
+    // FIP-1249: No claims to verify
 
     let deals = market_list_deals(v);
     assert_eq!(deals.len(), 2);
@@ -1902,8 +1783,4 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     assert_eq!(sector_deals.len(), 2);
     assert_eq!(deal_ids_s3, sector_deals[&(first_sector_number + 3)]);
     assert_eq!(deal_ids_s4, sector_deals[&(first_sector_number + 4)]);
-}
-
-fn no_claims(sector: SectorNumber, expiry: ChainEpoch) -> SectorAllocationClaims {
-    SectorAllocationClaims { sector, expiry, claims: vec![] }
 }

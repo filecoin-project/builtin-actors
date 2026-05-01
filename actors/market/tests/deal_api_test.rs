@@ -1,8 +1,6 @@
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use num_traits::Zero;
 use serde::de::DeserializeOwned;
 
 use fil_actor_market::{
@@ -29,8 +27,6 @@ fn proposal_data() {
 
     let rt = setup();
     rt.set_epoch(publish_epoch);
-    let next_allocation_id = 1;
-
     let proposal = generate_deal_and_add_funds(
         &rt,
         CLIENT_ADDR,
@@ -43,8 +39,6 @@ fn proposal_data() {
         &rt,
         &MinerAddresses::default(),
         std::slice::from_ref(&proposal),
-        TokenAmount::zero(),
-        next_allocation_id,
     )[0];
 
     let data: GetDealDataCommitmentReturn =
@@ -90,8 +84,6 @@ fn activation() {
 
     let rt = setup();
     rt.set_epoch(publish_epoch);
-    let next_allocation_id = 1;
-
     let proposal = generate_deal_and_add_funds(
         &rt,
         CLIENT_ADDR,
@@ -104,8 +96,6 @@ fn activation() {
         &rt,
         &MinerAddresses::default(),
         &[proposal],
-        TokenAmount::zero(),
-        next_allocation_id,
     )[0];
 
     let activation: GetDealActivationReturn =

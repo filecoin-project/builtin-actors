@@ -3,7 +3,7 @@ use fil_actor_miner::Method as MinerMethod;
 use fil_actor_miner::{
     CompactCommD, DataActivationNotification, PieceActivationManifest, ProveCommitSectors3Params,
     SectorActivationManifest, SectorPreCommitOnChainInfo, State as MinerState,
-    VerifiedAllocationKey, max_prove_commit_duration, power_for_sector,
+    max_prove_commit_duration, power_for_sector,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
@@ -17,20 +17,20 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof, StoragePower};
+use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof};
 use num_traits::Zero;
 
 use export_macro::vm_test;
-use fil_actor_miner::ext::verifreg::AllocationID;
+// FIP-1249: AllocationID no longer used
 use vm_api::VM;
 use vm_api::util::{DynBlockstore, apply_ok, get_state};
 
 use crate::deals::{DealBatcher, DealOptions};
 use crate::util::{
     PrecommitMetadata, advance_to_proving_deadline, bf_all, create_accounts, create_miner,
-    get_network_stats, market_add_balance, market_pending_deal_allocations, miner_balance,
+    get_network_stats, market_add_balance, miner_balance,
     precommit_meta_data_from_deals, precommit_sectors_v2, precommit_sectors_v2_expect_code,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    submit_windowed_post,
 };
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 
@@ -115,7 +115,7 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
         deal_duration + Policy::default().market_default_allocation_term_buffer;
 
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
-    let (owner, verifier, client) = (addrs[0], addrs[1], addrs[2]);
+    let (owner, _verifier, client) = (addrs[0], addrs[1], addrs[2]);
     let worker = owner;
 
     // Create miner
@@ -127,9 +127,7 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
         &TokenAmount::from_whole(1000),
     );
 
-    // Create FIL verifier and client.
-    verifreg_add_verifier(v, &verifier, StoragePower::from((1000_u64 << 30) as u128));
-    verifreg_add_client(v, &verifier, &client, StoragePower::from((1000_u64 << 30) as u128));
+    // FIP-1249: verifreg minting deprecated, no need to set up verifier/verified client
 
     // Fund storage market accounts.
     market_add_balance(v, &owner, &miner, &TokenAmount::from_whole(1000));
@@ -139,10 +137,7 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
     let deals = publish_deals(v, client, miner, worker, deal_duration, BATCH_SIZE);
     assert_eq!(BATCH_SIZE, deals.len());
 
-    // Verify datacap allocations.
-    let deal_keys: Vec<DealID> = deals.iter().map(|(id, _)| *id).collect();
-    let alloc_ids = market_pending_deal_allocations(v, &deal_keys);
-    assert_eq!(BATCH_SIZE, alloc_ids.len());
+    // FIP-1249: Market no longer stores datacap allocations.
 
     // Associate deals with sectors, but don't include deal IDs in the pre-commit itself.
     let sector_precommit_data: Vec<PrecommitMetadata> = deals
@@ -164,9 +159,10 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
     );
     let first_sector_no = precommits[0].info.sector_number;
 
+    // FIP-1249: No allocation IDs needed since market doesn't create allocations.
     // Prove-commit as a single aggregate.
     v.set_epoch(v.epoch() + PRE_COMMIT_CHALLENGE_DELAY + 1);
-    prove_commit_aggregate(v, &worker, deals, alloc_ids, &miner, &client, precommits);
+    prove_commit_aggregate(v, &worker, deals, vec![], &miner, &client, precommits);
     // Submit Window PoST to activate power.
     let (dline_info, p_idx) = advance_to_proving_deadline(v, &miner, 0);
 
@@ -225,25 +221,21 @@ pub fn prove_commit_aggregate(
     v: &dyn VM,
     worker: &Address,
     deals: Vec<(DealID, DealProposal)>,
-    alloc_ids: Vec<AllocationID>,
+    _alloc_ids: Vec<u64>,
     miner: &Address,
-    client: &Address,
+    _client: &Address,
     precommits: Vec<SectorPreCommitOnChainInfo>,
 ) {
-    let client_id = client.id().unwrap();
     let sector_activations: Vec<SectorActivationManifest> = precommits
         .iter()
         .zip(deals.iter())
-        .zip(alloc_ids.iter())
-        .map(|((pc, (deal_id, deal_proposal)), alloc_id)| SectorActivationManifest {
+        .map(|(pc, (deal_id, deal_proposal))| SectorActivationManifest {
             sector_number: pc.info.sector_number,
             pieces: vec![PieceActivationManifest {
                 cid: deal_proposal.piece_cid,
                 size: deal_proposal.piece_size,
-                verified_allocation_key: Some(VerifiedAllocationKey {
-                    client: client_id,
-                    id: *alloc_id,
-                }),
+                // FIP-1249: verified_allocation_key is ignored by miner
+                verified_allocation_key: None,
                 notify: vec![DataActivationNotification {
                     address: STORAGE_MARKET_ACTOR_ADDR,
                     payload: serialize(deal_id, "deal id").unwrap(),

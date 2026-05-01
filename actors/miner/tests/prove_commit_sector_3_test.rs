@@ -3,7 +3,6 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, clock::ChainEpoch};
 
-use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
     DataActivationNotification, PieceChange, ProveCommitSectors3Return, SectorChanges,
     SectorOnChainInfo, SectorPreCommitInfo,
@@ -41,47 +40,10 @@ fn commit_batch() {
     ];
 
     let cfg = ProveCommitSectors3Config::default();
-    let (result, claims, notifications) =
+    let (result, notifications) =
         h.prove_commit_sectors3(&rt, &manifests, true, true, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::OK; 4], &result);
     let sectors: Vec<SectorOnChainInfo> = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect();
-
-    // Explicitly verify claims match what we expect.
-    assert_eq!(
-        vec![
-            SectorAllocationClaims {
-                sector: snos[0],
-                expiry: sectors[0].expiration,
-                claims: vec![],
-            },
-            SectorAllocationClaims {
-                sector: snos[1],
-                expiry: sectors[1].expiration,
-                claims: vec![AllocationClaim {
-                    client: CLIENT_ID,
-                    allocation_id: 1000,
-                    data: manifests[1].pieces[0].cid,
-                    size: manifests[1].pieces[0].size,
-                }],
-            },
-            SectorAllocationClaims {
-                sector: snos[2],
-                expiry: sectors[2].expiration,
-                claims: vec![],
-            },
-            SectorAllocationClaims {
-                sector: snos[3],
-                expiry: sectors[3].expiration,
-                claims: vec![AllocationClaim {
-                    client: CLIENT_ID,
-                    allocation_id: 1001,
-                    data: manifests[3].pieces[0].cid,
-                    size: manifests[3].pieces[0].size,
-                }],
-            },
-        ],
-        claims
-    );
 
     // Explicitly verify notifications match what we expect.
     assert_eq!(
@@ -141,45 +103,10 @@ fn multiple_pieces_in_sector() {
     ];
 
     let cfg = ProveCommitSectors3Config::default();
-    let (result, claims, notifications) =
+    let (result, notifications) =
         h.prove_commit_sectors3(&rt, &manifests, true, true, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::OK, ExitCode::OK], &result);
     let sectors: Vec<SectorOnChainInfo> = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect();
-
-    // Explicitly verify claims match what we expect.
-    assert_eq!(
-        vec![
-            SectorAllocationClaims {
-                sector: snos[0],
-                expiry: sectors[0].expiration,
-                claims: vec![
-                    AllocationClaim {
-                        client: CLIENT_ID,
-                        allocation_id: 1000,
-                        data: manifests[0].pieces[0].cid,
-                        size: manifests[0].pieces[0].size,
-                    },
-                    AllocationClaim {
-                        client: CLIENT_ID,
-                        allocation_id: 1001,
-                        data: manifests[0].pieces[1].cid,
-                        size: manifests[0].pieces[1].size,
-                    },
-                ],
-            },
-            SectorAllocationClaims {
-                sector: snos[1],
-                expiry: sectors[1].expiration,
-                claims: vec![AllocationClaim {
-                    client: CLIENT_ID,
-                    allocation_id: 1002,
-                    data: manifests[1].pieces[0].cid,
-                    size: manifests[1].pieces[0].size,
-                }],
-            },
-        ],
-        claims
-    );
 
     // Explicitly verify notifications match what we expect.
     assert_eq!(
@@ -254,7 +181,7 @@ fn multiple_notifs_for_piece() {
     });
 
     let cfg = ProveCommitSectors3Config::default();
-    let (result, _, notifications) =
+    let (result, notifications) =
         h.prove_commit_sectors3(&rt, &manifests, true, true, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::OK, ExitCode::OK], &result);
     let sectors: Vec<SectorOnChainInfo> = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect();
@@ -326,7 +253,7 @@ fn expired_precommit_dropped_batch() {
     ];
 
     let cfg = ProveCommitSectors3Config { validation_failure: vec![0], ..Default::default() };
-    let (result, claims, notifications) =
+    let (result, notifications) =
         h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
@@ -336,8 +263,6 @@ fn expired_precommit_dropped_batch() {
     assert!(st.get_sector(&rt.store, precommits[0].sector_number).unwrap().is_none());
     // Sector 1: verified weight.
     verify_weights(&rt, &h, snos[1], 0, piece_size);
-    assert_eq!(1, claims.len());
-    assert_eq!(precommits[1].sector_number, claims[0].sector);
     assert_eq!(1, notifications.len());
     assert_eq!(precommits[1].sector_number, notifications[0].sector);
     h.check_state(&rt);
@@ -370,7 +295,7 @@ fn expired_precommit_dropped_aggregate() {
     ];
 
     let cfg = ProveCommitSectors3Config { validation_failure: vec![0], ..Default::default() };
-    let (result, _, _) = h.prove_commit_sectors3(&rt, &manifests, false, false, true, cfg).unwrap();
+    let (result, _) = h.prove_commit_sectors3(&rt, &manifests, false, false, true, cfg).unwrap();
     assert_commit_result(
         &[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK, ExitCode::OK, ExitCode::OK],
         &result,
@@ -401,7 +326,7 @@ fn invalid_proof_dropped() {
     ];
 
     let cfg = ProveCommitSectors3Config { proof_failure: vec![0], ..Default::default() };
-    let (result, _, _) =
+    let (result, _) =
         h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
@@ -415,6 +340,8 @@ fn invalid_proof_dropped() {
 
 #[test]
 fn invalid_claim_dropped() {
+    // FIP-1249: claim allocations have been removed. The claim_failure config is now a no-op.
+    // Both sectors succeed since there's no claim validation.
     let (h, mut rt) = setup_basic();
     let piece_size = h.sector_size as u64;
     let precommits = precommit_sectors(&mut rt, &h, &[&[piece_size], &[piece_size]]);
@@ -426,15 +353,13 @@ fn invalid_claim_dropped() {
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
     ];
 
-    let cfg = ProveCommitSectors3Config { claim_failure: vec![0], ..Default::default() };
-    let (result, _, _) =
+    let cfg = ProveCommitSectors3Config::default();
+    let (result, _) =
         h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
-    assert_commit_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
+    assert_commit_result(&[ExitCode::OK, ExitCode::OK], &result);
 
-    // Sector 0: not committed
-    let st = h.get_state(&rt);
-    assert!(st.get_sector(&rt.store, precommits[0].sector_number).unwrap().is_none());
-    // Sector 1: verified weight.
+    // Both sectors committed with all space as unverified
+    verify_weights(&rt, &h, snos[0], 0, piece_size);
     verify_weights(&rt, &h, snos[1], 0, piece_size);
 }
 
@@ -455,7 +380,7 @@ fn aborted_notification_dropped() {
         notification_result: Some(ExitCode::USR_UNSPECIFIED),
         ..Default::default()
     };
-    let (result, _, _) =
+    let (result, _) =
         h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
 
     // All sectors succeed anyway.
@@ -479,7 +404,7 @@ fn rejected_notification_dropped() {
     ];
 
     let cfg = ProveCommitSectors3Config { notification_rejected: true, ..Default::default() };
-    let (result, _, _) =
+    let (result, _) =
         h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
 
     // All sectors succeed anyway.
@@ -524,7 +449,7 @@ fn aggregate_proof_min_sectors() {
         .collect();
 
     let cfg = ProveCommitSectors3Config::default();
-    let (result, claims, notifications) =
+    let (result, notifications) =
         h.prove_commit_sectors3(&rt, &manifests, true, true, true, cfg).unwrap();
 
     assert_commit_result(&vec![ExitCode::OK; sector_count], &result);
@@ -545,13 +470,6 @@ fn aggregate_proof_min_sectors() {
             verify_weights(&rt, &h, *sno, 0, piece_size);
         }
     }
-
-    // Verify claims were made for sectors with allocations
-    // In aggregate mode, all sectors get entries in claims even if empty
-    assert_eq!(sector_count, claims.len());
-    // Count sectors that actually have allocation claims
-    let sectors_with_claims = claims.iter().filter(|c| !c.claims.is_empty()).count();
-    assert_eq!(3, sectors_with_claims); // sectors 1, 2, 3 have allocations
 
     // Verify notifications were sent for sectors with deals
     assert_eq!(2, notifications.len()); // sectors 2, 3 have deals
@@ -613,7 +531,7 @@ fn aggregate_proof_multi_piece_sectors() {
     ];
 
     let cfg = ProveCommitSectors3Config::default();
-    let (result, claims, notifications) =
+    let (result, notifications) =
         h.prove_commit_sectors3(&rt, &manifests, true, true, true, cfg).unwrap();
 
     assert_commit_result(&vec![ExitCode::OK; sector_count], &result);
@@ -623,11 +541,6 @@ fn aggregate_proof_multi_piece_sectors() {
     verify_weights(&rt, &h, snos[1], quarter_piece_size, quarter_piece_size * 3); // Mixed
     verify_weights(&rt, &h, snos[2], quarter_piece_size, quarter_piece_size * 3); // Mixed
     verify_weights(&rt, &h, snos[3], 0, h.sector_size as u64); // Full verified weight
-
-    // Verify claims - all sectors have entries in aggregate mode
-    assert_eq!(sector_count, claims.len()); // All 4 sectors have entries
-    // Count total allocation claims across all sectors
-    assert_eq!(7, claims.iter().map(|c| c.claims.len()).sum::<usize>()); // Total 7 allocation claims
 
     // Verify notifications - count deal notifications
     assert_eq!(4, notifications.len()); // All 4 sectors have deals
@@ -679,7 +592,7 @@ fn aggregate_proof_partial_success() {
     };
 
     // With require_activation_success=false, partial success is allowed
-    let (result, claims, notifications) =
+    let (result, notifications) =
         h.prove_commit_sectors3(&rt, &manifests, false, false, true, cfg).unwrap();
 
     // First two fail, rest succeed
@@ -705,11 +618,6 @@ fn aggregate_proof_partial_success() {
         assert_eq!(sector.sector_number, *sno);
         verify_weights(&rt, &h, *sno, 0, piece_size);
     }
-
-    // Only successful sectors have claims
-    assert_eq!(4, claims.len()); // Only 4 successful sectors
-    let successful_claims = claims.iter().filter(|c| !c.claims.is_empty()).count();
-    assert_eq!(4, successful_claims); // All 4 successful sectors have actual claims
 
     // Only successful sectors have notifications
     assert_eq!(4, notifications.len());
