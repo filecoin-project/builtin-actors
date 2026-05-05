@@ -67,7 +67,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     let mut all_sectors: BTreeMap<SectorNumber, SectorOnChainInfo> = BTreeMap::new();
     match Sectors::load(&store, &state.sectors) {
         Ok(sectors) => {
-            let ret = sectors.amt.for_each(|sector_number, sector| {
+            let ret = sectors.for_each(|sector_number, sector| {
                 all_sectors.insert(sector_number, sector.clone());
                 acc.require(
                     allocated_sectors.contains(&sector_number),
