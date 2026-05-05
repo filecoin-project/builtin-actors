@@ -30,9 +30,13 @@ mod serialization {
                     aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
                     proving_deadline: 2,
                     require_activation_success: false,
+
+                    sealer_id_actor: None,
+                    sealer_id_verifier_signature: None,
+                    final_sector_numbers: None,
                 },
-                // [[],byte[],8,1,2,false]
-                &hex!("868040080102f4")[..],
+                // [[],byte[],8,1,2,false,null,null,null]
+                &hex!("898040080102f4f6f6f6")[..],
             ),
             (
                 ProveCommitSectorsNIParams {
@@ -49,9 +53,13 @@ mod serialization {
                     aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
                     proving_deadline: 6,
                     require_activation_success: true,
+
+                    sealer_id_actor: None,
+                    sealer_id_verifier_signature: None,
+                    final_sector_numbers: None,
                 },
-                // [[[1,2,bagboea4seaaqa,3,4,5]],byte[deadbeef],18,1,6,true]
-                &hex!("8681860102d82a49000182e2039220010003040544deadbeef120106f5"),
+                // [[[1,2,bagboea4seaaqa,3,4,5]],byte[deadbeef],18,1,6,true,null,null,null]
+                &hex!("8981860102d82a49000182e2039220010003040544deadbeef120106f5f6f6f6"),
             ),
             (
                 ProveCommitSectorsNIParams {
@@ -78,10 +86,14 @@ mod serialization {
                     aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
                     proving_deadline: 11,
                     require_activation_success: false,
+
+                    sealer_id_actor: None,
+                    sealer_id_verifier_signature: None,
+                    final_sector_numbers: None,
                 },
-                // [[[1,2,bagboea4seaaqa,3,4,5],[6,7,bagboea4seaaqc,8,9,10]],byte[deadbeef],18,1,11,false]
+                // [[[1,2,bagboea4seaaqa,3,4,5],[6,7,bagboea4seaaqc,8,9,10]],byte[deadbeef],18,1,11,false,null,null,null]
                 &hex!(
-                    "8682860102d82a49000182e20392200100030405860607d82a49000182e2039220010108090a44deadbeef12010bf4"
+                    "8982860102d82a49000182e20392200100030405860607d82a49000182e2039220010108090a44deadbeef12010bf4f6f6f6"
                 ),
             ),
         ];
