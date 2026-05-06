@@ -103,7 +103,7 @@ pub fn new_cc_sector_gets_10x_test(v: &dyn VM) {
     advance_by_deadline_to_index(
         v,
         &maddr,
-        deadline_info.index + 1 % policy.wpost_period_deadlines,
+        (deadline_info.index + 1) % policy.wpost_period_deadlines,
     );
 
     // Verify power claim from power actor: QA power == 10x raw power
@@ -192,11 +192,7 @@ pub fn ni_sector_gets_10x_test(v: &dyn VM) {
     submit_windowed_post(v, &worker, &maddr, deadline_info, 0, Some(partition.unproven_power));
 
     // Advance past deadline to activate power
-    advance_by_deadline_to_index(
-        v,
-        &maddr,
-        proving_deadline + 1 % policy.wpost_proving_period as u64,
-    );
+    advance_by_deadline_to_index(v, &maddr, (proving_deadline + 1) % policy.wpost_period_deadlines);
 
     // Verify 10x QA power in power actor
     let power = miner_power(v, &maddr);
@@ -358,7 +354,7 @@ pub fn verified_deal_no_datacap_ops_test(v: &dyn VM) {
     advance_by_deadline_to_index(
         v,
         &maddr,
-        deadline_info.index + 1 % policy.wpost_period_deadlines,
+        (deadline_info.index + 1) % policy.wpost_period_deadlines,
     );
 
     // Verify sector gets 10x QA power (same as CC)
