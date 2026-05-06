@@ -31,8 +31,7 @@ fn activate_deals_one_sector() {
         create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 2, true),
     ];
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &deals);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
 
     // Reverse deal IDs to check they are stored sorted in state.
     let mut deal_ids_reversed = deal_ids.clone();
@@ -67,8 +66,7 @@ fn activate_deals_across_multiple_sectors() {
         [verified_deal_1.clone(), unverified_deal_1, verified_deal_2.clone(), unverified_deal_2];
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &deals);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
     assert_eq!(4, deal_ids.len());
 
     let verified_deal_1_id = deal_ids[0];
@@ -115,11 +113,7 @@ fn sectors_fail_and_succeed_independently_during_batch_activation() {
     let deals = [deal_1, deal_2.clone(), deal_3, deal_4];
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(
-        &rt,
-        &MINER_ADDRESSES,
-        &deals,
-    );
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
     assert_eq!(4, deal_ids.len());
 
     let id_1 = deal_ids[0];
@@ -194,8 +188,7 @@ fn handles_sectors_empty_of_deals_gracefully() {
     let deal_1 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH, false);
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &[deal_1]);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &[deal_1]);
     assert_eq!(1, deal_ids.len());
 
     let id_1 = deal_ids[0];
@@ -239,11 +232,7 @@ fn fails_to_activate_single_sector_duplicate_deals() {
     let deal_2 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH + 1, END_EPOCH, false);
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(
-        &rt,
-        &MINER_ADDRESSES,
-        &[deal_1, deal_2],
-    );
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &[deal_1, deal_2]);
     assert_eq!(2, deal_ids.len());
     let id_1 = deal_ids[0];
     let id_2 = deal_ids[1];
@@ -274,11 +263,7 @@ fn fails_to_activate_cross_sector_duplicate_deals() {
     let deal_3 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH + 2, END_EPOCH, false);
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(
-        &rt,
-        &MINER_ADDRESSES,
-        &[deal_1, deal_2, deal_3],
-    );
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &[deal_1, deal_2, deal_3]);
     assert_eq!(3, deal_ids.len());
 
     let id_1 = deal_ids[0];

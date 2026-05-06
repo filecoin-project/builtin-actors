@@ -33,8 +33,8 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     ActorContext, ActorDowncast, ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    actor_dispatch, actor_error, deserialize_block,
+    REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error,
+    deserialize_block,
 };
 use fil_actors_runtime::{BatchReturnGen, FIRST_ACTOR_SPECIFIC_EXIT_CODE, extract_send_result};
 
@@ -1405,8 +1405,6 @@ fn preactivate_deal<BS: Blockstore>(
 
     Ok(Ok(proposal))
 }
-
-
 
 // Calculates the first update epoch for a deal ID that is no sooner than `earliest`.
 // An ID is processed as a fixed offset within each `interval` of epochs.

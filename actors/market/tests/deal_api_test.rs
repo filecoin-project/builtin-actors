@@ -35,11 +35,7 @@ fn proposal_data() {
         end_epoch,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let id = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        std::slice::from_ref(&proposal),
-    )[0];
+    let id = publish_deals(&rt, &MinerAddresses::default(), std::slice::from_ref(&proposal))[0];
 
     let data: GetDealDataCommitmentReturn =
         query_deal(&rt, Method::GetDealDataCommitmentExported, id);
@@ -92,11 +88,7 @@ fn activation() {
         end_epoch,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let id = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[proposal],
-    )[0];
+    let id = publish_deals(&rt, &MinerAddresses::default(), &[proposal])[0];
 
     let activation: GetDealActivationReturn =
         query_deal(&rt, Method::GetDealActivationExported, id);

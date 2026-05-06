@@ -53,8 +53,10 @@ pub fn new_cc_sector_gets_10x_test(v: &dyn VM) {
     v.set_epoch(200);
 
     let sector_number: SectorNumber = 100;
-    let expiration =
-        v.epoch() + policy.min_sector_expiration + max_prove_commit_duration(&policy, seal_proof).unwrap() + 1;
+    let expiration = v.epoch()
+        + policy.min_sector_expiration
+        + max_prove_commit_duration(&policy, seal_proof).unwrap()
+        + 1;
 
     // Precommit a CC sector (no deals)
     miner_precommit_one_sector_v2(
@@ -88,8 +90,7 @@ pub fn new_cc_sector_gets_10x_test(v: &dyn VM) {
     );
 
     // Advance to proving deadline and submit Window PoSt
-    let (deadline_info, partition_index) =
-        advance_to_proving_deadline(v, &maddr, sector_number);
+    let (deadline_info, partition_index) = advance_to_proving_deadline(v, &maddr, sector_number);
 
     // Expected power: raw = sector_size, qa = 10 * sector_size (FULL_QA_POWER)
     let expected_power = fil_actor_miner::PowerPair {
@@ -107,11 +108,7 @@ pub fn new_cc_sector_gets_10x_test(v: &dyn VM) {
 
     // Verify power claim from power actor: QA power == 10x raw power
     let power = miner_power(v, &maddr);
-    assert_eq!(
-        power.raw,
-        BigInt::from(sector_size),
-        "Raw power should be sector_size"
-    );
+    assert_eq!(power.raw, BigInt::from(sector_size), "Raw power should be sector_size");
     assert_eq!(
         power.qa,
         BigInt::from(10 * sector_size),
@@ -192,14 +189,7 @@ pub fn ni_sector_gets_10x_test(v: &dyn VM) {
     let deadline = crate::util::deadline_state(v, &maddr, proving_deadline);
     let partition = deadline.load_partition(store, 0).unwrap();
 
-    submit_windowed_post(
-        v,
-        &worker,
-        &maddr,
-        deadline_info,
-        0,
-        Some(partition.unproven_power),
-    );
+    submit_windowed_post(v, &worker, &maddr, deadline_info, 0, Some(partition.unproven_power));
 
     // Advance past deadline to activate power
     advance_by_deadline_to_index(
@@ -210,11 +200,7 @@ pub fn ni_sector_gets_10x_test(v: &dyn VM) {
 
     // Verify 10x QA power in power actor
     let power = miner_power(v, &maddr);
-    assert_eq!(
-        power.raw,
-        BigInt::from(sector_size),
-        "Raw power should be sector_size"
-    );
+    assert_eq!(power.raw, BigInt::from(sector_size), "Raw power should be sector_size");
     assert_eq!(
         power.qa,
         BigInt::from(10 * sector_size),
@@ -301,8 +287,7 @@ pub fn verified_deal_no_datacap_ops_test(v: &dyn VM) {
     market_add_balance(v, &worker, &maddr, &TokenAmount::from_whole(64));
 
     // Publish a deal with verified_deal = true
-    let deal_start =
-        v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+    let deal_start = v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     let deal_lifetime = 180 * EPOCHS_IN_DAY;
     let deal_ret = market_publish_deal(
         v,
@@ -360,8 +345,7 @@ pub fn verified_deal_no_datacap_ops_test(v: &dyn VM) {
     );
 
     // Advance to proving deadline and submit PoSt
-    let (deadline_info, partition_index) =
-        advance_to_proving_deadline(v, &maddr, sector_number);
+    let (deadline_info, partition_index) = advance_to_proving_deadline(v, &maddr, sector_number);
 
     // FIP-1249: All new sectors get 10x QA power regardless of deal content
     let expected_power = fil_actor_miner::PowerPair {
@@ -379,11 +363,7 @@ pub fn verified_deal_no_datacap_ops_test(v: &dyn VM) {
 
     // Verify sector gets 10x QA power (same as CC)
     let power = miner_power(v, &maddr);
-    assert_eq!(
-        power.raw,
-        BigInt::from(sector_size),
-        "Raw power should be sector_size"
-    );
+    assert_eq!(power.raw, BigInt::from(sector_size), "Raw power should be sector_size");
     assert_eq!(
         power.qa,
         BigInt::from(10 * sector_size),

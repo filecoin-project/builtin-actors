@@ -27,9 +27,9 @@ use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, create_accounts, create_miner,
     cron_tick, expect_invariants, invariant_failure_patterns, make_piece_manifests_from_deal_ids,
-    market_add_balance, market_publish_deal,
-    miner_precommit_one_sector_v2, miner_prove_sector, override_compute_unsealed_sector_cid,
-    piece_change, precommit_meta_data_from_deals, sector_deadline, submit_windowed_post,
+    market_add_balance, market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
+    override_compute_unsealed_sector_cid, piece_change, precommit_meta_data_from_deals,
+    sector_deadline, submit_windowed_post,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -149,10 +149,7 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
         .unwrap();
     assert_eq!(180 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
     // FIP-1249: Without verified_allocation_key, deal weight goes to deal_weight (not verified)
-    assert_eq!(
-        DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30)),
-        sector_info.deal_weight
-    );
+    assert_eq!(DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30)), sector_info.deal_weight);
     assert_eq!(StoragePower::zero(), sector_info.verified_deal_weight);
     // For the legacy sector test below, we need to manually set up verified deal weight.
 
@@ -422,8 +419,10 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
     // advance to proving period and submit post
     let (deadline_info, partition_index) = advance_to_proving_deadline(v, &miner_id, sector_number);
     // FIP-1249: CC sectors now get 10x QA power
-    let expected_power_delta =
-        PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from(10 * (32u64 << 30)) };
+    let expected_power_delta = PowerPair {
+        raw: StoragePower::from(32u64 << 30),
+        qa: StoragePower::from(10 * (32u64 << 30)),
+    };
     submit_windowed_post(
         v,
         &worker,
@@ -517,8 +516,10 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let (deadline_info, partition_index) =
         advance_to_proving_deadline(v, &miner_addr, sector_number);
     // FIP-1249: CC sectors now get 10x QA power
-    let expected_power_delta =
-        PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from(10 * (32u64 << 30)) };
+    let expected_power_delta = PowerPair {
+        raw: StoragePower::from(32u64 << 30),
+        qa: StoragePower::from(10 * (32u64 << 30)),
+    };
     submit_windowed_post(
         v,
         &worker,

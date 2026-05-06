@@ -221,11 +221,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal1.clone(), deal2.clone()],
-    );
+    let deal_ids = publish_deals(&rt, &MinerAddresses::default(), &[deal1.clone(), deal2.clone()]);
     assert_eq!(2, deal_ids.len());
     let sector_number = 7;
     let ret = activate_deals_legacy(

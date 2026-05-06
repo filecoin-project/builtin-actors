@@ -111,7 +111,10 @@ pub fn test_multisig_as_verifreg_root_addverifier(v: &dyn VM) {
     let final_verifreg_st: VerifrregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
     let verifier_cap = final_verifreg_st.get_verifier_cap(&store, &verifier_to_add).unwrap();
-    assert!(verifier_cap.is_none(), "Verifier should NOT have been added (AddVerifier is deprecated)");
+    assert!(
+        verifier_cap.is_none(),
+        "Verifier should NOT have been added (AddVerifier is deprecated)"
+    );
 
     assert_invariants(v, &Policy::default(), None);
 }

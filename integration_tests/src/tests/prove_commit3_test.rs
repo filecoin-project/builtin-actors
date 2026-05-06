@@ -10,12 +10,12 @@ use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use num_traits::Zero;
 
 use fil_actor_market::Method as MarketMethod;
+use fil_actor_miner::Method as MinerMethod;
 use fil_actor_miner::{
     CompactCommD, DataActivationNotification, PieceActivationManifest, PieceChange,
     ProveCommitSectors3Params, SectorActivationManifest, SectorChanges, SectorContentChangedParams,
     SectorOnChainInfoFlags, daily_proof_fee, max_prove_commit_duration,
 };
-use fil_actor_miner::Method as MinerMethod;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;

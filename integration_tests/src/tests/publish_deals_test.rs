@@ -7,9 +7,7 @@ use fil_actor_miner::max_prove_commit_duration;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, test_utils::*,
-};
+use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, test_utils::*};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;

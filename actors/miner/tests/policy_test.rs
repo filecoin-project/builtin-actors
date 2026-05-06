@@ -1,8 +1,10 @@
 use fil_actor_miner::{
     QUALITY_BASE_MULTIPLIER, SECTOR_QUALITY_PRECISION, VERIFIED_DEAL_WEIGHT_MULTIPLIER,
 };
+use fil_actor_miner::{
+    SectorOnChainInfo, SectorOnChainInfoFlags, qa_power_for_sector, qa_power_max,
+};
 use fil_actor_miner::{daily_proof_fee, qa_power_for_weight, quality_for_weight};
-use fil_actor_miner::{qa_power_for_sector, qa_power_max, SectorOnChainInfo, SectorOnChainInfoFlags};
 use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{EPOCHS_IN_DAY, SECONDS_IN_DAY};
@@ -471,8 +473,7 @@ fn full_qa_power_independent_of_duration() {
     for duration in durations {
         let sector = SectorOnChainInfo {
             sector_number: 1,
-            flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER
-                | SectorOnChainInfoFlags::FULL_QA_POWER,
+            flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER | SectorOnChainInfoFlags::FULL_QA_POWER,
             expiration: duration,
             power_base_epoch: 0,
             ..Default::default()

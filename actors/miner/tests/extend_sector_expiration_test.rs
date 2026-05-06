@@ -815,5 +815,3 @@ fn check_for_expiration(
 
     h.check_state(rt);
 }
-
-

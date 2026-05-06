@@ -1138,10 +1138,7 @@ impl ActorHarness {
         require_notification_success: bool,
         aggregate: bool,
         cfg: ProveCommitSectors3Config,
-    ) -> Result<
-        (ProveCommitSectors3Return, Vec<SectorChanges>),
-        ActorError,
-    > {
+    ) -> Result<(ProveCommitSectors3Return, Vec<SectorChanges>), ActorError> {
         fn make_proof(i: u8) -> RawBytes {
             RawBytes::new(vec![i, i, i, i])
         }
@@ -1341,10 +1338,7 @@ impl ActorHarness {
         require_activation_success: bool,
         require_notification_success: bool,
         cfg: ProveReplicaUpdatesConfig,
-    ) -> Result<
-        (ProveReplicaUpdates3Return, Vec<SectorChanges>),
-        ActorError,
-    > {
+    ) -> Result<(ProveReplicaUpdates3Return, Vec<SectorChanges>), ActorError> {
         fn make_proof(i: u8) -> RawBytes {
             RawBytes::new(vec![i, i, i, i])
         }
@@ -2549,8 +2543,8 @@ impl ActorHarness {
                 // Proportional reduction of verified deal weight (no claims needed)
                 let old_duration = sector.expiration - sector.power_base_epoch;
                 let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
-                new_sector.verified_deal_weight = old_verified_deal_space
-                    * (new_sector.expiration - new_sector.power_base_epoch);
+                new_sector.verified_deal_weight =
+                    old_verified_deal_space * (new_sector.expiration - new_sector.power_base_epoch);
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }

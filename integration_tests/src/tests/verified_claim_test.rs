@@ -5,31 +5,29 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
-use fil_actor_market::{DealArray, DealSettlementSummary};
 use fil_actor_market::State as MarketState;
+use fil_actor_market::{DealArray, DealSettlementSummary};
 use fil_actor_miner::{
-    PowerPair, ProveCommitSectors3Params, SectorActivationManifest,
-    State as MinerState, max_prove_commit_duration,
+    PowerPair, ProveCommitSectors3Params, SectorActivationManifest, State as MinerState,
+    max_prove_commit_duration,
 };
 use fil_actor_power::State as PowerState;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::runtime::policy_constants::{
     DEAL_UPDATES_INTERVAL, MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
 };
-use fil_actors_runtime::{
-    EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-};
+use fil_actors_runtime::{EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use vm_api::VM;
 use vm_api::util::{DynBlockstore, apply_ok, get_state};
 
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, assert_invariants, create_accounts,
-    create_miner, cron_tick, expect_invariants,
-    invariant_failure_patterns, make_piece_manifests_from_deal_ids, market_add_balance,
-    market_publish_deal, miner_extend_sector_expiration2,
-    miner_precommit_one_sector_v2, miner_prove_sector, precommit_meta_data_from_deals,
-    provider_settle_deal_payments, sector_deadline, submit_windowed_post,
+    create_miner, cron_tick, expect_invariants, invariant_failure_patterns,
+    make_piece_manifests_from_deal_ids, market_add_balance, market_publish_deal,
+    miner_extend_sector_expiration2, miner_precommit_one_sector_v2, miner_prove_sector,
+    precommit_meta_data_from_deals, provider_settle_deal_payments, sector_deadline,
+    submit_windowed_post,
 };
 
 /// FIP-1249: Tests a scenario involving a deal from the built-in market.
@@ -39,8 +37,7 @@ use crate::util::{
 pub fn verified_claim_scenario_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-    let (owner, worker, _verifier, verified_client) =
-        (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let (owner, worker, _verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let sector_number: SectorNumber = 100;
     let policy = Policy::default();
 

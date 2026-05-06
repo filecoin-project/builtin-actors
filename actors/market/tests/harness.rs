@@ -30,25 +30,23 @@ use fil_actor_market::ext::miner::{
 use fil_actor_market::{
     Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
     GetBalanceReturn, Label, MARKET_NOTIFY_DEAL_METHOD, MarketNotifyDealParams, Method,
-    OnMinerSectorsTerminateParams, PublishStorageDealsParams,
-    PublishStorageDealsReturn, SectorDeals, State, VerifyDealsForActivationParams,
-    VerifyDealsForActivationReturn, WithdrawBalanceParams, WithdrawBalanceReturn, ext,
-    ext::miner::GetControlAddressesReturnParams, next_update_epoch,
-    testing::check_state_invariants,
+    OnMinerSectorsTerminateParams, PublishStorageDealsParams, PublishStorageDealsReturn,
+    SectorDeals, State, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    WithdrawBalanceParams, WithdrawBalanceReturn, ext, ext::miner::GetControlAddressesReturnParams,
+    next_update_epoch, testing::check_state_invariants,
 };
 use fil_actor_market::{
-    BatchActivateDealsParams, BatchActivateDealsResult, DealOpsByEpoch,
-    PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG,
-    PendingProposalsSet, ProviderSectorsMap, SECTOR_DEALS_CONFIG, SectorDealsMap,
-    SettleDealPaymentsParams, SettleDealPaymentsReturn, deal_cid, deal_get_payment_remaining,
+    BatchActivateDealsParams, BatchActivateDealsResult, DealOpsByEpoch, PENDING_PROPOSALS_CONFIG,
+    PROVIDER_SECTORS_CONFIG, PendingProposalsSet, ProviderSectorsMap, SECTOR_DEALS_CONFIG,
+    SectorDealsMap, SettleDealPaymentsParams, SettleDealPaymentsReturn, deal_cid,
+    deal_get_payment_remaining,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
-    EventBuilder, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EventBuilder, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     network::EPOCHS_IN_DAY,
     runtime::{Policy, Runtime, builtins::Type},
     test_utils::*,

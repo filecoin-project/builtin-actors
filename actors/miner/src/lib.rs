@@ -3476,18 +3476,17 @@ impl Actor {
 
         // 3. Find deadline/partition for each valid sector.
         //    Group by (deadline_idx, partition_idx).
-        let mut updates_by_deadline: BTreeMap<u64, Vec<(u64, SectorOnChainInfo)>> =
-            BTreeMap::new();
+        let mut updates_by_deadline: BTreeMap<u64, Vec<(u64, SectorOnChainInfo)>> = BTreeMap::new();
         {
             for sector_info in valid_sectors {
                 let (dl_idx, part_idx) = state
                     .find_sector(rt.store(), sector_info.sector_number)
                     .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!(
-                            "failed to find sector {} deadline/partition",
-                            sector_info.sector_number
-                        )
-                    })?;
+                    format!(
+                        "failed to find sector {} deadline/partition",
+                        sector_info.sector_number
+                    )
+                })?;
                 updates_by_deadline.entry(dl_idx).or_default().push((part_idx, sector_info));
             }
         }
@@ -3783,9 +3782,7 @@ fn validate_extension_declarations(
             ));
         }
     }
-    Ok(ExtendExpirationsInner {
-        extensions: extensions.into_iter().map(|e2| e2.into()).collect(),
-    })
+    Ok(ExtendExpirationsInner { extensions: extensions.into_iter().map(|e2| e2.into()).collect() })
 }
 
 #[allow(clippy::too_many_arguments)]

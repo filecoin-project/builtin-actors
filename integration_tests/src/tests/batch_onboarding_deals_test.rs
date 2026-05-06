@@ -28,9 +28,8 @@ use vm_api::util::{DynBlockstore, apply_ok, get_state};
 use crate::deals::{DealBatcher, DealOptions};
 use crate::util::{
     PrecommitMetadata, advance_to_proving_deadline, bf_all, create_accounts, create_miner,
-    get_network_stats, market_add_balance, miner_balance,
-    precommit_meta_data_from_deals, precommit_sectors_v2, precommit_sectors_v2_expect_code,
-    submit_windowed_post,
+    get_network_stats, market_add_balance, miner_balance, precommit_meta_data_from_deals,
+    precommit_sectors_v2, precommit_sectors_v2_expect_code, submit_windowed_post,
 };
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 

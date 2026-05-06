@@ -37,8 +37,8 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, DEFAULT_HAMT_CONFIG,
-    SYSTEM_ACTOR_ADDR, SetMultimap, SetMultimapConfig,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, DEFAULT_HAMT_CONFIG, SYSTEM_ACTOR_ADDR, SetMultimap,
+    SetMultimapConfig,
 };
 use harness::*;
 
@@ -678,11 +678,7 @@ fn simple_deal() {
     );
     deal1.verified_deal = false;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal1_id = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal1],
-    )[0];
+    let deal1_id = publish_deals(&rt, &MinerAddresses::default(), &[deal1])[0];
 
     // Publish from miner control address.
     let mut deal2 = generate_deal_and_add_funds(
@@ -694,11 +690,7 @@ fn simple_deal() {
     );
     deal2.verified_deal = true;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, CONTROL_ADDR);
-    let deal2_id = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal2.clone()],
-    )[0];
+    let deal2_id = publish_deals(&rt, &MinerAddresses::default(), &[deal2.clone()])[0];
 
     // activate the deal
     activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, 1, &[deal1_id, deal2_id]);
@@ -730,11 +722,7 @@ fn deal_expires() {
     );
     deal.verified_deal = true;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_id = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal.clone()],
-    )[0];
+    let deal_id = publish_deals(&rt, &MinerAddresses::default(), &[deal.clone()])[0];
 
     rt.set_epoch(start_epoch + Policy::default().deal_updates_interval + 1);
     rt.expect_send_simple(
@@ -953,8 +941,7 @@ fn datacap_transfers_batched() {
     deal3.verified_deal = true;
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids =
-        publish_deals(&rt, &MinerAddresses::default(), &[deal1, deal2, deal3]);
+    let ids = publish_deals(&rt, &MinerAddresses::default(), &[deal1, deal2, deal3]);
     assert_eq!(3, ids.len());
 
     check_state(&rt);
@@ -987,11 +974,7 @@ fn datacap_transfer_drops_deal_when_cap_insufficient() {
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     // With FIP-1249 there are no datacap ops, so both deals should publish
-    let ids = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal1, deal2],
-    );
+    let ids = publish_deals(&rt, &MinerAddresses::default(), &[deal1, deal2]);
     assert_eq!(2, ids.len());
 
     check_state(&rt);
@@ -1154,11 +1137,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         100 + 200 * EPOCHS_IN_DAY,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal4.clone(), deal5.clone()],
-    );
+    let ids = publish_deals(&rt, &MinerAddresses::default(), &[deal4.clone(), deal5.clone()]);
     assert_eq!(2, ids.len());
 
     // assert locked balances for clients and provider
@@ -1722,8 +1701,7 @@ fn market_actor_deals() {
 
     // First attempt at publishing the deal should work
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids =
-        publish_deals(&rt, &miner_addresses, &[deal_proposal.clone()]);
+    let ids = publish_deals(&rt, &miner_addresses, &[deal_proposal.clone()]);
     assert_eq!(1, ids.len());
 
     // Second attempt at publishing the same deal should fail
@@ -1764,8 +1742,7 @@ fn max_deal_label_size() {
     // DealLabel at max size should work.
     deal_proposal.label = Label::String("s".repeat(DEAL_MAX_LABEL_SIZE));
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids =
-        publish_deals(&rt, &miner_addresses, &[deal_proposal.clone()]);
+    let ids = publish_deals(&rt, &miner_addresses, &[deal_proposal.clone()]);
     assert_eq!(1, ids.len());
 
     // over max should fail

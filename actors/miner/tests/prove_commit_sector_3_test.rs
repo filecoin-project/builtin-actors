@@ -326,8 +326,7 @@ fn invalid_proof_dropped() {
     ];
 
     let cfg = ProveCommitSectors3Config { proof_failure: vec![0], ..Default::default() };
-    let (result, _) =
-        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
+    let (result, _) = h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     // Sector 0: not committed
@@ -354,8 +353,7 @@ fn invalid_claim_dropped() {
     ];
 
     let cfg = ProveCommitSectors3Config::default();
-    let (result, _) =
-        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
+    let (result, _) = h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
     assert_commit_result(&[ExitCode::OK, ExitCode::OK], &result);
 
     // Both sectors committed with all space as unverified
@@ -380,8 +378,7 @@ fn aborted_notification_dropped() {
         notification_result: Some(ExitCode::USR_UNSPECIFIED),
         ..Default::default()
     };
-    let (result, _) =
-        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
+    let (result, _) = h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
 
     // All sectors succeed anyway.
     assert_commit_result(&[ExitCode::OK; 2], &result);
@@ -404,8 +401,7 @@ fn rejected_notification_dropped() {
     ];
 
     let cfg = ProveCommitSectors3Config { notification_rejected: true, ..Default::default() };
-    let (result, _) =
-        h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
+    let (result, _) = h.prove_commit_sectors3(&rt, &manifests, false, false, false, cfg).unwrap();
 
     // All sectors succeed anyway.
     assert_commit_result(&[ExitCode::OK; 2], &result);

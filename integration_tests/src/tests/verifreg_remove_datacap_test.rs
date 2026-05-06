@@ -1,16 +1,15 @@
 use export_macro::vm_test;
-use fil_actor_verifreg::{
-    DataCap, RemoveDataCapParams, RemoveDataCapRequest,
-    SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
-};
-use fil_actor_verifreg::Method as VerifregMethod;
-use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State as VerifregState};
 use fil_actor_multisig::ProposeParams;
-use fil_actors_runtime::runtime::Policy;
+use fil_actor_verifreg::Method as VerifregMethod;
+use fil_actor_verifreg::{
+    DataCap, RemoveDataCapParams, RemoveDataCapRequest, SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
+};
+use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State as VerifregState};
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_encoding::to_vec;
-use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::bigint::Zero;
+use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
@@ -35,7 +34,11 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         value: TokenAmount::zero(),
         method: VerifregMethod::AddVerifier as u64,
-        params: fil_actors_runtime::cbor::serialize(&add_verifier_params, "verifreg add verifier params").unwrap(),
+        params: fil_actors_runtime::cbor::serialize(
+            &add_verifier_params,
+            "verifreg add verifier params",
+        )
+        .unwrap(),
     };
 
     apply_ok(

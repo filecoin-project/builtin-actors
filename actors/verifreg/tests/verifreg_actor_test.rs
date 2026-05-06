@@ -80,9 +80,9 @@ mod verifiers {
     use std::ops::Deref;
 
     use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::MethodNum;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::error::ExitCode;
-    use fvm_shared::MethodNum;
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierParams, Method};
     use fil_actors_runtime::test_utils::*;
@@ -278,8 +278,8 @@ mod verifiers {
 
 mod clients {
     use fvm_ipld_encoding::ipld_block::IpldBlock;
-    use fvm_shared::error::ExitCode;
     use fvm_shared::MethodNum;
+    use fvm_shared::error::ExitCode;
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifiedClientParams, Method};
     use fil_actors_runtime::test_utils::*;
@@ -423,8 +423,7 @@ mod clients {
         // FIP-1249: Both exported and unexported AddVerifiedClient methods return forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
-        let params =
-            AddVerifiedClientParams { address: *CLIENT, allowance: allowance_client };
+        let params = AddVerifiedClientParams { address: *CLIENT, allowance: allowance_client };
 
         // set caller to not-builtin
         rt.set_caller(*EVM_ACTOR_CODE_ID, *VERIFIER);
@@ -657,10 +656,8 @@ mod allocs_claims {
             *fil_actors_runtime::test_utils::MINER_ACTOR_CODE_ID,
             Address::new_id(PROVIDER1),
         );
-        let params = fil_actor_verifreg::ClaimAllocationsParams {
-            sectors: reqs,
-            all_or_nothing: false,
-        };
+        let params =
+            fil_actor_verifreg::ClaimAllocationsParams { sectors: reqs, all_or_nothing: false };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
             rt.call::<Actor>(
@@ -721,9 +718,7 @@ mod allocs_claims {
         let max_term = min_term + 1000;
 
         let params = ExtendClaimTermsParams {
-            terms: vec![
-                ClaimTerm { provider: PROVIDER1, claim_id: 1, term_max: max_term + 1 },
-            ],
+            terms: vec![ClaimTerm { provider: PROVIDER1, claim_id: 1, term_max: max_term + 1 }],
         };
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));

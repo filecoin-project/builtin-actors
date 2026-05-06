@@ -13,6 +13,7 @@ use num_traits::Zero;
 
 use export_macro::vm_test;
 use fil_actor_market::{DealMetaArray, Label, Method as MarketMethod, State as MarketState};
+use fil_actor_miner::Method as MinerMethod;
 use fil_actor_miner::{
     CompactCommD, DataActivationNotification, DisputeWindowedPoStParams, ExpirationExtension2,
     ExtendSectorExpiration2Params, PieceActivationManifest, PowerPair, ProveCommitSectors3Params,
@@ -21,7 +22,6 @@ use fil_actor_miner::{
     SectorOnChainInfoFlags, SectorUpdateManifest, Sectors, State as MinerState,
     TerminateSectorsParams, TerminationDeclaration, max_prove_commit_duration, power_for_sector,
 };
-use fil_actor_miner::Method as MinerMethod;
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::Array;
 use fil_actors_runtime::cbor::serialize;
@@ -40,13 +40,13 @@ use crate::expects::Expect;
 use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_index,
     advance_to_proving_deadline, assert_invariants, check_sector_active, check_sector_faulty,
-    create_accounts, create_miner, cron_tick, deadline_state,
-    declare_recovery, expect_invariants, get_deal_weights, get_network_stats,
-    invariant_failure_patterns, make_bitfield, make_piece_manifests_from_deal_ids,
-    market_add_balance, market_list_deals, market_list_sectors_deals, market_publish_deal,
-    miner_balance, miner_power, miner_prove_sector, override_compute_unsealed_sector_cid,
-    piece_change, precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    create_accounts, create_miner, cron_tick, deadline_state, declare_recovery, expect_invariants,
+    get_deal_weights, get_network_stats, invariant_failure_patterns, make_bitfield,
+    make_piece_manifests_from_deal_ids, market_add_balance, market_list_deals,
+    market_list_sectors_deals, market_publish_deal, miner_balance, miner_power, miner_prove_sector,
+    override_compute_unsealed_sector_cid, piece_change, precommit_sectors_v2, prove_commit_sectors,
+    sector_info, submit_invalid_post, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier,
 };
 
 #[vm_test]

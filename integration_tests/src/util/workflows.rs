@@ -29,7 +29,6 @@ use num_traits::Zero;
 
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
-use fil_actor_verifreg::AllocationsResponse;
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, MARKET_NOTIFY_DEAL_METHOD, Method as MarketMethod,
     PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State as MarketState,
@@ -40,12 +39,13 @@ use fil_actor_miner::{
     Method as MinerMethod, PieceActivationManifest, PoStPartition, PowerPair,
     PreCommitSectorBatchParams2, ProveCommitSectors3Params, RecoveryDeclaration,
     SectorActivationManifest, SectorClaim, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    State as MinerState, SubmitWindowedPoStParams, WithdrawBalanceParams,
-    WithdrawBalanceReturn, max_prove_commit_duration,
+    State as MinerState, SubmitWindowedPoStParams, WithdrawBalanceParams, WithdrawBalanceReturn,
+    max_prove_commit_duration,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
+use fil_actor_verifreg::AllocationsResponse;
 use fil_actor_verifreg::ClaimExtensionRequest;
 use fil_actor_verifreg::ext::datacap::MintParams;
 use fil_actor_verifreg::{

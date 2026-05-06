@@ -29,11 +29,7 @@ fn reject_caller_not_provider() {
     let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
     let deal = generate_deal_and_add_funds(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_id = publish_deals(
-        &rt,
-        &addrs,
-        std::slice::from_ref(&deal),
-    )[0];
+    let deal_id = publish_deals(&rt, &addrs, std::slice::from_ref(&deal))[0];
 
     assert_activation_failure(&rt, deal_id, &deal, 1, sector_expiry, ExitCode::USR_FORBIDDEN);
     rt.verify();
@@ -63,11 +59,7 @@ fn reject_deal_already_active() {
     let addrs = MinerAddresses::default();
     let deal = generate_deal_and_add_funds(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_id = publish_deals(
-        &rt,
-        &addrs,
-        std::slice::from_ref(&deal),
-    )[0];
+    let deal_id = publish_deals(&rt, &addrs, std::slice::from_ref(&deal))[0];
     let sno = 7;
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, sno, &[deal_id]);
 
@@ -94,11 +86,7 @@ fn reject_proposal_expired() {
     let addrs = MinerAddresses::default();
     let deal = generate_deal_and_add_funds(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_id = publish_deals(
-        &rt,
-        &addrs,
-        std::slice::from_ref(&deal),
-    )[0];
+    let deal_id = publish_deals(&rt, &addrs, std::slice::from_ref(&deal))[0];
 
     let current = end_epoch + 25;
     rt.set_epoch(current);
