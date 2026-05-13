@@ -708,6 +708,84 @@ fn call_actor_id_with_full_address() {
 }
 
 #[test]
+fn call_actor_id_inside_staticcall() {
+    let contract = {
+        let (init, body) = util::PrecompileTest::test_runner_assembly();
+        asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
+    };
+    let rt = util::construct_and_verify(contract);
+    let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
+    let actual_id_addr = 1234;
+
+    let mut call_params = CallActorParams::default();
+    // garbage bytes
+    call_params.set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET, addr.to_bytes());
+    // id address
+    call_params.addr_offset = U256::from(actual_id_addr);
+
+    let mut test = util::PrecompileTest {
+        precompile_address: util::NativePrecompile::CallActorId.eth_address(),
+        output_size: 32,
+        call_op: util::PrecompileCallOpcode::StaticCall,
+        expected_return: vec![],
+        expected_exit_code: util::PrecompileExit::Reverted,
+        input: call_params.clone().into(),
+    };
+
+    // staticcall into the CallActorId precompile must be rejected (call_type != DelegateCall).
+    // No send should occur.
+    test.input = call_params.into();
+    test.run_test_expecting(&rt, vec![], util::PrecompileExit::Reverted);
+}
+
+#[test]
+fn call_actor_id_delegatecall_in_readonly_context_propagates_read_only() {
+    let contract = {
+        let (init, body) = util::PrecompileTest::test_runner_assembly();
+        asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
+    };
+    let rt = util::construct_and_verify(contract);
+    let actual_id_addr = 1234u64;
+
+    let call_params =
+        CallActorParams { addr_offset: U256::from(actual_id_addr), ..Default::default() };
+
+    let mut test = util::PrecompileTest {
+        precompile_address: util::NativePrecompile::CallActorId.eth_address(),
+        output_size: 32,
+        call_op: util::PrecompileCallOpcode::DelegateCall,
+        expected_return: vec![],
+        expected_exit_code: util::PrecompileExit::Success,
+        input: call_params.into(),
+    };
+
+    // Simulate the EVM actor being invoked in a readonly (staticcall) context.
+    rt.set_read_only(true);
+    rt.expect_gas_available(10_000_000_000);
+    // The mock propagates READ_ONLY to sub-calls, mirroring FVM kernel behavior.
+    // The target actor rejects the mutation attempt with USR_FORBIDDEN.
+    rt.expect_send(
+        Address::new_id(actual_id_addr),
+        0,
+        None,
+        TokenAmount::zero(),
+        Some(0),
+        SendFlags::READ_ONLY,
+        None,
+        ExitCode::USR_FORBIDDEN,
+        None,
+    );
+
+    let expected = CallActorReturn {
+        send_exit_code: U256::from(ExitCode::USR_FORBIDDEN.value()),
+        ..Default::default()
+    };
+    // The precompile itself succeeds (returns 1); the target actor's rejection is
+    // surfaced in the ABI-encoded send_exit_code, not as a precompile-level revert.
+    test.run_test_expecting(&rt, expected, util::PrecompileExit::Success);
+}
+
+#[test]
 fn call_actor_syscall_error() {
     let contract = {
         let (init, body) = util::PrecompileTest::test_runner_assembly();
