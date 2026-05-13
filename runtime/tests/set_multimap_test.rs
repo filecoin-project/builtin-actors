@@ -27,6 +27,14 @@ fn put_remove() {
 
     smm.remove_all(&epoch).unwrap();
     assert!(smm.get(&epoch).unwrap().is_none());
+
+    // Removing the last value from a key should delete the outer key entirely
+    smm.put(&epoch, 8).unwrap();
+    smm.remove(&epoch, 8).unwrap();
+    assert!(
+        smm.get(&epoch).unwrap().is_none(),
+        "expected None after removing the last value, got Some(empty set)"
+    );
 }
 
 #[test]

@@ -149,7 +149,7 @@ pub struct Policy {
     pub minimum_verified_allocation_size: StoragePower,
     /// Minimum term for a verified data allocation (epochs)
     pub minimum_verified_allocation_term: i64,
-    /// Maximum term for a verified data allocaion (epochs)
+    /// Maximum term for a verified data allocation (epochs)
     pub maximum_verified_allocation_term: i64,
     /// Maximum time a verified allocation can be active without being claimed (epochs).
     /// Supports recovery of erroneous allocations and prevents indefinite squatting on datacap.
