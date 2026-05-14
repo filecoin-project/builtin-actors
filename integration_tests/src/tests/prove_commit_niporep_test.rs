@@ -127,10 +127,11 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
         .iter()
         .map(|sector_number| sector_info(v, &maddr, *sector_number))
         .collect::<Vec<_>>();
+    // FIP-1249: NI-PoRep sectors now get 10x QA power (FULL_QA_POWER flag)
     let expected_daily_fee = daily_proof_fee(
         &policy,
         &v.circulating_supply(),
-        &StoragePower::from(seal_proof_type.sector_size().unwrap() as u64),
+        &StoragePower::from(10 * seal_proof_type.sector_size().unwrap() as u64),
     );
 
     for (on_chain_sector, input_sector) in sectors.iter().zip(sectors_info) {
@@ -144,6 +145,7 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
         assert_eq!(BigInt::zero(), on_chain_sector.verified_deal_weight);
         assert_eq!(activation_epoch, on_chain_sector.power_base_epoch);
         assert!(on_chain_sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER));
+        assert!(on_chain_sector.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER));
         assert_eq!(expected_daily_fee, on_chain_sector.daily_fee);
     }
 

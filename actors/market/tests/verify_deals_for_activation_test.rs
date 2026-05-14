@@ -4,7 +4,6 @@
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
@@ -73,14 +72,12 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
 #[test]
 fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
     let rt = setup();
-    let next_allocation_id = 1;
     let deal_id = generate_and_publish_verified_deal(
         &rt,
         CLIENT_ADDR,
         &MINER_ADDRESSES,
         START_EPOCH,
         END_EPOCH,
-        next_allocation_id,
     );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
     let sector_number = 7;
@@ -106,7 +103,7 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
     assert_eq!(deal_proposal.piece_size, s_response.activated[0].size);
     assert_eq!(deal_proposal.client.id().unwrap(), s_response.activated[0].client);
     assert_eq!(deal_proposal.piece_cid, s_response.activated[0].data);
-    assert_eq!(next_allocation_id, s_response.activated[0].allocation_id);
+    assert_eq!(NO_ALLOCATION_ID, s_response.activated[0].allocation_id);
     check_state(&rt);
 }
 
@@ -127,10 +124,8 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
         unverified_deal_1.clone(),
         unverified_deal_2.clone(),
     ];
-    let datacap_required =
-        TokenAmount::from_whole(verified_deal_1.piece_size.0 + verified_deal_2.piece_size.0);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals, datacap_required, 1);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
     assert_eq!(4, deal_ids.len());
 
     let sector_number = 7;
@@ -160,7 +155,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
     assert_eq!(
         &ActivatedDeal {
             client: CLIENT_ADDR.id().unwrap(),
-            allocation_id: 1,
+            allocation_id: NO_ALLOCATION_ID,
             data: verified_deal_1.piece_cid,
             size: verified_deal_1.piece_size,
         },
@@ -169,7 +164,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
     assert_eq!(
         &ActivatedDeal {
             client: CLIENT_ADDR.id().unwrap(),
-            allocation_id: 2,
+            allocation_id: NO_ALLOCATION_ID,
             data: verified_deal_2.piece_cid,
             size: verified_deal_2.piece_size,
         },

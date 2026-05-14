@@ -28,23 +28,6 @@ pub fn verifier_balance(
     rt.emit_event(&event.build()?)
 }
 
-/// Indicates a new allocation has been made.
-pub fn allocation(
-    rt: &impl Runtime,
-    id: AllocationID,
-    alloc: &Allocation,
-) -> Result<(), ActorError> {
-    rt.emit_event(
-        &EventBuilder::new()
-            .typ("allocation")
-            .with_parties(id, alloc.client, alloc.provider)
-            .with_piece(&alloc.data, alloc.size.0)
-            .with_term(alloc.term_min, alloc.term_max)
-            .field("expiration", &alloc.expiration)
-            .build()?,
-    )
-}
-
 /// Indicates an expired allocation has been removed.
 pub fn allocation_removed(
     rt: &impl Runtime,
@@ -58,34 +41,6 @@ pub fn allocation_removed(
             .with_piece(&alloc.data, alloc.size.0)
             .with_term(alloc.term_min, alloc.term_max)
             .field("expiration", &alloc.expiration)
-            .build()?,
-    )
-}
-
-/// Indicates an allocation has been claimed.
-pub fn claim(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    rt.emit_event(
-        &EventBuilder::new()
-            .typ("claim")
-            .with_parties(id, claim.client, claim.provider)
-            .with_piece(&claim.data, claim.size.0)
-            .with_term(claim.term_min, claim.term_max)
-            .field("term-start", &claim.term_start)
-            .field_indexed("sector", &claim.sector)
-            .build()?,
-    )
-}
-
-/// Indicates an existing claim has been updated (e.g. with a longer term).
-pub fn claim_updated(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    rt.emit_event(
-        &EventBuilder::new()
-            .typ("claim-updated")
-            .with_parties(id, claim.client, claim.provider)
-            .with_piece(&claim.data, claim.size.0)
-            .with_term(claim.term_min, claim.term_max)
-            .field("term-start", &claim.term_start)
-            .field_indexed("sector", &claim.sector)
             .build()?,
     )
 }

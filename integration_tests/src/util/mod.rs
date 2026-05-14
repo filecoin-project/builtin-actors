@@ -1,6 +1,6 @@
 use cid::Cid;
 use fil_actor_market::{DealProposal, DealState, State as MarketState, load_provider_sector_deals};
-use fil_actor_miner::ext::verifreg::AllocationID;
+use fil_actor_miner::AllocationID;
 use fil_actor_miner::{
     CompactCommD, Deadline, DeadlineInfo, GetBeneficiaryReturn, Method as MinerMethod, MinerInfo,
     PieceChange, PowerPair, SectorOnChainInfo, State as MinerState, initial_pledge_for_power,

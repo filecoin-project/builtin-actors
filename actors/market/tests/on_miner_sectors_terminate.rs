@@ -9,9 +9,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use num_traits::Zero;
 
 mod harness;
 
@@ -223,13 +221,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal1.clone(), deal2.clone()],
-        TokenAmount::zero(),
-        1,
-    );
+    let deal_ids = publish_deals(&rt, &MinerAddresses::default(), &[deal1.clone(), deal2.clone()]);
     assert_eq!(2, deal_ids.len());
     let sector_number = 7;
     let ret = activate_deals_legacy(
