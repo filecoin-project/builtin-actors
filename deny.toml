@@ -1,6 +1,7 @@
 [advisories]
 ignore = [
    { id = "RUSTSEC-2024-0436", reason = "paste@1.0.15 excluded pending removal from alloy-core and syn-solidity; see https://github.com/alloy-rs/core/issues/897" },
+   { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is unmaintained; transitive dependency via alloy-core." },
 ]
 
 [licenses]
