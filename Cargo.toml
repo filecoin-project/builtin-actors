@@ -81,7 +81,7 @@ num = { version = "0.4", features = ["serde"] }
 num-derive = "0.4.2"
 num-traits = "0.2.19"
 lazy_static = "1.5.0"
-log = { version = "0.4.30", features = ["std"] }
+log = { version = "0.4.32", features = ["std"] }
 byteorder = "1.5.0"
 itertools = "0.14.0"
 indexmap = { version = "2.13.1" }
