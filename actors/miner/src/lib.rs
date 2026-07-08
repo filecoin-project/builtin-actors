@@ -5466,6 +5466,20 @@ fn activate_new_sector_infos(
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
+        // FIP-1249: all new sectors get 10x QA power regardless of content or duration, so
+        // power/fee/pledge are identical for every sector in this batch; compute them once.
+        let power = qa_power_max(info.sector_size);
+        let daily_fee = daily_proof_fee(policy, &pledge_inputs.circulating_supply, &power);
+        let initial_pledge = initial_pledge_for_power(
+            &power,
+            &pledge_inputs.network_baseline,
+            &pledge_inputs.epoch_reward,
+            &pledge_inputs.network_qap,
+            &pledge_inputs.circulating_supply,
+            pledge_inputs.epochs_since_ramp_start,
+            pledge_inputs.ramp_duration_epochs,
+        );
+
         for (pci, deal_spaces) in precommits.iter().zip(data_activations) {
             // compute initial pledge
             let duration = pci.info.expiration - activation_epoch;
@@ -5483,20 +5497,6 @@ fn activate_new_sector_infos(
             let deal_weight = &deal_spaces.unverified_space * duration;
             let verified_deal_weight = &deal_spaces.verified_space * duration;
 
-            // FIP-1249: all new sectors get 10x QA power regardless of content.
-            let power = qa_power_max(info.sector_size);
-            let daily_fee = daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply, &power);
-
-            let initial_pledge = initial_pledge_for_power(
-                &power,
-                &pledge_inputs.network_baseline,
-                &pledge_inputs.epoch_reward,
-                &pledge_inputs.network_qap,
-                &pledge_inputs.circulating_supply,
-                pledge_inputs.epochs_since_ramp_start,
-                pledge_inputs.ramp_duration_epochs,
-            );
-
             deposit_to_unlock += pci.pre_commit_deposit.clone();
             total_pledge += &initial_pledge;
 
@@ -5509,7 +5509,7 @@ fn activate_new_sector_infos(
                 activation: activation_epoch,
                 deal_weight,
                 verified_deal_weight,
-                initial_pledge,
+                initial_pledge: initial_pledge.clone(),
                 expected_day_reward: None,
                 expected_storage_pledge: None,
                 power_base_epoch: activation_epoch,
@@ -5517,7 +5517,7 @@ fn activate_new_sector_infos(
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER
                     | SectorOnChainInfoFlags::FULL_QA_POWER,
-                daily_fee,
+                daily_fee: daily_fee.clone(),
             };
 
             new_sector_numbers.push(new_sector_info.sector_number);
