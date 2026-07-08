@@ -3474,19 +3474,25 @@ impl Actor {
             return Ok(batch.generate());
         }
 
-        // 3. Find deadline/partition for each valid sector.
-        //    Group by (deadline_idx, partition_idx).
+        // 3. Find deadline/partition for each valid sector, in a single pass over
+        //    deadlines/partitions, then group by (deadline_idx, partition_idx).
         let mut updates_by_deadline: BTreeMap<u64, Vec<(u64, SectorOnChainInfo)>> = BTreeMap::new();
         {
+            let sector_numbers: Vec<SectorNumber> =
+                valid_sectors.iter().map(|s| s.sector_number).collect();
+            let locations = state
+                .find_sectors(rt.store(), &sector_numbers)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to find sector locations")?;
+
             for sector_info in valid_sectors {
-                let (dl_idx, part_idx) = state
-                    .find_sector(rt.store(), sector_info.sector_number)
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    format!(
-                        "failed to find sector {} deadline/partition",
-                        sector_info.sector_number
-                    )
-                })?;
+                let &(dl_idx, part_idx) =
+                    locations.get(&sector_info.sector_number).ok_or_else(|| {
+                        actor_error!(
+                            illegal_state,
+                            "failed to find sector {} deadline/partition",
+                            sector_info.sector_number
+                        )
+                    })?;
                 updates_by_deadline.entry(dl_idx).or_default().push((part_idx, sector_info));
             }
         }

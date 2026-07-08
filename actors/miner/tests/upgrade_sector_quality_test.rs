@@ -401,3 +401,95 @@ fn upgrade_legacy_sector_sets_daily_fee() {
 
     h.check_state(&rt);
 }
+
+/// Upgrading several legacy sectors together exercises the batched deadline/partition
+/// lookup (State::find_sectors), not just the single-sector lookup path.
+#[test]
+fn upgrade_multiple_legacy_sectors_to_full_qa() {
+    let (h, rt, sectors) = setup_sectors(3);
+    let snos: Vec<u64> = sectors.iter().map(|s| s.sector_number).collect();
+
+    for &sno in &snos {
+        downgrade_sector_in_state(&h, &rt, sno, false);
+    }
+
+    let legacy_sectors: Vec<SectorOnChainInfo> =
+        snos.iter().map(|&sno| h.get_sector(&rt, sno)).collect();
+    for sector in &legacy_sectors {
+        assert!(!sector.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER));
+    }
+
+    let new_qa_power = qa_power_max(h.sector_size);
+    let old_qa_power_total: BigInt = legacy_sectors
+        .iter()
+        .map(|s| qa_power_for_sector(h.sector_size, s))
+        .fold(BigInt::zero(), |acc, p| acc + p);
+    let qa_power_delta = BigInt::from(3) * &new_qa_power - old_qa_power_total;
+
+    let new_pledge = h.initial_pledge_for_power(&rt, &new_qa_power);
+    let pledge_delta: TokenAmount = legacy_sectors
+        .iter()
+        .map(|s| {
+            if new_pledge > s.initial_pledge {
+                &new_pledge - &s.initial_pledge
+            } else {
+                TokenAmount::zero()
+            }
+        })
+        .fold(TokenAmount::zero(), |acc, d| acc + d);
+
+    let bf = BitField::try_from_bits(snos.iter().copied()).unwrap();
+    let params = UpgradeSectorQualityParams { sectors: bf };
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
+    rt.expect_validate_caller_addr(h.caller_addrs());
+    h.expect_query_network_info(&rt);
+
+    rt.expect_send_simple(
+        STORAGE_POWER_ACTOR_ADDR,
+        UPDATE_CLAIMED_POWER_METHOD,
+        IpldBlock::serialize_cbor(&UpdateClaimedPowerParams {
+            raw_byte_delta: BigInt::zero(),
+            quality_adjusted_delta: qa_power_delta.clone(),
+        })
+        .unwrap(),
+        TokenAmount::zero(),
+        None,
+        ExitCode::OK,
+    );
+    if pledge_delta.is_positive() {
+        rt.expect_send_simple(
+            STORAGE_POWER_ACTOR_ADDR,
+            PowerMethod::UpdatePledgeTotal as u64,
+            IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
+            TokenAmount::zero(),
+            None,
+            ExitCode::OK,
+        );
+    }
+
+    let result = rt
+        .call::<Actor>(
+            Method::UpgradeSectorQuality as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
+        .unwrap();
+    let batch_return: BatchReturn = result.unwrap().deserialize().unwrap();
+    rt.verify();
+
+    assert_eq!(3, batch_return.size());
+    assert_eq!(3, batch_return.success_count as usize);
+    assert!(batch_return.fail_codes.is_empty());
+
+    for &sno in &snos {
+        let sector_after = h.get_sector(&rt, sno);
+        assert!(
+            sector_after.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER),
+            "sector {} should have FULL_QA_POWER flag after upgrade",
+            sno
+        );
+        assert_eq!(qa_power_max(h.sector_size), qa_power_for_sector(h.sector_size, &sector_after));
+    }
+
+    h.check_state(&rt);
+}

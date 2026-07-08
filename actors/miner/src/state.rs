@@ -3,6 +3,7 @@
 
 use std::borrow::Borrow;
 use std::cmp;
+use std::collections::BTreeMap;
 use std::ops::Neg;
 
 use anyhow::anyhow;
@@ -405,6 +406,17 @@ impl State {
     ) -> anyhow::Result<(u64, u64)> {
         let deadlines = self.load_deadlines(store)?;
         deadlines.find_sector(store, sector_number)
+    }
+
+    /// Returns the deadline and partition index for each of the given sector numbers, in one
+    /// pass over deadlines/partitions rather than one pass per sector.
+    pub fn find_sectors<BS: Blockstore>(
+        &self,
+        store: &BS,
+        sector_numbers: &[SectorNumber],
+    ) -> anyhow::Result<BTreeMap<SectorNumber, (u64, u64)>> {
+        let deadlines = self.load_deadlines(store)?;
+        deadlines.find_sectors(store, sector_numbers)
     }
 
     /// Schedules each sector to expire at its next deadline end. If it can't find
