@@ -1833,15 +1833,7 @@ impl Actor {
             ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
 
-        let sector_initial_pledge = initial_pledge_for_power(
-            &qa_sector_power,
-            &pledge_inputs.network_baseline,
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &pledge_inputs.circulating_supply,
-            pledge_inputs.epochs_since_ramp_start,
-            pledge_inputs.ramp_duration_epochs,
-        );
+        let sector_initial_pledge = pledge_inputs.initial_pledge_for_power(&qa_sector_power);
 
         let circulating_supply = rt.total_fil_circ_supply();
         // Same fee for all sectors: same size, all raw
@@ -3562,15 +3554,7 @@ impl Actor {
 
                     let new_qa_power = qa_power_max(sector_size);
                     // Same for every sector in this batch: hoisted out of the per-sector loop.
-                    let new_pledge_for_power = initial_pledge_for_power(
-                        &new_qa_power,
-                        &pledge_inputs.network_baseline,
-                        &pledge_inputs.epoch_reward,
-                        &pledge_inputs.network_qap,
-                        &pledge_inputs.circulating_supply,
-                        pledge_inputs.epochs_since_ramp_start,
-                        pledge_inputs.ramp_duration_epochs,
-                    );
+                    let new_pledge_for_power = pledge_inputs.initial_pledge_for_power(&new_qa_power);
                     let new_daily_fee_for_zero_fee =
                         daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply, &new_qa_power);
 
@@ -4267,18 +4251,8 @@ fn update_existing_sector_info(
     new_sector_info.replaced_day_reward = None;
     new_sector_info.expected_storage_pledge = None;
 
-    new_sector_info.initial_pledge = max(
-        new_sector_info.initial_pledge,
-        initial_pledge_for_power(
-            &new_qa_power,
-            &pledge_inputs.network_baseline,
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &pledge_inputs.circulating_supply,
-            pledge_inputs.epochs_since_ramp_start,
-            pledge_inputs.ramp_duration_epochs,
-        ),
-    );
+    new_sector_info.initial_pledge =
+        max(new_sector_info.initial_pledge, pledge_inputs.initial_pledge_for_power(&new_qa_power));
     if new_sector_info.daily_fee.is_zero() {
         // pre-FIP-0100 sector
         new_sector_info.daily_fee =
@@ -5465,15 +5439,7 @@ fn activate_new_sector_infos(
         // power/fee/pledge are identical for every sector in this batch; compute them once.
         let power = qa_power_max(info.sector_size);
         let daily_fee = daily_proof_fee(policy, &pledge_inputs.circulating_supply, &power);
-        let initial_pledge = initial_pledge_for_power(
-            &power,
-            &pledge_inputs.network_baseline,
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &pledge_inputs.circulating_supply,
-            pledge_inputs.epochs_since_ramp_start,
-            pledge_inputs.ramp_duration_epochs,
-        );
+        let initial_pledge = pledge_inputs.initial_pledge_for_power(&power);
 
         for (pci, deal_spaces) in precommits.iter().zip(data_activations) {
             // compute initial pledge
@@ -5813,6 +5779,20 @@ struct NetworkPledgeInputs {
     pub epoch_reward: FilterEstimate,
     pub epochs_since_ramp_start: i64,
     pub ramp_duration_epochs: u64,
+}
+
+impl NetworkPledgeInputs {
+    fn initial_pledge_for_power(&self, qa_power: &StoragePower) -> TokenAmount {
+        initial_pledge_for_power(
+            qa_power,
+            &self.network_baseline,
+            &self.epoch_reward,
+            &self.network_qap,
+            &self.circulating_supply,
+            self.epochs_since_ramp_start,
+            self.ramp_duration_epochs,
+        )
+    }
 }
 
 // Note: probably better to push this one level down into state
