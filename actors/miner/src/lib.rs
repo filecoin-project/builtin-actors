@@ -3593,15 +3593,14 @@ impl Actor {
                                 // pre-FIP-0100 sector
                                 new_sector.daily_fee = new_daily_fee_for_zero_fee.clone();
                             } else {
+                                // daily_proof_fee_adjust is a no-op when the power hasn't changed.
                                 let old_qa_power =
                                     qa_power_for_sector(sector_size, sector_info);
-                                if old_qa_power != new_qa_power {
-                                    new_sector.daily_fee = daily_proof_fee_adjust(
-                                        &sector_info.daily_fee,
-                                        &old_qa_power,
-                                        &new_qa_power,
-                                    );
-                                }
+                                new_sector.daily_fee = daily_proof_fee_adjust(
+                                    &sector_info.daily_fee,
+                                    &old_qa_power,
+                                    &new_qa_power,
+                                );
                             }
 
                             new_sector
@@ -3820,12 +3819,10 @@ fn extend_sector_committment(
             new_sector_info.daily_fee = daily_proof_fee(policy, circulating_supply, &new_qa_power);
         } // else grace period
     } else {
+        // daily_proof_fee_adjust is a no-op when the power hasn't changed.
         let old_qa_power = qa_power_for_sector(sector_size, sector_info);
-        if old_qa_power != new_qa_power {
-            // adjust the daily_fee by the same proportion as the power changed
-            new_sector_info.daily_fee =
-                daily_proof_fee_adjust(&sector_info.daily_fee, &old_qa_power, &new_qa_power)
-        }
+        new_sector_info.daily_fee =
+            daily_proof_fee_adjust(&sector_info.daily_fee, &old_qa_power, &new_qa_power);
     }
     Ok(new_sector_info)
 }
@@ -4288,12 +4285,10 @@ fn update_existing_sector_info(
             daily_proof_fee(policy, &pledge_inputs.circulating_supply, &new_qa_power);
     } else {
         // Use qa_power_for_sector which handles both FULL_QA_POWER and legacy sectors.
+        // daily_proof_fee_adjust is a no-op when the power hasn't changed.
         let old_qa_power = qa_power_for_sector(sector_size, sector_info);
-        if old_qa_power != new_qa_power {
-            // adjust the daily_fee by the same proportion as the power changed
-            new_sector_info.daily_fee =
-                daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, &new_qa_power)
-        }
+        new_sector_info.daily_fee =
+            daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, &new_qa_power);
     }
     new_sector_info
 }
