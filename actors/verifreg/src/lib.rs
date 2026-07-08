@@ -74,6 +74,15 @@ pub enum Method {
 
 pub struct Actor;
 
+// FIP-1249: datacap is deprecated; callers still apply their own caller validation first.
+fn datacap_deprecated<T>(reason: &str) -> Result<T, ActorError> {
+    Err(actor_error!(
+        forbidden,
+        "FIP-1249: datacap is deprecated, {} is no longer supported",
+        reason
+    ))
+}
+
 impl Actor {
     /// Constructor for Registry Actor
     pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
@@ -94,10 +103,7 @@ impl Actor {
     pub fn add_verifier(rt: &impl Runtime, _params: AddVerifierParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         // FIP-1249: datacap minting is deprecated. No new verifiers can be added.
-        Err(actor_error!(
-            forbidden,
-            "FIP-1249: datacap is deprecated, adding new verifiers is no longer supported"
-        ))
+        datacap_deprecated("adding new verifiers")
     }
 
     pub fn remove_verifier(
@@ -121,10 +127,7 @@ impl Actor {
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         // FIP-1249: datacap minting is deprecated. No new datacap can be granted.
-        Err(actor_error!(
-            forbidden,
-            "FIP-1249: datacap is deprecated, minting new datacap is no longer supported"
-        ))
+        datacap_deprecated("minting new datacap")
     }
 
     /// Removes DataCap allocated to a verified client.
@@ -295,10 +298,7 @@ impl Actor {
         _params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-        Err(actor_error!(
-            forbidden,
-            "FIP-1249: datacap is deprecated, claim allocations is no longer supported"
-        ))
+        datacap_deprecated("claim allocations")
     }
 
     // get claims for a provider
@@ -341,10 +341,7 @@ impl Actor {
         _params: ExtendClaimTermsParams,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Err(actor_error!(
-            forbidden,
-            "FIP-1249: datacap is deprecated, extending claim terms is no longer supported"
-        ))
+        datacap_deprecated("extending claim terms")
     }
 
     // A claim may be removed after its maximum term has elapsed (by anyone).
@@ -407,10 +404,7 @@ impl Actor {
         _params: UniversalReceiverParams,
     ) -> Result<AllocationsResponse, ActorError> {
         rt.validate_immediate_caller_is(&[DATACAP_TOKEN_ACTOR_ADDR])?;
-        Err(actor_error!(
-            forbidden,
-            "FIP-1249: datacap is deprecated, new allocations are no longer supported"
-        ))
+        datacap_deprecated("new allocations")
     }
 }
 
