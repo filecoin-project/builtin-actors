@@ -939,8 +939,7 @@ impl Actor {
             .collect();
 
         // Activate data for proven updates.
-        let (data_batch, data_activations) =
-            activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
+        let (data_batch, data_activations) = activate_sectors_pieces(rt, data_activation_inputs)?;
         if data_batch.success_count == 0 {
             return Err(actor_error!(illegal_argument, "all data activations failed"));
         }
@@ -1627,8 +1626,7 @@ impl Actor {
             .collect();
 
         // Activate data for proven sectors.
-        let (data_batch, data_activations) =
-            activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
+        let (data_batch, data_activations) = activate_sectors_pieces(rt, data_activation_inputs)?;
         if data_batch.success_count == 0 {
             return Err(actor_error!(illegal_argument, "all data activations failed"));
         }
@@ -5634,7 +5632,6 @@ struct ReplicaUpdateActivatedData {
 fn activate_sectors_pieces(
     rt: &impl Runtime,
     activation_inputs: Vec<SectorPiecesActivationInput>,
-    _all_or_nothing: bool,
 ) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
     let mut activation_outputs = Vec::with_capacity(activation_inputs.len());
 
