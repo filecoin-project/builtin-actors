@@ -3561,6 +3561,18 @@ impl Actor {
                         })?;
 
                     let new_qa_power = qa_power_max(sector_size);
+                    // Same for every sector in this batch: hoisted out of the per-sector loop.
+                    let new_pledge_for_power = initial_pledge_for_power(
+                        &new_qa_power,
+                        &pledge_inputs.network_baseline,
+                        &pledge_inputs.epoch_reward,
+                        &pledge_inputs.network_qap,
+                        &pledge_inputs.circulating_supply,
+                        pledge_inputs.epochs_since_ramp_start,
+                        pledge_inputs.ramp_duration_epochs,
+                    );
+                    let new_daily_fee_for_zero_fee =
+                        daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply, &new_qa_power);
 
                     let old_sector_infos: Vec<SectorOnChainInfo> =
                         sector_batch.iter().map(|s| (*s).clone()).collect();
@@ -3573,25 +3585,13 @@ impl Actor {
                             // Pledge: use max(old, new) to ensure pledge only increases.
                             new_sector.initial_pledge = max(
                                 new_sector.initial_pledge.clone(),
-                                initial_pledge_for_power(
-                                    &new_qa_power,
-                                    &pledge_inputs.network_baseline,
-                                    &pledge_inputs.epoch_reward,
-                                    &pledge_inputs.network_qap,
-                                    &pledge_inputs.circulating_supply,
-                                    pledge_inputs.epochs_since_ramp_start,
-                                    pledge_inputs.ramp_duration_epochs,
-                                ),
+                                new_pledge_for_power.clone(),
                             );
 
                             // Adjust daily fee.
                             if sector_info.daily_fee.is_zero() {
                                 // pre-FIP-0100 sector
-                                new_sector.daily_fee = daily_proof_fee(
-                                    rt.policy(),
-                                    &pledge_inputs.circulating_supply,
-                                    &new_qa_power,
-                                );
+                                new_sector.daily_fee = new_daily_fee_for_zero_fee.clone();
                             } else {
                                 let old_qa_power =
                                     qa_power_for_sector(sector_size, sector_info);
