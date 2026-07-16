@@ -9,7 +9,9 @@ use fil_actor_miner::{
     Actor, Deadline, Method, SectorOnChainInfo, SectorOnChainInfoFlags, Sectors, State,
     UpgradeSectorQualityParams, qa_power_for_sector, qa_power_max,
 };
-use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, MockRuntime};
+use fil_actors_runtime::test_utils::{
+    ACCOUNT_ACTOR_CODE_ID, MockRuntime, expect_abort_contains_message,
+};
 use fil_actors_runtime::{BatchReturn, EPOCHS_IN_DAY, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use num_traits::Zero;
@@ -492,4 +494,48 @@ fn upgrade_multiple_legacy_sectors_to_full_qa() {
     }
 
     h.check_state(&rt);
+}
+
+/// This state is unreachable through any real actor call: `partition.sectors` only ever loses a
+/// sector number in `replace_sectors`, which immediately re-adds a replacement, so every sector
+/// in the sectors AMT always has a partition location in practice. This test hand-corrupts state
+/// via `rt.replace_state` purely to lock in the defensive illegal_state error path taken when
+/// State::find_sectors can't locate a sector that otherwise passed existence/flag validation,
+/// guarding against a future invariant-breaking bug.
+#[test]
+fn upgrade_sector_missing_from_partition_errors() {
+    let (h, rt, sectors) = setup_sectors(1);
+    let sno = sectors[0].sector_number;
+
+    downgrade_sector_in_state(&h, &rt, sno, false);
+
+    let mut st: State = rt.get_state();
+    let (dl_idx, part_idx) = st.find_sector(&rt.store, sno).unwrap();
+    let mut deadlines = st.load_deadlines(&rt.store).unwrap();
+    let mut deadline: Deadline = deadlines.load_deadline(&rt.store, dl_idx).unwrap();
+    let mut partitions = deadline.partitions_amt(&rt.store).unwrap();
+    let mut partition = partitions.get(part_idx).unwrap().unwrap().clone();
+    partition.sectors.unset(sno);
+    partitions.set(part_idx, partition).unwrap();
+    deadline.partitions = partitions.flush().unwrap();
+    deadlines.update_deadline(&rt.policy, &rt.store, dl_idx, &deadline).unwrap();
+    st.save_deadlines(&rt.store, deadlines).unwrap();
+    rt.replace_state(&st);
+
+    let params = UpgradeSectorQualityParams { sectors: BitField::try_from_bits([sno]).unwrap() };
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
+    rt.expect_validate_caller_addr(h.caller_addrs());
+
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_STATE,
+        "failed to find sector",
+        rt.call::<Actor>(
+            Method::UpgradeSectorQuality as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        ),
+    );
+    rt.verify();
+
+    // State was intentionally corrupted to exercise this error path; skip h.check_state.
 }
