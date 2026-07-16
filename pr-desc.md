@@ -16,15 +16,6 @@ Implements the **FIL+ deprecation half** of [FIP-1249](https://github.com/fileco
   - `ProveReplicaUpdates3` / `update_existing_sector_info`
 - Pre-existing sectors retain their current QAP until explicitly upgraded
 
-### New `UpgradeSectorQuality` method (method 37)
-
-Allows SPs to upgrade existing pre-FIP-1249 sectors to full 10x QAP:
-- Accepts a `BitField` of sector numbers
-- Sets `FULL_QA_POWER` flag, recomputes pledge (`max(old, new)` — pledge only increases), adjusts daily fee
-- Requires sectors to be active (not faulty/unproven/terminated)
-- Follows the `update_replica_states` / `partition.replace_sectors` pattern
-- Notifies power actor of QA power delta and pledge change
-
 ### Miner actor: verifreg/datacap removal
 
 - Removed `ext::verifreg` module entirely (no more cross-actor calls to verified registry)
@@ -69,24 +60,15 @@ We disabled `UniversalReceiverHook` and `ClaimAllocations` entirely, meaning exi
 
 ### 2. Claim validation stripped from sector extensions
 
-The FIP doesn't explicitly address what happens when legacy sectors (with existing verifreg claims) are extended. We stripped claim validation entirely — extensions now use proportional deal weight reduction for legacy sectors. SPs can call `UpgradeSectorQuality` to get 10x regardless. The alternative would be keeping the verifreg `GetClaims` call alive for legacy extension paths.
+The FIP doesn't explicitly address what happens when legacy sectors (with existing verifreg claims) are extended. We stripped claim validation entirely — extensions now use proportional deal weight reduction for legacy sectors. The alternative would be keeping the verifreg `GetClaims` call alive for legacy extension paths.
 
-### 3. UpgradeSectorQuality only works on active sectors
-
-We restricted the upgrade method to active sectors (not faulty, not unproven). A faulty sector must be recovered before upgrading. This matches the `ProveReplicaUpdates3` (SnapDeal) pattern and avoids complex partition accounting for faulty/unproven power. This restriction could be relaxed in a follow-up.
-
-### 4. One faulty sector aborts the entire UpgradeSectorQuality batch
-
-The `BatchReturn` records success eagerly during validation, but `partition.replace_sectors()` (which rejects inactive sectors) runs inside the state transaction. A single faulty sector in a batch aborts the whole call rather than being skipped. This is consistent with the existing `update_replica_states` pattern but differs from methods like `TerminateSectors` which handle partial success per-deadline. Could be improved in a follow-up.
-
-### 5. verified_deal_weight stored as zero for new sectors
+### 3. verified_deal_weight stored as zero for new sectors
 
 New sectors set `verified_space = BigInt::zero()` regardless of actual deal content. The `deal_weight` field still tracks unverified deal space. This means `verified_deal_weight` is no longer meaningful on new sectors — it's always zero. The `FULL_QA_POWER` flag is what drives 10x power.
 
 ## New Tests
 
 - **Policy tests** (5): `FULL_QA_POWER` flag gives 10x, ignores deal weights, ignores duration, legacy formula preserved
-- **UpgradeSectorQuality unit tests** (7): already-full rejected, nonexistent rejected, empty bitfield, mixed valid/invalid, legacy sector upgrade happy path, daily fee adjustment
 - **FIP-1249 integration tests** (4): CC sector gets 10x, NI sector gets 10x, verifreg minting disabled, verified deal publishes without datacap ops
 
 ## Not Implemented (Out of Scope)

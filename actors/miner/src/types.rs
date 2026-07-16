@@ -725,8 +725,3 @@ pub struct ValidateSectorStatusParams {
 pub struct GetNominalSectorExpirationReturn {
     pub expiration: ChainEpoch,
 }
-
-#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
-pub struct UpgradeSectorQualityParams {
-    pub sectors: BitField,
-}
