@@ -17,7 +17,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
     - name: Checking out
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - name: Put LLVM tools into the PATH
       run: echo "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin" >> $GITHUB_PATH
     - name: Install demangler
@@ -50,7 +50,7 @@ jobs:
         name: code-coverage-report
         path: llvm-show/*
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
+      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       with:
         files: lcov.info
         token: ${{ secrets.CODECOV_TOKEN }}

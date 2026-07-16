@@ -76,12 +76,12 @@ testing-fake-proofs = []
 # Common
 serde = { version = "1.0", features = ["derive"] }
 anyhow = "1.0.102"
-bitflags = "2.9.0"
+bitflags = "2.11.1"
 num = { version = "0.4", features = ["serde"] }
 num-derive = "0.4.2"
 num-traits = "0.2.19"
 lazy_static = "1.5.0"
-log = { version = "0.4.29", features = ["std"] }
+log = { version = "0.4.32", features = ["std"] }
 byteorder = "1.5.0"
 itertools = "0.14.0"
 indexmap = { version = "2.13.1" }
@@ -107,7 +107,7 @@ blake2b_simd = "1.0"
 sha2 = "0.11"
 
 # EVM
-alloy-core = { version = "1.0.0", default-features = false, features = ["sol-types"] }
+alloy-core = { version = "1.6.0", default-features = false, features = ["sol-types"] }
 uint = { version = "0.10.0", default-features = false }
 etk-asm = "^0.3.0"
 rlp = { version = "0.6.1", default-features = false }

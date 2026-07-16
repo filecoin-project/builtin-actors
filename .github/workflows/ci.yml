@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checking out
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - name: Running rustfmt
       run: make rustfmt
 
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checking out
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - name: Running clippy
       run: make check
 
@@ -32,7 +32,7 @@ jobs:
     runs-on: ${{ fromJSON(github.repository == 'filecoin-project/builtin-actors' && '["self-hosted", "linux", "x64", "4xlarge"]' || '"ubuntu-latest"') }}
     steps:
     - name: Checking out
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - if: env.RUNNER_ENVIRONMENT != 'github-hosted'
       uses: dtolnay/rust-toolchain@stable
     - name: Install Clang (Linux only)
@@ -43,7 +43,7 @@ jobs:
     - name: Installing the toolchain
       run: make toolchain
     - name: Install cargo-nextest
-      uses: taiki-e/install-action@a1df9120380005ebdc788c62449b841b205541dd # v2.71.0
+      uses: taiki-e/install-action@16b05812d776ae1dfaabc8277e421fb6d2506419 # v2.82.7
       with:
         tool: cargo-nextest
     - name: Running tests
@@ -56,7 +56,7 @@ jobs:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
     steps:
     - name: Checking out
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - name: Writing bundle
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
