@@ -1,13 +1,13 @@
-use fil_actors_integration_tests::tests::{call_name_symbol_test, datacap_transfer_test};
+use fil_actors_integration_tests::tests::{call_name_symbol_test, datacap_mint_disabled_test};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
-/* Mint a token for client and transfer it to a receiver, exercising error cases */
+/* Mint is deprecated (FIP-1249) and always returns USR_FORBIDDEN */
 #[test]
-fn datacap_transfer() {
+fn datacap_mint_disabled() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
-    datacap_transfer_test(&v);
+    datacap_mint_disabled_test(&v);
 }
 
 /* Call name & symbol */

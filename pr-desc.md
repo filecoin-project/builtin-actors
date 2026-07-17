@@ -42,6 +42,13 @@ Implements the **FIL+ deprecation half** of [FIP-1249](https://github.com/fileco
 - Cleanup methods still active: `RemoveExpiredAllocations`, `RemoveExpiredClaims`, `GetClaims`
 - Dead helper functions removed (`mint`, `burn`, `validate_*`, `can_claim_alloc`, `is_verifier`, `balance`, `destroy`, `use_proposal_id`, `remove_data_cap_request_is_valid`, etc.)
 
+### DataCap actor: Mint disabled
+
+- `Mint`: returns `USR_FORBIDDEN` for any caller (matches FIP-1270 §1.5's "revert mint; balances are frozen")
+- Note: `Mint` requires `caller == governor`, and `governor` is immutably `VERIFIED_REGISTRY_ACTOR_ADDR` from construction. Since verifreg's own `add_verified_client` (the only historical caller) is already disabled and its `mint()` helper deleted, `Mint` was already unreachable in practice before this change — this makes that explicit in the DataCap actor's own code rather than relying on it being true only as a side effect of what verifreg no longer does
+- `Transfer`, `TransferFrom`, `Destroy`, `Burn`, `BurnFrom`, `Allowance`, etc. remain fully active — existing (frozen) balances are not deleted, and full actor removal is deferred to a later network upgrade (out of scope here). Notably `Transfer` is still exercised in production by verifreg's `remove_expired_allocations` cleanup path
+- Test fixtures that used to seed balances via `Mint` now inject them directly into state (`mint_directly`/`allow_directly` in the datacap test harness), mirroring the `add_verifier_directly` pattern used for verifreg
+
 ### State invariant updates
 
 - `check_verifreg_against_miners`: skips claim-to-sector weight validation for `FULL_QA_POWER` sectors
