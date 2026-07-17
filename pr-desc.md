@@ -38,8 +38,9 @@ Implements the **FIL+ deprecation half** of [FIP-1249](https://github.com/fileco
 - `AddVerifier`, `AddVerifiedClient`: return `USR_FORBIDDEN`
 - `UniversalReceiverHook`: returns `USR_FORBIDDEN` (no new allocations)
 - `ClaimAllocations`, `ExtendClaimTerms`: return `USR_FORBIDDEN`
-- Cleanup methods still active: `RemoveExpiredAllocations`, `RemoveExpiredClaims`, `GetClaims`, `RemoveVerifier`, `RemoveVerifiedClientDataCap`
-- Dead helper functions removed (`mint`, `burn`, `validate_*`, `can_claim_alloc`, etc.)
+- `RemoveVerifier`, `RemoveVerifiedClientDataCap`: return `USR_FORBIDDEN` (matches FIP-1270 §1.5's revert list)
+- Cleanup methods still active: `RemoveExpiredAllocations`, `RemoveExpiredClaims`, `GetClaims`
+- Dead helper functions removed (`mint`, `burn`, `validate_*`, `can_claim_alloc`, `is_verifier`, `balance`, `destroy`, `use_proposal_id`, `remove_data_cap_request_is_valid`, etc.)
 
 ### State invariant updates
 

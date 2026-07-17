@@ -1,13 +1,10 @@
 use export_macro::vm_test;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_verifreg::Method as VerifregMethod;
-use fil_actor_verifreg::{
-    DataCap, RemoveDataCapParams, RemoveDataCapRequest, SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
-};
-use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State as VerifregState};
+use fil_actor_verifreg::State as VerifregState;
+use fil_actor_verifreg::{DataCap, RemoveDataCapParams, RemoveDataCapRequest};
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::runtime::Policy;
-use fvm_ipld_encoding::to_vec;
 use fvm_shared::bigint::Zero;
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::econ::TokenAmount;
@@ -61,11 +58,10 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default(), None)
 }
 
-/// FIP-1249: AddVerifier is now deprecated and returns USR_FORBIDDEN.
-/// This test verifies that RemoveDataCap fails when verifiers don't exist
-/// (since AddVerifier is deprecated and can't create verifiers).
+/// FIP-1249: RemoveVerifiedClientDataCap is now deprecated and always returns
+/// USR_FORBIDDEN, regardless of caller or whether the named verifiers/client exist.
 #[vm_test]
-pub fn remove_datacap_fails_on_verifreg_test(v: &dyn VM) {
+pub fn remove_datacap_disabled_test(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let (verifier1, verifier2) = (addrs[0], addrs[1]);
 
@@ -73,38 +69,19 @@ pub fn remove_datacap_fails_on_verifreg_test(v: &dyn VM) {
     let verifier2_id_addr = v.resolve_id_address(&verifier2).unwrap();
     let allowance_to_remove: StoragePower = DataCap::from(100);
 
-    // FIP-1249: Cannot register verifiers anymore (AddVerifier returns USR_FORBIDDEN).
-    // Try to remove datacap from verifreg itself - should fail because verifiers don't exist.
-    let remove_proposal = RemoveDataCapProposal {
-        verified_client: VERIFIED_REGISTRY_ACTOR_ADDR,
-        data_cap_amount: allowance_to_remove.clone(),
-        removal_proposal_id: RemoveDataCapProposalID { id: 0 },
-    };
-
-    let mut remove_proposal_ser = to_vec(&remove_proposal).unwrap();
-    let mut remove_proposal_payload = SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP.to_vec();
-    remove_proposal_payload.append(&mut remove_proposal_ser);
-
     let remove_datacap_params = RemoveDataCapParams {
         verified_client_to_remove: VERIFIED_REGISTRY_ACTOR_ADDR,
         data_cap_amount_to_remove: allowance_to_remove,
         verifier_request_1: RemoveDataCapRequest {
             verifier: verifier1_id_addr,
-            signature: Signature {
-                sig_type: SignatureType::Secp256k1,
-                bytes: remove_proposal_payload.clone(),
-            },
+            signature: Signature { sig_type: SignatureType::Secp256k1, bytes: vec![] },
         },
         verifier_request_2: RemoveDataCapRequest {
             verifier: verifier2_id_addr,
-            signature: Signature {
-                sig_type: SignatureType::Secp256k1,
-                bytes: remove_proposal_payload,
-            },
+            signature: Signature { sig_type: SignatureType::Secp256k1, bytes: vec![] },
         },
     };
 
-    // Fails because verifiers don't exist (can't be created anymore)
     apply_code(
         v,
         &TEST_VERIFREG_ROOT_ADDR,
@@ -112,11 +89,8 @@ pub fn remove_datacap_fails_on_verifreg_test(v: &dyn VM) {
         &TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
         Some(remove_datacap_params),
-        ExitCode::USR_ILLEGAL_ARGUMENT,
+        ExitCode::USR_FORBIDDEN,
     );
 
     assert_invariants(v, &Policy::default(), None)
 }
-
-// FIP-1249: expect_remove_datacap helper removed since AddVerifier is deprecated
-// and remove_datacap_simple_successful_path no longer exercises the full flow.

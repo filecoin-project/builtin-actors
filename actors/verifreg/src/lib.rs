@@ -4,14 +4,10 @@
 use frc46_token::token::TOKEN_PRECISION;
 use frc46_token::token::types::TransferParams;
 use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sys::SendFlags;
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
 use log::info;
 use num_derive::FromPrimitive;
@@ -21,14 +17,8 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 use fil_actors_runtime::{
-    ActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR, actor_dispatch, actor_error, deserialize_block,
-    extract_send_result, resolve_to_actor_id,
-};
-
-use crate::ext::datacap::DestroyParams;
-use crate::state::{
-    DATACAP_MAP_CONFIG, DataCapMap, REMOVE_DATACAP_PROPOSALS_CONFIG, RemoveDataCapProposalMap,
+    ActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, actor_dispatch,
+    actor_error, extract_send_result,
 };
 
 pub use self::state::Allocation;
@@ -108,17 +98,11 @@ impl Actor {
 
     pub fn remove_verifier(
         rt: &impl Runtime,
-        params: RemoveVerifierParams,
+        _params: RemoveVerifierParams,
     ) -> Result<(), ActorError> {
-        let verifier = resolve_to_actor_id(rt, &params.verifier, false)?;
-        let verifier_addr = Address::new_id(verifier);
-
-        rt.transaction(|st: &mut State, rt| {
-            rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
-            st.remove_verifier(rt.store(), &verifier_addr).context("failed to remove verifier")
-        })?;
-
-        emit::verifier_balance(rt, verifier, &DataCap::zero(), None)
+        rt.validate_immediate_caller_accept_any()?;
+        // FIP-1249: datacap is deprecated. Verifiers are no longer managed on-chain.
+        datacap_deprecated("removing verifiers")
     }
 
     pub fn add_verified_client(
@@ -130,90 +114,13 @@ impl Actor {
         datacap_deprecated("minting new datacap")
     }
 
-    /// Removes DataCap allocated to a verified client.
     pub fn remove_verified_client_data_cap(
         rt: &impl Runtime,
-        params: RemoveDataCapParams,
+        _params: RemoveDataCapParams,
     ) -> Result<RemoveDataCapReturn, ActorError> {
-        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove, false)?;
-        let client = Address::new_id(client);
-
-        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier, true)?;
-        let verifier_1 = Address::new_id(verifier_1);
-
-        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier, true)?;
-        let verifier_2 = Address::new_id(verifier_2);
-
-        if verifier_1 == verifier_2 {
-            return Err(actor_error!(
-                illegal_argument,
-                "need two different verifiers to send remove datacap request"
-            ));
-        }
-
-        let (verifier_1_id, verifier_2_id) = rt.transaction(|st: &mut State, rt| {
-            rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
-
-            if params.verified_client_to_remove == VERIFIED_REGISTRY_ACTOR_ADDR {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "cannot remove data cap from verified registry itself"
-                ));
-            }
-
-            if !is_verifier(rt, st, verifier_1)? {
-                return Err(actor_error!(not_found, "{} is not a verifier", verifier_1));
-            }
-
-            if !is_verifier(rt, st, verifier_2)? {
-                return Err(actor_error!(not_found, "{} is not a verifier", verifier_2));
-            }
-
-            // validate signatures
-            let mut proposal_ids = RemoveDataCapProposalMap::load(
-                rt.store(),
-                &st.remove_data_cap_proposal_ids,
-                REMOVE_DATACAP_PROPOSALS_CONFIG,
-                "remove datacap proposals",
-            )?;
-
-            let verifier_1_id = use_proposal_id(&mut proposal_ids, verifier_1, client)?;
-            let verifier_2_id = use_proposal_id(&mut proposal_ids, verifier_2, client)?;
-
-            // Assume proposal ids are valid and increment them
-            st.remove_data_cap_proposal_ids = proposal_ids.flush()?;
-            Ok((verifier_1_id, verifier_2_id))
-        })?;
-
-        // Now make sure the proposals were actually valid. We had to increment them first in case
-        // re-entrant calls do anything funny.
-        //
-        // If this fails, we'll revert and the proposals will be restored.
-        remove_data_cap_request_is_valid(
-            rt,
-            &params.verifier_request_1,
-            verifier_1_id,
-            &params.data_cap_amount_to_remove,
-            client,
-        )?;
-        remove_data_cap_request_is_valid(
-            rt,
-            &params.verifier_request_2,
-            verifier_2_id,
-            &params.data_cap_amount_to_remove,
-            client,
-        )?;
-
-        // Burn the client's data cap tokens.
-        let balance = balance(rt, &client).context("failed to fetch balance")?;
-        let burnt = std::cmp::min(balance, params.data_cap_amount_to_remove);
-        destroy(rt, &client, &burnt)
-            .context(format!("failed to destroy {} from allowance for {}", &burnt, &client))?;
-
-        Ok(RemoveDataCapReturn {
-            verified_client: client, // Changed to the resolved address
-            data_cap_removed: burnt,
-        })
+        rt.validate_immediate_caller_accept_any()?;
+        // FIP-1249: datacap is deprecated. Verified clients' datacap balances are frozen in place.
+        datacap_deprecated("removing verified client data cap")
     }
 
     // An allocation may be removed after its expiration epoch has passed (by anyone).
@@ -408,48 +315,6 @@ impl Actor {
     }
 }
 
-// Checks whether an address has a verifier entry (which could be zero).
-fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, ActorError> {
-    let verifiers = DataCapMap::load(rt.store(), &st.verifiers, DATACAP_MAP_CONFIG, "verifiers")?;
-    // check that the `address` is currently a verified client
-    let found = verifiers.contains_key(&address)?;
-    Ok(found)
-}
-
-// Invokes Balance on the data cap token actor, and converts the result to whole units of data cap.
-fn balance(rt: &impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
-    let params = IpldBlock::serialize_cbor(owner)?;
-    let x: TokenAmount = deserialize_block(
-        extract_send_result(rt.send(
-            &DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::Balance as u64,
-            params,
-            TokenAmount::zero(),
-            None,
-            SendFlags::READ_ONLY,
-        ))
-        .context(format!("failed to query datacap balance of {}", owner))?,
-    )?;
-    Ok(tokens_to_datacap(&x))
-}
-
-// Invokes Destroy on a data cap token actor for whole units of data cap.
-fn destroy(rt: &impl Runtime, owner: &Address, amount: &DataCap) -> Result<(), ActorError> {
-    if amount.is_zero() {
-        return Ok(());
-    }
-    let token_amt = datacap_to_tokens(amount);
-    let params = DestroyParams { owner: *owner, amount: token_amt };
-    extract_send_result(rt.send_simple(
-        &DATACAP_TOKEN_ACTOR_ADDR,
-        ext::datacap::Method::Destroy as u64,
-        IpldBlock::serialize_cbor(&params)?,
-        TokenAmount::zero(),
-    ))
-    .context(format!("failed to send destroy {:?} to datacap", params))?;
-    Ok(())
-}
-
 // Invokes transfer on a data cap token actor for whole units of data cap.
 fn transfer(rt: &impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), ActorError> {
     let token_amt = datacap_to_tokens(amount);
@@ -470,75 +335,6 @@ fn transfer(rt: &impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), Acto
 
 fn datacap_to_tokens(amount: &DataCap) -> TokenAmount {
     TokenAmount::from_atto(amount.clone()) * TOKEN_PRECISION
-}
-
-fn tokens_to_datacap(amount: &TokenAmount) -> BigInt {
-    amount.atto() / TOKEN_PRECISION
-}
-
-fn use_proposal_id<BS>(
-    proposal_ids: &mut RemoveDataCapProposalMap<BS>,
-    verifier: Address,
-    client: Address,
-) -> Result<RemoveDataCapProposalID, ActorError>
-where
-    BS: Blockstore,
-{
-    let key = AddrPairKey::new(verifier, client);
-    let maybe_id =
-        proposal_ids.get(&key).with_context(|| format!("verifier {verifier} client {client}"))?;
-
-    let curr_id = if let Some(RemoveDataCapProposalID { id }) = maybe_id {
-        RemoveDataCapProposalID { id: *id }
-    } else {
-        RemoveDataCapProposalID { id: 0 }
-    };
-
-    let next_id = RemoveDataCapProposalID { id: curr_id.id + 1 };
-    proposal_ids
-        .set(&key, next_id)
-        .with_context(|| format!("verifier {verifier} client {client}"))?;
-    Ok(curr_id)
-}
-
-fn remove_data_cap_request_is_valid(
-    rt: &impl Runtime,
-    request: &RemoveDataCapRequest,
-    id: RemoveDataCapProposalID,
-    to_remove: &DataCap,
-    client: Address,
-) -> Result<(), ActorError> {
-    let proposal = RemoveDataCapProposal {
-        removal_proposal_id: id,
-        data_cap_amount: to_remove.clone(),
-        verified_client: client,
-    };
-
-    let b = RawBytes::serialize(proposal).map_err(|e| {
-        actor_error!(
-                serialization; "failed to marshal remove datacap request: {}", e)
-    })?;
-
-    let payload = [SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP, b.bytes()].concat();
-
-    if !extract_send_result(rt.send(
-        &request.verifier,
-        ext::account::AUTHENTICATE_MESSAGE_METHOD,
-        IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
-            signature: request.signature.bytes.clone(),
-            message: payload,
-        })?,
-        TokenAmount::zero(),
-        None,
-        SendFlags::READ_ONLY,
-    ))
-    .and_then(deserialize_block)
-    .context("proposal authentication failed")?
-    {
-        Err(actor_error!(illegal_argument, "proposal authentication failed"))
-    } else {
-        Ok(())
-    }
 }
 
 impl ActorCode for Actor {

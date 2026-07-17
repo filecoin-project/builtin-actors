@@ -223,15 +223,18 @@ mod verifiers {
         h.check_state(&rt);
     }
 
+    // FIP-1249: RemoveVerifier is now deprecated and always returns USR_FORBIDDEN.
+    // These tests verify the method is properly disabled, regardless of caller or state.
+
     #[test]
-    fn remove_requires_root() {
+    fn remove_verifier_disabled_for_non_root_caller() {
         let (h, rt) = new_harness();
         let allowance = verifier_allowance(&rt);
         // FIP-1249: use direct state insertion instead of deprecated add_verifier
         h.add_verifier_directly(&rt, &VERIFIER, &allowance);
 
         let caller = Address::new_id(501);
-        rt.expect_validate_caller_addr(vec![h.root]);
+        rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
         assert_ne!(h.root, caller);
         expect_abort(
@@ -245,33 +248,59 @@ mod verifiers {
     }
 
     #[test]
-    fn remove_requires_verifier_exists() {
+    fn remove_verifier_disabled_even_if_verifier_does_not_exist() {
         let (h, rt) = new_harness();
-        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.remove_verifier(&rt, &VERIFIER));
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.root);
+        rt.expect_validate_caller_any();
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<VerifregActor>(
+                Method::RemoveVerifier as MethodNum,
+                IpldBlock::serialize_cbor(VERIFIER.deref()).unwrap(),
+            ),
+        );
         h.check_state(&rt);
-        rt.reset();
     }
 
     #[test]
-    fn remove_verifier() {
+    fn remove_verifier_disabled_for_root_caller() {
         let (h, rt) = new_harness();
         let allowance = verifier_allowance(&rt);
         // FIP-1249: use direct state insertion instead of deprecated add_verifier
         h.add_verifier_directly(&rt, &VERIFIER, &allowance);
-        h.remove_verifier(&rt, &VERIFIER).unwrap();
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.root);
+        rt.expect_validate_caller_any();
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<VerifregActor>(
+                Method::RemoveVerifier as MethodNum,
+                IpldBlock::serialize_cbor(VERIFIER.deref()).unwrap(),
+            ),
+        );
         h.check_state(&rt);
+        // The verifier is untouched, since removal is disabled.
+        h.assert_verifier_allowance(&rt, &VERIFIER, &allowance);
     }
 
     #[test]
-    fn remove_verifier_id_address() {
+    fn remove_verifier_disabled_id_address() {
         let (h, rt) = new_harness();
         let allowance = verifier_allowance(&rt);
         let verifier_pubkey = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
         rt.id_addresses.borrow_mut().insert(verifier_pubkey, *VERIFIER);
         // FIP-1249: use direct state insertion instead of deprecated add_verifier
         h.add_verifier_directly(&rt, &VERIFIER, &allowance);
-        // Remove using ID address.
-        h.remove_verifier(&rt, &VERIFIER).unwrap();
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.root);
+        rt.expect_validate_caller_any();
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<VerifregActor>(
+                Method::RemoveVerifier as MethodNum,
+                IpldBlock::serialize_cbor(&verifier_pubkey).unwrap(),
+            ),
+        );
         h.check_state(&rt);
     }
 }

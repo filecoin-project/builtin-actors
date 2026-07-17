@@ -1,32 +1,11 @@
 // A namespace for helpers that build and emit verified registry events.
 
-use crate::{ActorError, Allocation, AllocationID, Claim};
-use crate::{ClaimID, DataCap};
+use crate::{ActorError, Allocation, AllocationID, Claim, ClaimID};
 use cid::Cid;
 use fil_actors_runtime::EventBuilder;
 use fil_actors_runtime::runtime::Runtime;
 use fvm_shared::ActorID;
-use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
-
-/// Indicates a new value for a verifier's datacap balance.
-/// Note that receiving this event does not necessarily mean the balance has changed.
-/// The value is in datacap whole units (not TokenAmount).
-pub fn verifier_balance(
-    rt: &impl Runtime,
-    verifier: ActorID,
-    new_balance: &DataCap,
-    client: Option<ActorID>,
-) -> Result<(), ActorError> {
-    let mut event: EventBuilder = EventBuilder::new()
-        .typ("verifier-balance")
-        .field_indexed("verifier", &verifier)
-        .field("balance", &BigIntSer(new_balance));
-    if let Some(client) = client {
-        event = event.field_indexed("client", &client);
-    }
-    rt.emit_event(&event.build()?)
-}
 
 /// Indicates an expired allocation has been removed.
 pub fn allocation_removed(
