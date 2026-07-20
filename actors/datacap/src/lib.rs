@@ -11,11 +11,9 @@ use fvm_actor_utils::util::ActorRuntime;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::Response;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, MethodNum};
-use lazy_static::lazy_static;
 use log::info;
 use num_derive::FromPrimitive;
 
@@ -37,14 +35,6 @@ pub mod testing;
 mod types;
 
 pub const DATACAP_GRANULARITY: u64 = TOKEN_PRECISION;
-
-lazy_static! {
-    // > 800 EiB
-    pub static ref INFINITE_ALLOWANCE: TokenAmount = TokenAmount::from_atto(
-        BigInt::from(TOKEN_PRECISION)
-            * BigInt::from(1_000_000_000_000_000_000_000_i128)
-    );
-}
 
 /// Datacap actor methods available
 #[derive(FromPrimitive)]

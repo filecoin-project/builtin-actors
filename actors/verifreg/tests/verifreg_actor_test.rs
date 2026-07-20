@@ -19,8 +19,12 @@ mod util {
     use fil_actors_runtime::test_utils::MockRuntime;
     use fvm_shared::sector::StoragePower;
 
-    pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
-        rt.policy.minimum_verified_allocation_size.clone() + 42
+    // Arbitrary allowance value: AddVerifier/AddVerifiedClient are deprecated and always
+    // return forbidden regardless of params, so the exact value is unimportant.
+    const ARBITRARY_ALLOWANCE: i64 = 1 << 20;
+
+    pub fn verifier_allowance(_rt: &MockRuntime) -> StoragePower {
+        StoragePower::from(ARBITRARY_ALLOWANCE) + 42
     }
 
     pub fn client_allowance(rt: &MockRuntime) -> StoragePower {
@@ -118,7 +122,7 @@ mod verifiers {
         let (h, rt) = new_harness();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
         rt.expect_validate_caller_any();
-        let allowance = rt.policy.minimum_verified_allocation_size.clone() - 1;
+        let allowance = client_allowance(&rt);
         let params = AddVerifierParams { address: *VERIFIER, allowance };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
@@ -378,7 +382,7 @@ mod clients {
     fn minimum_allowance_ok() {
         // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
-        let allowance = rt.policy.minimum_verified_allocation_size.clone();
+        let allowance = verifier_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
         rt.expect_validate_caller_any();
         let params = AddVerifiedClientParams { address: *CLIENT, allowance };
@@ -414,7 +418,7 @@ mod clients {
     fn rejects_allowance_below_minimum() {
         // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
-        let allowance = rt.policy.minimum_verified_allocation_size.clone() - 1;
+        let allowance = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
         rt.expect_validate_caller_any();
         let params = AddVerifiedClientParams { address: *CLIENT, allowance };

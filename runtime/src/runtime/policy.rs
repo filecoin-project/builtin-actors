@@ -145,17 +145,9 @@ pub struct Policy {
     //
     // --- verifreg policy ---
     //
-    /// Minimum verified deal size
-    pub minimum_verified_allocation_size: StoragePower,
-    /// Minimum term for a verified data allocation (epochs)
-    pub minimum_verified_allocation_term: i64,
-    /// Maximum term for a verified data allocaion (epochs)
-    pub maximum_verified_allocation_term: i64,
     /// Maximum time a verified allocation can be active without being claimed (epochs).
     /// Supports recovery of erroneous allocations and prevents indefinite squatting on datacap.
     pub maximum_verified_allocation_expiration: i64,
-    // Period of time at the end of a sector's life during which claims can be dropped
-    pub end_of_life_claim_drop_period: ChainEpoch,
 
     //
     //  --- market policy ---
@@ -233,15 +225,8 @@ impl Default for Policy {
 
             valid_post_proof_type: ProofSet::default_post_proofs(),
             valid_pre_commit_proof_type: ProofSet::default_precommit_seal_proofs(),
-            minimum_verified_allocation_size: StoragePower::from_i32(
-                policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE,
-            )
-            .unwrap(),
-            minimum_verified_allocation_term: policy_constants::MINIMUM_VERIFIED_ALLOCATION_TERM,
-            maximum_verified_allocation_term: policy_constants::MAXIMUM_VERIFIED_ALLOCATION_TERM,
             maximum_verified_allocation_expiration:
                 policy_constants::MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
-            end_of_life_claim_drop_period: policy_constants::END_OF_LIFE_CLAIM_DROP_PERIOD,
             deal_updates_interval: policy_constants::DEAL_UPDATES_INTERVAL,
             prov_collateral_percent_supply_num:
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
@@ -387,7 +372,6 @@ pub mod policy_constants {
     pub const MINIMUM_VERIFIED_ALLOCATION_TERM: i64 = 180 * EPOCHS_IN_DAY;
     pub const MAXIMUM_VERIFIED_ALLOCATION_TERM: i64 = 5 * EPOCHS_IN_YEAR;
     pub const MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION: i64 = 60 * EPOCHS_IN_DAY;
-    pub const END_OF_LIFE_CLAIM_DROP_PERIOD: ChainEpoch = 30 * EPOCHS_IN_DAY;
 
     //
     // --- market policy ---

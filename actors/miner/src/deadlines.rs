@@ -1,8 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::collections::BTreeMap;
-
 use fil_actors_runtime::Array;
 use fil_actors_runtime::runtime::Policy;
 
@@ -60,41 +58,6 @@ impl Deadlines {
         }
 
         Err(anyhow::anyhow!("sector {} not due at any deadline", sector_number))
-    }
-
-    /// Returns the deadline and partition index for each of the given sector numbers, in one
-    /// pass over deadlines/partitions. Sector numbers not found are absent from the result.
-    pub fn find_sectors<BS: Blockstore>(
-        &self,
-        store: &BS,
-        sector_numbers: &[SectorNumber],
-    ) -> anyhow::Result<BTreeMap<SectorNumber, (u64, u64)>> {
-        let mut remaining: Vec<SectorNumber> = sector_numbers.to_vec();
-        let mut found = BTreeMap::new();
-
-        for i in 0..self.due.len() {
-            if remaining.is_empty() {
-                break;
-            }
-
-            let deadline_idx = i as u64;
-            let deadline = self.load_deadline(store, deadline_idx)?;
-            let partitions = Array::<Partition, _>::load(&deadline.partitions, store)?;
-
-            partitions.for_each_while(|part_idx, partition| {
-                remaining.retain(|&sector_number| {
-                    if partition.sectors.get(sector_number) {
-                        found.insert(sector_number, (deadline_idx, part_idx));
-                        false
-                    } else {
-                        true
-                    }
-                });
-                Ok(!remaining.is_empty())
-            })?;
-        }
-
-        Ok(found)
     }
 }
 

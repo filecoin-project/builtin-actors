@@ -267,7 +267,6 @@ impl Actor {
         let mut total_provider_lockup = TokenAmount::zero();
 
         let mut valid_input_bf = BitField::default();
-        let _curr_epoch = rt.curr_epoch();
 
         let state: State = rt.state()?;
 
