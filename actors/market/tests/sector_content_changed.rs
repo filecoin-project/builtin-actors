@@ -2,7 +2,9 @@ use cid::Cid;
 use fil_actor_market::ext::miner::{
     PieceChange, PieceReturn, SectorChanges, SectorContentChangedParams,
 };
-use fil_actor_market::{DealProposal, Method};
+use fil_actor_market::{
+    DealProposal, Method, PENDING_ALLOCATIONS_CONFIG, PendingDealAllocationsMap, State,
+};
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -395,6 +397,55 @@ fn rejects_duplicates_across_sectors() {
     // Deal IDs are stored under the right sector, in correct order.
     assert_eq!(deal_ids[0..2], get_sector_deal_ids(&rt, PROVIDER_ID, &[1]).unwrap());
     assert_eq!(deal_ids[2..3], get_sector_deal_ids(&rt, PROVIDER_ID, &[2]).unwrap());
+}
+
+#[test]
+fn removes_legacy_pending_allocation() {
+    // Simulates a deal published before FIP-1249, when publish_storage_deals still recorded a
+    // pending verified allocation. Activation via SectorContentChanged must still drain that
+    // entry even though the allocation-claiming pipeline itself is now disabled.
+    let rt = setup();
+    let deals = create_deals(&rt, 1);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
+    let deal_id = deal_ids[0];
+    let pieces = pieces_from_deals(&deal_ids, &deals);
+
+    // Seed a pending allocation entry directly, as legacy pre-upgrade state would have.
+    let mut st: State = rt.get_state();
+    let mut pending_allocs = PendingDealAllocationsMap::load(
+        &rt.store,
+        &st.pending_deal_allocation_ids,
+        PENDING_ALLOCATIONS_CONFIG,
+        "pending allocations",
+    )
+    .unwrap();
+    pending_allocs.set(&deal_id, 1).unwrap();
+    st.pending_deal_allocation_ids = pending_allocs.flush().unwrap();
+    rt.replace_state(&st);
+
+    let changes =
+        vec![SectorChanges { sector: 1, minimum_commitment_epoch: END_EPOCH + 10, added: pieces }];
+    harness::expect_emitted(
+        &rt,
+        "deal-activated",
+        deal_id,
+        CLIENT_ADDR.id().unwrap(),
+        MINER_ADDRESSES.provider.id().unwrap(),
+    );
+    sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
+
+    let st: State = rt.get_state();
+    let pending_allocs = PendingDealAllocationsMap::load(
+        &rt.store,
+        &st.pending_deal_allocation_ids,
+        PENDING_ALLOCATIONS_CONFIG,
+        "pending allocations",
+    )
+    .unwrap();
+    assert!(pending_allocs.get(&deal_id).unwrap().is_none());
+
+    check_state(&rt);
 }
 
 #[test]

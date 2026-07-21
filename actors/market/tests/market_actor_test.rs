@@ -757,6 +757,54 @@ fn deal_expires() {
 }
 
 #[test]
+fn activation_removes_legacy_pending_allocation() {
+    // Simulates a deal published before FIP-1249, when publish_storage_deals still recorded a
+    // pending verified allocation. Activation must still drain that entry even though the
+    // allocation-claiming pipeline itself is now disabled.
+    let start_epoch = 100;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let publish_epoch = ChainEpoch::from(1);
+    let sector_number = 7;
+
+    let rt = setup();
+    rt.set_epoch(publish_epoch);
+    let (deal_id, _) = generate_and_publish_deal(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch,
+    );
+
+    // Seed a pending allocation entry directly, as legacy pre-upgrade state would have.
+    let mut st: State = rt.get_state();
+    let mut pending_allocs = PendingDealAllocationsMap::load(
+        &rt.store,
+        &st.pending_deal_allocation_ids,
+        PENDING_ALLOCATIONS_CONFIG,
+        "pending allocations",
+    )
+    .unwrap();
+    pending_allocs.set(&deal_id, 1).unwrap();
+    st.pending_deal_allocation_ids = pending_allocs.flush().unwrap();
+    rt.replace_state(&st);
+
+    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, sector_number, &[deal_id]);
+
+    let st: State = rt.get_state();
+    let pending_allocs = PendingDealAllocationsMap::load(
+        &rt.store,
+        &st.pending_deal_allocation_ids,
+        PENDING_ALLOCATIONS_CONFIG,
+        "pending allocations",
+    )
+    .unwrap();
+    assert!(pending_allocs.get(&deal_id).unwrap().is_none());
+
+    check_state(&rt);
+}
+
+#[test]
 fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_to_verigreg_actor_for_a_verified_deal()
  {
     use fvm_shared::address::BLS_PUB_LEN;

@@ -493,6 +493,8 @@ impl Actor {
             let proposals = st.load_proposals(rt.store())?;
             let states = st.load_deal_states(rt.store())?;
             let pending_deals = st.load_pending_deals(rt.store())?;
+            let mut pending_deal_allocation_ids =
+                st.load_pending_deal_allocation_ids(rt.store())?;
 
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
             let mut batch_gen = BatchReturnGen::new(params.sectors.len());
@@ -546,6 +548,7 @@ impl Actor {
                 // Any error must abort.
                 for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
                     activated_deals.insert(*deal_id);
+                    pending_deal_allocation_ids.delete(deal_id)?;
 
                     activated.push(ActivatedDeal {
                         client: proposal.client.id().unwrap(),
@@ -589,6 +592,7 @@ impl Actor {
 
             st.put_deal_states(rt.store(), &deal_states)?;
             st.put_sector_deal_ids(rt.store(), miner_addr.id().unwrap(), &sectors_deals)?;
+            st.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
             Ok((activations, batch_gen.generate()))
         })?;
 
@@ -610,6 +614,8 @@ impl Actor {
             let proposals = st.load_proposals(rt.store())?;
             let states = st.load_deal_states(rt.store())?;
             let pending_deals = st.load_pending_deals(rt.store())?;
+            let mut pending_deal_allocation_ids =
+                st.load_pending_deal_allocation_ids(rt.store())?;
 
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
             let mut activated_deals: HashSet<DealID> = HashSet::new();
@@ -672,6 +678,7 @@ impl Actor {
 
                     // No continue below here, to ensure state changes are consistent.
                     activated_deals.insert(deal_id);
+                    pending_deal_allocation_ids.delete(&deal_id)?;
 
                     emit::deal_activated(
                         rt,
@@ -699,6 +706,7 @@ impl Actor {
             }
             st.put_deal_states(rt.store(), &deal_states)?;
             st.put_sector_deal_ids(rt.store(), miner_addr.id().unwrap(), &sectors_deals)?;
+            st.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
 
             assert_eq!(sectors_ret.len(), params.sectors.len(), "mismatched sector returns");
             Ok(sectors_ret)
