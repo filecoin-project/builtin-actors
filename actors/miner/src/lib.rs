@@ -3769,6 +3769,9 @@ where
     let mut power_delta = PowerPair::zero();
     let mut pledge_delta = TokenAmount::zero();
 
+    // FIP-1249: all sectors get maximum QA power (10x); same for every update in this batch.
+    let new_qa_power = qa_power_max(sector_size);
+
     rt.transaction(|state: &mut State, rt| {
         let mut deadlines = state.load_deadlines(rt.store())?;
         let mut new_sectors = Vec::with_capacity(expected_count);
@@ -3796,6 +3799,7 @@ where
                     &update.activated_data,
                     &pledge_inputs,
                     sector_size,
+                    &new_qa_power,
                     rt.curr_epoch(),
                 );
 
@@ -3923,6 +3927,9 @@ fn update_existing_sector_info(
     activated_data: &ReplicaUpdateActivatedData,
     pledge_inputs: &NetworkPledgeInputs,
     sector_size: SectorSize,
+    // FIP-1249: all sectors get maximum QA power (10x). Computed once by the caller since it's
+    // the same for every sector in a batch of replica updates.
+    new_qa_power: &StoragePower,
     curr_epoch: ChainEpoch,
 ) -> SectorOnChainInfo {
     let mut new_sector_info = sector_info.clone();
@@ -3943,25 +3950,22 @@ fn update_existing_sector_info(
     new_sector_info.deal_weight = activated_data.unverified_space.clone() * duration;
     new_sector_info.verified_deal_weight = activated_data.verified_space.clone() * duration;
 
-    // FIP-1249: all sectors get maximum QA power (10x).
-    let new_qa_power = qa_power_max(sector_size);
-
     new_sector_info.expected_day_reward = None;
     new_sector_info.replaced_day_reward = None;
     new_sector_info.expected_storage_pledge = None;
 
     new_sector_info.initial_pledge =
-        max(new_sector_info.initial_pledge, pledge_inputs.initial_pledge_for_power(&new_qa_power));
+        max(new_sector_info.initial_pledge, pledge_inputs.initial_pledge_for_power(new_qa_power));
     if new_sector_info.daily_fee.is_zero() {
         // pre-FIP-0100 sector
         new_sector_info.daily_fee =
-            daily_proof_fee(policy, &pledge_inputs.circulating_supply, &new_qa_power);
+            daily_proof_fee(policy, &pledge_inputs.circulating_supply, new_qa_power);
     } else {
         // Use qa_power_for_sector which handles both FULL_QA_POWER and legacy sectors.
         // daily_proof_fee_adjust is a no-op when the power hasn't changed.
         let old_qa_power = qa_power_for_sector(sector_size, sector_info);
         new_sector_info.daily_fee =
-            daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, &new_qa_power);
+            daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, new_qa_power);
     }
     new_sector_info
 }
