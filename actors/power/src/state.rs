@@ -219,7 +219,7 @@ impl State {
         if self.miner_above_min_power_count < 0 {
             return Err(actor_error!(
                 illegal_state,
-                "negative amount of miners lather than min: {}",
+                "negative amount of miners larger than min: {}",
                 self.miner_above_min_power_count
             ));
         }

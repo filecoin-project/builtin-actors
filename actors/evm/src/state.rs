@@ -125,7 +125,7 @@ pub struct State {
     /// KAMT<U256, U256>
     pub contract_state: Cid,
 
-    /// The data that containers tranisent state. The struct includes the CID of the KAMT that
+    /// The data that contains transient state. The struct includes the CID of the KAMT that
     /// contains the state data and the tuple of nonce and actor id that represents
     /// the lifespan of the transient storage data
     pub transient_data: Option<TransientData>,
