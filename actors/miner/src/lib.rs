@@ -2407,92 +2407,132 @@ impl Actor {
                 })?;
         }
 
-        let (had_early_terminations, power_delta) = rt.transaction(|state: &mut State, rt| {
-            let had_early_terminations = have_pending_early_terminations(state);
+        let (had_early_terminations, power_delta, sector_size, terminated_sector_infos) = rt
+            .transaction(|state: &mut State, rt| {
+                let had_early_terminations = have_pending_early_terminations(state);
 
-            let info = get_miner_info(rt.store(), state)?;
+                let info = get_miner_info(rt.store(), state)?;
 
-            rt.validate_immediate_caller_is(
-                info.control_addresses.iter().chain(&[info.worker, info.owner]),
-            )?;
+                rt.validate_immediate_caller_is(
+                    info.control_addresses.iter().chain(&[info.worker, info.owner]),
+                )?;
 
-            let store = rt.store();
-            let curr_epoch = rt.curr_epoch();
-            let mut power_delta = PowerPair::zero();
+                let store = rt.store();
+                let curr_epoch = rt.curr_epoch();
+                let mut power_delta = PowerPair::zero();
+                let mut terminated_sector_infos = Vec::new();
 
-            let mut deadlines =
-                state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
+                let mut deadlines =
+                    state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
-            // We're only reading the sectors, so there's no need to save this back.
-            // However, we still want to avoid re-loading this array per-partition.
-            let sectors = Sectors::load(store, &state.sectors).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")
-            })?;
+                // We're only reading the sectors, so there's no need to save this back.
+                // However, we still want to avoid re-loading this array per-partition.
+                let sectors = Sectors::load(store, &state.sectors).map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")
+                })?;
 
-            for (deadline_idx, partition_sectors) in to_process.iter() {
-                // If the deadline is the current or next deadline to prove, don't allow terminating sectors.
-                // We assume that deadlines are immutable when being proven.
-                if !deadline_is_mutable(
-                    rt.policy(),
-                    state.current_proving_period_start(rt.policy(), curr_epoch),
-                    deadline_idx,
-                    curr_epoch,
-                ) {
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "cannot terminate sectors in immutable deadline {}",
-                        deadline_idx
-                    ));
+                for (deadline_idx, partition_sectors) in to_process.iter() {
+                    // If the deadline is the current or next deadline to prove, don't allow terminating sectors.
+                    // We assume that deadlines are immutable when being proven.
+                    if !deadline_is_mutable(
+                        rt.policy(),
+                        state.current_proving_period_start(rt.policy(), curr_epoch),
+                        deadline_idx,
+                        curr_epoch,
+                    ) {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "cannot terminate sectors in immutable deadline {}",
+                            deadline_idx
+                        ));
+                    }
+
+                    let quant = state.quant_spec_for_deadline(rt.policy(), deadline_idx);
+                    let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
+
+                    // If there's no backlog of previously-deferred terminations, we settle these
+                    // terminations immediately below (once reward/power estimates are available,
+                    // after this transaction commits) instead of recording them in the
+                    // early-termination queue for later (deferred) processing. This avoids a
+                    // write-then-immediately-read round trip through that queue, and a duplicate
+                    // load of each terminated sector's info.
+                    let (removed_power, sector_infos) = deadline
+                        .terminate_sectors(
+                            rt.policy(),
+                            store,
+                            &sectors,
+                            curr_epoch,
+                            partition_sectors,
+                            info.sector_size,
+                            quant,
+                            had_early_terminations,
+                        )
+                        .map_err(|e| {
+                            e.downcast_default(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                format!("failed to terminate sectors in deadline {}", deadline_idx),
+                            )
+                        })?;
+
+                    if had_early_terminations {
+                        state.early_terminations.set(deadline_idx);
+                    }
+                    power_delta -= &removed_power;
+                    terminated_sector_infos.extend(sector_infos);
+
+                    deadlines
+                        .update_deadline(rt.policy(), store, deadline_idx, &deadline)
+                        .map_err(|e| {
+                            e.downcast_default(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                format!("failed to update deadline {}", deadline_idx),
+                            )
+                        })?;
                 }
 
-                let quant = state.quant_spec_for_deadline(rt.policy(), deadline_idx);
-                let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
+                state.save_deadlines(store, deadlines).map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
+                })?;
 
-                let removed_power = deadline
-                    .terminate_sectors(
-                        rt.policy(),
-                        store,
-                        &sectors,
-                        curr_epoch,
-                        partition_sectors,
-                        info.sector_size,
-                        quant,
-                    )
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to terminate sectors in deadline {}", deadline_idx),
-                        )
-                    })?;
-
-                state.early_terminations.set(deadline_idx);
-                power_delta -= &removed_power;
-
-                deadlines.update_deadline(rt.policy(), store, deadline_idx, &deadline).map_err(
-                    |e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to update deadline {}", deadline_idx),
-                        )
-                    },
-                )?;
-            }
-
-            state.save_deadlines(store, deadlines).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
+                Ok((had_early_terminations, power_delta, info.sector_size, terminated_sector_infos))
             })?;
 
-            Ok((had_early_terminations, power_delta))
-        })?;
+        // Fetched only after the mark transaction above has committed, matching historical
+        // behavior: an invalid call (bad caller, immutable deadline, ...) fails during marking
+        // without ever reaching these cross-actor calls.
         let epoch_reward = request_current_epoch_block_reward(rt)?;
         let pwr_total = request_current_total_power(rt)?;
 
-        // Now, try to process these sectors.
-        let more = process_early_terminations(
-            rt,
-            &epoch_reward.this_epoch_reward_smoothed,
-            &pwr_total.quality_adj_power_smoothed,
-        )?;
+        let more = if had_early_terminations {
+            // A backlog already existed before this call: fall back to the historical deferred
+            // path, which will process the queue -- including whatever this call just added to
+            // it -- in FIFO order.
+            process_early_terminations(
+                rt,
+                &epoch_reward.this_epoch_reward_smoothed,
+                &pwr_total.quality_adj_power_smoothed,
+            )?
+        } else if terminated_sector_infos.is_empty() {
+            false
+        } else {
+            // Fast path: settle immediately using the sector infos already loaded above, in a
+            // second (much cheaper) transaction that only touches top-level state fields --
+            // no re-loading deadlines, partitions, or sector infos.
+            let settlement = rt.transaction(|state: &mut State, rt| {
+                settle_terminated_sectors(
+                    state,
+                    rt.store(),
+                    rt.current_balance(),
+                    rt.curr_epoch(),
+                    sector_size,
+                    &epoch_reward.this_epoch_reward_smoothed,
+                    &pwr_total.quality_adj_power_smoothed,
+                    &terminated_sector_infos,
+                )
+            })?;
+            settlement.apply_side_effects(rt)?;
+            false
+        };
 
         if more && !had_early_terminations {
             // We have remaining terminations, and we didn't _previously_
@@ -4107,6 +4147,127 @@ fn update_existing_sector_info(
 }
 
 // Note: We're using the current power+epoch reward, rather than at time of termination.
+/// Accumulates termination-fee inputs for a batch of sectors all terminated at the same epoch.
+/// Shared by the immediate-settlement fast path in `terminate_sectors` and the deferred path in
+/// `process_early_terminations`, so the fee math can't drift between the two.
+#[allow(clippy::too_many_arguments)]
+fn accumulate_termination_fees(
+    sector_infos: &[SectorOnChainInfo],
+    epoch: ChainEpoch,
+    sector_size: SectorSize,
+    reward_smoothed: &FilterEstimate,
+    quality_adj_power_smoothed: &FilterEstimate,
+    total_initial_pledge: &mut TokenAmount,
+    total_penalty: &mut TokenAmount,
+    terminated_sector_nums: &mut Vec<SectorNumber>,
+    sectors_with_data: &mut Vec<SectorNumber>,
+) {
+    for sector in sector_infos {
+        *total_initial_pledge += &sector.initial_pledge;
+        let sector_power = qa_power_for_sector(sector_size, sector);
+        terminated_sector_nums.push(sector.sector_number);
+        let sector_age = epoch - sector.activation;
+        let fault_fee = pledge_penalty_for_continued_fault(
+            reward_smoothed,
+            quality_adj_power_smoothed,
+            &sector_power,
+        );
+        *total_penalty +=
+            pledge_penalty_for_termination(&sector.initial_pledge, sector_age, &fault_fee);
+        if sector.deal_weight.is_positive() || sector.verified_deal_weight.is_positive() {
+            sectors_with_data.push(sector.sector_number);
+        }
+    }
+}
+
+/// Result of immediately settling a batch of terminations within the same transaction that
+/// marked them, rather than deferring settlement through the early-termination queue.
+struct TerminationSettlement {
+    penalty: TokenAmount,
+    pledge_delta: TokenAmount,
+    terminated_sector_nums: Vec<SectorNumber>,
+    sectors_with_data: Vec<SectorNumber>,
+}
+
+impl TerminationSettlement {
+    fn apply_side_effects(self, rt: &impl Runtime) -> Result<(), ActorError> {
+        if self.terminated_sector_nums.is_empty() {
+            return Ok(());
+        }
+
+        log::debug!(
+            "storage provider {} penalized {} for sector termination",
+            rt.message().receiver(),
+            self.penalty
+        );
+        burn_funds(rt, self.penalty)?;
+        notify_pledge_changed(rt, &self.pledge_delta)?;
+
+        let terminated_data = BitField::try_from_bits(self.sectors_with_data)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "invalid sector number")?;
+        request_terminate_deals(rt, rt.curr_epoch(), &terminated_data)?;
+
+        for sector in self.terminated_sector_nums {
+            emit::sector_terminated(rt, sector)?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Computes and applies (within the caller's transaction) the fee debt, pledge return, and debt
+/// repayment for a batch of sectors terminated *right now*, at `epoch`. Only valid when these
+/// sectors were never recorded in the early-termination queue (see
+/// `Partition::terminate_sectors`'s `record_termination` flag) -- i.e. there's no backlog and
+/// nothing else could have been popped alongside them.
+#[allow(clippy::too_many_arguments)]
+fn settle_terminated_sectors(
+    state: &mut State,
+    store: &impl Blockstore,
+    balance: TokenAmount,
+    epoch: ChainEpoch,
+    sector_size: SectorSize,
+    reward_smoothed: &FilterEstimate,
+    quality_adj_power_smoothed: &FilterEstimate,
+    sector_infos: &[SectorOnChainInfo],
+) -> Result<TerminationSettlement, ActorError> {
+    let mut total_initial_pledge = TokenAmount::zero();
+    let mut total_penalty = TokenAmount::zero();
+    let mut terminated_sector_nums = Vec::with_capacity(sector_infos.len());
+    let mut sectors_with_data = Vec::new();
+
+    accumulate_termination_fees(
+        sector_infos,
+        epoch,
+        sector_size,
+        reward_smoothed,
+        quality_adj_power_smoothed,
+        &mut total_initial_pledge,
+        &mut total_penalty,
+        &mut terminated_sector_nums,
+        &mut sectors_with_data,
+    );
+
+    // Apply penalty (add to fee debt)
+    state
+        .apply_penalty(&total_penalty)
+        .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
+
+    // Remove pledge requirement.
+    let mut pledge_delta = -total_initial_pledge;
+    state.add_initial_pledge(&pledge_delta).map_err(|e| {
+        actor_error!(illegal_state, "failed to add initial pledge {}: {}", pledge_delta, e)
+    })?;
+
+    // Use unlocked pledge to pay down outstanding fee debt
+    let (penalty, total_unlocked) = state
+        .repay_partial_debt_in_priority_order(store, epoch, &balance)
+        .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to repay penalty"))?;
+    pledge_delta -= total_unlocked;
+
+    Ok(TerminationSettlement { penalty, pledge_delta, terminated_sector_nums, sectors_with_data })
+}
+
 fn process_early_terminations(
     rt: &impl Runtime,
     reward_smoothed: &FilterEstimate,
@@ -4151,22 +4312,17 @@ fn process_early_terminations(
                 .load_sectors(sector_numbers)
                 .map_err(|e| e.wrap("failed to load sector infos"))?;
 
-            for sector in &sectors {
-                total_initial_pledge += &sector.initial_pledge;
-                let sector_power = qa_power_for_sector(info.sector_size, sector);
-                terminated_sector_nums.push(sector.sector_number);
-                let sector_age = epoch - sector.activation;
-                let fault_fee = pledge_penalty_for_continued_fault(
-                    reward_smoothed,
-                    quality_adj_power_smoothed,
-                    &sector_power,
-                );
-                total_penalty +=
-                    pledge_penalty_for_termination(&sector.initial_pledge, sector_age, &fault_fee);
-                if sector.deal_weight.is_positive() || sector.verified_deal_weight.is_positive() {
-                    sectors_with_data.push(sector.sector_number);
-                }
-            }
+            accumulate_termination_fees(
+                &sectors,
+                epoch,
+                info.sector_size,
+                reward_smoothed,
+                quality_adj_power_smoothed,
+                &mut total_initial_pledge,
+                &mut total_penalty,
+                &mut terminated_sector_nums,
+                &mut sectors_with_data,
+            );
         }
 
         // Apply penalty (add to fee debt)

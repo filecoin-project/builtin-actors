@@ -799,6 +799,15 @@ impl Actor {
             let proposals = st.load_proposals(rt.store())?;
             let states = st.load_deal_states(rt.store())?;
 
+            // Load the balance tables once too, rather than letting each slashed deal below
+            // independently load-and-reflush them: a sector can carry many deals, and most of
+            // that per-deal round trip is redundant when they all touch the same couple of
+            // tables.
+            let mut escrow_table =
+                BalanceTable::from_root(rt.store(), &st.escrow_table, "escrow table")?;
+            let mut locked_table =
+                BalanceTable::from_root(rt.store(), &st.locked_table, "locked table")?;
+
             // The sector deals mapping is removed all at once.
             // Note there may be some deal states that are not removed here,
             // despite deletion of this mapping, e.g. for expired but not-yet-settled deals.
@@ -862,7 +871,8 @@ impl Actor {
                 }
 
                 state.slash_epoch = params.epoch;
-                total_slashed += st.process_slashed_deal(rt.store(), &deal, &state)?;
+                total_slashed +=
+                    st.process_slashed_deal(&mut escrow_table, &mut locked_table, &deal, &state)?;
                 st.remove_completed_deal(rt.store(), id)?;
 
                 emit::deal_terminated(
@@ -872,6 +882,9 @@ impl Actor {
                     deal.provider.id().unwrap(),
                 )?;
             }
+
+            st.escrow_table = escrow_table.root()?;
+            st.locked_table = locked_table.root()?;
 
             Ok(total_slashed)
         })?;

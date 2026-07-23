@@ -478,7 +478,14 @@ impl Partition {
 
     /// Marks a collection of sectors as terminated.
     /// The sectors are removed from Faults and Recoveries.
-    /// The epoch of termination is recorded for future termination fee calculation.
+    ///
+    /// If `record_termination` is true, the epoch of termination is recorded in the partition's
+    /// early-termination queue for later (deferred) processing, matching historical behavior.
+    /// If false, the caller takes responsibility for settling the termination (fee calculation,
+    /// deal notification, etc.) itself, in the same transaction, using the returned sector infos
+    /// -- this is a fast path available only when there's no pre-existing backlog of deferred
+    /// terminations, letting the caller skip an otherwise-redundant write-then-immediately-pop
+    /// round trip through this queue.
     #[allow(clippy::too_many_arguments)]
     pub fn terminate_sectors<BS: Blockstore>(
         &mut self,
@@ -489,7 +496,8 @@ impl Partition {
         sector_numbers: &BitField,
         sector_size: SectorSize,
         quant: QuantSpec,
-    ) -> anyhow::Result<(ExpirationSet, PowerPair)> {
+        record_termination: bool,
+    ) -> anyhow::Result<(ExpirationSet, PowerPair, Vec<SectorOnChainInfo>)> {
         let live_sectors = self.live_sectors();
 
         if !live_sectors.contains_all(sector_numbers) {
@@ -510,9 +518,11 @@ impl Partition {
 
         let removed_sectors = &removed.on_time_sectors | &removed.early_sectors;
 
-        // Record early termination.
-        self.record_early_termination(store, epoch, &removed_sectors)
-            .map_err(|e| e.downcast_wrap("failed to record early sector termination"))?;
+        if record_termination {
+            // Record early termination.
+            self.record_early_termination(store, epoch, &removed_sectors)
+                .map_err(|e| e.downcast_wrap("failed to record early sector termination"))?;
+        }
 
         let unproven_nos = &removed_sectors & &self.unproven;
 
@@ -534,7 +544,7 @@ impl Partition {
         // check invariants
         self.validate_state()?;
 
-        Ok((removed, removed_unproven_power))
+        Ok((removed, removed_unproven_power, sector_infos))
     }
 
     /// PopExpiredSectors traverses the expiration queue up to and including some epoch, and marks all expiring
