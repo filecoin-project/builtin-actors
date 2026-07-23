@@ -597,10 +597,7 @@ impl Deadline {
         Ok((popped, modified))
     }
 
-    #[allow(clippy::too_many_arguments)]
-    /// If `record_termination` is false, no partition or deadline early-termination bookkeeping
-    /// is written -- the caller must settle the terminations itself using the returned sector
-    /// infos. See `Partition::terminate_sectors` for when this fast path is safe to use.
+    /// Fast path when `record_termination` is false -- see `Partition::terminate_sectors`.
     #[allow(clippy::too_many_arguments)]
     pub fn terminate_sectors<BS: Blockstore>(
         &mut self,

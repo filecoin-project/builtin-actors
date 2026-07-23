@@ -2450,12 +2450,7 @@ impl Actor {
                     let quant = state.quant_spec_for_deadline(rt.policy(), deadline_idx);
                     let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
 
-                    // If there's no backlog of previously-deferred terminations, we settle these
-                    // terminations immediately below (once reward/power estimates are available,
-                    // after this transaction commits) instead of recording them in the
-                    // early-termination queue for later (deferred) processing. This avoids a
-                    // write-then-immediately-read round trip through that queue, and a duplicate
-                    // load of each terminated sector's info.
+                    // Fast path: settle immediately when there's no backlog (see `settle_terminated_sectors`).
                     let (removed_power, sector_infos) = deadline
                         .terminate_sectors(
                             rt.policy(),
