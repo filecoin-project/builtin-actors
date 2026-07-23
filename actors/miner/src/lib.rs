@@ -4175,6 +4175,36 @@ fn accumulate_termination_fees(
     }
 }
 
+/// Applies accumulated termination penalty and pledge release to `state`, repaying outstanding
+/// fee debt from unlocked pledge.
+fn apply_termination_penalty_and_pledge(
+    state: &mut State,
+    store: &impl Blockstore,
+    epoch: ChainEpoch,
+    balance: &TokenAmount,
+    total_initial_pledge: TokenAmount,
+    total_penalty: &TokenAmount,
+) -> Result<(TokenAmount, TokenAmount), ActorError> {
+    // Apply penalty (add to fee debt)
+    state
+        .apply_penalty(total_penalty)
+        .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
+
+    // Remove pledge requirement.
+    let mut pledge_delta = -total_initial_pledge;
+    state.add_initial_pledge(&pledge_delta).map_err(|e| {
+        actor_error!(illegal_state, "failed to add initial pledge {}: {}", pledge_delta, e)
+    })?;
+
+    // Use unlocked pledge to pay down outstanding fee debt
+    let (penalty, total_unlocked) = state
+        .repay_partial_debt_in_priority_order(store, epoch, balance)
+        .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to repay penalty"))?;
+    pledge_delta -= total_unlocked;
+
+    Ok((penalty, pledge_delta))
+}
+
 /// Result of immediately settling a batch of terminations within the same transaction that
 /// marked them, rather than deferring settlement through the early-termination queue.
 struct TerminationSettlement {
@@ -4243,22 +4273,14 @@ fn settle_terminated_sectors(
         &mut sectors_with_data,
     );
 
-    // Apply penalty (add to fee debt)
-    state
-        .apply_penalty(&total_penalty)
-        .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
-
-    // Remove pledge requirement.
-    let mut pledge_delta = -total_initial_pledge;
-    state.add_initial_pledge(&pledge_delta).map_err(|e| {
-        actor_error!(illegal_state, "failed to add initial pledge {}: {}", pledge_delta, e)
-    })?;
-
-    // Use unlocked pledge to pay down outstanding fee debt
-    let (penalty, total_unlocked) = state
-        .repay_partial_debt_in_priority_order(store, epoch, &balance)
-        .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to repay penalty"))?;
-    pledge_delta -= total_unlocked;
+    let (penalty, pledge_delta) = apply_termination_penalty_and_pledge(
+        state,
+        store,
+        epoch,
+        &balance,
+        total_initial_pledge,
+        &total_penalty,
+    )?;
 
     Ok(TerminationSettlement { penalty, pledge_delta, terminated_sector_nums, sectors_with_data })
 }
@@ -4320,29 +4342,14 @@ fn process_early_terminations(
             );
         }
 
-        // Apply penalty (add to fee debt)
-        state
-            .apply_penalty(&total_penalty)
-            .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
-
-        // Remove pledge requirement.
-        let mut pledge_delta = -total_initial_pledge;
-        state.add_initial_pledge(&pledge_delta).map_err(|e| {
-            actor_error!(illegal_state, "failed to add initial pledge {}: {}", pledge_delta, e)
-        })?;
-
-        // Use unlocked pledge to pay down outstanding fee debt
-        let (penalty, total_unlocked) = state
-            .repay_partial_debt_in_priority_order(
-                rt.store(),
-                rt.curr_epoch(),
-                &rt.current_balance(),
-            )
-            .map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to repay penalty")
-            })?;
-
-        pledge_delta -= total_unlocked;
+        let (penalty, pledge_delta) = apply_termination_penalty_and_pledge(
+            state,
+            rt.store(),
+            rt.curr_epoch(),
+            &rt.current_balance(),
+            total_initial_pledge,
+            &total_penalty,
+        )?;
 
         Ok((result, more, penalty, pledge_delta))
     })?;

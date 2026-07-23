@@ -651,11 +651,11 @@ impl Deadline {
                 if record_termination {
                     // Record that partition now has pending early terminations.
                     self.early_terminations.set(partition_idx);
-                }
+                } // else: fast path -- the caller settles fees itself, so no queue entry is recorded.
 
                 // Record change to sectors and power
                 self.live_sectors -= removed.len();
-            } // note: we should _always_ have early terminations, unless the early termination bitfield is empty.
+            }
 
             self.faulty_power -= &removed.faulty_power;
             self.live_power -= &removed.active_power;

@@ -544,7 +544,12 @@ impl Partition {
         // check invariants
         self.validate_state()?;
 
-        Ok((removed, removed_unproven_power, sector_infos))
+        // The caller only needs the terminated sector infos on the fast (non-deferred) path,
+        // where it settles fees itself using them; on the deferred path they'd just be moved up
+        // through the deadline and top-level callers and dropped unused.
+        let terminated_sector_infos = if record_termination { Vec::new() } else { sector_infos };
+
+        Ok((removed, removed_unproven_power, terminated_sector_infos))
     }
 
     /// PopExpiredSectors traverses the expiration queue up to and including some epoch, and marks all expiring
