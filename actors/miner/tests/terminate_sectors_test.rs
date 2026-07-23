@@ -168,7 +168,7 @@ fn removes_sector_with_without_deals() {
     let snos: Vec<SectorNumber> = sectors.iter().map(|s| s.sector_number).collect();
     assert!(sectors[0].deal_weight.is_zero());
     assert!(sectors[1].deal_weight.is_positive());
-    // FIP-1249: all deal space is unverified; verified_deal_weight is always 0
+    // FIP-0118: all deal space is unverified; verified_deal_weight is always 0
     assert!(sectors[2].deal_weight.is_positive());
     assert!(sectors[2].verified_deal_weight.is_zero());
 

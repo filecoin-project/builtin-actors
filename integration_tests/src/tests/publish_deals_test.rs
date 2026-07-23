@@ -62,7 +62,7 @@ fn setup(v: &dyn VM) -> (Addrs, ChainEpoch) {
     )
     .0;
 
-    // FIP-1249: verifreg minting is deprecated, no need to set up verifier/verified client
+    // FIP-0118: verifreg minting is deprecated, no need to set up verifier/verified client
     // The verified_client is just a regular account with market balance.
 
     let client_collateral = TokenAmount::from_whole(100);
@@ -324,7 +324,7 @@ pub fn psd_verified_deal_fails_getting_datacap_test(v: &dyn VM) {
     let mut batcher = DealBatcher::new(v, opts.clone());
 
     batcher.stage(a.verified_client, a.maddr);
-    // FIP-1249: market no longer does datacap ops, so verified deals just work without datacap
+    // FIP-0118: market no longer does datacap ops, so verified deals just work without datacap
     batcher.stage_with_opts(
         a.verified_client,
         a.maddr,
@@ -380,7 +380,7 @@ pub fn psd_random_assortment_of_failures_test(v: &dyn VM) {
     batcher.stage(broke_client, a.maddr);
     // provider addr does not match
     batcher.stage(a.client1, a.client2);
-    // FIP-1249: market no longer checks datacap, so this verified deal now succeeds
+    // FIP-0118: market no longer checks datacap, so this verified deal now succeeds
     batcher.stage_with_opts(
         a.verified_client,
         a.maddr,
@@ -416,7 +416,7 @@ pub fn psd_all_deals_are_bad_test(v: &dyn VM) {
         DealOptions { provider_collateral: TokenAmount::zero(), ..opts.clone() },
     );
     batcher.stage(a.client1, a.client2);
-    // FIP-1249: verified deal without datacap now succeeds since market doesn't check datacap.
+    // FIP-0118: verified deal without datacap now succeeds since market doesn't check datacap.
     // Replace with another bad deal to keep the "all bad" semantics.
     batcher.stage(bad_client, a.maddr);
     batcher.stage(bad_client, a.maddr);

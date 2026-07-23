@@ -64,11 +64,11 @@ pub enum Method {
 
 pub struct Actor;
 
-// FIP-1249: datacap is deprecated; callers still apply their own caller validation first.
+// FIP-0118: datacap is deprecated; callers still apply their own caller validation first.
 fn datacap_deprecated<T>(reason: &str) -> Result<T, ActorError> {
     Err(actor_error!(
         forbidden,
-        "FIP-1249: datacap is deprecated, {} is no longer supported",
+        "FIP-0118: datacap is deprecated, {} is no longer supported",
         reason
     ))
 }
@@ -92,7 +92,7 @@ impl Actor {
 
     pub fn add_verifier(rt: &impl Runtime, _params: AddVerifierParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-1249: datacap minting is deprecated. No new verifiers can be added.
+        // FIP-0118: datacap minting is deprecated. No new verifiers can be added.
         datacap_deprecated("adding new verifiers")
     }
 
@@ -101,7 +101,7 @@ impl Actor {
         _params: RemoveVerifierParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-1249: datacap is deprecated. Verifiers are no longer managed on-chain.
+        // FIP-0118: datacap is deprecated. Verifiers are no longer managed on-chain.
         datacap_deprecated("removing verifiers")
     }
 
@@ -110,7 +110,7 @@ impl Actor {
         _params: AddVerifiedClientParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-1249: datacap minting is deprecated. No new datacap can be granted.
+        // FIP-0118: datacap minting is deprecated. No new datacap can be granted.
         datacap_deprecated("minting new datacap")
     }
 
@@ -119,7 +119,7 @@ impl Actor {
         _params: RemoveDataCapParams,
     ) -> Result<RemoveDataCapReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-1249: datacap is deprecated. Verified clients' datacap balances are frozen in place.
+        // FIP-0118: datacap is deprecated. Verified clients' datacap balances are frozen in place.
         datacap_deprecated("removing verified client data cap")
     }
 
@@ -199,7 +199,7 @@ impl Actor {
     /// others in its group to fail too, unless `all_or_nothing` is enabled, in which case
     /// the method will abort.
     /// Returns an indicator of success for each sector group, and the size of claimed space.
-    // FIP-1249: claim allocations is disabled. The miner actor no longer calls this method.
+    // FIP-0118: claim allocations is disabled. The miner actor no longer calls this method.
     pub fn claim_allocations(
         rt: &impl Runtime,
         _params: ClaimAllocationsParams,
@@ -241,7 +241,7 @@ impl Actor {
     /// Cannot reduce a claim's term.
     /// Can extend the term even if the claim has already expired.
     /// Note that this method can't extend the term past the original limit,
-    // FIP-1249: extend claim terms is disabled. Claim extensions are pointless
+    // FIP-0118: extend claim terms is disabled. Claim extensions are pointless
     // without QAP benefit.
     pub fn extend_claim_terms(
         rt: &impl Runtime,
@@ -304,7 +304,7 @@ impl Actor {
     // Receives data cap tokens (only) and creates allocations according to one or more
     // allocation requests specified in the transfer's operator data.
     // The token amount received must exactly correspond to the sum of the requested allocation sizes.
-    // FIP-1249: datacap is deprecated. No new allocations or claim extensions can be created.
+    // FIP-0118: datacap is deprecated. No new allocations or claim extensions can be created.
     // This method now always rejects incoming datacap tokens.
     pub fn universal_receiver_hook(
         rt: &impl Runtime,

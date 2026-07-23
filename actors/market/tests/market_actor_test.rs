@@ -758,7 +758,7 @@ fn deal_expires() {
 
 #[test]
 fn activation_removes_legacy_pending_allocation() {
-    // Simulates a deal published before FIP-1249, when publish_storage_deals still recorded a
+    // Simulates a deal published before FIP-0118, when publish_storage_deals still recorded a
     // pending verified allocation. Activation must still drain that entry even though the
     // allocation-claiming pipeline itself is now disabled.
     let start_epoch = 100;
@@ -904,7 +904,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         None,
     );
 
-    // No datacap operations - FIP-1249 removed datacap flow from market actor
+    // No datacap operations - FIP-0118 removed datacap flow from market actor
     let mut normalized_deal = deal;
     normalized_deal.provider = provider_resolved;
     normalized_deal.client = client_resolved;
@@ -1021,7 +1021,7 @@ fn datacap_transfer_drops_deal_when_cap_insufficient() {
     deal2.verified_deal = true;
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    // With FIP-1249 there are no datacap ops, so both deals should publish
+    // With FIP-0118 there are no datacap ops, so both deals should publish
     let ids = publish_deals(&rt, &MinerAddresses::default(), &[deal1, deal2]);
     assert_eq!(2, ids.len());
 

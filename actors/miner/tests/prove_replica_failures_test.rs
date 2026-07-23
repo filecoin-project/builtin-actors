@@ -150,7 +150,7 @@ fn reject_required_proof_failure() {
 
 #[test]
 fn reject_required_claim_failure() {
-    // FIP-1249: claim allocations have been removed. The claim_failure config is now a no-op.
+    // FIP-0118: claim allocations have been removed. The claim_failure config is now a no-op.
     // Both sector updates succeed since there's no claim validation.
     let (h, rt, sector_updates) = setup(2, CLIENT_ID, 1, 0);
     let cfg = ProveReplicaUpdatesConfig::default();

@@ -522,7 +522,7 @@ pub fn miner_extend_sector_expiration2(
         Some(extension_params),
     );
 
-    // FIP-1249: Miner no longer calls verifreg for claim validation during extensions.
+    // FIP-0118: Miner no longer calls verifreg for claim validation during extensions.
 
     let mut subinvocs = vec![];
     if !power_delta.is_zero() {
@@ -1241,7 +1241,7 @@ pub fn market_publish_deal(
             signature.bytes,
         ),
     ];
-    // FIP-1249: Market no longer does datacap ops for verified deals.
+    // FIP-0118: Market no longer does datacap ops for verified deals.
     // The verified_deal flag is kept for backward compat but is functionally ignored.
     expect_publish_invocs.push(ExpectInvocation {
         from: STORAGE_MARKET_ACTOR_ID,
@@ -1321,7 +1321,7 @@ pub fn make_piece_manifests_from_deal_ids(
     let mut piece_manifests = vec![];
     for deal_id in deal_ids {
         let deal = get_deal(v, deal_id);
-        // FIP-1249: Market no longer stores pending deal allocations.
+        // FIP-0118: Market no longer stores pending deal allocations.
         // verified_allocation_key is kept for API backward compat but is ignored by miner.
 
         piece_manifests.push(PieceActivationManifest {

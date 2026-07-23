@@ -54,7 +54,7 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     let full_piece_size = PaddedPieceSize(sector_size as u64);
     let half_piece_size = PaddedPieceSize(sector_size as u64 / 2);
 
-    // FIP-1249: verifreg minting deprecated; no need to set up verifier/verified client or allocations
+    // FIP-0118: verifreg minting deprecated; no need to set up verifier/verified client or allocations
     let claim_term_min = 2 * EPOCHS_IN_YEAR;
 
     // Publish a full-size deal
@@ -67,7 +67,7 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     batcher.stage_with_label(client, maddr, "s3p1".to_string());
     let deal_ids_s3 = batcher.publish_ok(worker).ids;
 
-    // Publish a half-size deal (previously verified, but FIP-1249 removes datacap ops)
+    // Publish a half-size deal (previously verified, but FIP-0118 removes datacap ops)
     let opts = DealOptions {
         deal_start,
         piece_size: half_piece_size,
@@ -79,7 +79,7 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     batcher.stage_with_label(client, maddr, "s4p1".to_string());
     let deal_ids_s4 = batcher.publish_ok(worker).ids;
 
-    // FIP-1249: Onboard sectors without verified_allocation_keys (ignored by miner)
+    // FIP-0118: Onboard sectors without verified_allocation_keys (ignored by miner)
     let first_sector_number: SectorNumber = 100;
     let manifests = vec![
         // Sector 0: no pieces (CC sector)
@@ -203,7 +203,7 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
         })
         .collect();
 
-    // FIP-1249: Miner no longer calls verifreg for claim allocations
+    // FIP-0118: Miner no longer calls verifreg for claim allocations
     ExpectInvocation {
         from: worker_id,
         to: maddr,
@@ -270,7 +270,7 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     }
     let full_sector_weight =
         BigInt::from(full_piece_size.0 * (sector_expiry - activation_epoch) as u64);
-    // FIP-1249: All sectors get FULL_QA_POWER (10x), daily fee based on 10x power
+    // FIP-0118: All sectors get FULL_QA_POWER (10x), daily fee based on 10x power
     let full_qa_power = StoragePower::from(10 * sector_size as u64);
     let full_sector_daily_fee =
         daily_proof_fee(&policy, &circulating_supply_at_commit, &full_qa_power);
@@ -283,7 +283,7 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     assert_eq!(BigInt::zero(), sectors[1].verified_deal_weight);
     assert_eq!(full_sector_daily_fee, sectors[1].daily_fee);
 
-    // FIP-1249: Without verifreg allocation, deal weight goes to deal_weight (not verified)
+    // FIP-0118: Without verifreg allocation, deal weight goes to deal_weight (not verified)
     assert_eq!(full_sector_weight, sectors[2].deal_weight);
     assert_eq!(BigInt::zero(), sectors[2].verified_deal_weight);
     assert_eq!(full_sector_daily_fee, sectors[2].daily_fee);
@@ -297,7 +297,7 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     assert_eq!(BigInt::zero(), sectors[4].verified_deal_weight);
     assert_eq!(full_sector_daily_fee, sectors[4].daily_fee);
 
-    // FIP-1249: No claims to verify
+    // FIP-0118: No claims to verify
 
     let deals = market_list_deals(v);
     assert_eq!(deals.len(), 2);

@@ -1814,7 +1814,7 @@ impl Actor {
             &params.aggregate_proof,
         )?;
 
-        // FIP-1249: all new sectors get 10x QA power regardless of content.
+        // FIP-0118: all new sectors get 10x QA power regardless of content.
         let qa_sector_power = qa_power_max(info.sector_size);
 
         let rew = request_current_epoch_block_reward(rt)?;
@@ -3452,7 +3452,7 @@ impl From<ExpirationExtension2> for ValidatedExpirationExtension {
     }
 }
 
-// FIP-1249: claim validation with the verifreg actor has been removed.
+// FIP-0118: claim validation with the verifreg actor has been removed.
 // sectors_with_claims in declarations is ignored; extensions proceed with
 // proportional deal weight reduction for legacy sectors.
 fn validate_extension_declarations(
@@ -3485,7 +3485,7 @@ fn extend_sector_committment(
 ) -> Result<SectorOnChainInfo, ActorError> {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector_info)?;
 
-    // FIP-1249: claim validation has been removed. Both paths now use proportional
+    // FIP-0118: claim validation has been removed. Both paths now use proportional
     // deal weight reduction. FULL_QA_POWER sectors get 10x regardless.
     let mut new_sector_info = if sector_info.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER)
     {
@@ -3550,7 +3550,7 @@ fn validate_extended_expiration(
     Ok(())
 }
 
-// FIP-1249: claim validation has been removed. Verified deal weight is reduced
+// FIP-0118: claim validation has been removed. Verified deal weight is reduced
 // proportionally for remaining sector lifetime, same as deal_weight.
 // For FULL_QA_POWER sectors, stored weights are informational only (QAP comes from the flag).
 fn extend_simple_qap_sector(
@@ -3769,7 +3769,7 @@ where
     let mut power_delta = PowerPair::zero();
     let mut pledge_delta = TokenAmount::zero();
 
-    // FIP-1249: all sectors get maximum QA power (10x); same for every update in this batch.
+    // FIP-0118: all sectors get maximum QA power (10x); same for every update in this batch.
     let new_qa_power = qa_power_max(sector_size);
 
     rt.transaction(|state: &mut State, rt| {
@@ -3927,7 +3927,7 @@ fn update_existing_sector_info(
     activated_data: &ReplicaUpdateActivatedData,
     pledge_inputs: &NetworkPledgeInputs,
     sector_size: SectorSize,
-    // FIP-1249: all sectors get maximum QA power (10x). Computed once by the caller since it's
+    // FIP-0118: all sectors get maximum QA power (10x). Computed once by the caller since it's
     // the same for every sector in a batch of replica updates.
     new_qa_power: &StoragePower,
     curr_epoch: ChainEpoch,
@@ -3935,7 +3935,7 @@ fn update_existing_sector_info(
     let mut new_sector_info = sector_info.clone();
 
     new_sector_info.flags.set(SectorOnChainInfoFlags::SIMPLE_QA_POWER, true);
-    // FIP-1249: replica updates always get full QA power.
+    // FIP-0118: replica updates always get full QA power.
     new_sector_info.flags.set(SectorOnChainInfoFlags::FULL_QA_POWER, true);
     new_sector_info.sealed_cid = activated_data.seal_cid;
     new_sector_info.sector_key_cid = match new_sector_info.sector_key_cid {
@@ -4893,7 +4893,7 @@ fn notify_pledge_changed(rt: &impl Runtime, pledge_delta: &TokenAmount) -> Resul
     Ok(())
 }
 
-// FIP-1249: get_claims function removed. The miner actor no longer validates
+// FIP-0118: get_claims function removed. The miner actor no longer validates
 // verifreg claims during extension or activation.
 
 /// Assigns proving period offset randomly in the range [0, WPoStProvingPeriod) by hashing
@@ -5138,7 +5138,7 @@ fn activate_new_sector_infos(
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
-        // FIP-1249: all new sectors get 10x QA power regardless of content or duration, so
+        // FIP-0118: all new sectors get 10x QA power regardless of content or duration, so
         // power/fee/pledge are identical for every sector in this batch; compute them once.
         let power = qa_power_max(info.sector_size);
         let daily_fee = daily_proof_fee(policy, &pledge_inputs.circulating_supply, &power);
@@ -5328,7 +5328,7 @@ struct ReplicaUpdateActivatedData {
 }
 
 // Activates data pieces in sectors.
-// FIP-1249: verified allocation claims are no longer made; all sectors get 10x QA power
+// FIP-0118: verified allocation claims are no longer made; all sectors get 10x QA power
 // via the FULL_QA_POWER flag regardless of content. The verified_allocation_key field
 // on piece manifests is preserved for API backward compat but ignored.
 // Pieces are grouped by sector and succeed or fail in sector groups.
@@ -5362,7 +5362,7 @@ fn activate_sectors_pieces(
             }
         }
 
-        // FIP-1249: all piece space is treated as unverified_space; QAP comes from the flag.
+        // FIP-0118: all piece space is treated as unverified_space; QAP comes from the flag.
         let mut unverified_space = BigInt::zero();
         let mut pieces = Vec::new();
         for piece in &activation_info.piece_manifests {
@@ -5381,7 +5381,7 @@ fn activate_sectors_pieces(
 }
 
 /// Activates deals in sectors.
-/// FIP-1249: verified allocation claims are no longer made; all sectors get 10x QA power
+/// FIP-0118: verified allocation claims are no longer made; all sectors get 10x QA power
 /// via the FULL_QA_POWER flag regardless of deal content. allocation_id from market is ignored.
 /// Deals and claims are grouped by sectors.
 /// Successfully activated sectors have their DealSpaces returned.
@@ -5430,7 +5430,7 @@ fn activate_sectors_deals(
         return Err(actor_error!(illegal_argument, "all deals failed to activate"));
     }
 
-    // FIP-1249: no verifreg claim step. All deal space is treated as unverified;
+    // FIP-0118: no verifreg claim step. All deal space is treated as unverified;
     // QAP comes from the FULL_QA_POWER flag.
     let activation_outputs = batch_activation_res
         .activations

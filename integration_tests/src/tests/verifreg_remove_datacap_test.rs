@@ -16,7 +16,7 @@ use vm_api::util::{DynBlockstore, apply_code, apply_ok, get_state};
 use crate::TEST_VERIFREG_ROOT_ADDR;
 use crate::util::{assert_invariants, create_accounts};
 
-/// FIP-1249: AddVerifier is now deprecated and returns USR_FORBIDDEN.
+/// FIP-0118: AddVerifier is now deprecated and returns USR_FORBIDDEN.
 /// This test verifies that the deprecated path correctly fails.
 #[vm_test]
 pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
@@ -24,7 +24,7 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     let (verifier1, _verifier2, _verified_client) = (addrs[0], addrs[1], addrs[2]);
     let verifier_allowance = StoragePower::from(2 * 1048576u64);
 
-    // FIP-1249: AddVerifier is deprecated and should return USR_FORBIDDEN
+    // FIP-0118: AddVerifier is deprecated and should return USR_FORBIDDEN
     let add_verifier_params =
         fil_actor_verifreg::VerifierParams { address: verifier1, allowance: verifier_allowance };
     let proposal = ProposeParams {
@@ -58,7 +58,7 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default(), None)
 }
 
-/// FIP-1249: RemoveVerifiedClientDataCap is now deprecated and always returns
+/// FIP-0118: RemoveVerifiedClientDataCap is now deprecated and always returns
 /// USR_FORBIDDEN, regardless of caller or whether the named verifiers/client exist.
 #[vm_test]
 pub fn remove_datacap_disabled_test(v: &dyn VM) {

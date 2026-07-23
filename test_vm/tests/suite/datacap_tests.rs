@@ -2,7 +2,7 @@ use fil_actors_integration_tests::tests::{call_name_symbol_test, datacap_mint_di
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
-/* Mint is deprecated (FIP-1249) and always returns USR_FORBIDDEN */
+/* Mint is deprecated (FIP-0118) and always returns USR_FORBIDDEN */
 #[test]
 fn datacap_mint_disabled() {
     let store = MemoryBlockstore::new();

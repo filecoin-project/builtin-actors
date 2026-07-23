@@ -10,7 +10,7 @@ use vm_api::util::{apply_code, apply_ok};
 
 use crate::util::create_accounts;
 
-/// FIP-1249: Mint is now deprecated and always returns USR_FORBIDDEN, regardless of
+/// FIP-0118: Mint is now deprecated and always returns USR_FORBIDDEN, regardless of
 /// caller - including a message purporting to be from the verifreg actor (the only
 /// address that was ever allowed to call it). Since Mint can no longer succeed, the
 /// downstream flow this test used to exercise (transferring newly minted datacap into

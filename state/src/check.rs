@@ -429,7 +429,7 @@ fn check_verifreg_against_miners(
                         maddr
                     ),
                 );
-                // FIP-1249 removed term_max enforcement from ExtendSectorExpiration2, so a
+                // FIP-0118 removed term_max enforcement from ExtendSectorExpiration2, so a
                 // sector's expiration may legitimately exceed claim.term_start + claim.term_max.
                 let expected_duration = sector.sector_expiration - claim.term_start;
                 let expected_weight = DealWeight::from(claim.size.0) * expected_duration;
@@ -458,7 +458,7 @@ mod tests {
     use fvm_shared::piece::PaddedPieceSize;
     use fvm_shared::sector::RegisteredPoStProof;
 
-    // FIP-1249 dropped claim-term-max enforcement from ExtendSectorExpiration2 for every sector, so a legacy sector past its claim's term_max is now valid and must not be flagged.
+    // FIP-0118 dropped claim-term-max enforcement from ExtendSectorExpiration2 for every sector, so a legacy sector past its claim's term_max is now valid and must not be flagged.
     #[test]
     fn legacy_sector_extended_past_claim_term_max_is_valid() {
         let provider_id = 1000;
@@ -468,7 +468,7 @@ mod tests {
         let term_start: ChainEpoch = 0;
         let term_min: ChainEpoch = 0;
         let term_max: ChainEpoch = 100;
-        // Extended well past term_max -- permitted post FIP-1249.
+        // Extended well past term_max -- permitted post FIP-0118.
         let sector_expiration: ChainEpoch = 200;
 
         let claim = Claim {

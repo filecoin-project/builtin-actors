@@ -59,7 +59,7 @@ mod construction {
     }
 }
 
-// FIP-1249: Mint is now deprecated and always returns USR_FORBIDDEN.
+// FIP-0118: Mint is now deprecated and always returns USR_FORBIDDEN.
 // These tests verify the method is properly disabled, regardless of caller or params.
 mod mint {
     use fvm_shared::MethodNum;

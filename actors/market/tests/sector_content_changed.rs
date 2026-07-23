@@ -401,7 +401,7 @@ fn rejects_duplicates_across_sectors() {
 
 #[test]
 fn removes_legacy_pending_allocation() {
-    // Simulates a deal published before FIP-1249, when publish_storage_deals still recorded a
+    // Simulates a deal published before FIP-0118, when publish_storage_deals still recorded a
     // pending verified allocation. Activation via SectorContentChanged must still drain that
     // entry even though the allocation-claiming pipeline itself is now disabled.
     let rt = setup();

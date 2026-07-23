@@ -142,11 +142,11 @@ impl Actor {
 
     pub fn mint(rt: &impl Runtime, _params: MintParams) -> Result<MintReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-1249: datacap is deprecated. No new datacap can be minted; existing
+        // FIP-0118: datacap is deprecated. No new datacap can be minted; existing
         // balances are frozen in place.
         Err(actor_error!(
             forbidden,
-            "FIP-1249: datacap is deprecated, minting is no longer supported"
+            "FIP-0118: datacap is deprecated, minting is no longer supported"
         ))
     }
 

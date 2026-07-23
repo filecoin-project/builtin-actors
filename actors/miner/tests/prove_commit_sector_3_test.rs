@@ -339,7 +339,7 @@ fn invalid_proof_dropped() {
 
 #[test]
 fn invalid_claim_dropped() {
-    // FIP-1249: claim allocations have been removed. The claim_failure config is now a no-op.
+    // FIP-0118: claim allocations have been removed. The claim_failure config is now a no-op.
     // Both sectors succeed since there's no claim validation.
     let (h, mut rt) = setup_basic();
     let piece_size = h.sector_size as u64;

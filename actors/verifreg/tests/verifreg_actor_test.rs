@@ -95,12 +95,12 @@ mod verifiers {
 
     use crate::*;
 
-    // FIP-1249: AddVerifier is now deprecated and always returns USR_FORBIDDEN.
+    // FIP-0118: AddVerifier is now deprecated and always returns USR_FORBIDDEN.
     // These tests verify the method is properly disabled.
 
     #[test]
     fn add_verifier_requires_root_caller() {
-        // FIP-1249: AddVerifier always returns forbidden regardless of caller
+        // FIP-0118: AddVerifier always returns forbidden regardless of caller
         let (h, rt) = new_harness();
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, Address::new_id(501));
         rt.expect_validate_caller_any();
@@ -118,7 +118,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_enforces_min_size() {
-        // FIP-1249: AddVerifier always returns forbidden, even for invalid params
+        // FIP-0118: AddVerifier always returns forbidden, even for invalid params
         let (h, rt) = new_harness();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
         rt.expect_validate_caller_any();
@@ -136,7 +136,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_rejects_root() {
-        // FIP-1249: AddVerifier always returns forbidden
+        // FIP-0118: AddVerifier always returns forbidden
         let (h, rt) = new_harness();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
         rt.expect_validate_caller_any();
@@ -154,7 +154,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_rejects_client() {
-        // FIP-1249: AddVerifier always returns forbidden
+        // FIP-0118: AddVerifier always returns forbidden
         let (h, rt) = new_harness();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
         rt.expect_validate_caller_any();
@@ -172,7 +172,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_rejects_unresolved_address() {
-        // FIP-1249: AddVerifier always returns forbidden
+        // FIP-0118: AddVerifier always returns forbidden
         let (h, rt) = new_harness();
         let verifier_key_address = Address::new_secp256k1(&[3u8; 65]).unwrap();
         let allowance = verifier_allowance(&rt);
@@ -191,7 +191,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_id_address() {
-        // FIP-1249: AddVerifier is deprecated, always returns forbidden
+        // FIP-0118: AddVerifier is deprecated, always returns forbidden
         let (h, rt) = new_harness();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
         rt.expect_validate_caller_any();
@@ -209,7 +209,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_resolves_address() {
-        // FIP-1249: AddVerifier is deprecated, always returns forbidden
+        // FIP-0118: AddVerifier is deprecated, always returns forbidden
         let (h, rt) = new_harness();
         let pubkey_addr = Address::new_secp256k1(&[0u8; 65]).unwrap();
         rt.id_addresses.borrow_mut().insert(pubkey_addr, *VERIFIER);
@@ -227,14 +227,14 @@ mod verifiers {
         h.check_state(&rt);
     }
 
-    // FIP-1249: RemoveVerifier is now deprecated and always returns USR_FORBIDDEN.
+    // FIP-0118: RemoveVerifier is now deprecated and always returns USR_FORBIDDEN.
     // These tests verify the method is properly disabled, regardless of caller or state.
 
     #[test]
     fn remove_verifier_disabled_for_non_root_caller() {
         let (h, rt) = new_harness();
         let allowance = verifier_allowance(&rt);
-        // FIP-1249: use direct state insertion instead of deprecated add_verifier
+        // FIP-0118: use direct state insertion instead of deprecated add_verifier
         h.add_verifier_directly(&rt, &VERIFIER, &allowance);
 
         let caller = Address::new_id(501);
@@ -270,7 +270,7 @@ mod verifiers {
     fn remove_verifier_disabled_for_root_caller() {
         let (h, rt) = new_harness();
         let allowance = verifier_allowance(&rt);
-        // FIP-1249: use direct state insertion instead of deprecated add_verifier
+        // FIP-0118: use direct state insertion instead of deprecated add_verifier
         h.add_verifier_directly(&rt, &VERIFIER, &allowance);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.root);
@@ -293,7 +293,7 @@ mod verifiers {
         let allowance = verifier_allowance(&rt);
         let verifier_pubkey = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
         rt.id_addresses.borrow_mut().insert(verifier_pubkey, *VERIFIER);
-        // FIP-1249: use direct state insertion instead of deprecated add_verifier
+        // FIP-0118: use direct state insertion instead of deprecated add_verifier
         h.add_verifier_directly(&rt, &VERIFIER, &allowance);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.root);
@@ -321,12 +321,12 @@ mod clients {
 
     use crate::*;
 
-    // FIP-1249: AddVerifiedClient is now deprecated and always returns USR_FORBIDDEN.
+    // FIP-0118: AddVerifiedClient is now deprecated and always returns USR_FORBIDDEN.
     // All tests that previously exercised AddVerifiedClient behavior now verify it's properly disabled.
 
     #[test]
     fn many_verifiers_and_clients() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -344,7 +344,7 @@ mod clients {
 
     #[test]
     fn verifier_allowance_exhausted() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -362,7 +362,7 @@ mod clients {
 
     #[test]
     fn resolves_client_address() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -380,7 +380,7 @@ mod clients {
 
     #[test]
     fn minimum_allowance_ok() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance = verifier_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -398,7 +398,7 @@ mod clients {
 
     #[test]
     fn rejects_unresolved_address() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -416,7 +416,7 @@ mod clients {
 
     #[test]
     fn rejects_allowance_below_minimum() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -434,7 +434,7 @@ mod clients {
 
     #[test]
     fn rejects_non_verifier_caller() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         let caller = Address::new_id(209);
@@ -453,7 +453,7 @@ mod clients {
 
     #[test]
     fn add_verified_client_restricted_correctly() {
-        // FIP-1249: Both exported and unexported AddVerifiedClient methods return forbidden
+        // FIP-0118: Both exported and unexported AddVerifiedClient methods return forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         let params = AddVerifiedClientParams { address: *CLIENT, allowance: allowance_client };
@@ -472,7 +472,7 @@ mod clients {
         );
         rt.reset();
 
-        // exported method num also returns forbidden due to FIP-1249
+        // exported method num also returns forbidden due to FIP-0118
         rt.set_caller(*EVM_ACTOR_CODE_ID, *VERIFIER);
         rt.expect_validate_caller_any();
         expect_abort(
@@ -488,7 +488,7 @@ mod clients {
 
     #[test]
     fn rejects_allowance_greater_than_verifier_cap() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_verifier = verifier_allowance(&rt);
         let allowance = &allowance_verifier + 1;
@@ -507,7 +507,7 @@ mod clients {
 
     #[test]
     fn rejects_root_as_client() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -525,7 +525,7 @@ mod clients {
 
     #[test]
     fn rejects_verifier_as_client() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -671,7 +671,7 @@ mod allocs_claims {
 
     #[test]
     fn claim_allocs() {
-        // FIP-1249: ClaimAllocations is deprecated and always returns forbidden.
+        // FIP-0118: ClaimAllocations is deprecated and always returns forbidden.
         let (h, rt) = new_harness();
 
         let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
@@ -745,7 +745,7 @@ mod allocs_claims {
 
     #[test]
     fn extend_claims_basic() {
-        // FIP-1249: ExtendClaimTerms is deprecated and always returns forbidden.
+        // FIP-0118: ExtendClaimTerms is deprecated and always returns forbidden.
         let (h, rt) = new_harness();
         let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
         let max_term = min_term + 1000;
@@ -768,7 +768,7 @@ mod allocs_claims {
 
     #[test]
     fn extend_claims_edge_cases() {
-        // FIP-1249: ExtendClaimTerms is deprecated and always returns forbidden.
+        // FIP-0118: ExtendClaimTerms is deprecated and always returns forbidden.
         let (h, rt) = new_harness();
         let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
         let max_term = min_term + 1000;
@@ -870,7 +870,7 @@ mod allocs_claims {
     fn claims_restricted_correctly() {
         let (h, rt) = new_harness();
 
-        // FIP-1249: ExtendClaimTerms is deprecated. Both exported and unexported return forbidden.
+        // FIP-0118: ExtendClaimTerms is deprecated. Both exported and unexported return forbidden.
         let params = ExtendClaimTermsParams { terms: vec![] };
 
         // set caller to not-builtin
@@ -887,7 +887,7 @@ mod allocs_claims {
         );
         rt.reset();
 
-        // exported method num also returns forbidden due to FIP-1249
+        // exported method num also returns forbidden due to FIP-0118
         rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(CLIENT1));
         rt.expect_validate_caller_any();
         expect_abort(
@@ -948,13 +948,13 @@ mod datacap {
     const PROVIDER2: ActorID = 302;
     const SIZE: u64 = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
 
-    // FIP-1249: UniversalReceiverHook is deprecated and always returns forbidden.
+    // FIP-0118: UniversalReceiverHook is deprecated and always returns forbidden.
     // Tests that previously exercised allocation creation and claim extension via tokens
     // now verify the method is properly disabled.
 
     #[test]
     fn receive_tokens_make_allocs() {
-        // FIP-1249: UniversalReceiverHook is deprecated, verify it returns forbidden
+        // FIP-0118: UniversalReceiverHook is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         add_miner(&rt, PROVIDER1);
         add_miner(&rt, PROVIDER2);
@@ -980,7 +980,7 @@ mod datacap {
 
     #[test]
     fn receive_tokens_extend_claims() {
-        // FIP-1249: UniversalReceiverHook is deprecated, verify it returns forbidden
+        // FIP-0118: UniversalReceiverHook is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
 
         let reqs = vec![make_extension_req(PROVIDER1, 1, 1000)];
@@ -1004,7 +1004,7 @@ mod datacap {
 
     #[test]
     fn receive_tokens_make_alloc_and_extend_claims() {
-        // FIP-1249: UniversalReceiverHook is deprecated, verify it returns forbidden
+        // FIP-0118: UniversalReceiverHook is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         add_miner(&rt, PROVIDER1);
         add_miner(&rt, PROVIDER2);
@@ -1063,7 +1063,7 @@ mod datacap {
 
     #[test]
     fn receive_requires_to_self() {
-        // FIP-1249: UniversalReceiverHook is deprecated.
+        // FIP-0118: UniversalReceiverHook is deprecated.
         // Even with a wrong "to" address, the method returns forbidden after caller validation.
         let (h, rt) = new_harness();
         add_miner(&rt, PROVIDER1);
@@ -1095,7 +1095,7 @@ mod datacap {
 
     #[test]
     fn receive_alloc_requires_miner_actor() {
-        // FIP-1249: UniversalReceiverHook is deprecated, returns forbidden regardless of provider type
+        // FIP-0118: UniversalReceiverHook is deprecated, returns forbidden regardless of provider type
         let (h, rt) = new_harness();
         let provider1 = Address::new_id(PROVIDER1);
         rt.set_address_actor_type(provider1, *ACCOUNT_ACTOR_CODE_ID);
@@ -1121,7 +1121,7 @@ mod datacap {
 
     #[test]
     fn receive_invalid_alloc_reqs() {
-        // FIP-1249: UniversalReceiverHook is deprecated, returns forbidden for all requests
+        // FIP-0118: UniversalReceiverHook is deprecated, returns forbidden for all requests
         let (h, rt) = new_harness();
         add_miner(&rt, PROVIDER1);
 
@@ -1146,7 +1146,7 @@ mod datacap {
 
     #[test]
     fn receive_invalid_extension_reqs() {
-        // FIP-1249: UniversalReceiverHook is deprecated, returns forbidden for all requests
+        // FIP-0118: UniversalReceiverHook is deprecated, returns forbidden for all requests
         let (h, rt) = new_harness();
 
         let reqs = vec![make_extension_req(PROVIDER1, 1, 1000)];

@@ -127,7 +127,7 @@ pub fn prove_commit_ni_whole_success_test(v: &dyn VM) {
         .iter()
         .map(|sector_number| sector_info(v, &maddr, *sector_number))
         .collect::<Vec<_>>();
-    // FIP-1249: NI-PoRep sectors now get 10x QA power (FULL_QA_POWER flag)
+    // FIP-0118: NI-PoRep sectors now get 10x QA power (FULL_QA_POWER flag)
     let expected_daily_fee = daily_proof_fee(
         &policy,
         &v.circulating_supply(),

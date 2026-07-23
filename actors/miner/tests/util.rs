@@ -956,7 +956,7 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
 
-        // FIP-1249: NI sectors get FULL_QA_POWER (10x)
+        // FIP-0118: NI sectors get FULL_QA_POWER (10x)
         let qa_sector_power = qa_power_max(self.sector_size);
         let sector_pledge = self.initial_pledge_for_power(rt, &qa_sector_power);
         let total_pledge = BigInt::from(expected_success_count) * sector_pledge;
@@ -1103,7 +1103,7 @@ impl ActorHarness {
             );
         }
 
-        // No verifreg claim allocations call (FIP-1249: all space is unverified,
+        // No verifreg claim allocations call (FIP-0118: all space is unverified,
         // sectors get 10x QAP via FULL_QA_POWER flag).
 
         if !valid_pcs.is_empty() {
@@ -1256,13 +1256,13 @@ impl ActorHarness {
                     added: notifications,
                 });
             }
-            // FIP-1249: all new sectors get FULL_QA_POWER flag -> qa_power_max (10x)
+            // FIP-0118: all new sectors get FULL_QA_POWER flag -> qa_power_max (10x)
             let qa_power_delta = qa_power_max(self.sector_size);
             expected_qa_power += &qa_power_delta;
             expected_pledge += self.initial_pledge_for_power(rt, &qa_power_delta);
         }
 
-        // No verifreg claim allocations call (FIP-1249).
+        // No verifreg claim allocations call (FIP-0118).
 
         // Expect pledge & power updates.
         self.expect_query_network_info(rt);
@@ -1401,7 +1401,7 @@ impl ActorHarness {
                 });
             }
 
-            // FIP-1249: replica updates get FULL_QA_POWER (10x), same as initial activation
+            // FIP-0118: replica updates get FULL_QA_POWER (10x), same as initial activation
             let new_qa_power = qa_power_max(self.sector_size);
             let old_qa_power = qa_power_for_sector(self.sector_size, &sector);
             let qa_power_delta = &new_qa_power - &old_qa_power;
@@ -1411,7 +1411,7 @@ impl ActorHarness {
             }
         }
 
-        // No verifreg claim allocations call (FIP-1249).
+        // No verifreg claim allocations call (FIP-0118).
 
         // Expect pledge & power updates.
         self.expect_query_network_info(rt);
@@ -2522,7 +2522,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        // No verifreg GetClaims call (FIP-1249: claim validation removed from extensions).
+        // No verifreg GetClaims call (FIP-0118: claim validation removed from extensions).
 
         // Handle QA power updates
         let mut qa_delta = BigInt::zero();
@@ -3440,7 +3440,7 @@ fn expect_update_power(rt: &MockRuntime, delta: PowerPair) {
 }
 
 // Verifies a sector's deal weights and pledge given the size of unverified and verified data.
-// FIP-1249: all data is treated as unverified; verified_deal_weight is always 0;
+// FIP-0118: all data is treated as unverified; verified_deal_weight is always 0;
 // power is always qa_power_max (10x).
 #[allow(dead_code)]
 pub fn verify_weights(
@@ -3452,13 +3452,13 @@ pub fn verify_weights(
 ) {
     let s = h.get_sector(rt, sno);
     let duration = s.expiration - s.power_base_epoch;
-    // FIP-1249: all sectors get 10x QA power
+    // FIP-0118: all sectors get 10x QA power
     let power = qa_power_max(h.sector_size);
     let pledge = h.initial_pledge_for_power(&rt, &power);
 
     // Deal IDs are deprecated and never set.
     assert!(s.deprecated_deal_ids.is_empty());
-    // FIP-1249: all piece data is unverified_space, verified_deal_weight is 0
+    // FIP-0118: all piece data is unverified_space, verified_deal_weight is 0
     let total_data_size = unverified_data_size + verified_data_size;
     assert_eq!(DealWeight::from(total_data_size) * duration, s.deal_weight);
     assert_eq!(DealWeight::zero(), s.verified_deal_weight);

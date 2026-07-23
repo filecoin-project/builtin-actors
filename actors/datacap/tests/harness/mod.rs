@@ -62,7 +62,7 @@ impl Harness {
     }
 
     /// Sets a balance directly in state, bypassing the (now deprecated) Mint method.
-    /// FIP-1249: used for test fixture setup since Mint always returns forbidden.
+    /// FIP-0118: used for test fixture setup since Mint always returns forbidden.
     pub fn mint_directly(&self, rt: &MockRuntime, to: &Address, amount: &TokenAmount) {
         let mut st: State = rt.get_state();
         st.token.change_balance_by(&rt.store(), to.id().unwrap(), amount).unwrap();
@@ -70,7 +70,7 @@ impl Harness {
         rt.replace_state(&st);
     }
 
-    /// Sets an allowance directly in state. FIP-1249: used for test fixture setup since
+    /// Sets an allowance directly in state. FIP-0118: used for test fixture setup since
     /// Mint no longer grants operator allowances as a side effect.
     pub fn allow_directly(
         &self,
