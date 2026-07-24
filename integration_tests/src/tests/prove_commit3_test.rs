@@ -3,30 +3,23 @@ use export_macro::vm_test;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 
 use fil_actor_market::Method as MarketMethod;
+use fil_actor_miner::Method as MinerMethod;
 use fil_actor_miner::{
     CompactCommD, DataActivationNotification, PieceActivationManifest, PieceChange,
     ProveCommitSectors3Params, SectorActivationManifest, SectorChanges, SectorContentChangedParams,
-    SectorOnChainInfoFlags, daily_proof_fee, max_prove_commit_duration, qa_power_for_weight,
-};
-use fil_actor_miner::{Method as MinerMethod, VerifiedAllocationKey};
-use fil_actor_verifreg::{
-    AllocationClaim, AllocationRequest, ClaimAllocationsParams, Method as VerifregMethod,
-    SectorAllocationClaims,
+    SectorOnChainInfoFlags, daily_proof_fee, max_prove_commit_duration,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
-use fil_actors_runtime::{
-    EPOCHS_IN_DAY, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use fil_actors_runtime::{EPOCHS_IN_DAY, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR};
 use vm_api::VM;
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::apply_ok;
@@ -35,9 +28,8 @@ use crate::deals::{DealBatcher, DealOptions};
 use crate::expects::Expect;
 use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, create_accounts, create_miner,
-    datacap_create_allocations, market_add_balance, market_list_deals, market_list_sectors_deals,
-    override_compute_unsealed_sector_cid, precommit_sectors_v2, sector_info, verifreg_add_client,
-    verifreg_add_verifier, verifreg_list_claims,
+    market_add_balance, market_list_deals, market_list_sectors_deals,
+    override_compute_unsealed_sector_cid, precommit_sectors_v2, sector_info,
 };
 
 #[vm_test]
@@ -48,7 +40,7 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let sector_size = seal_proof.sector_size().unwrap();
-    let (owner, worker, verifier, client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let (owner, worker, _verifier, client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let worker_id = worker.id().unwrap();
     let client_id = client.id().unwrap();
     let (maddr, _) = create_miner(
@@ -62,33 +54,8 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     let full_piece_size = PaddedPieceSize(sector_size as u64);
     let half_piece_size = PaddedPieceSize(sector_size as u64 / 2);
 
-    // Register verifier and verified clients
-    let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(v, &verifier, &datacap * 2);
-    verifreg_add_client(v, &verifier, &client, datacap);
-
-    // Publish two verified allocations for half a sector each.
+    // FIP-0118: verifreg minting deprecated; no need to set up verifier/verified client or allocations
     let claim_term_min = 2 * EPOCHS_IN_YEAR;
-    let claim_term_max = claim_term_min + 90 * EPOCHS_IN_DAY;
-    let allocs = vec![
-        AllocationRequest {
-            provider: miner_id,
-            data: make_piece_cid(b"s2p1"),
-            size: half_piece_size,
-            term_min: claim_term_min,
-            term_max: claim_term_max,
-            expiration: 30 * EPOCHS_IN_DAY,
-        },
-        AllocationRequest {
-            provider: miner_id,
-            data: make_piece_cid(b"s2p2"),
-            size: half_piece_size,
-            term_min: claim_term_min,
-            term_max: claim_term_max,
-            expiration: 30 * EPOCHS_IN_DAY,
-        },
-    ];
-    let alloc_ids_s2 = datacap_create_allocations(v, &client, &allocs);
 
     // Publish a full-size deal
     let market_collateral = TokenAmount::from_whole(100);
@@ -100,26 +67,24 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     batcher.stage_with_label(client, maddr, "s3p1".to_string());
     let deal_ids_s3 = batcher.publish_ok(worker).ids;
 
-    // Publish a half-size verified deal.
-    // This creates a verified allocation automatically.
+    // Publish a half-size deal (previously verified, but FIP-0118 removes datacap ops)
     let opts = DealOptions {
         deal_start,
         piece_size: half_piece_size,
         verified: true,
-        deal_lifetime: claim_term_min, // The implicit claim term must fit sector life
+        deal_lifetime: claim_term_min,
         ..DealOptions::default()
     };
     let mut batcher = DealBatcher::new(v, opts);
     batcher.stage_with_label(client, maddr, "s4p1".to_string());
     let deal_ids_s4 = batcher.publish_ok(worker).ids;
-    let alloc_ids_s4 = [alloc_ids_s2[alloc_ids_s2.len() - 1] + 1];
 
-    // Onboard a batch of sectors with a mix of data pieces, claims, and deals.
+    // FIP-0118: Onboard sectors without verified_allocation_keys (ignored by miner)
     let first_sector_number: SectorNumber = 100;
     let manifests = vec![
         // Sector 0: no pieces (CC sector)
         SectorActivationManifest { sector_number: first_sector_number, pieces: vec![] },
-        // Sector 1: one piece, no claim or deal.
+        // Sector 1: one piece, no deal.
         SectorActivationManifest {
             sector_number: first_sector_number + 1,
             pieces: vec![PieceActivationManifest {
@@ -129,24 +94,25 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
                 notify: vec![],
             }],
         },
-        // Sector 2: two pieces for verified claims.
+        // Sector 2: two pieces, no verified claims
         SectorActivationManifest {
             sector_number: first_sector_number + 2,
-            pieces: allocs
-                .iter()
-                .enumerate()
-                .map(|(i, alloc)| PieceActivationManifest {
-                    cid: alloc.data,
-                    size: alloc.size,
-                    verified_allocation_key: Some(VerifiedAllocationKey {
-                        client: client_id,
-                        id: alloc_ids_s2[i],
-                    }),
+            pieces: vec![
+                PieceActivationManifest {
+                    cid: make_piece_cid(b"s2p1"),
+                    size: half_piece_size,
+                    verified_allocation_key: None,
                     notify: vec![],
-                })
-                .collect(),
+                },
+                PieceActivationManifest {
+                    cid: make_piece_cid(b"s2p2"),
+                    size: half_piece_size,
+                    verified_allocation_key: None,
+                    notify: vec![],
+                },
+            ],
         },
-        // Sector 3: a full-size, unverified deal
+        // Sector 3: a full-size deal
         SectorActivationManifest {
             sector_number: first_sector_number + 3,
             pieces: vec![PieceActivationManifest {
@@ -159,16 +125,13 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
                 }],
             }],
         },
-        // Sector 4: a half-sized, verified deal, and implicit empty space
+        // Sector 4: a half-sized deal
         SectorActivationManifest {
             sector_number: first_sector_number + 4,
             pieces: vec![PieceActivationManifest {
                 cid: make_piece_cid(b"s4p1"),
                 size: half_piece_size,
-                verified_allocation_key: Some(VerifiedAllocationKey {
-                    client: client_id,
-                    id: alloc_ids_s4[0],
-                }),
+                verified_allocation_key: None,
                 notify: vec![DataActivationNotification {
                     address: STORAGE_MARKET_ACTOR_ADDR,
                     payload: serialize(&deal_ids_s4[0], "deal id").unwrap(),
@@ -240,98 +203,13 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
         })
         .collect();
 
-    let claim_event_1 = Expect::build_verifreg_claim_event(
-        "claim",
-        alloc_ids_s2[0],
-        client_id,
-        miner_id,
-        &allocs[0].data,
-        allocs[0].size.0,
-        claim_term_min,
-        claim_term_max,
-        v.epoch(),
-        first_sector_number + 2,
-    );
-
-    let claim_event_2 = Expect::build_verifreg_claim_event(
-        "claim",
-        alloc_ids_s2[1],
-        client_id,
-        miner_id,
-        &allocs[1].data,
-        allocs[1].size.0,
-        claim_term_min,
-        claim_term_max,
-        v.epoch(),
-        first_sector_number + 2,
-    );
-
-    let claim_event_3 = Expect::build_verifreg_claim_event(
-        "claim",
-        alloc_ids_s4[0],
-        client_id,
-        miner_id,
-        &manifests[4].pieces[0].cid,
-        manifests[4].pieces[0].size.0,
-        claim_term_min,
-        claim_term_max,
-        v.epoch(),
-        first_sector_number + 4,
-    );
-
+    // FIP-0118: Miner no longer calls verifreg for claim allocations
     ExpectInvocation {
         from: worker_id,
         to: maddr,
         method: MinerMethod::ProveCommitSectors3 as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         subinvocs: Some(vec![
-            // Verified claims
-            ExpectInvocation {
-                from: miner_id,
-                to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                method: VerifregMethod::ClaimAllocations as u64,
-                params: Some(
-                    IpldBlock::serialize_cbor(&ClaimAllocationsParams {
-                        sectors: vec![
-                            no_claims(first_sector_number, sector_expiry),
-                            no_claims(first_sector_number + 1, sector_expiry),
-                            SectorAllocationClaims {
-                                sector: first_sector_number + 2,
-                                expiry: sector_expiry,
-                                claims: vec![
-                                    AllocationClaim {
-                                        client: client_id,
-                                        allocation_id: alloc_ids_s2[0],
-                                        data: allocs[0].data,
-                                        size: allocs[0].size,
-                                    },
-                                    AllocationClaim {
-                                        client: client_id,
-                                        allocation_id: alloc_ids_s2[1],
-                                        data: allocs[1].data,
-                                        size: allocs[1].size,
-                                    },
-                                ],
-                            },
-                            no_claims(first_sector_number + 3, sector_expiry),
-                            SectorAllocationClaims {
-                                sector: first_sector_number + 4,
-                                expiry: sector_expiry,
-                                claims: vec![AllocationClaim {
-                                    client: client_id,
-                                    allocation_id: alloc_ids_s4[0],
-                                    data: make_piece_cid(b"s4p1"),
-                                    size: half_piece_size,
-                                }],
-                            },
-                        ],
-                        all_or_nothing: true,
-                    })
-                    .unwrap(),
-                ),
-                events: Some(vec![claim_event_1, claim_event_2, claim_event_3]),
-                ..Default::default()
-            },
             Expect::reward_this_epoch(miner_id),
             Expect::power_current_total(miner_id),
             Expect::power_update_pledge(miner_id, None),
@@ -392,43 +270,34 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     }
     let full_sector_weight =
         BigInt::from(full_piece_size.0 * (sector_expiry - activation_epoch) as u64);
-    let full_sector_power =
-        qa_power_for_weight(sector_size, sector_expiry - activation_epoch, &full_sector_weight);
+    // FIP-0118: All sectors get FULL_QA_POWER (10x), daily fee based on 10x power
+    let full_qa_power = StoragePower::from(10 * sector_size as u64);
     let full_sector_daily_fee =
-        daily_proof_fee(&policy, &circulating_supply_at_commit, &full_sector_power);
+        daily_proof_fee(&policy, &circulating_supply_at_commit, &full_qa_power);
 
     assert_eq!(BigInt::zero(), sectors[0].deal_weight);
     assert_eq!(BigInt::zero(), sectors[0].verified_deal_weight);
-    assert_eq!(full_sector_daily_fee.div_floor(10), sectors[0].daily_fee);
+    assert_eq!(full_sector_daily_fee, sectors[0].daily_fee);
 
     assert_eq!(full_sector_weight, sectors[1].deal_weight);
     assert_eq!(BigInt::zero(), sectors[1].verified_deal_weight);
-    assert_eq!(full_sector_daily_fee.div_floor(10), sectors[1].daily_fee);
+    assert_eq!(full_sector_daily_fee, sectors[1].daily_fee);
 
-    assert_eq!(BigInt::zero(), sectors[2].deal_weight);
-    assert_eq!(full_sector_weight, sectors[2].verified_deal_weight);
+    // FIP-0118: Without verifreg allocation, deal weight goes to deal_weight (not verified)
+    assert_eq!(full_sector_weight, sectors[2].deal_weight);
+    assert_eq!(BigInt::zero(), sectors[2].verified_deal_weight);
     assert_eq!(full_sector_daily_fee, sectors[2].daily_fee);
 
     assert_eq!(full_sector_weight, sectors[3].deal_weight);
     assert_eq!(BigInt::zero(), sectors[3].verified_deal_weight);
-    assert_eq!(full_sector_daily_fee.div_floor(10), sectors[3].daily_fee);
+    assert_eq!(full_sector_daily_fee, sectors[3].daily_fee);
 
-    assert_eq!(BigInt::zero(), sectors[4].deal_weight);
-    assert_eq!(full_sector_weight / 2, sectors[4].verified_deal_weight);
-    assert!(
-        ((&full_sector_daily_fee * 11).div_floor(20) - &sectors[4].daily_fee).atto().abs()
-            <= BigInt::from(1),
-        "expected: {}, got: {}",
-        (full_sector_daily_fee * 11).div_floor(20),
-        sectors[4].daily_fee
-    );
+    // Sector 4 has a half-size deal
+    assert_eq!(full_sector_weight / 2, sectors[4].deal_weight);
+    assert_eq!(BigInt::zero(), sectors[4].verified_deal_weight);
+    assert_eq!(full_sector_daily_fee, sectors[4].daily_fee);
 
-    // Brief checks on state consistency between actors.
-    let claims = verifreg_list_claims(v, miner_id);
-    assert_eq!(claims.len(), 3);
-    assert_eq!(first_sector_number + 2, claims[&alloc_ids_s2[0]].sector);
-    assert_eq!(first_sector_number + 2, claims[&alloc_ids_s2[1]].sector);
-    assert_eq!(first_sector_number + 4, claims[&alloc_ids_s4[0]].sector);
+    // FIP-0118: No claims to verify
 
     let deals = market_list_deals(v);
     assert_eq!(deals.len(), 2);
@@ -441,10 +310,6 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     assert_eq!(sector_deals.len(), 2);
     assert_eq!(deal_ids_s3, sector_deals[&(first_sector_number + 3)]);
     assert_eq!(deal_ids_s4, sector_deals[&(first_sector_number + 4)]);
-}
-
-fn no_claims(sector: SectorNumber, expiry: ChainEpoch) -> SectorAllocationClaims {
-    SectorAllocationClaims { sector, expiry, claims: vec![] }
 }
 
 fn piece_change(cid_seed: &[u8], piece_size: PaddedPieceSize, deal_ids: &[DealID]) -> PieceChange {

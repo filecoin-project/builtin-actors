@@ -54,9 +54,8 @@ use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtim
 use fil_actors_runtime::{
     ActorContext, ActorDowncast, ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR, BatchReturn,
     BatchReturnGen, DealWeight, EPOCHS_IN_DAY, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR, actor_dispatch, actor_error, deserialize_block,
-    extract_send_result, util,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, actor_dispatch,
+    actor_error, deserialize_block, extract_send_result, util,
 };
 pub use monies::*;
 pub use partition_state::*;
@@ -69,7 +68,6 @@ pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
 
-use crate::ext::market::NO_ALLOCATION_ID;
 use crate::notifications::{ActivationNotifications, notify_data_consumers};
 
 // The following errors are particular cases of illegal state.
@@ -939,8 +937,7 @@ impl Actor {
             .collect();
 
         // Activate data for proven updates.
-        let (data_batch, data_activations) =
-            activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
+        let (data_batch, data_activations) = activate_sectors_pieces(rt, data_activation_inputs)?;
         if data_batch.success_count == 0 {
             return Err(actor_error!(illegal_argument, "all data activations failed"));
         }
@@ -1627,8 +1624,7 @@ impl Actor {
             .collect();
 
         // Activate data for proven sectors.
-        let (data_batch, data_activations) =
-            activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
+        let (data_batch, data_activations) = activate_sectors_pieces(rt, data_activation_inputs)?;
         if data_batch.success_count == 0 {
             return Err(actor_error!(illegal_argument, "all data activations failed"));
         }
@@ -1818,8 +1814,8 @@ impl Actor {
             &params.aggregate_proof,
         )?;
 
-        // With no data, QA power = raw power
-        let qa_sector_power = raw_power_for_sector(info.sector_size);
+        // FIP-0118: all new sectors get 10x QA power regardless of content.
+        let qa_sector_power = qa_power_max(info.sector_size);
 
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
@@ -1833,15 +1829,7 @@ impl Actor {
             ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
 
-        let sector_initial_pledge = initial_pledge_for_power(
-            &qa_sector_power,
-            &pledge_inputs.network_baseline,
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &pledge_inputs.circulating_supply,
-            pledge_inputs.epochs_since_ramp_start,
-            pledge_inputs.ramp_duration_epochs,
-        );
+        let sector_initial_pledge = pledge_inputs.initial_pledge_for_power(&qa_sector_power);
 
         let circulating_supply = rt.total_fil_circ_supply();
         // Same fee for all sectors: same size, all raw
@@ -1864,7 +1852,8 @@ impl Actor {
                 power_base_epoch: curr_epoch,
                 replaced_day_reward: None,
                 sector_key_cid: None,
-                flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
+                flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER
+                    | SectorOnChainInfoFlags::FULL_QA_POWER,
                 daily_fee: daily_fee.clone(),
             })
             .collect::<Vec<SectorOnChainInfo>>();
@@ -2228,12 +2217,8 @@ impl Actor {
                         .map_err(|e| e.wrap("failed to load sectors"))?;
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
-                        .map(|sector| match &inner.claims {
-                            None => Err(actor_error!(
-                                unspecified,
-                                "extend2 always specifies (potentially empty) claim mapping"
-                            )),
-                            Some(claim_space_by_sector) => extend_sector_committment(
+                        .map(|sector| {
+                            extend_sector_committment(
                                 rt.policy(),
                                 rt.network_version(),
                                 curr_epoch,
@@ -2241,8 +2226,7 @@ impl Actor {
                                 decl.new_expiration,
                                 sector,
                                 info.sector_size,
-                                claim_space_by_sector,
-                            ),
+                            )
                         })
                         .collect::<Result<_, _>>()?;
 
@@ -3441,11 +3425,6 @@ pub struct ReplicaUpdateInner {
 
 struct ExtendExpirationsInner {
     extensions: Vec<ValidatedExpirationExtension>,
-    // Map from sector being extended to (check, maintain)
-    // `check` is the space of active claims, checked to ensure all claims are checked
-    // `maintain` is the space of claims to maintain
-    // maintain <= check with equality in the case no claims are dropped
-    claims: Option<BTreeMap<SectorNumber, (u64, u64)>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -3473,12 +3452,13 @@ impl From<ExpirationExtension2> for ValidatedExpirationExtension {
     }
 }
 
+// FIP-0118: claim validation with the verifreg actor has been removed.
+// sectors_with_claims in declarations is ignored; extensions proceed with
+// proportional deal weight reduction for legacy sectors.
 fn validate_extension_declarations(
     rt: &impl Runtime,
     extensions: Vec<ExpirationExtension2>,
 ) -> Result<ExtendExpirationsInner, ActorError> {
-    let mut claim_space_by_sector = BTreeMap::<SectorNumber, (u64, u64)>::new();
-
     for decl in &extensions {
         let policy = rt.policy();
         if decl.deadline >= policy.wpost_period_deadlines {
@@ -3489,68 +3469,8 @@ fn validate_extension_declarations(
                 policy.wpost_period_deadlines
             ));
         }
-
-        for sc in &decl.sectors_with_claims {
-            let mut drop_claims = sc.drop_claims.clone();
-            let mut all_claim_ids = sc.maintain_claims.clone();
-            all_claim_ids.append(&mut drop_claims);
-            let claims = get_claims(rt, &all_claim_ids)
-                .with_context(|| format!("failed to get claims for sector {}", sc.sector_number))?;
-            let first_drop = sc.maintain_claims.len();
-
-            for (i, claim) in claims.iter().enumerate() {
-                // check provider and sector matches
-                if claim.provider != rt.message().receiver().id().unwrap() {
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "failed to validate declaration sector={}, claim={}, expected claim provider to be {} but found {} ",
-                        sc.sector_number,
-                        all_claim_ids[i],
-                        rt.message().receiver().id().unwrap(),
-                        claim.provider
-                    ));
-                }
-                if claim.sector != sc.sector_number {
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "failed to validate declaration sector={}, claim={} expected claim sector number to be {} but found {} ",
-                        sc.sector_number,
-                        all_claim_ids[i],
-                        sc.sector_number,
-                        claim.sector
-                    ));
-                }
-
-                // If we are not dropping check expiration does not exceed term max
-                let mut maintain_delta: u64 = 0;
-                if i < first_drop {
-                    if decl.new_expiration > claim.term_start + claim.term_max {
-                        return Err(actor_error!(
-                            forbidden,
-                            "failed to validate declaration sector={}, claim={} claim only allows extension to {} but declared new expiration is {}",
-                            sc.sector_number,
-                            sc.maintain_claims[i],
-                            claim.term_start + claim.term_max,
-                            decl.new_expiration
-                        ));
-                    }
-                    maintain_delta = claim.size.0
-                }
-
-                claim_space_by_sector
-                    .entry(sc.sector_number)
-                    .and_modify(|(check, maintain)| {
-                        *check += claim.size.0;
-                        *maintain += maintain_delta;
-                    })
-                    .or_insert((claim.size.0, maintain_delta));
-            }
-        }
     }
-    Ok(ExtendExpirationsInner {
-        extensions: extensions.into_iter().map(|e2| e2.into()).collect(),
-        claims: Some(claim_space_by_sector),
-    })
+    Ok(ExtendExpirationsInner { extensions: extensions.into_iter().map(|e2| e2.into()).collect() })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3562,41 +3482,30 @@ fn extend_sector_committment(
     new_expiration: ChainEpoch,
     sector_info: &SectorOnChainInfo,
     sector_size: SectorSize,
-    claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector_info)?;
 
-    // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
+    // FIP-0118: claim validation has been removed. Both paths now use proportional
+    // deal weight reduction. FULL_QA_POWER sectors get 10x regardless.
     let mut new_sector_info = if sector_info.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER)
     {
-        extend_simple_qap_sector(
-            policy,
-            new_expiration,
-            curr_epoch,
-            sector_info,
-            claim_space_by_sector,
-        )
+        extend_simple_qap_sector(new_expiration, curr_epoch, sector_info)
     } else {
         extend_non_simple_qap_sector(new_expiration, curr_epoch, sector_info)
     }?;
 
-    let new_qa_power = qa_power_for_weight(
-        sector_size,
-        new_sector_info.expiration - new_sector_info.power_base_epoch,
-        &new_sector_info.verified_deal_weight,
-    );
+    // qa_power_for_sector handles FULL_QA_POWER flag correctly (returns qa_power_max).
+    let new_qa_power = qa_power_for_sector(sector_size, &new_sector_info);
     if new_sector_info.daily_fee.is_zero() {
         // pre-FIP-0100 sector
         if curr_nv >= FIP_0100_GRACE_PERIOD_END_VERSION {
             new_sector_info.daily_fee = daily_proof_fee(policy, circulating_supply, &new_qa_power);
         } // else grace period
     } else {
+        // daily_proof_fee_adjust is a no-op when the power hasn't changed.
         let old_qa_power = qa_power_for_sector(sector_size, sector_info);
-        if old_qa_power != new_qa_power {
-            // adjust the daily_fee by the same proportion as the power changed
-            new_sector_info.daily_fee =
-                daily_proof_fee_adjust(&sector_info.daily_fee, &old_qa_power, &new_qa_power)
-        }
+        new_sector_info.daily_fee =
+            daily_proof_fee_adjust(&sector_info.daily_fee, &old_qa_power, &new_qa_power);
     }
     Ok(new_sector_info)
 }
@@ -3641,13 +3550,13 @@ fn validate_extended_expiration(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+// FIP-0118: claim validation has been removed. Verified deal weight is reduced
+// proportionally for remaining sector lifetime, same as deal_weight.
+// For FULL_QA_POWER sectors, stored weights are informational only (QAP comes from the flag).
 fn extend_simple_qap_sector(
-    policy: &Policy,
     new_expiration: ChainEpoch,
     curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
-    claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
     let mut new_sector = sector.clone();
 
@@ -3665,49 +3574,11 @@ fn extend_simple_qap_sector(
             &sector.deal_weight * (sector.expiration - curr_epoch) / old_duration;
     }
 
-    // Update the verified deal weights, and pledge if necessary.
+    // Proportional reduction of verified deal weight (no claims needed).
     if sector.verified_deal_weight.is_positive() {
         let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
-        let (expected_verified_deal_space, new_verified_deal_space) = match claim_space_by_sector
-            .get(&sector.sector_number)
-        {
-            None => {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "claim missing from declaration for sector {} with non-zero verified deal weight {}",
-                    sector.sector_number,
-                    &sector.verified_deal_weight
-                ));
-            }
-            Some(space) => space,
-        };
-        // claims must be completely accounted for
-        if BigInt::from(*expected_verified_deal_space as i64) != old_verified_deal_space {
-            return Err(actor_error!(
-                illegal_argument,
-                "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}",
-                expected_verified_deal_space,
-                old_verified_deal_space,
-                sector.sector_number
-            ));
-        }
-        // claim dropping is restricted to extensions at the end of a sector's life
+        new_sector.verified_deal_weight = old_verified_deal_space * new_duration;
 
-        let dropping_claims = expected_verified_deal_space != new_verified_deal_space;
-        if dropping_claims && sector.expiration - curr_epoch > policy.end_of_life_claim_drop_period
-        {
-            return Err(actor_error!(
-                forbidden,
-                "attempt to drop claims with {} epochs > end of life claim drop period {} remaining",
-                sector.expiration - curr_epoch,
-                policy.end_of_life_claim_drop_period
-            ));
-        }
-
-        new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space) * new_duration;
-
-        // As of [FIP-0098](https://github.com/filecoin-project/FIPs/blob/de3c8e2cae9f003dfb52d664d640745d96ca19ac/FIPS/fip-0098.md),
-        // Those fields are not used anymore and should be unset.
         new_sector.expected_day_reward = None;
         new_sector.expected_storage_pledge = None;
         new_sector.replaced_day_reward = None;
@@ -3898,6 +3769,9 @@ where
     let mut power_delta = PowerPair::zero();
     let mut pledge_delta = TokenAmount::zero();
 
+    // FIP-0118: all sectors get maximum QA power (10x); same for every update in this batch.
+    let new_qa_power = qa_power_max(sector_size);
+
     rt.transaction(|state: &mut State, rt| {
         let mut deadlines = state.load_deadlines(rt.store())?;
         let mut new_sectors = Vec::with_capacity(expected_count);
@@ -3925,6 +3799,7 @@ where
                     &update.activated_data,
                     &pledge_inputs,
                     sector_size,
+                    &new_qa_power,
                     rt.curr_epoch(),
                 );
 
@@ -4052,11 +3927,16 @@ fn update_existing_sector_info(
     activated_data: &ReplicaUpdateActivatedData,
     pledge_inputs: &NetworkPledgeInputs,
     sector_size: SectorSize,
+    // FIP-0118: all sectors get maximum QA power (10x). Computed once by the caller since it's
+    // the same for every sector in a batch of replica updates.
+    new_qa_power: &StoragePower,
     curr_epoch: ChainEpoch,
 ) -> SectorOnChainInfo {
     let mut new_sector_info = sector_info.clone();
 
     new_sector_info.flags.set(SectorOnChainInfoFlags::SIMPLE_QA_POWER, true);
+    // FIP-0118: replica updates always get full QA power.
+    new_sector_info.flags.set(SectorOnChainInfoFlags::FULL_QA_POWER, true);
     new_sector_info.sealed_cid = activated_data.seal_cid;
     new_sector_info.sector_key_cid = match new_sector_info.sector_key_cid {
         None => Some(sector_info.sealed_cid),
@@ -4070,38 +3950,22 @@ fn update_existing_sector_info(
     new_sector_info.deal_weight = activated_data.unverified_space.clone() * duration;
     new_sector_info.verified_deal_weight = activated_data.verified_space.clone() * duration;
 
-    // compute initial pledge
-    let new_qa_power =
-        qa_power_for_weight(sector_size, duration, &new_sector_info.verified_deal_weight);
-
     new_sector_info.expected_day_reward = None;
     new_sector_info.replaced_day_reward = None;
     new_sector_info.expected_storage_pledge = None;
 
-    new_sector_info.initial_pledge = max(
-        new_sector_info.initial_pledge,
-        initial_pledge_for_power(
-            &new_qa_power,
-            &pledge_inputs.network_baseline,
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &pledge_inputs.circulating_supply,
-            pledge_inputs.epochs_since_ramp_start,
-            pledge_inputs.ramp_duration_epochs,
-        ),
-    );
+    new_sector_info.initial_pledge =
+        max(new_sector_info.initial_pledge, pledge_inputs.initial_pledge_for_power(new_qa_power));
     if new_sector_info.daily_fee.is_zero() {
         // pre-FIP-0100 sector
         new_sector_info.daily_fee =
-            daily_proof_fee(policy, &pledge_inputs.circulating_supply, &new_qa_power);
+            daily_proof_fee(policy, &pledge_inputs.circulating_supply, new_qa_power);
     } else {
-        let old_qa_power =
-            qa_power_for_weight(sector_size, duration, &sector_info.verified_deal_weight);
-        if old_qa_power != new_qa_power {
-            // adjust the daily_fee by the same proportion as the power changed
-            new_sector_info.daily_fee =
-                daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, &new_qa_power)
-        }
+        // Use qa_power_for_sector which handles both FULL_QA_POWER and legacy sectors.
+        // daily_proof_fee_adjust is a no-op when the power hasn't changed.
+        let old_qa_power = qa_power_for_sector(sector_size, sector_info);
+        new_sector_info.daily_fee =
+            daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, new_qa_power);
     }
     new_sector_info
 }
@@ -5029,26 +4893,8 @@ fn notify_pledge_changed(rt: &impl Runtime, pledge_delta: &TokenAmount) -> Resul
     Ok(())
 }
 
-fn get_claims(
-    rt: &impl Runtime,
-    ids: &[ext::verifreg::ClaimID],
-) -> Result<Vec<ext::verifreg::Claim>, ActorError> {
-    let params = ext::verifreg::GetClaimsParams {
-        provider: rt.message().receiver().id().unwrap(),
-        claim_ids: ids.to_owned(),
-    };
-    let claims_ret: ext::verifreg::GetClaimsReturn =
-        deserialize_block(extract_send_result(rt.send_simple(
-            &VERIFIED_REGISTRY_ACTOR_ADDR,
-            ext::verifreg::GET_CLAIMS_METHOD,
-            IpldBlock::serialize_cbor(&params)?,
-            TokenAmount::zero(),
-        ))?)?;
-    if (claims_ret.batch_info.success_count as usize) < ids.len() {
-        return Err(actor_error!(illegal_argument, "invalid claims"));
-    }
-    Ok(claims_ret.claims)
-}
+// FIP-0118: get_claims function removed. The miner actor no longer validates
+// verifreg claims during extension or activation.
 
 /// Assigns proving period offset randomly in the range [0, WPoStProvingPeriod) by hashing
 /// the actor's address and current epoch.
@@ -5292,6 +5138,12 @@ fn activate_new_sector_infos(
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
+        // FIP-0118: all new sectors get 10x QA power regardless of content or duration, so
+        // power/fee/pledge are identical for every sector in this batch; compute them once.
+        let power = qa_power_max(info.sector_size);
+        let daily_fee = daily_proof_fee(policy, &pledge_inputs.circulating_supply, &power);
+        let initial_pledge = pledge_inputs.initial_pledge_for_power(&power);
+
         for (pci, deal_spaces) in precommits.iter().zip(data_activations) {
             // compute initial pledge
             let duration = pci.info.expiration - activation_epoch;
@@ -5309,19 +5161,6 @@ fn activate_new_sector_infos(
             let deal_weight = &deal_spaces.unverified_space * duration;
             let verified_deal_weight = &deal_spaces.verified_space * duration;
 
-            let power = qa_power_for_weight(info.sector_size, duration, &verified_deal_weight);
-            let daily_fee = daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply, &power);
-
-            let initial_pledge = initial_pledge_for_power(
-                &power,
-                &pledge_inputs.network_baseline,
-                &pledge_inputs.epoch_reward,
-                &pledge_inputs.network_qap,
-                &pledge_inputs.circulating_supply,
-                pledge_inputs.epochs_since_ramp_start,
-                pledge_inputs.ramp_duration_epochs,
-            );
-
             deposit_to_unlock += pci.pre_commit_deposit.clone();
             total_pledge += &initial_pledge;
 
@@ -5334,14 +5173,15 @@ fn activate_new_sector_infos(
                 activation: activation_epoch,
                 deal_weight,
                 verified_deal_weight,
-                initial_pledge,
+                initial_pledge: initial_pledge.clone(),
                 expected_day_reward: None,
                 expected_storage_pledge: None,
                 power_base_epoch: activation_epoch,
                 replaced_day_reward: None,
                 sector_key_cid: None,
-                flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
-                daily_fee,
+                flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER
+                    | SectorOnChainInfoFlags::FULL_QA_POWER,
+                daily_fee: daily_fee.clone(),
             };
 
             new_sector_numbers.push(new_sector_info.sector_number);
@@ -5487,18 +5327,18 @@ struct ReplicaUpdateActivatedData {
     verified_space: BigInt,
 }
 
-// Activates data pieces by claiming allocations with the verified registry.
+// Activates data pieces in sectors.
+// FIP-0118: verified allocation claims are no longer made; all sectors get 10x QA power
+// via the FULL_QA_POWER flag regardless of content. The verified_allocation_key field
+// on piece manifests is preserved for API backward compat but ignored.
 // Pieces are grouped by sector and succeed or fail in sector groups.
 // If an activation input specifies an expected CommD for the sector, a CommD
 // is calculated from the pieces and must match.
 fn activate_sectors_pieces(
     rt: &impl Runtime,
     activation_inputs: Vec<SectorPiecesActivationInput>,
-    all_or_nothing: bool,
 ) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
-    // Get a flattened list of verified claims for all activated sectors
-    let mut verified_claims = Vec::new();
-    let mut sectors_pieces = Vec::new();
+    let mut activation_outputs = Vec::with_capacity(activation_inputs.len());
 
     for activation_info in &activation_inputs {
         // Check a declared CommD matches that computed from the data.
@@ -5522,62 +5362,29 @@ fn activate_sectors_pieces(
             }
         }
 
-        let mut sector_claims = vec![];
-        sectors_pieces.push(&activation_info.piece_manifests);
-
+        // FIP-0118: all piece space is treated as unverified_space; QAP comes from the flag.
+        let mut unverified_space = BigInt::zero();
+        let mut pieces = Vec::with_capacity(activation_info.piece_manifests.len());
         for piece in &activation_info.piece_manifests {
-            if let Some(alloc_key) = &piece.verified_allocation_key {
-                sector_claims.push(ext::verifreg::AllocationClaim {
-                    client: alloc_key.client,
-                    allocation_id: alloc_key.id,
-                    data: piece.cid,
-                    size: piece.size,
-                });
-            }
+            unverified_space += piece.size.0;
+            pieces.push((piece.cid, piece.size.0));
         }
-        verified_claims.push(ext::verifreg::SectorAllocationClaims {
-            sector: activation_info.sector_number,
-            expiry: activation_info.sector_expiry,
-            claims: sector_claims,
+        activation_outputs.push(DataActivationOutput {
+            unverified_space,
+            verified_space: BigInt::zero(),
+            pieces,
         });
     }
-    let claim_res = batch_claim_allocations(rt, verified_claims, all_or_nothing)?;
-    if all_or_nothing {
-        assert!(
-            claim_res.sector_results.all_ok() || claim_res.sector_results.success_count == 0,
-            "batch return of claim allocations partially succeeded but request was all_or_nothing {:?}",
-            claim_res
-        );
-    }
 
-    let activation_outputs = claim_res
-        .sector_claims
-        .iter()
-        .zip(claim_res.sector_results.successes(&sectors_pieces))
-        .map(|(sector_claim, sector_pieces)| {
-            let mut unverified_space = BigInt::zero();
-            let mut pieces = Vec::new();
-            for piece in *sector_pieces {
-                if piece.verified_allocation_key.is_none() {
-                    unverified_space += piece.size.0;
-                }
-                pieces.push((piece.cid, piece.size.0));
-            }
-            DataActivationOutput {
-                unverified_space: unverified_space.clone(),
-                verified_space: sector_claim.claimed_space.clone(),
-                pieces,
-            }
-        })
-        .collect();
-
-    Ok((claim_res.sector_results, activation_outputs))
+    let batch_return = BatchReturn::ok(activation_inputs.len() as u32);
+    Ok((batch_return, activation_outputs))
 }
 
-/// Activates deals then claims allocations for any verified deals
-/// Deals and claims are grouped by sectors
-/// Successfully activated sectors have their DealSpaces returned
-/// Failure to claim datacap for any verified deal results in the whole batch failing
+/// Activates deals in sectors.
+/// FIP-0118: verified allocation claims are no longer made; all sectors get 10x QA power
+/// via the FULL_QA_POWER flag regardless of deal content. allocation_id from market is ignored.
+/// Deals and claims are grouped by sectors.
+/// Successfully activated sectors have their DealSpaces returned.
 fn activate_sectors_deals(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInput],
@@ -5623,100 +5430,28 @@ fn activate_sectors_deals(
         return Err(actor_error!(illegal_argument, "all deals failed to activate"));
     }
 
-    // Filter the DealsActivationInfo for successfully activated sectors
-    let successful_activation_infos =
-        batch_activation_res.activation_results.successes(activation_infos);
-
-    // Get a flattened list of verified claims for all activated sectors
-    let mut verified_claims = Vec::new();
-    for (activation_info, activate_res) in
-        successful_activation_infos.iter().zip(&batch_activation_res.activations)
-    {
-        let sector_claims = activate_res
-            .activated
-            .iter()
-            .filter(|info| info.allocation_id != NO_ALLOCATION_ID)
-            .map(|info| ext::verifreg::AllocationClaim {
-                client: info.client,
-                allocation_id: info.allocation_id,
-                data: info.data,
-                size: info.size,
-            })
-            .collect();
-
-        verified_claims.push(ext::verifreg::SectorAllocationClaims {
-            sector: activation_info.sector_number,
-            expiry: activation_info.sector_expiry,
-            claims: sector_claims,
-        });
-    }
-
-    let all_or_nothing = true;
-    let claim_res = batch_claim_allocations(rt, verified_claims, all_or_nothing)?;
-    assert!(
-        claim_res.sector_results.all_ok() || claim_res.sector_results.success_count == 0,
-        "batch return of claim allocations partially succeeded but request was all_or_nothing {:?}",
-        claim_res
-    );
-
-    // reassociate the verified claims with corresponding DealActivation information
-    let activation_and_claim_results = batch_activation_res
+    // FIP-0118: no verifreg claim step. All deal space is treated as unverified;
+    // QAP comes from the FULL_QA_POWER flag.
+    let activation_outputs = batch_activation_res
         .activations
         .iter()
-        .zip(claim_res.sector_claims)
-        .map(|(sector_deals, sector_claim)| {
-            let mut sector_pieces = Vec::new();
+        .map(|sector_deals| {
+            let mut sector_pieces = Vec::with_capacity(sector_deals.activated.len());
             let mut unverified_deal_space = BigInt::zero();
             for info in &sector_deals.activated {
                 sector_pieces.push((info.data, info.size.0));
-                if info.allocation_id == NO_ALLOCATION_ID {
-                    unverified_deal_space += info.size.0;
-                }
+                unverified_deal_space += info.size.0;
             }
             DataActivationOutput {
                 unverified_space: unverified_deal_space,
-                verified_space: sector_claim.claimed_space,
+                verified_space: BigInt::zero(),
                 pieces: sector_pieces,
             }
         })
         .collect();
 
     // Return the deal spaces for activated sectors only
-    Ok((batch_activation_res.activation_results, activation_and_claim_results))
-}
-
-fn batch_claim_allocations(
-    rt: &impl Runtime,
-    verified_claims: Vec<ext::verifreg::SectorAllocationClaims>,
-    all_or_nothing: bool,
-) -> Result<ext::verifreg::ClaimAllocationsReturn, ActorError> {
-    let claim_res = match verified_claims.iter().all(|sector| sector.claims.is_empty()) {
-        // Short-circuit the call if there are no claims,
-        // but otherwise send a group for each sector (even if empty) to ease association of results.
-        true => ext::verifreg::ClaimAllocationsReturn {
-            sector_results: BatchReturn::ok(verified_claims.len() as u32),
-            sector_claims: vec![
-                ext::verifreg::SectorClaimSummary { claimed_space: BigInt::zero() };
-                verified_claims.len()
-            ],
-        },
-        false => {
-            let claim_raw = extract_send_result(rt.send_simple(
-                &VERIFIED_REGISTRY_ACTOR_ADDR,
-                ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
-                IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
-                    sectors: verified_claims,
-                    all_or_nothing,
-                })?,
-                TokenAmount::zero(),
-            ))
-            .context("error claiming allocations on batch")?;
-
-            let claim_res: ext::verifreg::ClaimAllocationsReturn = deserialize_block(claim_raw)?;
-            claim_res
-        }
-    };
-    Ok(claim_res)
+    Ok((batch_activation_res.activation_results, activation_outputs))
 }
 
 fn unsealed_cid_from_pieces(
@@ -5746,6 +5481,20 @@ struct NetworkPledgeInputs {
     pub epoch_reward: FilterEstimate,
     pub epochs_since_ramp_start: i64,
     pub ramp_duration_epochs: u64,
+}
+
+impl NetworkPledgeInputs {
+    fn initial_pledge_for_power(&self, qa_power: &StoragePower) -> TokenAmount {
+        initial_pledge_for_power(
+            qa_power,
+            &self.network_baseline,
+            &self.epoch_reward,
+            &self.network_qap,
+            &self.circulating_supply,
+            self.epochs_since_ramp_start,
+            self.ramp_duration_epochs,
+        )
+    }
 }
 
 // Note: probably better to push this one level down into state

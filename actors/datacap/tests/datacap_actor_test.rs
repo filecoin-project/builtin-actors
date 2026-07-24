@@ -59,97 +59,58 @@ mod construction {
     }
 }
 
+// FIP-0118: Mint is now deprecated and always returns USR_FORBIDDEN.
+// These tests verify the method is properly disabled, regardless of caller or params.
 mod mint {
     use fvm_shared::MethodNum;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
 
-    use fil_actor_datacap::{Actor, INFINITE_ALLOWANCE, Method, MintParams};
-    use fil_actors_runtime::test_utils::{MARKET_ACTOR_CODE_ID, expect_abort_contains_message};
+    use fil_actor_datacap::{Actor, Method, MintParams};
+    use fil_actors_runtime::test_utils::{
+        MARKET_ACTOR_CODE_ID, VERIFREG_ACTOR_CODE_ID, expect_abort_contains_message,
+    };
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
-    use fvm_ipld_encoding::RawBytes;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
-    use std::ops::Sub;
 
     use crate::*;
 
     #[test]
-    fn mint_balances() {
-        // The token library has far more extensive tests, this is just a sanity check.
-        let (rt, h) = make_harness();
-
-        let amt = TokenAmount::from_whole(1);
-        let ret = h.mint(&rt, &ALICE, &amt, vec![]).unwrap();
-        assert_eq!(amt, ret.supply);
-        assert_eq!(amt, ret.balance);
-        assert_eq!(amt, h.get_supply(&rt));
-        assert_eq!(amt, h.get_balance(&rt, &ALICE));
-
-        let ret = h.mint(&rt, &BOB, &amt, vec![]).unwrap();
-        assert_eq!(&amt * 2, ret.supply);
-        assert_eq!(amt, ret.balance);
-        assert_eq!(&amt * 2, h.get_supply(&rt));
-        assert_eq!(amt, h.get_balance(&rt, &BOB));
-
-        h.check_state(&rt);
-    }
-
-    #[test]
-    fn requires_verifreg_caller() {
+    fn mint_disabled_for_governor_caller() {
         let (rt, h) = make_harness();
         let amt = TokenAmount::from_whole(1);
         let params = MintParams { to: *ALICE, amount: amt, operators: vec![] };
 
-        rt.expect_validate_caller_addr(vec![VERIFIED_REGISTRY_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
+        rt.expect_validate_caller_any();
+        rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
-            "caller address",
+            "datacap is deprecated",
             rt.call::<Actor>(
                 Method::MintExported as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         h.check_state(&rt);
+        assert!(h.get_balance(&rt, &ALICE).is_zero());
     }
 
     #[test]
-    fn requires_whole_tokens() {
+    fn mint_disabled_for_arbitrary_caller() {
         let (rt, h) = make_harness();
-        let amt = TokenAmount::from_atto(100);
+        let amt = TokenAmount::from_whole(1);
+        let params = MintParams { to: *ALICE, amount: amt, operators: vec![] };
+
+        rt.expect_validate_caller_any();
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
         expect_abort_contains_message(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            "must be a multiple of 1000000000000000000",
-            h.mint(&rt, &ALICE, &amt, vec![]),
+            ExitCode::USR_FORBIDDEN,
+            "datacap is deprecated",
+            rt.call::<Actor>(
+                Method::MintExported as MethodNum,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            ),
         );
-        rt.reset();
-        h.check_state(&rt);
-    }
-
-    #[test]
-    fn auto_allowance_on_mint() {
-        let (rt, h) = make_harness();
-        let amt = TokenAmount::from_whole(42);
-        h.mint(&rt, &ALICE, &amt, vec![*BOB]).unwrap();
-        let allowance = h.get_allowance_between(&rt, &ALICE, &BOB);
-        assert!(allowance.eq(&INFINITE_ALLOWANCE));
-
-        // mint again
-        h.mint(&rt, &ALICE, &amt, vec![*BOB]).unwrap();
-        let allowance2 = h.get_allowance_between(&rt, &ALICE, &BOB);
-        assert!(allowance2.eq(&INFINITE_ALLOWANCE));
-
-        // transfer of an allowance *does* deduct allowance even though it is too small to matter in practice
-        let operator_data = RawBytes::new(vec![1, 2, 3, 4]);
-        h.transfer_from(&rt, &BOB, &ALICE, &h.governor, &(2 * amt.clone()), operator_data).unwrap();
-        let allowance3 = h.get_allowance_between(&rt, &ALICE, &BOB);
-        assert!(allowance3.eq(&INFINITE_ALLOWANCE.clone().sub(2 * amt)));
-
-        // minting any amount to this address at the same operator resets at infinite
-        h.mint(&rt, &ALICE, &TokenAmount::from_whole(1), vec![*BOB]).unwrap();
-        let allowance = h.get_allowance_between(&rt, &ALICE, &BOB);
-        assert!(allowance.eq(&INFINITE_ALLOWANCE));
-
         h.check_state(&rt);
     }
 }
@@ -169,7 +130,7 @@ mod transfer {
         let operator_data = RawBytes::new(vec![1, 2, 3, 4]);
 
         let amt = TokenAmount::from_whole(1);
-        h.mint(&rt, &ALICE, &amt, vec![]).unwrap();
+        h.mint_directly(&rt, &ALICE, &amt);
 
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
@@ -191,7 +152,8 @@ mod transfer {
         let operator_data = RawBytes::new(vec![1, 2, 3, 4]);
 
         let amt = TokenAmount::from_whole(1);
-        h.mint(&rt, &ALICE, &amt, vec![*BOB]).unwrap();
+        h.mint_directly(&rt, &ALICE, &amt);
+        h.allow_directly(&rt, &ALICE, &BOB, &amt);
 
         // operator can't transfer out to third address
         expect_abort_contains_message(
@@ -210,7 +172,8 @@ mod transfer {
         rt.reset();
         // even if governor has a delegate operator and enough tokens, delegated transfer
         // cannot send to non governor
-        h.mint(&rt, &h.governor, &amt, vec![*BOB]).unwrap();
+        h.mint_directly(&rt, &h.governor, &amt);
+        h.allow_directly(&rt, &h.governor, &BOB, &amt);
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "transfer not allowed",
@@ -237,7 +200,7 @@ mod destroy {
         let (rt, h) = make_harness();
 
         let amt = TokenAmount::from_whole(1);
-        h.mint(&rt, &ALICE, &(2 * amt.clone()), vec![*BOB]).unwrap();
+        h.mint_directly(&rt, &ALICE, &(2 * amt.clone()));
 
         // destroying from operator does not work
         let params = DestroyParams { owner: *ALICE, amount: amt.clone() };

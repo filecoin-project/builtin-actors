@@ -1,61 +1,44 @@
-use std::ops::Neg;
-
 use export_macro::vm_test;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
-use fil_actor_datacap::State as DatacapState;
-use fil_actor_market::{DealArray, DealMetaArray, DealSettlementSummary};
-use fil_actor_market::{
-    PENDING_ALLOCATIONS_CONFIG, PendingDealAllocationsMap, State as MarketState,
-};
+use fil_actor_market::State as MarketState;
+use fil_actor_market::{DealArray, DealSettlementSummary};
 use fil_actor_miner::{
-    PowerPair, ProveCommitSectors3Params, SectorActivationManifest, SectorClaim,
-    State as MinerState, max_prove_commit_duration,
+    PowerPair, ProveCommitSectors3Params, SectorActivationManifest, State as MinerState,
+    max_prove_commit_duration,
 };
 use fil_actor_power::State as PowerState;
-use fil_actor_verifreg::{
-    Claim, Method as VerifregMethod, RemoveExpiredClaimsParams, RemoveExpiredClaimsReturn,
-    State as VerifregState,
-};
-use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::runtime::policy_constants::{
     DEAL_UPDATES_INTERVAL, MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
+    MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
-use fil_actors_runtime::test_utils::make_piece_cid;
-use fil_actors_runtime::{
-    DATACAP_TOKEN_ACTOR_ADDR, DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use fil_actors_runtime::{EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use vm_api::VM;
-use vm_api::trace::ExpectInvocation;
-use vm_api::util::{DynBlockstore, apply_code, apply_ok, get_state};
+use vm_api::util::{DynBlockstore, apply_ok, get_state};
 
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, assert_invariants, create_accounts,
-    create_miner, cron_tick, datacap_extend_claim, datacap_get_balance, expect_invariants,
-    invariant_failure_patterns, make_piece_manifests_from_deal_ids, market_add_balance,
-    market_pending_deal_allocations, market_publish_deal, miner_extend_sector_expiration2,
-    miner_precommit_one_sector_v2, miner_prove_sector, precommit_meta_data_from_deals,
-    provider_settle_deal_payments, sector_deadline, submit_windowed_post, verifreg_add_client,
-    verifreg_add_verifier, verifreg_extend_claim_terms, verifreg_remove_expired_allocations,
+    create_miner, cron_tick, expect_invariants, invariant_failure_patterns,
+    make_piece_manifests_from_deal_ids, market_add_balance, market_publish_deal,
+    miner_extend_sector_expiration2, miner_precommit_one_sector_v2, miner_prove_sector,
+    precommit_meta_data_from_deals, provider_settle_deal_payments, sector_deadline,
+    submit_windowed_post,
 };
 
-/// Tests a scenario involving a verified deal from the built-in market, with associated
-/// allocation and claim.
-/// This test shares some set-up copied from extend_sectors_test.
+/// FIP-0118: Tests a scenario involving a deal from the built-in market.
+/// With FIP-0118, verified deals no longer create allocations or claims.
+/// All sectors get 10x QA power regardless of verified status.
 #[vm_test]
 pub fn verified_claim_scenario_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-    let (owner, worker, verifier, verified_client, verified_client2) =
-        (addrs[0], addrs[0], addrs[1], addrs[2], addrs[3]);
+    let (owner, worker, _verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let sector_number: SectorNumber = 100;
     let policy = Policy::default();
 
@@ -69,14 +52,9 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     );
     v.set_epoch(200);
 
-    // Register verifier and verified clients
-    let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(v, &verifier, &datacap * 2);
-    verifreg_add_client(v, &verifier, &verified_client, datacap.clone());
-    verifreg_add_client(v, &verifier, &verified_client2, datacap.clone());
+    // FIP-0118: No need to set up verifier/verified client (minting deprecated)
 
     // Add market collateral for client and miner
-    // Client2 doesn't need collateral because they won't make a new deal, only extend a claim.
     market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
     market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
@@ -98,9 +76,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     )
     .ids;
 
-    let claim_id = market_pending_deal_allocations(v, &deals)[0];
-
-    // Precommit and prove the sector for the max term allowed by the deal.
+    // Precommit and prove the sector
     let sector_term = deal_term_min + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
     let _precommit = miner_precommit_one_sector_v2(
         v,
@@ -132,65 +108,11 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         .unwrap()
         .unwrap();
     assert_eq!(sector_term, sector_info.expiration - sector_info.activation);
-    assert_eq!(DealWeight::zero(), sector_info.deal_weight);
-    // Verified weight is sector term * 32 GiB, using simple QAP
-    let verified_weight = DealWeight::from(sector_term as u64 * deal_size);
-    assert_eq!(verified_weight, sector_info.verified_deal_weight);
-
-    // Verify datacap state
-    let datacap_state: DatacapState = get_state(v, &DATACAP_TOKEN_ACTOR_ADDR).unwrap();
-    assert_eq!(
-        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size), // Spent deal size
-        datacap_state
-            .token
-            .get_balance(&DynBlockstore::wrap(v.blockstore()), verified_client.id().unwrap())
-            .unwrap()
-    );
-    assert_eq!(
-        TokenAmount::from_whole(datacap.clone()), // Nothing spent
-        datacap_state
-            .token
-            .get_balance(&DynBlockstore::wrap(v.blockstore()), verified_client2.id().unwrap())
-            .unwrap()
-    );
-    assert_eq!(
-        TokenAmount::zero(), // Burnt when the allocation was claimed
-        datacap_state
-            .token
-            .get_balance(
-                &DynBlockstore::wrap(v.blockstore()),
-                VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap()
-            )
-            .unwrap()
-    );
-    assert_eq!(
-        TokenAmount::from_whole(datacap.clone()) * 2 - TokenAmount::from_whole(deal_size),
-        datacap_state.token.supply
-    );
-
-    // Verify claim state
-    let verifreg_state: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-    let mut claims = verifreg_state.load_claims(&store).unwrap();
-    let claim = claims.get(miner_id.id().unwrap(), claim_id).unwrap().unwrap();
-    assert_eq!(sector_number, claim.sector);
-    assert_eq!(
-        &Claim {
-            provider: miner_id.id().unwrap(),
-            client: verified_client.id().unwrap(),
-            data: make_piece_cid("deal1".as_bytes()),
-            size: PaddedPieceSize(deal_size),
-            term_min: deal_term_min,
-            term_max: deal_term_min + 90 * EPOCHS_IN_DAY,
-            term_start: deal_start,
-            sector: sector_number,
-        },
-        claim
-    );
 
     // Advance to proving period and submit post
     let (deadline_info, partition_index) = advance_to_proving_deadline(v, &miner_id, sector_number);
 
+    // FIP-0118: All sectors get 10x QA power
     let expected_power =
         PowerPair { raw: StoragePower::from(deal_size), qa: StoragePower::from(10 * deal_size) };
     submit_windowed_post(
@@ -216,7 +138,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         deadline_info.index + 1 % policy.wpost_period_deadlines,
     );
 
-    // Advance past the deal's minimum term (the claim remains valid).
+    // Advance past the deal's minimum term
     advance_by_deadline_to_epoch_while_proving(
         v,
         &miner_id,
@@ -225,10 +147,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         deal_start + deal_term_min + 10,
     );
 
-    // The client extends the verified claim term out to 12 months.
-    verifreg_extend_claim_terms(v, &verified_client, &miner_id, claim_id, 360 * EPOCHS_IN_DAY);
-
-    // Now the miner can extend the sector's expiration to the same.
+    // FIP-0118: No claim extensions needed. Extensions work without claim validation.
     let (didx, pidx) = sector_deadline(v, &miner_id, sector_number);
     let extended_expiration_1 = deal_start + 360 * EPOCHS_IN_DAY;
     miner_extend_sector_expiration2(
@@ -237,8 +156,8 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         &miner_id,
         didx,
         pidx,
+        vec![sector_number],
         vec![],
-        vec![SectorClaim { sector_number, maintain_claims: vec![claim_id], drop_claims: vec![] }],
         extended_expiration_1,
         PowerPair::zero(), // No change in power
     );
@@ -252,15 +171,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         extended_expiration_1 - 100,
     );
 
-    // Another client extends the claim beyond the initial maximum term.
-    let original_max_term = policy.maximum_verified_allocation_term;
-    let new_claim_expiry_epoch = v.epoch() + policy.maximum_verified_allocation_term;
-    let new_max_term = new_claim_expiry_epoch - claim.term_start;
-    assert!(new_max_term > original_max_term);
-
-    datacap_extend_claim(v, &verified_client2, &miner_id, claim_id, deal_size, new_max_term);
-
-    // The miner extends the sector into the second year.
+    // Extend again
     let extended_expiration_2 = extended_expiration_1 + 60 * EPOCHS_IN_DAY;
     miner_extend_sector_expiration2(
         v,
@@ -268,8 +179,8 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         &miner_id,
         didx,
         pidx,
+        vec![sector_number],
         vec![],
-        vec![SectorClaim { sector_number, maintain_claims: vec![claim_id], drop_claims: vec![] }],
         extended_expiration_2,
         PowerPair::zero(), // No change in power
     );
@@ -283,21 +194,6 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         extended_expiration_2 - 30 * EPOCHS_IN_DAY,
     );
 
-    // The miner can drop the claim, losing the multiplied QA power.
-    let expected_power_delta =
-        PowerPair::new(StoragePower::zero(), StoragePower::from(9 * deal_size).neg());
-    miner_extend_sector_expiration2(
-        v,
-        &worker,
-        &miner_id,
-        didx,
-        pidx,
-        vec![],
-        vec![SectorClaim { sector_number, maintain_claims: vec![], drop_claims: vec![claim_id] }],
-        extended_expiration_2, // No change in expiration
-        expected_power_delta,  // Power lost
-    );
-
     // Verify sector info
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
     let sector_info = miner_state
@@ -305,66 +201,6 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         .unwrap()
         .unwrap();
     assert_eq!(extended_expiration_2, sector_info.expiration);
-    assert_eq!(DealWeight::zero(), sector_info.deal_weight);
-    assert_eq!(DealWeight::zero(), sector_info.verified_deal_weight);
-    // No longer verified
-
-    // Verify datacap state
-    let datacap_state: DatacapState = get_state(v, &DATACAP_TOKEN_ACTOR_ADDR).unwrap();
-    assert_eq!(
-        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size), // Spent deal size
-        datacap_state
-            .token
-            .get_balance(&DynBlockstore::wrap(v.blockstore()), verified_client.id().unwrap())
-            .unwrap()
-    );
-    assert_eq!(
-        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size), // Also spent deal size
-        datacap_state
-            .token
-            .get_balance(&DynBlockstore::wrap(v.blockstore()), verified_client2.id().unwrap())
-            .unwrap()
-    );
-    assert_eq!(
-        TokenAmount::zero(), // All burnt
-        datacap_state
-            .token
-            .get_balance(
-                &DynBlockstore::wrap(v.blockstore()),
-                VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap()
-            )
-            .unwrap()
-    );
-    assert_eq!(
-        TokenAmount::from_whole(datacap) * 2 - TokenAmount::from_whole(deal_size) * 2, // Spent deal size twice
-        datacap_state.token.supply
-    );
-
-    // Advance sector to expiration
-    advance_by_deadline_to_epoch_while_proving(
-        v,
-        &miner_id,
-        &worker,
-        sector_number,
-        extended_expiration_2,
-    );
-    // And advance vm past the claim's max term (no more sector exists to prove)
-    v.set_epoch(new_claim_expiry_epoch);
-    // Expired claim can now be cleaned up
-    let cleanup_claims =
-        RemoveExpiredClaimsParams { provider: miner_id.id().unwrap(), claim_ids: vec![claim_id] };
-
-    let ret_raw = apply_ok(
-        v,
-        &worker,
-        &VERIFIED_REGISTRY_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        VerifregMethod::RemoveExpiredClaims as u64,
-        Some(cleanup_claims),
-    );
-    let ret: RemoveExpiredClaimsReturn = deserialize(&ret_raw, "balance of return value").unwrap();
-    assert_eq!(vec![claim_id], ret.considered);
-    assert!(ret.results.all_ok(), "results had failures {}", ret.results);
 
     let market_state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
@@ -385,11 +221,13 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     );
 }
 
+/// FIP-0118: Market no longer creates allocations for verified deals.
+/// This test verifies that deals expire correctly without allocation tracking.
 #[vm_test]
 pub fn expired_allocations_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-    let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let (owner, worker, _verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
 
     // Create miner
     let (miner_id, _) = create_miner(
@@ -401,16 +239,13 @@ pub fn expired_allocations_test(v: &dyn VM) {
     );
     v.set_epoch(200);
 
-    // Register verifier and verified clients
-    let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(v, &verifier, &datacap * 2);
-    verifreg_add_client(v, &verifier, &verified_client, datacap.clone());
+    // FIP-0118: No verifreg setup needed
 
     // Add market collateral for client and miner
     market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
     market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
-    // Publish 2 verified deals
+    // Publish verified deal
     let deal1_start =
         v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     let deal_term_min = 180 * EPOCHS_IN_DAY;
@@ -429,12 +264,6 @@ pub fn expired_allocations_test(v: &dyn VM) {
     )
     .ids[0];
 
-    // Client datacap balance reduced
-    assert_eq!(
-        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size),
-        datacap_get_balance(v, &verified_client)
-    );
-
     // Advance to after the first deal's start
     v.set_epoch(deal1_start + DEAL_UPDATES_INTERVAL);
     cron_tick(v);
@@ -444,39 +273,6 @@ pub fn expired_allocations_test(v: &dyn VM) {
     let store = DynBlockstore::wrap(v.blockstore());
     let proposals = DealArray::load(&market_state.proposals, &store).unwrap();
     assert!(proposals.get(deal1).unwrap().is_none());
-    let pending_deal_allocs = PendingDealAllocationsMap::load(
-        &store,
-        &market_state.pending_deal_allocation_ids,
-        PENDING_ALLOCATIONS_CONFIG,
-        "pending allocations",
-    )
-    .unwrap();
-    assert!(pending_deal_allocs.get(&deal1).unwrap().is_none());
-
-    // Allocation still exists until explicit cleanup
-    let alloc_id = 1;
-    let verifreg_state: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-    let mut allocs = verifreg_state.load_allocs(&store).unwrap();
-    assert!(allocs.get(verified_client.id().unwrap(), alloc_id).unwrap().is_some());
-
-    verifreg_remove_expired_allocations(
-        v,
-        &worker,
-        &verified_client,
-        vec![],
-        deal_size,
-        vec![alloc_id],
-    );
-
-    // Allocation is gone
-    let verifreg_state: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-    let mut allocs = verifreg_state.load_allocs(&store).unwrap();
-    assert!(allocs.get(verified_client.id().unwrap(), alloc_id).unwrap().is_none());
-
-    // Client has original datacap balance
-    assert_eq!(TokenAmount::from_whole(datacap), datacap_get_balance(v, &verified_client));
 
     expect_invariants(
         v,
@@ -486,11 +282,13 @@ pub fn expired_allocations_test(v: &dyn VM) {
     );
 }
 
+/// FIP-0118: Market no longer creates allocations, so claim failures don't occur.
+/// This test verifies that deals can be committed successfully without claim validation.
 #[vm_test]
 pub fn deal_passes_claim_fails_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-    let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let (owner, worker, _verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
 
     // Create miner
     let (miner_id, _) = create_miner(
@@ -502,41 +300,36 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
     );
     v.set_epoch(200);
 
-    // Register verifier and verified clients
-    let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(v, &verifier, &datacap * 2);
-    verifreg_add_client(v, &verifier, &verified_client, datacap.clone());
+    // FIP-0118: No verifreg setup needed
 
     // Add market collateral for client and miner
     market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
     market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
-    // Publish verified deal
-    let deal_start = v.epoch() + Policy::default().maximum_verified_allocation_expiration + 1;
+    // Publish verified deals
+    let deal_start = v.epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION + 1;
     let sector_start = deal_start;
     let deal_term_min = 180 * EPOCHS_IN_DAY;
     let deal_size = (32u64 << 30) / 2;
-    // Deal is published so far in advance of prove commit that allocation will expire epoch before sector is committed
-    let bad_deal = market_publish_deal(
+    let deal1 = market_publish_deal(
         v,
         &worker,
         &verified_client,
         &miner_id,
-        "baddeal".to_string(),
+        "deal1".to_string(),
         PaddedPieceSize(deal_size),
         true,
         deal_start,
         deal_term_min,
     )
     .ids[0];
-    // good deal is published 1 epoch later so that allocation will not expire
     advance_by_deadline_to_epoch(v, &miner_id, v.epoch() + 1);
-    let deal = market_publish_deal(
+    let deal2 = market_publish_deal(
         v,
         &worker,
         &verified_client,
         &miner_id,
-        "deal".to_string(),
+        "deal2".to_string(),
         PaddedPieceSize(deal_size),
         true,
         deal_start,
@@ -544,15 +337,7 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
     )
     .ids[0];
 
-    // Client datacap balance reduced
-    assert_eq!(
-        TokenAmount::from_whole(datacap) - TokenAmount::from_whole(2 * deal_size),
-        datacap_get_balance(v, &verified_client)
-    );
-
-    // Precommit and prove two sectors for the max term allowed by the deal.
-    // First sector claims a deal with unexpired allocation
-    // Second sector claims a deal with expired allocation
+    // Precommit and prove two sectors
     let sector_term = deal_term_min + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
     advance_by_deadline_to_epoch(
         v,
@@ -566,7 +351,7 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
         &miner_id,
         seal_proof,
         sector_number_a,
-        precommit_meta_data_from_deals(v, &[deal], seal_proof, false),
+        precommit_meta_data_from_deals(v, &[deal2], seal_proof, false),
         true,
         sector_start + sector_term,
     );
@@ -577,77 +362,50 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
         &miner_id,
         seal_proof,
         sector_number_b,
-        precommit_meta_data_from_deals(v, &[bad_deal], seal_proof, false),
+        precommit_meta_data_from_deals(v, &[deal1], seal_proof, false),
         false,
         sector_start + sector_term,
     );
 
-    // Advance time and prove the sector
+    // FIP-0118: Without claim validation, both sectors succeed
     advance_by_deadline_to_epoch(v, &miner_id, sector_start);
-    // ProveCommit3 fails on sector b because allocation is expired
-    let failing_prove_commit_params = ProveCommitSectors3Params {
+    let prove_commit_params = ProveCommitSectors3Params {
         sector_activations: vec![
             SectorActivationManifest {
                 sector_number: sector_number_b,
-                pieces: make_piece_manifests_from_deal_ids(v, vec![bad_deal]),
+                pieces: make_piece_manifests_from_deal_ids(v, vec![deal1]),
             },
             SectorActivationManifest {
                 sector_number: sector_number_a,
-                pieces: make_piece_manifests_from_deal_ids(v, vec![deal]),
+                pieces: make_piece_manifests_from_deal_ids(v, vec![deal2]),
             },
         ],
         sector_proofs: vec![vec![].into(), vec![].into()],
         aggregate_proof: RawBytes::default(),
         aggregate_proof_type: None,
-        require_activation_success: true, //
+        require_activation_success: true,
         require_notification_success: true,
     };
-    apply_code(
+    apply_ok(
         v,
         &worker,
         &miner_id,
         &TokenAmount::zero(),
         fil_actor_miner::Method::ProveCommitSectors3 as u64,
-        Some(failing_prove_commit_params),
-        ExitCode::USR_ILLEGAL_ARGUMENT,
+        Some(prove_commit_params),
     );
-    let worker_id = v.resolve_id_address(&worker).unwrap().id().unwrap();
-    ExpectInvocation {
-        from: worker_id,
-        to: miner_id,
-        method: fil_actor_miner::Method::ProveCommitSectors3 as u64,
-        exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
 
     cron_tick(v);
     v.set_epoch(v.epoch() + 1);
 
-    // check that deal is not activated
-
-    // Verify deal state.
-    let market_state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-    let deal_states = DealMetaArray::load(&market_state.states, &store).unwrap();
-    // bad deal sector can't be confirmed for commit so bad deal must not be included
-    let bad_deal_state = deal_states.get(bad_deal).unwrap();
-    assert_eq!(None, bad_deal_state);
-    // deal sector fails because confirm for commit is now all or nothing
-    let deal_state = deal_states.get(deal).unwrap();
-    assert_eq!(None, deal_state);
-
-    // Verify sector info
+    // Both sectors should be committed
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
-    // bad deal sector can't be confirmed for commit because alloc can't be claimed
-    let sector_info_b =
-        miner_state.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number_b).unwrap();
-    assert_eq!(None, sector_info_b);
-    // deal sector fails because confirm for commit is now all or nothing
     let sector_info_a =
         miner_state.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number_a).unwrap();
-    assert_eq!(None, sector_info_a);
+    assert!(sector_info_a.is_some(), "Sector A should have been committed");
+    let sector_info_b =
+        miner_state.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number_b).unwrap();
+    assert!(sector_info_b.is_some(), "Sector B should have been committed");
 
-    // run check before last change and confirm that we hit the expected broken state error
     assert_invariants(v, &Policy::default(), None);
 }

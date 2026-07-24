@@ -11,11 +11,9 @@ use fvm_actor_utils::util::ActorRuntime;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::Response;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, MethodNum};
-use lazy_static::lazy_static;
 use log::info;
 use num_derive::FromPrimitive;
 
@@ -37,14 +35,6 @@ pub mod testing;
 mod types;
 
 pub const DATACAP_GRANULARITY: u64 = TOKEN_PRECISION;
-
-lazy_static! {
-    // > 800 EiB
-    pub static ref INFINITE_ALLOWANCE: TokenAmount = TokenAmount::from_atto(
-        BigInt::from(TOKEN_PRECISION)
-            * BigInt::from(1_000_000_000_000_000_000_000_i128)
-    );
-}
 
 /// Datacap actor methods available
 #[derive(FromPrimitive)]
@@ -150,47 +140,14 @@ impl Actor {
             .actor_result()
     }
 
-    /// Mints new data cap tokens for an address (a verified client).
-    /// Simultaneously sets the allowance for any specified operators to effectively infinite.
-    /// Only the governor can call this method.
-    /// This method is not part of the fungible token standard.
-    pub fn mint(rt: &impl Runtime, params: MintParams) -> Result<MintReturn, ActorError> {
-        let mut hook = rt
-            .transaction(|st: &mut State, rt| {
-                // Only the governor can mint datacap tokens.
-                rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
-                let operator = st.governor;
-
-                let syscalls = SyscallProvider { rt };
-                let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-                let mut token = as_token(st, &runtime);
-                // Mint tokens "from" the operator to the beneficiary.
-                let ret = token
-                    .mint(
-                        &operator,
-                        &params.to,
-                        &params.amount,
-                        RawBytes::default(),
-                        RawBytes::default(),
-                    )
-                    .actor_result();
-
-                // Set allowance for any specified operators.
-                for delegate in &params.operators {
-                    token
-                        .set_allowance(&params.to, delegate, &INFINITE_ALLOWANCE)
-                        .actor_result()?;
-                }
-
-                ret
-            })
-            .context("state transaction failed")?;
-
-        let mut st: State = rt.state()?;
-        let syscalls = SyscallProvider { rt };
-        let intermediate = hook.call(&as_actor_runtime(&syscalls)).actor_result()?;
-        let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-        as_token(&mut st, &runtime).mint_return(intermediate).actor_result()
+    pub fn mint(rt: &impl Runtime, _params: MintParams) -> Result<MintReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        // FIP-0118: datacap is deprecated. No new datacap can be minted; existing
+        // balances are frozen in place.
+        Err(actor_error!(
+            forbidden,
+            "FIP-0118: datacap is deprecated, minting is no longer supported"
+        ))
     }
 
     /// Destroys data cap tokens for an address (a verified client).

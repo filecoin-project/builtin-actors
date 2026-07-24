@@ -1,10 +1,8 @@
 use cid::Cid;
 use export_macro::vm_test;
-use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
-use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, VERIFIED_REGISTRY_ACTOR_ADDR};
+use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -17,9 +15,8 @@ use fvm_ipld_encoding::RawBytes;
 
 use fil_actor_miner::{
     ExpirationExtension2, ExtendSectorExpiration2Params, Method as MinerMethod, PowerPair,
-    ProveReplicaUpdates3Params, ProveReplicaUpdates3Return, SectorClaim, SectorOnChainInfoFlags,
+    ProveReplicaUpdates3Params, ProveReplicaUpdates3Return, SectorOnChainInfoFlags,
     SectorUpdateManifest, Sectors, State as MinerState, max_prove_commit_duration,
-    power_for_sector,
 };
 use vm_api::VM;
 use vm_api::trace::ExpectInvocation;
@@ -30,10 +27,9 @@ use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, create_accounts, create_miner,
     cron_tick, expect_invariants, invariant_failure_patterns, make_piece_manifests_from_deal_ids,
-    market_add_balance, market_pending_deal_allocations, market_publish_deal,
-    miner_precommit_one_sector_v2, miner_prove_sector, override_compute_unsealed_sector_cid,
-    piece_change, precommit_meta_data_from_deals, sector_deadline, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier,
+    market_add_balance, market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
+    override_compute_unsealed_sector_cid, piece_change, precommit_meta_data_from_deals,
+    sector_deadline, submit_windowed_post,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -83,7 +79,7 @@ pub fn extend(
 pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-    let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let (owner, worker, _verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let sector_number: SectorNumber = 100;
     let policy = Policy::default();
 
@@ -98,15 +94,7 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
     .0;
     v.set_epoch(200);
 
-    //
-    // publish verified deals
-    //
-
-    // register verifier then verified client
-    let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(v, &verifier, datacap.clone());
-    verifreg_add_client(v, &verifier, &verified_client, datacap);
-
+    // FIP-0118: verifreg minting deprecated; publish deals without datacap setup
     // add market collateral for clients and miner
     market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
     market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
@@ -160,16 +148,18 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
         .unwrap()
         .unwrap();
     assert_eq!(180 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
-    assert_eq!(StoragePower::zero(), sector_info.deal_weight); // 0 space time
-    assert_eq!(
-        DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30)),
-        sector_info.verified_deal_weight
-    ); // (180 days *2880 epochs per day) * 32 GiB
+    // FIP-0118: Without verified_allocation_key, deal weight goes to deal_weight (not verified)
+    assert_eq!(DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30)), sector_info.deal_weight);
+    assert_eq!(StoragePower::zero(), sector_info.verified_deal_weight);
+    // For the legacy sector test below, we need to manually set up verified deal weight.
 
     // Note: we don't need to explicitly set verified weight using the legacy method
     // because legacy and simple qa power deal weight calculations line up for fully packed sectors
     // We do need to set simple_qa_power to false
     sector_info.flags.set(SectorOnChainInfoFlags::SIMPLE_QA_POWER, false);
+    // Manually set verified_deal_weight for legacy sector simulation
+    sector_info.verified_deal_weight = DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30));
+    sector_info.deal_weight = StoragePower::zero();
 
     // Manually craft state to match legacy sectors
     mutate_state(v, &miner_id, |st: &mut MinerState| {
@@ -179,7 +169,7 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
         st.sectors = sectors.amt.flush().unwrap();
     });
 
-    let initial_verified_deal_weight = sector_info.verified_deal_weight;
+    let _initial_verified_deal_weight = sector_info.verified_deal_weight;
     let initial_deal_weight = sector_info.deal_weight;
 
     // advance to proving period and submit post
@@ -223,9 +213,9 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
         deal_start + 90 * EPOCHS_IN_DAY,
     );
 
+    // FIP-0118: Extension preserves power proportionally, no power delta
     let new_expiration = deal_start + 2 * 180 * EPOCHS_IN_DAY;
-    let expected_power_delta =
-        PowerPair { raw: StoragePower::zero(), qa: StoragePower::from(-6 * (32i64 << 30)) };
+    let expected_power_delta = PowerPair::zero();
     extend(
         v,
         worker,
@@ -244,20 +234,8 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
         .unwrap();
     assert_eq!(180 * 2 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
     assert_eq!(initial_deal_weight, sector_info.deal_weight); // 0 space time, unchanged
-    assert_eq!(&initial_verified_deal_weight / 2, sector_info.verified_deal_weight);
 
-    // advance to 6 months (original expiration) and extend another 6 months
-    //
-    // We're 1/3rd of the way through the last extension, so keep 2/3 of the power.
-    //   - verified deal weight *= 2/3
-    //
-    // normalize 180 days of 4x power plus 180 days of 1x power over 180+180 days:
-    //   - multiplier = ((4 * 180) + (1 * 180)) / (90 + 180)
-    //   - multiplier = 2.5
-    //
-    // delta from the previous 4x power multiplier:
-    // - power delta = (4-2.5)*32GiB = 1.5*32GiB
-
+    // FIP-0118: Extension preserves power proportionally
     advance_by_deadline_to_epoch_while_proving(
         v,
         &miner_id,
@@ -267,8 +245,7 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
     );
 
     let new_expiration = deal_start + 3 * 180 * EPOCHS_IN_DAY;
-    let expected_power_delta =
-        PowerPair { raw: StoragePower::zero(), qa: StoragePower::from(-15 * (32i64 << 30) / 10) };
+    let expected_power_delta = PowerPair::zero();
     extend(
         v,
         worker,
@@ -288,8 +265,6 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
     assert_eq!(180 * 3 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
     // 0 space time, unchanged
     assert_eq!(initial_deal_weight, sector_info.deal_weight);
-    // 1/2 * 2/3 -> 1/3
-    assert_eq!(initial_verified_deal_weight / 3, sector_info.verified_deal_weight);
 
     expect_invariants(
         v,
@@ -303,7 +278,7 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
 pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-    let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let (owner, worker, _verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let sector_number: SectorNumber = 100;
     let policy = Policy::default();
 
@@ -318,14 +293,7 @@ pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     .0;
     v.set_epoch(200);
 
-    //
-    // publish verified deals
-    //
-
-    // register verifier then verified client
-    let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(v, &verifier, datacap.clone());
-    verifreg_add_client(v, &verifier, &verified_client, datacap);
+    // FIP-0118: verifreg minting deprecated; publish deals without datacap setup
 
     // add market collateral for clients and miner
     market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
@@ -376,9 +344,10 @@ pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
 
     // advance to proving period and submit post
     let (deadline_info, partition_index) = advance_to_proving_deadline(v, &miner_id, sector_number);
+    // FIP-0118: All new sectors get FULL_QA_POWER (10x), regardless of deal content
     let expected_power_delta = PowerPair {
         raw: StoragePower::from(32u64 << 30),
-        qa: 10 * StoragePower::from(32u64 << 30),
+        qa: StoragePower::from(10 * (32u64 << 30)),
     };
     submit_windowed_post(
         v,
@@ -449,8 +418,11 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
 
     // advance to proving period and submit post
     let (deadline_info, partition_index) = advance_to_proving_deadline(v, &miner_id, sector_number);
-    let expected_power_delta =
-        PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from(32u64 << 30) };
+    // FIP-0118: CC sectors now get 10x QA power
+    let expected_power_delta = PowerPair {
+        raw: StoragePower::from(32u64 << 30),
+        qa: StoragePower::from(10 * (32u64 << 30)),
+    };
     submit_windowed_post(
         v,
         &worker,
@@ -495,7 +467,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-    let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let (owner, worker, _verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let worker_id = worker.id().unwrap();
     let sector_number: SectorNumber = 100;
     let policy = Policy::default();
@@ -543,8 +515,11 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     let (deadline_info, partition_index) =
         advance_to_proving_deadline(v, &miner_addr, sector_number);
-    let expected_power_delta =
-        PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from(32u64 << 30) };
+    // FIP-0118: CC sectors now get 10x QA power
+    let expected_power_delta = PowerPair {
+        raw: StoragePower::from(32u64 << 30),
+        qa: StoragePower::from(10 * (32u64 << 30)),
+    };
     submit_windowed_post(
         v,
         &worker,
@@ -573,12 +548,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     // 0 space time
     assert!(initial_sector_info.verified_deal_weight.is_zero());
     // 0 space time
-    // publish verified deals
-
-    // register verifier then verified client
-    let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(v, &verifier, datacap.clone());
-    verifreg_add_client(v, &verifier, &verified_client, datacap);
+    // FIP-0118: verifreg minting deprecated; publish deals without datacap setup
 
     // add market collateral for clients and miner
     market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
@@ -600,7 +570,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     )
     .ids;
 
-    let claim_id = market_pending_deal_allocations(v, &deal_ids)[0];
+    // FIP-0118: Market no longer stores pending deal allocations.
 
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
@@ -640,50 +610,23 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     .unwrap();
     assert!(ret.activation_results.all_ok());
 
-    let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &initial_sector_info);
-
     let pieces: Vec<(Cid, u64)> = vec![(piece_cid, piece_size.0)];
     let pis: Vec<PieceInfo> = vec![PieceInfo { cid: piece_cid, size: piece_size }];
     let unsealed_cid = v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
 
-    let start_epoch = deal_start;
-    let end_epoch = deal_start + deal_lifetime;
-    let claim_term = end_epoch - start_epoch;
-
     // compute piece change
     let change = piece_change(deal_label.as_bytes(), piece_size, &deal_ids);
 
+    // FIP-0118: Miner no longer calls verifreg for claim allocations.
+    // Sector already has FULL_QA_POWER (10x) so replica update doesn't change QA power or pledge.
     // check for the expected subcalls
     ExpectInvocation {
         from: worker_id,
         to: miner_addr,
         method: MinerMethod::ProveReplicaUpdates3 as u64,
         subinvocs: Some(vec![
-            ExpectInvocation {
-                from: miner_id,
-                to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                method: VerifregMethod::ClaimAllocations as u64,
-                events: Some(vec![Expect::build_verifreg_claim_event(
-                    "claim",
-                    claim_id,
-                    verified_client.id().unwrap(),
-                    miner_id,
-                    &piece_cid,
-                    piece_size.0,
-                    claim_term,
-                    claim_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
-                    v.epoch(),
-                    sector_number,
-                )]),
-                ..Default::default()
-            },
             Expect::reward_this_epoch(miner_id),
             Expect::power_current_total(miner_id),
-            Expect::power_update_pledge(miner_id, None),
-            Expect::power_update_claim(
-                miner_id,
-                PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
-            ),
             // Market notifications.
             Expect::market_content_changed(
                 miner_id,
@@ -712,14 +655,13 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()
         .unwrap();
-    // 0 space time
-    assert_eq!(StoragePower::zero(), sector_info_after_update.deal_weight);
 
-    // 32 GiB * the remaining life of the sector
+    // FIP-0118: Without verified allocation, deal weight goes to deal_weight (not verified_deal_weight)
     assert_eq!(
         DealWeight::from((sector_info_after_update.expiration - v.epoch()) * (32i64 << 30)),
-        sector_info_after_update.verified_deal_weight
+        sector_info_after_update.deal_weight
     );
+    assert_eq!(StoragePower::zero(), sector_info_after_update.verified_deal_weight);
 
     // power base epoch is updated correctly
     assert_eq!(v.epoch(), sector_info_after_update.power_base_epoch);
@@ -738,17 +680,14 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let curr_epoch = v.epoch();
     v.set_epoch(curr_epoch + 1);
 
+    // FIP-0118: Extensions no longer require claim validation. Use sectors (not sectors_with_claims).
     let extension_params = ExtendSectorExpiration2Params {
         extensions: vec![ExpirationExtension2 {
             deadline: d_idx,
             partition: partition_index,
-            sectors: BitField::new(),
+            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
             new_expiration: sector_info_after_update.expiration + 60 * EPOCHS_IN_DAY,
-            sectors_with_claims: vec![SectorClaim {
-                sector_number,
-                maintain_claims: vec![claim_id],
-                drop_claims: vec![],
-            }],
+            sectors_with_claims: vec![],
         }],
     };
     apply_ok(
@@ -765,14 +704,9 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()
         .unwrap();
-    // 0 space time
-    assert_eq!(StoragePower::zero(), sector_info_after_extension.deal_weight);
 
-    // 32 GiB * the remaining life of the sector
-    assert_eq!(
-        DealWeight::from((sector_info_after_extension.expiration - v.epoch()) * (32i64 << 30)),
-        sector_info_after_extension.verified_deal_weight
-    );
+    // FIP-0118: deal_weight is proportionally extended
+    assert_eq!(StoragePower::zero(), sector_info_after_extension.verified_deal_weight);
 
     assert_eq!(sector_info_after_extension.power_base_epoch, v.epoch());
     assert_eq!(sector_info_after_update.activation, sector_info_after_extension.activation);

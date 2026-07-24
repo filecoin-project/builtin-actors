@@ -404,6 +404,11 @@ fn check_verifreg_against_miners(
         // Find sectors associated with claims.
         // A claim might not have a sector if the sector was terminated and cleaned up.
         if let Some(sector) = miner_summary.live_data_sectors.get(&claim.sector) {
+            // Sectors with FULL_QA_POWER get 10x QAP regardless of claims,
+            // so skip all claim-to-sector validation for them.
+            if sector.full_qa_power {
+                continue;
+            }
             acc.require(
                 sector.sector_start <= claim.term_start,
                 format!(
@@ -424,16 +429,8 @@ fn check_verifreg_against_miners(
                         maddr
                     ),
                 );
-                acc.require(
-                    sector.sector_expiration <= claim.term_start + claim.term_max,
-                    format!(
-                        "claim {} sector expiration {} is after claim term max {} for miner {}",
-                        id,
-                        sector.sector_expiration,
-                        claim.term_start + claim.term_max,
-                        maddr
-                    ),
-                );
+                // FIP-0118 removed term_max enforcement from ExtendSectorExpiration2, so a
+                // sector's expiration may legitimately exceed claim.term_start + claim.term_max.
                 let expected_duration = sector.sector_expiration - claim.term_start;
                 let expected_weight = DealWeight::from(claim.size.0) * expected_duration;
                 *sector_claim_verified_weights.entry((maddr, claim.sector)).or_default() +=
@@ -451,5 +448,74 @@ fn check_verifreg_against_miners(
                 sector.verified_deal_weight, claim_weight, maddr
             ),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fil_actor_verifreg::Claim;
+    use fvm_shared::piece::PaddedPieceSize;
+    use fvm_shared::sector::RegisteredPoStProof;
+
+    // FIP-0118 dropped claim-term-max enforcement from ExtendSectorExpiration2 for every sector, so a legacy sector past its claim's term_max is now valid and must not be flagged.
+    #[test]
+    fn legacy_sector_extended_past_claim_term_max_is_valid() {
+        let provider_id = 1000;
+        let maddr = Address::new_id(provider_id);
+        let sector_number: SectorNumber = 7;
+        let claim_size: u64 = 1 << 30;
+        let term_start: ChainEpoch = 0;
+        let term_min: ChainEpoch = 0;
+        let term_max: ChainEpoch = 100;
+        // Extended well past term_max -- permitted post FIP-0118.
+        let sector_expiration: ChainEpoch = 200;
+
+        let claim = Claim {
+            provider: provider_id,
+            client: 1001,
+            data: Cid::default(),
+            size: PaddedPieceSize(claim_size),
+            term_min,
+            term_max,
+            term_start,
+            sector: sector_number,
+        };
+        let mut claims = HashMap::new();
+        claims.insert(1u64, claim);
+        let verifreg_summary = verifreg::StateSummary {
+            verifiers: HashMap::new(),
+            allocations: HashMap::new(),
+            claims,
+        };
+
+        let expected_weight = DealWeight::from(claim_size) * (sector_expiration - term_start);
+        let mut live_data_sectors = BTreeMap::new();
+        live_data_sectors.insert(
+            sector_number,
+            miner::DataSummary {
+                sector_start: term_start,
+                sector_expiration,
+                deal_weight: DealWeight::zero(),
+                verified_deal_weight: expected_weight,
+                legacy_qap: false,
+                full_qa_power: false,
+            },
+        );
+        let miner_summary = miner::StateSummary {
+            live_power: PowerPair::zero(),
+            active_power: PowerPair::zero(),
+            faulty_power: PowerPair::zero(),
+            window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
+            deadline_cron_active: true,
+            live_data_sectors,
+            daily_fee: TokenAmount::zero(),
+        };
+        let mut miner_summaries = HashMap::new();
+        miner_summaries.insert(maddr, miner_summary);
+
+        let acc = MessageAccumulator::default();
+        check_verifreg_against_miners(&acc, &verifreg_summary, &miner_summaries);
+        acc.assert_empty();
     }
 }

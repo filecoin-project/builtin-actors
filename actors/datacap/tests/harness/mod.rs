@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use frc46_token::receiver::{FRC46_TOKEN_TYPE, FRC46TokenReceived};
 use frc46_token::token::types::{
-    BurnReturn, MintReturn, TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
+    BurnReturn, TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
 };
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::RawBytes;
@@ -13,7 +13,7 @@ use fvm_shared::error::ExitCode;
 use num_traits::Zero;
 
 use fil_actor_datacap::testing::check_state_invariants;
-use fil_actor_datacap::{Actor as DataCapActor, DestroyParams, Method, MintParams, State};
+use fil_actor_datacap::{Actor as DataCapActor, DestroyParams, Method, State};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
@@ -61,49 +61,29 @@ impl Harness {
         assert_eq!(self.governor, state.governor);
     }
 
-    pub fn mint(
+    /// Sets a balance directly in state, bypassing the (now deprecated) Mint method.
+    /// FIP-0118: used for test fixture setup since Mint always returns forbidden.
+    pub fn mint_directly(&self, rt: &MockRuntime, to: &Address, amount: &TokenAmount) {
+        let mut st: State = rt.get_state();
+        st.token.change_balance_by(&rt.store(), to.id().unwrap(), amount).unwrap();
+        st.token.change_supply_by(amount).unwrap();
+        rt.replace_state(&st);
+    }
+
+    /// Sets an allowance directly in state. FIP-0118: used for test fixture setup since
+    /// Mint no longer grants operator allowances as a side effect.
+    pub fn allow_directly(
         &self,
         rt: &MockRuntime,
-        to: &Address,
+        owner: &Address,
+        operator: &Address,
         amount: &TokenAmount,
-        operators: Vec<Address>,
-    ) -> Result<MintReturn, ActorError> {
-        rt.expect_validate_caller_addr(vec![VERIFIED_REGISTRY_ACTOR_ADDR]);
-
-        // Expect the token receiver hook to be called.
-        let hook_params = UniversalReceiverParams {
-            type_: FRC46_TOKEN_TYPE,
-            payload: serialize(
-                &FRC46TokenReceived {
-                    from: DATACAP_TOKEN_ACTOR_ADDR.id().unwrap(),
-                    to: to.id().unwrap(),
-                    operator: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                    amount: amount.clone(),
-                    operator_data: Default::default(),
-                    token_data: Default::default(),
-                },
-                "hook payload",
-            )?,
-        };
-        // UniversalReceiverParams
-        rt.expect_send_simple(
-            *to,
-            frc42_dispatch::method_hash!("Receive"),
-            IpldBlock::serialize_cbor(&hook_params).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
-
-        let params = MintParams { to: *to, amount: amount.clone(), operators };
-        rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
-        let ret = rt.call::<DataCapActor>(
-            Method::MintExported as MethodNum,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-
-        rt.verify();
-        Ok(ret.unwrap().deserialize().unwrap())
+    ) {
+        let mut st: State = rt.get_state();
+        st.token
+            .set_allowance(&rt.store(), owner.id().unwrap(), operator.id().unwrap(), amount)
+            .unwrap();
+        rt.replace_state(&st);
     }
 
     pub fn destroy(
@@ -218,11 +198,6 @@ impl Harness {
 
         rt.verify();
         Ok(ret.unwrap().deserialize().unwrap())
-    }
-
-    // Reads the total supply from state directly.
-    pub fn get_supply(&self, rt: &MockRuntime) -> TokenAmount {
-        rt.get_state::<State>().token.supply
     }
 
     // Reads a balance from state directly.

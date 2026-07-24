@@ -330,47 +330,6 @@ impl State {
         Ok(())
     }
 
-    pub fn put_pending_deal_allocation_ids<BS>(
-        &mut self,
-        store: &BS,
-        new_pending_deal_allocation_ids: &[(DealID, AllocationID)],
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-    {
-        let mut pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
-        new_pending_deal_allocation_ids.iter().try_for_each(
-            |(deal_id, allocation_id)| -> Result<(), ActorError> {
-                pending_deal_allocation_ids.set(deal_id, *allocation_id)?;
-                Ok(())
-            },
-        )?;
-        self.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
-        Ok(())
-    }
-
-    pub fn get_pending_deal_allocation_ids<BS>(
-        &mut self,
-        store: &BS,
-        deal_id_keys: &[DealID],
-    ) -> Result<Vec<AllocationID>, ActorError>
-    where
-        BS: Blockstore,
-    {
-        let pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
-
-        let mut allocation_ids: Vec<AllocationID> = vec![];
-        deal_id_keys.iter().try_for_each(|deal_id| -> Result<(), ActorError> {
-            let allocation_id = pending_deal_allocation_ids.get(&deal_id.clone())?;
-            allocation_ids.push(
-                *allocation_id.ok_or(ActorError::not_found("no such deal proposal".to_string()))?,
-            );
-            Ok(())
-        })?;
-
-        Ok(allocation_ids)
-    }
-
     pub fn remove_pending_deal_allocation_id<BS>(
         &mut self,
         store: &BS,
