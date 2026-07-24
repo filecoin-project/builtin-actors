@@ -200,3 +200,17 @@ pub mod verifreg {
         pub sector_claims: Vec<SectorClaimSummary>,
     }
 }
+
+pub mod sealer {
+    use super::*;
+    use fvm_ipld_bitfield::BitField;
+
+    pub const ACTIVATE_SECTORS_METHOD: u64 =
+        frc42_dispatch::method_hash!("ActivateSectors");
+    
+    #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+    pub struct ActivateSectorParams {
+        pub sector_numbers: BitField,
+        pub verifier_signature: Vec<u8>,
+    }
+}

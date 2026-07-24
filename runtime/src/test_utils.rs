@@ -67,6 +67,7 @@ lazy_static::lazy_static! {
     pub static ref EVM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/evm");
     pub static ref EAM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/eam");
     pub static ref ETHACCOUNT_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/ethaccount");
+    pub static ref SEALER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/sealer");
 
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
@@ -86,6 +87,7 @@ lazy_static::lazy_static! {
         map.insert(*EVM_ACTOR_CODE_ID, Type::EVM);
         map.insert(*EAM_ACTOR_CODE_ID, Type::EAM);
         map.insert(*ETHACCOUNT_ACTOR_CODE_ID, Type::EthAccount);
+        map.insert(*SEALER_ACTOR_CODE_ID, Type::Sealer);
         map
     };
     pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
@@ -105,6 +107,7 @@ lazy_static::lazy_static! {
         (Type::EVM, *EVM_ACTOR_CODE_ID),
         (Type::EAM, *EAM_ACTOR_CODE_ID),
         (Type::EthAccount, *ETHACCOUNT_ACTOR_CODE_ID),
+        (Type::Sealer, *SEALER_ACTOR_CODE_ID),
     ]
     .into_iter()
     .collect();
@@ -117,6 +120,7 @@ lazy_static::lazy_static! {
         map.insert(*PLACEHOLDER_ACTOR_CODE_ID, ());
         map.insert(*EVM_ACTOR_CODE_ID, ());
         map.insert(*ETHACCOUNT_ACTOR_CODE_ID, ());
+        map.insert(*SEALER_ACTOR_CODE_ID, ());
         map
     };
 }
