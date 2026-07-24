@@ -5364,7 +5364,7 @@ fn activate_sectors_pieces(
 
         // FIP-0118: all piece space is treated as unverified_space; QAP comes from the flag.
         let mut unverified_space = BigInt::zero();
-        let mut pieces = Vec::new();
+        let mut pieces = Vec::with_capacity(activation_info.piece_manifests.len());
         for piece in &activation_info.piece_manifests {
             unverified_space += piece.size.0;
             pieces.push((piece.cid, piece.size.0));
@@ -5436,7 +5436,7 @@ fn activate_sectors_deals(
         .activations
         .iter()
         .map(|sector_deals| {
-            let mut sector_pieces = Vec::new();
+            let mut sector_pieces = Vec::with_capacity(sector_deals.activated.len());
             let mut unverified_deal_space = BigInt::zero();
             for info in &sector_deals.activated {
                 sector_pieces.push((info.data, info.size.0));
