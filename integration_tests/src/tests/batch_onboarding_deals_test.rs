@@ -7,7 +7,9 @@ use fil_actor_miner::{
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
+use fil_actors_runtime::runtime::policy::policy_constants::{
+    MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, PRE_COMMIT_CHALLENGE_DELAY,
+};
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -39,8 +41,7 @@ const SEAL_PROOF: RegisteredSealProof = RegisteredSealProof::StackedDRG32GiBV1P1
 #[vm_test]
 pub fn pre_commit_requires_commd_test(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
-    let sector_duration: ChainEpoch =
-        deal_duration + Policy::default().market_default_allocation_term_buffer;
+    let sector_duration: ChainEpoch = deal_duration + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let (owner, client) = (addrs[0], addrs[1]);
@@ -110,8 +111,7 @@ pub fn pre_commit_requires_commd_test(v: &dyn VM) {
 #[vm_test(1)]
 pub fn batch_onboarding_deals_test(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
-    let sector_duration: ChainEpoch =
-        deal_duration + Policy::default().market_default_allocation_term_buffer;
+    let sector_duration: ChainEpoch = deal_duration + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let (owner, _verifier, client) = (addrs[0], addrs[1], addrs[2]);

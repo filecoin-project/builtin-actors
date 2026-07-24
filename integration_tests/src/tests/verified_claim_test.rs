@@ -15,6 +15,7 @@ use fil_actor_power::State as PowerState;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::runtime::policy_constants::{
     DEAL_UPDATES_INTERVAL, MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
+    MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
 use fil_actors_runtime::{EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use vm_api::VM;
@@ -306,7 +307,7 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
     market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // Publish verified deals
-    let deal_start = v.epoch() + Policy::default().maximum_verified_allocation_expiration + 1;
+    let deal_start = v.epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION + 1;
     let sector_start = deal_start;
     let deal_term_min = 180 * EPOCHS_IN_DAY;
     let deal_size = (32u64 << 30) / 2;

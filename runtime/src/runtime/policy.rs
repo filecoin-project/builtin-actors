@@ -143,13 +143,6 @@ pub struct Policy {
     pub daily_fee_block_reward_cap_denom: i64,
 
     //
-    // --- verifreg policy ---
-    //
-    /// Maximum time a verified allocation can be active without being claimed (epochs).
-    /// Supports recovery of erroneous allocations and prevents indefinite squatting on datacap.
-    pub maximum_verified_allocation_expiration: i64,
-
-    //
     //  --- market policy ---
     //
     /// The number of blocks between payouts for deals
@@ -162,10 +155,6 @@ pub struct Policy {
     /// Denominator of the percentage of normalized cirulating
     /// supply that must be covered by provider collateral
     pub prov_collateral_percent_supply_denom: i64,
-
-    /// The default duration after a verified deal's nominal term to set for the corresponding
-    /// allocation's maximum term.
-    pub market_default_allocation_term_buffer: i64,
 
     //
     // --- power policy ---
@@ -225,15 +214,11 @@ impl Default for Policy {
 
             valid_post_proof_type: ProofSet::default_post_proofs(),
             valid_pre_commit_proof_type: ProofSet::default_precommit_seal_proofs(),
-            maximum_verified_allocation_expiration:
-                policy_constants::MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
             deal_updates_interval: policy_constants::DEAL_UPDATES_INTERVAL,
             prov_collateral_percent_supply_num:
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
             prov_collateral_percent_supply_denom:
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_DENOM,
-            market_default_allocation_term_buffer:
-                policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
 
             minimum_consensus_power: StoragePower::from(policy_constants::MINIMUM_CONSENSUS_POWER),
         }
