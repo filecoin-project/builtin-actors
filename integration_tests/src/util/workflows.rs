@@ -48,9 +48,8 @@ use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMetho
 use fil_actor_verifreg::AllocationsResponse;
 use fil_actor_verifreg::ClaimExtensionRequest;
 use fil_actor_verifreg::{
-    AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
-    Method as VerifregMethod, RemoveExpiredAllocationsParams, State as VerifregState,
-    VerifierParams,
+    AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams, Method as VerifregMethod,
+    RemoveExpiredAllocationsParams, State as VerifregState, VerifierParams,
 };
 use fil_actor_verifreg::{AllocationRequest, DataCap};
 use fil_actor_verifreg::{AllocationRequests, state};

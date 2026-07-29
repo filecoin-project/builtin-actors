@@ -23,10 +23,10 @@ use num_traits::{ToPrimitive, Zero};
 use fil_actor_verifreg::state::{DATACAP_MAP_CONFIG, DataCapMap};
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
-    Actor as VerifregActor, AddVerifierParams, Allocation,
-    AllocationClaim, AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse,
-    Claim, ClaimAllocationsParams, ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap,
-    ExtendClaimTermsParams, ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
+    Actor as VerifregActor, AddVerifierParams, Allocation, AllocationClaim, AllocationID,
+    AllocationRequest, AllocationRequests, AllocationsResponse, Claim, ClaimAllocationsParams,
+    ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap, ExtendClaimTermsParams,
+    ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
     RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RemoveExpiredClaimsParams,
     RemoveExpiredClaimsReturn, SectorAllocationClaims, State, ext,
 };
