@@ -23,7 +23,7 @@ use num_traits::{ToPrimitive, Zero};
 use fil_actor_verifreg::state::{DATACAP_MAP_CONFIG, DataCapMap};
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
-    Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
+    Actor as VerifregActor, AddVerifierParams, Allocation,
     AllocationClaim, AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse,
     Claim, ClaimAllocationsParams, ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap,
     ExtendClaimTermsParams, ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
@@ -39,7 +39,7 @@ use fil_actors_runtime::runtime::policy_constants::{
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, EventBuilder,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 pub const ROOT_ADDR: Address = Address::new_id(101);
@@ -212,55 +212,6 @@ impl Harness {
         let verifier_id_addr = rt.get_id_address(verifier).unwrap();
         let verifiers = rt.get_state::<State>().load_verifiers(&rt.store).unwrap();
         assert!(!verifiers.contains_key(&verifier_id_addr).unwrap())
-    }
-
-    pub fn add_client(
-        &self,
-        rt: &MockRuntime,
-        verifier: &Address,
-        client: &Address,
-        allowance: &DataCap,
-        verifier_balance: &DataCap,
-    ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_any();
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *verifier);
-        let client_resolved = rt.get_id_address(client).unwrap_or(*client);
-
-        // Expect tokens to be minted.
-        let mint_params = ext::datacap::MintParams {
-            to: client_resolved,
-            amount: TokenAmount::from_whole(allowance.to_i64().unwrap()),
-            operators: vec![STORAGE_MARKET_ACTOR_ADDR],
-        };
-        rt.expect_send_simple(
-            DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::Mint as MethodNum,
-            IpldBlock::serialize_cbor(&mint_params).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
-
-        let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
-        if client_resolved.id().is_ok() {
-            // if the client isn't resolved, we don't expect an event because the call should abort
-            rt.expect_emitted_event(
-                EventBuilder::new()
-                    .typ("verifier-balance")
-                    .field_indexed("verifier", &verifier.id().unwrap())
-                    .field("balance", &BigIntSer(&(verifier_balance - allowance)))
-                    .field_indexed("client", &client_resolved.id().unwrap())
-                    .build()?,
-            );
-        }
-        let ret = rt.call::<VerifregActor>(
-            Method::AddVerifiedClient as MethodNum,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-        assert!(ret.is_none());
-        rt.verify();
-
-        Ok(())
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {

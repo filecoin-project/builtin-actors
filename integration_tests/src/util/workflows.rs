@@ -47,9 +47,8 @@ use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_verifreg::AllocationsResponse;
 use fil_actor_verifreg::ClaimExtensionRequest;
-use fil_actor_verifreg::ext::datacap::MintParams;
 use fil_actor_verifreg::{
-    AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
+    AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     Method as VerifregMethod, RemoveExpiredAllocationsParams, State as VerifregState,
     VerifierParams,
 };
@@ -807,23 +806,6 @@ pub fn verifier_balance_event(verifier: ActorID, data_cap: DataCap) -> EmittedEv
     }
 }
 
-pub fn verifier_balance_event_with_client(
-    verifier: ActorID,
-    data_cap: DataCap,
-    client: ActorID,
-) -> EmittedEvent {
-    EmittedEvent {
-        emitter: VERIFIED_REGISTRY_ACTOR_ID,
-        event: EventBuilder::new()
-            .typ("verifier-balance")
-            .field_indexed("verifier", &verifier)
-            .field("balance", &BigIntSer(&data_cap))
-            .field_indexed("client", &client)
-            .build()
-            .unwrap(),
-    }
-}
-
 pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePower) {
     let add_verifier_params = VerifierParams { address: *verifier, allowance: data_cap.clone() };
     // root address is msig, send proposal from root key
@@ -859,68 +841,6 @@ pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePo
             events: Some(vec![verifier_balance_event(verifier.id().unwrap(), data_cap)]),
             ..Default::default()
         }]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
-}
-
-pub fn verifreg_add_client(
-    v: &dyn VM,
-    verifier: &Address,
-    client: &Address,
-    allowance: StoragePower,
-) {
-    let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-
-    let verifier_cap = v_st.get_verifier_cap(&store, verifier).unwrap().unwrap();
-
-    let updated_verifier_balance = verifier_cap - allowance.clone();
-
-    let verifier_id = v.resolve_id_address(verifier).unwrap().id().unwrap();
-    let add_client_params =
-        AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
-    apply_ok(
-        v,
-        verifier,
-        &VERIFIED_REGISTRY_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        VerifregMethod::AddVerifiedClient as u64,
-        Some(add_client_params),
-    );
-    let allowance_tokens = TokenAmount::from_whole(allowance);
-    ExpectInvocation {
-        from: verifier_id,
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        method: VerifregMethod::AddVerifiedClient as u64,
-        subinvocs: Some(vec![ExpectInvocation {
-            from: VERIFIED_REGISTRY_ACTOR_ID,
-            to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::MintExported as u64,
-            params: Some(
-                IpldBlock::serialize_cbor(&MintParams {
-                    to: *client,
-                    amount: allowance_tokens.clone(),
-                    operators: vec![STORAGE_MARKET_ACTOR_ADDR],
-                })
-                .unwrap(),
-            ),
-            subinvocs: Some(vec![Expect::frc46_receiver(
-                DATACAP_TOKEN_ACTOR_ID,
-                *client,
-                DATACAP_TOKEN_ACTOR_ID,
-                client.id().unwrap(),
-                VERIFIED_REGISTRY_ACTOR_ID,
-                allowance_tokens,
-                None,
-            )]),
-            ..Default::default()
-        }]),
-        events: Some(vec![verifier_balance_event_with_client(
-            verifier.id().unwrap(),
-            updated_verifier_balance,
-            client.id().unwrap(),
-        )]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
