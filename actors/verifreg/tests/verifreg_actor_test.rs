@@ -546,11 +546,10 @@ mod allocs_claims {
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{ActorID, MethodNum};
-    use num_traits::Zero;
 
     use fil_actor_verifreg::{
-        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, GetClaimsParams, Method,
-        State,
+        Actor, AllocationID, ClaimTerm, ExtendClaimTermsParams, GetClaimsParams, Method,
+        RemoveExpiredAllocationsParams, State,
     };
     use fil_actors_runtime::FailCode;
     use fil_actors_runtime::runtime::policy_constants::{
@@ -564,126 +563,48 @@ mod allocs_claims {
     use crate::*;
 
     const CLIENT1: ActorID = 101;
-    const CLIENT2: ActorID = 102;
     const PROVIDER1: ActorID = 301;
     const PROVIDER2: ActorID = 302;
     const ALLOC_SIZE: u64 = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
 
     #[test]
-    fn expire_allocs() {
+    fn expire_allocs_disabled() {
+        // FIP-0118: the network upgrade migration clears all pending allocations, so
+        // there is nothing left to ever expire; RemoveExpiredAllocations always returns
+        // forbidden regardless of params.
         let (h, rt) = new_harness();
 
-        let mut alloc1 = make_alloc("1", CLIENT1, PROVIDER1, ALLOC_SIZE);
-        alloc1.expiration = 100;
-        let mut alloc2 = make_alloc("2", CLIENT1, PROVIDER1, ALLOC_SIZE * 2);
-        alloc2.expiration = 200;
-        let total_size = alloc1.size.0 + alloc2.size.0;
-
-        let id1 = h.create_alloc(&rt, &alloc1).unwrap();
-        let id2 = h.create_alloc(&rt, &alloc2).unwrap();
-        let state_with_allocs: State = rt.get_state();
-
-        let expect_1 = vec![(id1, alloc1.clone())];
-        let expect_2 = vec![(id2, alloc2.clone())];
-        let expect_both = vec![(id1, alloc1.clone()), (id2, alloc2.clone())];
-
-        // Can't remove allocations that aren't expired
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], vec![]).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN], ret.results.codes());
-        assert_eq!(DataCap::zero(), ret.datacap_recovered);
-
-        // Can't remove with wrong client ID
-        rt.set_epoch(200);
-        let ret = h.remove_expired_allocations(&rt, CLIENT2, vec![id1, id2], vec![]).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::USR_NOT_FOUND], ret.results.codes());
-        assert_eq!(DataCap::zero(), ret.datacap_recovered);
-
-        // Remove the first alloc, which expired.
-        rt.set_epoch(100);
-        let ret =
-            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_1.clone()).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::OK, ExitCode::USR_FORBIDDEN], ret.results.codes());
-        assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
-
-        // Remove the second alloc (the first is no longer found).
-        rt.set_epoch(200);
-        let ret =
-            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_2.clone()).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(alloc2.size.0), ret.datacap_recovered);
-
-        // Reset state and show we can remove two at once.
-        rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_both).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(total_size), ret.datacap_recovered);
-
-        // Reset state and show that only what was asked for is removed.
-        rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1], expect_1.clone()).unwrap();
-        assert_eq!(vec![1], ret.considered);
-        assert_eq!(vec![ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
-
-        // Reset state and show that specifying none removes only expired allocations
-        rt.set_epoch(0);
-        rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], vec![]).unwrap();
-        assert_eq!(Vec::<AllocationID>::new(), ret.considered);
-        assert_eq!(Vec::<ExitCode>::new(), ret.results.codes());
-        assert_eq!(DataCap::zero(), ret.datacap_recovered);
-        assert!(h.load_alloc(&rt, CLIENT1, id1).is_some());
-        assert!(h.load_alloc(&rt, CLIENT1, id2).is_some());
-
-        rt.set_epoch(100);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], expect_1).unwrap();
-        assert_eq!(vec![1], ret.considered);
-        assert_eq!(vec![ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
-        assert!(h.load_alloc(&rt, CLIENT1, id1).is_none()); // removed
-        assert!(h.load_alloc(&rt, CLIENT1, id2).is_some());
-
-        rt.set_epoch(200);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], expect_2).unwrap();
-        assert_eq!(vec![2], ret.considered);
-        assert_eq!(vec![ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(alloc2.size.0), ret.datacap_recovered);
-        assert!(h.load_alloc(&rt, CLIENT1, id1).is_none()); // removed
-        assert!(h.load_alloc(&rt, CLIENT1, id2).is_none()); // removed
-
-        // Reset state and show that specifying none removes *all* expired allocations
-        rt.replace_state(&state_with_allocs);
-        let ret = h
-            .remove_expired_allocations(&rt, CLIENT1, vec![], vec![(id1, alloc1), (id2, alloc2)])
-            .unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(total_size), ret.datacap_recovered);
-        assert!(h.load_alloc(&rt, CLIENT1, id1).is_none()); // removed
-        assert!(h.load_alloc(&rt, CLIENT1, id2).is_none()); // removed
+        let params = RemoveExpiredAllocationsParams { client: CLIENT1, allocation_ids: vec![] };
+        rt.expect_validate_caller_any();
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<Actor>(
+                Method::RemoveExpiredAllocations as MethodNum,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            ),
+        );
         h.check_state(&rt);
     }
 
     #[test]
     fn claim_allocs() {
-        // FIP-0118: ClaimAllocations is deprecated and always returns forbidden.
+        // FIP-0118: allocations are cleared by the network upgrade migration and QAP no
+        // longer depends on claims, so ClaimAllocations always succeeds for a miner
+        // caller, whether or not the referenced allocation ever existed.
         let (h, rt) = new_harness();
 
         let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
         let alloc1 = make_alloc("1", CLIENT1, PROVIDER1, size);
-
         let id1 = h.create_alloc(&rt, &alloc1).unwrap();
+        let missing_id = id1 + 100; // Never created (as if cleared by the migration).
 
         let sector = 1000;
         let expiry = MINIMUM_VERIFIED_ALLOCATION_TERM;
 
-        // ClaimAllocations now returns forbidden
-        let reqs = vec![make_claim_reqs(sector, expiry, &[(id1, &alloc1)])];
+        let reqs = vec![
+            make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
+            make_claim_reqs(sector + 1, expiry, &[(missing_id, &alloc1)]),
+        ];
         rt.expect_validate_caller_type(vec![fil_actors_runtime::runtime::builtins::Type::Miner]);
         rt.set_caller(
             *fil_actors_runtime::test_utils::MINER_ACTOR_CODE_ID,
@@ -691,12 +612,26 @@ mod allocs_claims {
         );
         let params =
             fil_actor_verifreg::ClaimAllocationsParams { sectors: reqs, all_or_nothing: false };
-        expect_abort(
-            ExitCode::USR_FORBIDDEN,
-            rt.call::<Actor>(
+        let ret: fil_actor_verifreg::ClaimAllocationsReturn = rt
+            .call::<Actor>(
                 Method::ClaimAllocations as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
+            )
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.sector_results.codes());
+        assert_eq!(
+            vec![
+                fil_actor_verifreg::SectorClaimSummary {
+                    claimed_space: fvm_shared::bigint::BigInt::from(alloc1.size.0)
+                },
+                fil_actor_verifreg::SectorClaimSummary {
+                    claimed_space: fvm_shared::bigint::BigInt::from(alloc1.size.0)
+                },
+            ],
+            ret.sector_claims
         );
         h.check_state(&rt);
     }

@@ -1,24 +1,20 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use frc46_token::token::TOKEN_PRECISION;
-use frc46_token::token::types::TransferParams;
 use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::METHOD_CONSTRUCTOR;
 use fvm_shared::address::Address;
-use fvm_shared::econ::TokenAmount;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
 use log::info;
 use num_derive::FromPrimitive;
-use num_traits::Zero;
 
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 use fil_actors_runtime::{
     ActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, actor_dispatch,
-    actor_error, extract_send_result,
+    actor_error,
 };
 
 pub use self::state::Allocation;
@@ -123,89 +119,35 @@ impl Actor {
         datacap_deprecated("removing verified client data cap")
     }
 
-    // An allocation may be removed after its expiration epoch has passed (by anyone).
-    // When removed, the DataCap tokens are transferred back to the client.
-    // If no allocations are specified, all eligible allocations are removed.
     pub fn remove_expired_allocations(
         rt: &impl Runtime,
-        params: RemoveExpiredAllocationsParams,
+        _params: RemoveExpiredAllocationsParams,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
-        // Since the allocations are expired, this is safe to be called by anyone.
         rt.validate_immediate_caller_accept_any()?;
-        let curr_epoch = rt.curr_epoch();
-        let mut batch_ret = BatchReturn::empty();
-        let mut considered = Vec::<ClaimID>::new();
-        let mut recovered_datacap = DataCap::zero();
-        let recovered_datacap = rt
-            .transaction(|st: &mut State, rt| {
-                let mut allocs = st.load_allocs(rt.store())?;
-
-                let to_remove: Vec<&AllocationID>;
-                if params.allocation_ids.is_empty() {
-                    // Find all expired allocations for the client.
-                    considered = expiration::find_expired(&mut allocs, params.client, curr_epoch)?;
-                    batch_ret = BatchReturn::ok(considered.len() as u32);
-                    to_remove = considered.iter().collect();
-                } else {
-                    considered = params.allocation_ids.clone();
-                    batch_ret = expiration::check_expired(
-                        &mut allocs,
-                        &params.allocation_ids,
-                        params.client,
-                        curr_epoch,
-                    )?;
-                    to_remove = batch_ret.successes(&params.allocation_ids);
-                }
-
-                for id in to_remove {
-                    let existing = allocs
-                        .remove(params.client, *id)
-                        .context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to remove allocation {}", id),
-                        )?
-                        .unwrap(); // Unwrapping here as both paths to here should ensure the allocation exists.
-
-                    emit::allocation_removed(rt, *id, &existing)?;
-
-                    // Unwrapping here as both paths to here should ensure the allocation exists.
-                    recovered_datacap += existing.size.0;
-                }
-
-                st.save_allocs(&mut allocs)?;
-                Ok(recovered_datacap)
-            })
-            .context("state transaction failed")?;
-
-        // Transfer the recovered datacap back to the client.
-        transfer(rt, params.client, &recovered_datacap).with_context(|| {
-            format!(
-                "failed to transfer recovered datacap {} back to client {}",
-                &recovered_datacap, params.client
-            )
-        })?;
-
-        Ok(RemoveExpiredAllocationsReturn {
-            considered,
-            results: batch_ret,
-            datacap_recovered: recovered_datacap,
-        })
+        // FIP-0118: the network upgrade migration clears all pending allocations, so
+        // there is nothing left to ever expire.
+        datacap_deprecated("removing expired allocations")
     }
 
-    /// Called by storage provider actor to claim allocations for data provably committed to storage.
-    /// For each allocation claim, the registry checks that the provided piece CID
-    /// and size match that of the allocation.
-    /// Claims are processed in groups by sector. A failed claim will cause the
-    /// others in its group to fail too, unless `all_or_nothing` is enabled, in which case
-    /// the method will abort.
-    /// Returns an indicator of success for each sector group, and the size of claimed space.
-    // FIP-0118: claim allocations is disabled. The miner actor no longer calls this method.
+    // FIP-0118: allocations are cleared by the network upgrade migration and QAP is now
+    // derived from sector state directly, so claiming is a no-op that always succeeds,
+    // regardless of whether a claimed allocation ever existed.
     pub fn claim_allocations(
         rt: &impl Runtime,
-        _params: ClaimAllocationsParams,
+        params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-        datacap_deprecated("claim allocations")
+        let sector_claims = params
+            .sectors
+            .iter()
+            .map(|sector| SectorClaimSummary {
+                claimed_space: sector.claims.iter().map(|claim| BigInt::from(claim.size.0)).sum(),
+            })
+            .collect();
+        Ok(ClaimAllocationsReturn {
+            sector_results: BatchReturn::ok(params.sectors.len() as u32),
+            sector_claims,
+        })
     }
 
     // get claims for a provider
@@ -313,28 +255,6 @@ impl Actor {
         rt.validate_immediate_caller_is(&[DATACAP_TOKEN_ACTOR_ADDR])?;
         datacap_deprecated("new allocations")
     }
-}
-
-// Invokes transfer on a data cap token actor for whole units of data cap.
-fn transfer(rt: &impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), ActorError> {
-    let token_amt = datacap_to_tokens(amount);
-    let params = TransferParams {
-        to: Address::new_id(to),
-        amount: token_amt,
-        operator_data: Default::default(),
-    };
-    extract_send_result(rt.send_simple(
-        &DATACAP_TOKEN_ACTOR_ADDR,
-        ext::datacap::Method::Transfer as u64,
-        IpldBlock::serialize_cbor(&params)?,
-        TokenAmount::zero(),
-    ))
-    .context(format!("failed to send transfer to datacap {:?}", params))?;
-    Ok(())
-}
-
-fn datacap_to_tokens(amount: &DataCap) -> TokenAmount {
-    TokenAmount::from_atto(amount.clone()) * TOKEN_PRECISION
 }
 
 impl ActorCode for Actor {

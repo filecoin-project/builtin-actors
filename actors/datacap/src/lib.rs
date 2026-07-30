@@ -8,7 +8,6 @@ use frc46_token::token::{TOKEN_PRECISION, Token, TokenError};
 use fvm_actor_utils::receiver::ReceiverHookError;
 use fvm_actor_utils::syscalls::{NoStateError, Syscalls};
 use fvm_actor_utils::util::ActorRuntime;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::Response;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -19,8 +18,7 @@ use num_derive::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error,
-    extract_send_result,
+    ActorContext, ActorError, SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error, extract_send_result,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
@@ -142,8 +140,8 @@ impl Actor {
 
     pub fn mint(rt: &impl Runtime, _params: MintParams) -> Result<MintReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: datacap is deprecated. No new datacap can be minted; existing
-        // balances are frozen in place.
+        // FIP-0118: datacap is deprecated. No new datacap can be minted, and
+        // existing balances are frozen in place.
         Err(actor_error!(
             forbidden,
             "FIP-0118: datacap is deprecated, minting is no longer supported"
@@ -169,107 +167,28 @@ impl Actor {
         .context("state transaction failed")
     }
 
-    /// Transfers data cap tokens to an address.
-    /// Data cap tokens are not generally transferable.
-    /// Succeeds if the to or from address is the governor, otherwise always fails.
     pub fn transfer(
         rt: &impl Runtime,
-        params: TransferParams,
+        _params: TransferParams,
     ) -> Result<TransferReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let operator = &rt.message().caller();
-        let from = operator;
-        // Resolve to address for comparison with governor address.
-        let to = rt
-            .resolve_address(&params.to)
-            .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be ID address")?;
-        let to_address = Address::new_id(to);
-
-        let mut hook = rt
-            .transaction(|st: &mut State, rt| {
-                let allowed = to_address == st.governor || *from == st.governor;
-                if !allowed {
-                    return Err(actor_error!(
-                        forbidden,
-                        "transfer not allowed from {} to {} (governor is {})",
-                        from,
-                        to_address,
-                        st.governor
-                    ));
-                }
-
-                let syscalls = SyscallProvider { rt };
-                let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-                let mut token = as_token(st, &runtime);
-                token
-                    .transfer(
-                        from,
-                        &to_address,
-                        &params.amount,
-                        params.operator_data.clone(),
-                        RawBytes::default(),
-                    )
-                    .actor_result()
-            })
-            .context("state transaction failed")?;
-
-        let mut st: State = rt.state()?;
-        let syscalls = SyscallProvider { rt };
-        let intermediate = hook.call(&as_actor_runtime(&syscalls)).actor_result()?;
-        let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-        as_token(&mut st, &runtime).transfer_return(intermediate).actor_result()
+        // FIP-0118: datacap is deprecated, existing balances are frozen in place.
+        Err(actor_error!(
+            forbidden,
+            "FIP-0118: datacap is deprecated, transfer is no longer supported"
+        ))
     }
 
-    /// Transfers data cap tokens between addresses.
-    /// Data cap tokens are not generally transferable between addresses.
-    /// Succeeds if the to address is the governor, otherwise always fails.
     pub fn transfer_from(
         rt: &impl Runtime,
-        params: TransferFromParams,
+        _params: TransferFromParams,
     ) -> Result<TransferFromReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let operator = rt.message().caller();
-        let from = params.from;
-        // Resolve to address for comparison with governor.
-        let to = rt
-            .resolve_address(&params.to)
-            .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be an ID address")?;
-        let to_address = Address::new_id(to);
-
-        let mut hook = rt
-            .transaction(|st: &mut State, rt| {
-                let allowed = to_address == st.governor;
-                if !allowed {
-                    return Err(actor_error!(
-                        forbidden,
-                        "transfer not allowed from {} to {} (governor is {})",
-                        from,
-                        to_address,
-                        st.governor
-                    ));
-                }
-
-                let syscalls = SyscallProvider { rt };
-                let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-                let mut token = as_token(st, &runtime);
-                token
-                    .transfer_from(
-                        &operator,
-                        &from,
-                        &to_address,
-                        &params.amount,
-                        params.operator_data.clone(),
-                        RawBytes::default(),
-                    )
-                    .actor_result()
-            })
-            .context("state transaction failed")?;
-
-        let mut st: State = rt.state()?;
-        let syscalls = SyscallProvider { rt };
-        let intermediate = hook.call(&as_actor_runtime(&syscalls)).actor_result()?;
-        let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-        as_token(&mut st, &runtime).transfer_from_return(intermediate).actor_result()
+        // FIP-0118: datacap is deprecated, existing balances are frozen in place.
+        Err(actor_error!(
+            forbidden,
+            "FIP-0118: datacap is deprecated, transfer is no longer supported"
+        ))
     }
 
     pub fn increase_allowance(
@@ -332,34 +251,19 @@ impl Actor {
         .context("state transaction failed")
     }
 
-    pub fn burn(rt: &impl Runtime, params: BurnParams) -> Result<BurnReturn, ActorError> {
+    pub fn burn(rt: &impl Runtime, _params: BurnParams) -> Result<BurnReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let owner = &rt.message().caller();
-
-        rt.transaction(|st: &mut State, rt| {
-            let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-            let mut token = as_token(st, &runtime);
-            token.burn(owner, &params.amount).actor_result()
-        })
-        .context("state transaction failed")
+        // FIP-0118: datacap is deprecated, existing balances are frozen in place.
+        Err(actor_error!(forbidden, "FIP-0118: datacap is deprecated, burn is no longer supported"))
     }
 
     pub fn burn_from(
         rt: &impl Runtime,
-        params: BurnFromParams,
+        _params: BurnFromParams,
     ) -> Result<BurnFromReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let operator = &rt.message().caller();
-        let owner = &params.owner;
-
-        rt.transaction(|st: &mut State, rt| {
-            let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-            let mut token = as_token(st, &runtime);
-            token.burn_from(operator, owner, &params.amount).actor_result()
-        })
-        .context("state transaction failed")
+        // FIP-0118: datacap is deprecated, existing balances are frozen in place.
+        Err(actor_error!(forbidden, "FIP-0118: datacap is deprecated, burn is no longer supported"))
     }
 }
 
@@ -426,16 +330,6 @@ where
     RT: Runtime,
 {
     Token::wrap(token_runtime, DATACAP_GRANULARITY, &mut st.token)
-}
-
-// Returns an ActorRuntime wrapping the Runtime and Blockstore
-fn as_actor_runtime<'st, RT>(
-    sys_provider: &'st SyscallProvider<'st, RT>,
-) -> ActorRuntime<&'st SyscallProvider<'st, RT>, &'st RT::Blockstore>
-where
-    RT: Runtime,
-{
-    ActorRuntime::new(sys_provider, sys_provider.rt.store())
 }
 
 trait AsActorResult<T> {

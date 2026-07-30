@@ -16,12 +16,3 @@ pub mod account {
         pub message: Vec<u8>,
     }
 }
-
-pub mod datacap {
-    #[repr(u64)]
-    pub enum Method {
-        Balance = frc42_dispatch::method_hash!("Balance"),
-        Transfer = frc42_dispatch::method_hash!("Transfer"),
-        Burn = frc42_dispatch::method_hash!("Burn"),
-    }
-}

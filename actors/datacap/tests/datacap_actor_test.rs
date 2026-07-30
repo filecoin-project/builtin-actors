@@ -115,71 +115,117 @@ mod mint {
     }
 }
 
+// FIP-0118: Transfer/TransferFrom/Burn/BurnFrom are now deprecated and always return
+// USR_FORBIDDEN. These tests verify the methods are properly disabled, regardless of
+// caller, operator allowance, or recipient (including the governor).
 mod transfer {
-    // Tests for the specific transfer restrictions of the datacap token.
-
     use crate::{ALICE, BOB, CARLA, make_harness};
-    use fil_actors_runtime::test_utils::expect_abort_contains_message;
+    use fil_actor_datacap::{Actor, Method};
+    use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, expect_abort_contains_message};
+    use frc46_token::token::types::{TransferFromParams, TransferParams};
     use fvm_ipld_encoding::RawBytes;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::MethodNum;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
 
     #[test]
-    fn only_governor_allowed() {
+    fn transfer_disabled() {
         let (rt, h) = make_harness();
-        let operator_data = RawBytes::new(vec![1, 2, 3, 4]);
-
         let amt = TokenAmount::from_whole(1);
         h.mint_directly(&rt, &ALICE, &amt);
 
+        let params =
+            TransferParams { to: h.governor, amount: amt, operator_data: RawBytes::default() };
+        rt.expect_validate_caller_any();
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *ALICE);
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
-            "transfer not allowed",
-            h.transfer(&rt, &ALICE, &BOB, &amt, operator_data.clone()),
+            "datacap is deprecated",
+            rt.call::<Actor>(
+                Method::TransferExported as MethodNum,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            ),
         );
-        rt.reset();
-
-        // Transfer to governor is allowed.
-        h.transfer(&rt, &ALICE, &h.governor, &amt, operator_data.clone()).unwrap();
-
-        // The governor can transfer out.
-        h.transfer(&rt, &h.governor, &BOB, &amt, operator_data).unwrap();
+        h.check_state(&rt);
     }
 
     #[test]
-    fn transfer_from_restricted() {
+    fn transfer_from_disabled() {
         let (rt, h) = make_harness();
-        let operator_data = RawBytes::new(vec![1, 2, 3, 4]);
-
         let amt = TokenAmount::from_whole(1);
         h.mint_directly(&rt, &ALICE, &amt);
         h.allow_directly(&rt, &ALICE, &BOB, &amt);
 
-        // operator can't transfer out to third address
+        let params = TransferFromParams {
+            to: *CARLA,
+            from: *ALICE,
+            amount: amt,
+            operator_data: RawBytes::default(),
+        };
+        rt.expect_validate_caller_any();
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *BOB);
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
-            "transfer not allowed",
-            h.transfer_from(&rt, &BOB, &ALICE, &CARLA, &amt, operator_data.clone()),
+            "datacap is deprecated",
+            rt.call::<Actor>(
+                Method::TransferFromExported as MethodNum,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            ),
         );
-        rt.reset();
+        h.check_state(&rt);
+    }
+}
 
-        // operator can't transfer out to self
+mod burn {
+    use crate::{ALICE, BOB, make_harness};
+    use fil_actor_datacap::{Actor, Method};
+    use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, expect_abort_contains_message};
+    use frc46_token::token::types::{BurnFromParams, BurnParams};
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::MethodNum;
+    use fvm_shared::econ::TokenAmount;
+    use fvm_shared::error::ExitCode;
+
+    #[test]
+    fn burn_disabled() {
+        let (rt, h) = make_harness();
+        let amt = TokenAmount::from_whole(1);
+        h.mint_directly(&rt, &ALICE, &amt);
+
+        let params = BurnParams { amount: amt };
+        rt.expect_validate_caller_any();
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *ALICE);
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
-            "transfer not allowed",
-            h.transfer_from(&rt, &BOB, &ALICE, &BOB, &amt, operator_data.clone()),
+            "datacap is deprecated",
+            rt.call::<Actor>(
+                Method::BurnExported as MethodNum,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            ),
         );
-        rt.reset();
-        // even if governor has a delegate operator and enough tokens, delegated transfer
-        // cannot send to non governor
-        h.mint_directly(&rt, &h.governor, &amt);
-        h.allow_directly(&rt, &h.governor, &BOB, &amt);
+        h.check_state(&rt);
+    }
+
+    #[test]
+    fn burn_from_disabled() {
+        let (rt, h) = make_harness();
+        let amt = TokenAmount::from_whole(1);
+        h.mint_directly(&rt, &ALICE, &amt);
+        h.allow_directly(&rt, &ALICE, &BOB, &amt);
+
+        let params = BurnFromParams { owner: *ALICE, amount: amt };
+        rt.expect_validate_caller_any();
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *BOB);
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
-            "transfer not allowed",
-            h.transfer_from(&rt, &BOB, &h.governor, &ALICE, &amt, operator_data),
+            "datacap is deprecated",
+            rt.call::<Actor>(
+                Method::BurnFromExported as MethodNum,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            ),
         );
-        rt.reset();
+        h.check_state(&rt);
     }
 }
 

@@ -1,20 +1,12 @@
 use std::cell::RefCell;
 
-use frc46_token::receiver::{FRC46_TOKEN_TYPE, FRC46TokenReceived};
-use frc46_token::token::types::{
-    BurnReturn, TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
-};
-use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_encoding::RawBytes;
+use frc46_token::token::types::BurnReturn;
 use fvm_shared::MethodNum;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use num_traits::Zero;
 
 use fil_actor_datacap::testing::check_state_invariants;
 use fil_actor_datacap::{Actor as DataCapActor, DestroyParams, Method, State};
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
@@ -99,100 +91,6 @@ impl Harness {
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret = rt.call::<DataCapActor>(
             Method::DestroyExported as MethodNum,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-
-        rt.verify();
-        Ok(ret.unwrap().deserialize().unwrap())
-    }
-
-    pub fn transfer(
-        &self,
-        rt: &MockRuntime,
-        from: &Address,
-        to: &Address,
-        amount: &TokenAmount,
-        operator_data: RawBytes,
-    ) -> Result<TransferReturn, ActorError> {
-        rt.expect_validate_caller_any();
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *from);
-
-        // Expect the token receiver hook to be called.
-        let hook_params = UniversalReceiverParams {
-            type_: FRC46_TOKEN_TYPE,
-            payload: serialize(
-                &FRC46TokenReceived {
-                    from: from.id().unwrap(),
-                    to: to.id().unwrap(),
-                    operator: from.id().unwrap(),
-                    amount: amount.clone(),
-                    operator_data: operator_data.clone(),
-                    token_data: Default::default(),
-                },
-                "hook payload",
-            )?,
-        };
-        // UniversalReceiverParams
-        rt.expect_send_simple(
-            *to,
-            frc42_dispatch::method_hash!("Receive"),
-            IpldBlock::serialize_cbor(&hook_params).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
-
-        let params = TransferParams { to: *to, amount: amount.clone(), operator_data };
-        let ret = rt.call::<DataCapActor>(
-            Method::TransferExported as MethodNum,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-
-        rt.verify();
-        Ok(ret.unwrap().deserialize().unwrap())
-    }
-
-    pub fn transfer_from(
-        &self,
-        rt: &MockRuntime,
-        operator: &Address,
-        from: &Address,
-        to: &Address,
-        amount: &TokenAmount,
-        operator_data: RawBytes,
-    ) -> Result<TransferFromReturn, ActorError> {
-        rt.expect_validate_caller_any();
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *operator);
-
-        // Expect the token receiver hook to be called.
-        let hook_params = UniversalReceiverParams {
-            type_: FRC46_TOKEN_TYPE,
-            payload: serialize(
-                &FRC46TokenReceived {
-                    from: from.id().unwrap(),
-                    to: to.id().unwrap(),
-                    operator: operator.id().unwrap(),
-                    amount: amount.clone(),
-                    operator_data: operator_data.clone(),
-                    token_data: Default::default(),
-                },
-                "hook payload",
-            )?,
-        };
-        // UniversalReceiverParams
-        rt.expect_send_simple(
-            *to,
-            frc42_dispatch::method_hash!("Receive"),
-            IpldBlock::serialize_cbor(&hook_params).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
-
-        let params =
-            TransferFromParams { to: *to, from: *from, amount: amount.clone(), operator_data };
-        let ret = rt.call::<DataCapActor>(
-            Method::TransferFromExported as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 

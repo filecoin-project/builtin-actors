@@ -1,28 +1,11 @@
 // A namespace for helpers that build and emit verified registry events.
 
-use crate::{ActorError, Allocation, AllocationID, Claim, ClaimID};
+use crate::{ActorError, AllocationID, Claim, ClaimID};
 use cid::Cid;
 use fil_actors_runtime::EventBuilder;
 use fil_actors_runtime::runtime::Runtime;
 use fvm_shared::ActorID;
 use fvm_shared::clock::ChainEpoch;
-
-/// Indicates an expired allocation has been removed.
-pub fn allocation_removed(
-    rt: &impl Runtime,
-    id: AllocationID,
-    alloc: &Allocation,
-) -> Result<(), ActorError> {
-    rt.emit_event(
-        &EventBuilder::new()
-            .typ("allocation-removed")
-            .with_parties(id, alloc.client, alloc.provider)
-            .with_piece(&alloc.data, alloc.size.0)
-            .with_term(alloc.term_min, alloc.term_max)
-            .field("expiration", &alloc.expiration)
-            .build()?,
-    )
-}
 
 /// Indicates an expired claim has been removed.
 pub fn claim_removed(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
