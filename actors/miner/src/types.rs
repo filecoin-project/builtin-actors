@@ -25,8 +25,8 @@ use fil_actors_runtime::{BatchReturn, DealWeight};
 
 use crate::commd::CompactCommD;
 // FIP-0118: these types were previously imported from ext::verifreg, now defined locally
-// since the verifreg ext module has been removed. They remain for backward compat of
-// PieceActivationManifest and SectorClaim structs.
+// since the verifreg ext module has been removed. They remain for backward compatibility
+// of PieceActivationManifest and SectorClaim structs.
 pub type AllocationID = u64;
 pub type ClaimID = u64;
 
