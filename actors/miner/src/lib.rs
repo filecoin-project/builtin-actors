@@ -5159,7 +5159,8 @@ fn activate_new_sector_infos(
             }
 
             let deal_weight = &deal_spaces.unverified_space * duration;
-            let verified_deal_weight = &deal_spaces.verified_space * duration;
+            // FIP-0118: verified_space is always zero; QAP comes from FULL_QA_POWER instead.
+            let verified_deal_weight = BigInt::zero();
 
             deposit_to_unlock += pci.pre_commit_deposit.clone();
             total_pledge += &initial_pledge;
