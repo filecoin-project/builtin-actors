@@ -114,7 +114,7 @@ impl TestVM {
 
         // reward
 
-        let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
+        let reward_head = v.put_store(&RewardState::new(&store, StoragePower::zero()).unwrap());
         v.set_actor(
             &REWARD_ACTOR_ADDR,
             new_actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),

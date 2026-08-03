@@ -1000,12 +1000,16 @@ dependencies = [
 name = "fil_actor_reward"
 version = "18.0.0"
 dependencies = [
+ "anyhow",
+ "cid",
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
+ "hex-literal",
  "lazy_static",
  "log",
+ "multihash-codetable",
  "num",
  "num-derive",
  "num-traits",
