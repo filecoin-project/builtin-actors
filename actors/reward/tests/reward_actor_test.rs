@@ -4,8 +4,9 @@
 use std::cell::RefCell;
 
 use fil_actor_reward::{
-    Actor as RewardActor, AwardBlockRewardParams, BASELINE_INITIAL_VALUE, Method,
-    PENALTY_MULTIPLIER, State, ThisEpochRewardReturn, ext,
+    Actor as RewardActor, AwardBlockRewardParams, BASELINE_INITIAL_VALUE, BASELINE_TOTAL,
+    ExplicitDistribution, Method, PENALTY_MULTIPLIER, SIMPLE_TOTAL, State, Stream, StreamAccrual,
+    StreamsState, ThisEpochRewardReturn, WeightRecord, ext, testing::check_state_invariants,
 };
 use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
 use fil_actors_runtime::test_utils::*;
@@ -13,15 +14,17 @@ use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::CborStore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
-use fvm_shared::clock::ChainEpoch;
+use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
 use lazy_static::lazy_static;
+use multihash_codetable::Code;
 use num_traits::FromPrimitive;
 
 lazy_static! {
@@ -47,6 +50,71 @@ mod construction_tests {
         assert_eq!(*EPOCH_ZERO_REWARD, state.this_epoch_reward);
         assert_eq!(&*BASELINE_INITIAL_VALUE - 1, state.this_epoch_baseline_power);
         assert_eq!(&*BASELINE_INITIAL_VALUE, &state.effective_baseline_power);
+        assert_eq!(TokenAmount::zero(), state.total_minted_reward);
+        assert_eq!(TokenAmount::zero(), state.total_burn_minted);
+        assert_eq!(TokenAmount::zero(), state.total_service_minted);
+        assert!(state.service_accrued.is_empty());
+        assert_eq!(EPOCH_UNDEFINED, state.next_transition_epoch);
+        assert_eq!(0, state.swa_timelock_epochs);
+
+        let streams: StreamsState =
+            rt.store.get_cbor(&state.streams_root).unwrap().expect("missing streams state");
+        assert_eq!(StreamsState::default(), streams);
+    }
+
+    #[test]
+    fn uses_canonical_reward_totals() {
+        assert_eq!(TokenAmount::from_whole(330_000_000), *SIMPLE_TOTAL);
+        assert_eq!(TokenAmount::from_atto(768335872210768889362796814u128), *BASELINE_TOTAL);
+    }
+
+    #[test]
+    fn checks_service_accounting_invariants() {
+        let rt = construct_and_verify(&StoragePower::from(0));
+        let mut state: State = rt.get_state();
+        let allocation = TokenAmount::from_whole(1_100_000_000);
+
+        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, &allocation);
+        acc.assert_empty();
+
+        let streams = StreamsState {
+            streams: vec![Stream {
+                id: 2,
+                weight: WeightRecord::default(),
+                distribution: Some(ExplicitDistribution {
+                    writer: Address::new_id(100),
+                    shares: Vec::new(),
+                    payable: Vec::new(),
+                    claimed_period: Vec::new(),
+                }),
+            }],
+            ..Default::default()
+        };
+        state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+        state.total_minted_reward = allocation;
+        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, &TokenAmount::zero());
+        assert!(acc.messages().iter().any(|message| message.contains("missing [2]")));
+
+        state.total_service_minted = TokenAmount::from_atto(10);
+        state.service_accrued = vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(10) }];
+
+        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, &TokenAmount::zero());
+        assert!(
+            acc.messages()
+                .iter()
+                .any(|message| message.contains("does not cover service liabilities"))
+        );
+
+        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, &TokenAmount::from_atto(10));
+        acc.assert_empty();
+
+        state.service_accrued[0].amount = TokenAmount::from_atto(-1);
+        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, &TokenAmount::from_atto(10));
+        let messages = acc.messages();
+        assert!(messages.iter().any(|message| message.contains("service accrual")));
+        assert!(
+            messages.iter().any(|message| message.contains("service liabilities are negative"))
+        );
     }
 
     #[test]
@@ -57,7 +125,7 @@ mod construction_tests {
         let state: State = rt.get_state();
         assert_eq!(ChainEpoch::from(0), state.epoch);
         assert_eq!(start_realized_power, state.cumsum_realized);
-        assert_ne!(TokenAmount::zero(), state.this_epoch_reward);
+        assert_eq!(TokenAmount::from_atto(36_266_280_362_400_665_776i128), state.this_epoch_reward);
     }
 
     #[test]
@@ -224,7 +292,7 @@ mod test_award_block_reward {
         let rt = construct_and_verify(&StoragePower::from(1));
         let mut state: State = rt.get_state();
 
-        assert_eq!(TokenAmount::zero(), state.total_storage_power_reward);
+        assert_eq!(TokenAmount::zero(), state.total_minted_reward);
         state.this_epoch_reward = TokenAmount::from_atto(5000);
 
         rt.replace_state(&state);
@@ -247,7 +315,7 @@ mod test_award_block_reward {
         }
 
         let new_state: State = rt.get_state();
-        assert_eq!(total_payout, new_state.total_storage_power_reward);
+        assert_eq!(total_payout, new_state.total_minted_reward);
     }
 
     #[test]
@@ -255,7 +323,7 @@ mod test_award_block_reward {
         let rt = construct_and_verify(&StoragePower::from(1));
         let mut state: State = rt.get_state();
 
-        assert_eq!(TokenAmount::zero(), state.total_storage_power_reward);
+        assert_eq!(TokenAmount::zero(), state.total_minted_reward);
         state.this_epoch_reward = TokenAmount::from_atto(5000);
         rt.replace_state(&state);
         // enough balance to pay 3 full rewards and one partial

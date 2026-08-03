@@ -3,19 +3,21 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error, extract_send_result,
+    ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error, extract_send_result,
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, warn};
 use num_derive::FromPrimitive;
 
 pub use self::logic::*;
 pub use self::state::State;
+pub use self::streams::*;
 pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
@@ -24,6 +26,7 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub(crate) mod expneg;
 mod logic;
 mod state;
+mod streams;
 pub mod testing;
 mod types;
 
@@ -55,7 +58,10 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         if let Some(power) = params.power.map(|v| v.0) {
-            rt.create(&State::new(power))?;
+            let state = State::new(rt.store(), power).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to create reward state")
+            })?;
+            rt.create(&state)?;
             Ok(())
         } else {
             Err(actor_error!(illegal_argument, "argument should not be nil"))
@@ -127,7 +133,7 @@ impl Actor {
                     ));
                 }
             }
-            st.total_storage_power_reward += block_reward;
+            st.total_minted_reward += block_reward;
             Ok(total_reward)
         })?;
 

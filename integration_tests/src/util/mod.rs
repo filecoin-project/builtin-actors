@@ -260,7 +260,7 @@ pub fn get_network_stats(vm: &dyn VM) -> NetworkStats {
         this_epoch_reward: reward_state.this_epoch_reward,
         this_epoch_reward_smoothed: reward_state.this_epoch_reward_smoothed,
         this_epoch_baseline_power: reward_state.this_epoch_baseline_power,
-        total_storage_power_reward: reward_state.total_storage_power_reward,
+        total_minted_reward: reward_state.total_minted_reward,
         total_client_locked_collateral: market_state.total_client_locked_collateral,
         total_provider_locked_collateral: market_state.total_provider_locked_collateral,
         total_client_storage_fee: market_state.total_client_storage_fee,

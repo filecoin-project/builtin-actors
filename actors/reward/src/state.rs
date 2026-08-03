@@ -1,6 +1,9 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use cid::Cid;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::CborStore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::bigint_ser;
@@ -8,6 +11,7 @@ use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
 use lazy_static::lazy_static;
+use multihash_codetable::Code;
 
 use fil_actors_runtime::builtin::reward::smooth::{
     AlphaBetaFilter, DEFAULT_ALPHA, DEFAULT_BETA, FilterEstimate,
@@ -17,6 +21,7 @@ use fil_actors_runtime::builtin::reward::smooth::{
 pub type Spacetime = BigInt;
 
 use super::logic::*;
+use super::streams::{StreamAccrual, StreamsState};
 
 lazy_static! {
     /// 36.266260308195979333 FIL
@@ -62,20 +67,34 @@ pub struct State {
     /// Epoch tracks for which epoch the Reward was computed.
     pub epoch: ChainEpoch,
 
-    // TotalStoragePowerReward tracks the total FIL awarded to block miners
-    pub total_storage_power_reward: TokenAmount,
+    /// Total FIL minted through block rewards.
+    pub total_minted_reward: TokenAmount,
 
-    // Simple and Baseline totals are constants used for computing rewards.
-    // They are on chain because of a historical fix resetting baseline value
-    // in a way that depended on the history leading immediately up to the
-    // migration fixing the value.  These values can be moved from state back
-    // into a code constant in a subsequent upgrade.
-    pub simple_total: TokenAmount,
-    pub baseline_total: TokenAmount,
+    /// Cumulative block-reward residual sent to the burnt funds actor.
+    pub total_burn_minted: TokenAmount,
+
+    /// Cumulative block reward accrued to explicit service streams.
+    pub total_service_minted: TokenAmount,
+
+    /// Current-period accrual for each explicit stream, ordered by stream ID.
+    pub service_accrued: Vec<StreamAccrual>,
+
+    /// Earliest queued transition epoch, or EPOCH_UNDEFINED when the queue is empty.
+    pub next_transition_epoch: ChainEpoch,
+
+    /// Hold applied to SWA writes. Set only by the activation migration.
+    pub swa_timelock_epochs: ChainEpoch,
+
+    /// Offboarded stream, tombstone, and queued-write state.
+    pub streams_root: Cid,
 }
 
 impl State {
-    pub fn new(curr_realized_power: StoragePower) -> Self {
+    pub fn new<BS: Blockstore>(
+        store: &BS,
+        curr_realized_power: StoragePower,
+    ) -> anyhow::Result<Self> {
+        let streams_root = store.put_cbor(&StreamsState::default(), Code::Blake2b256)?;
         let mut st = Self {
             effective_baseline_power: BASELINE_INITIAL_VALUE.clone(),
             this_epoch_baseline_power: INIT_BASELINE_POWER.clone(),
@@ -84,13 +103,13 @@ impl State {
                 INITIAL_REWARD_POSITION_ESTIMATE.atto().clone(),
                 INITIAL_REWARD_VELOCITY_ESTIMATE.atto().clone(),
             ),
-            simple_total: SIMPLE_TOTAL.clone(),
-            baseline_total: BASELINE_TOTAL.clone(),
+            next_transition_epoch: EPOCH_UNDEFINED,
+            streams_root,
             ..Default::default()
         };
         st.update_to_next_epoch_with_reward(&curr_realized_power);
 
-        st
+        Ok(st)
     }
 
     /// Takes in current realized power and updates internal state
@@ -127,13 +146,7 @@ impl State {
             &self.cumsum_baseline,
         );
 
-        self.this_epoch_reward = compute_reward(
-            self.epoch,
-            prev_reward_theta,
-            curr_reward_theta,
-            &self.simple_total,
-            &self.baseline_total,
-        );
+        self.this_epoch_reward = compute_reward(self.epoch, prev_reward_theta, curr_reward_theta);
     }
 
     pub(super) fn update_smoothed_estimates(&mut self, delta: ChainEpoch) {
@@ -143,7 +156,7 @@ impl State {
             filter_reward.next_estimate(self.this_epoch_reward.atto(), delta);
     }
 
-    pub fn into_total_storage_power_reward(self) -> TokenAmount {
-        self.total_storage_power_reward
+    pub fn into_total_minted_reward(self) -> TokenAmount {
+        self.total_minted_reward
     }
 }
