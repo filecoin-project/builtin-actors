@@ -952,7 +952,6 @@ impl Actor {
             let activated_data = ReplicaUpdateActivatedData {
                 seal_cid: update.new_sealed_cid,
                 unverified_space: data_activation.unverified_space.clone(),
-                verified_space: data_activation.verified_space.clone(),
             };
             state_updates_by_dline.entry(update.deadline).or_default().push(
                 ReplicaUpdateStateInputs {
@@ -3948,7 +3947,8 @@ fn update_existing_sector_info(
     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
 
     new_sector_info.deal_weight = activated_data.unverified_space.clone() * duration;
-    new_sector_info.verified_deal_weight = activated_data.verified_space.clone() * duration;
+    // FIP-0118: verified_space is always zero; QAP comes from FULL_QA_POWER instead.
+    new_sector_info.verified_deal_weight = DealWeight::zero();
 
     new_sector_info.expected_day_reward = None;
     new_sector_info.replaced_day_reward = None;
@@ -5302,7 +5302,6 @@ impl From<&UpdateAndSectorInfo<'_>> for DealsActivationInput {
 #[derive(Clone)]
 struct DataActivationOutput {
     pub unverified_space: BigInt,
-    pub verified_space: BigInt,
     pub pieces: Vec<(Cid, u64)>,
 }
 
@@ -5325,7 +5324,6 @@ struct ReplicaUpdateStateInputs<'a> {
 struct ReplicaUpdateActivatedData {
     seal_cid: Cid,
     unverified_space: BigInt,
-    verified_space: BigInt,
 }
 
 // Activates data pieces in sectors.
@@ -5370,11 +5368,7 @@ fn activate_sectors_pieces(
             unverified_space += piece.size.0;
             pieces.push((piece.cid, piece.size.0));
         }
-        activation_outputs.push(DataActivationOutput {
-            unverified_space,
-            verified_space: BigInt::zero(),
-            pieces,
-        });
+        activation_outputs.push(DataActivationOutput { unverified_space, pieces });
     }
 
     let batch_return = BatchReturn::ok(activation_inputs.len() as u32);
@@ -5443,11 +5437,7 @@ fn activate_sectors_deals(
                 sector_pieces.push((info.data, info.size.0));
                 unverified_deal_space += info.size.0;
             }
-            DataActivationOutput {
-                unverified_space: unverified_deal_space,
-                verified_space: BigInt::zero(),
-                pieces: sector_pieces,
-            }
+            DataActivationOutput { unverified_space: unverified_deal_space, pieces: sector_pieces }
         })
         .collect();
 
