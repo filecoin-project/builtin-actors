@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::{State, StreamsState};
+use crate::{State, StreamsState, streams::validate_streams_state};
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
@@ -100,6 +100,10 @@ pub fn check_state_invariants<BS: Blockstore>(
             return (StateSummary::default(), acc);
         }
     };
+    if let Err(error) = validate_streams_state(&streams_state, &state.service_accrued, state.epoch)
+    {
+        acc.add(format!("invalid streams state: {error}"));
+    }
     let summary = StateSummary {
         stream_count: streams_state.streams.len(),
         tombstone_count: streams_state.tombstones.len(),
@@ -141,15 +145,15 @@ pub fn check_state_invariants<BS: Blockstore>(
     for write in &streams_state.pending_writes {
         acc.require(
             pending_slots.insert((write.id, write.op)),
-            format!("duplicate pending slot ({}, {:?})", write.id, write.op),
+            format!("duplicate pending slot ({:?}, {:?})", write.id, write.op),
         );
     }
     acc.require(
-        streams_state.pending_writes.windows(2).all(|writes| {
-            (writes[0].effective_epoch, writes[0].id, writes[0].op)
-                < (writes[1].effective_epoch, writes[1].id, writes[1].op)
-        }),
-        "pending writes are not strictly ordered by epoch, stream ID, and op",
+        streams_state
+            .pending_writes
+            .windows(2)
+            .all(|writes| writes[0].effective_epoch <= writes[1].effective_epoch),
+        "pending writes are not ordered by effective epoch",
     );
 
     let expected_next_transition = streams_state

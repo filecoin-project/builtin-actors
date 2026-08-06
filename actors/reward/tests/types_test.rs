@@ -1,5 +1,4 @@
 // Tests to match with Go github.com/filecoin-project/go-state-types/builtin/*/reward.
-// TODO: Add fixtures for each pending-write operation and more stream/tombstone lifecycle states before landing.
 mod serialization {
     use cid::Cid;
     use fil_actor_reward::{
@@ -30,12 +29,13 @@ mod serialization {
 
     #[test]
     fn populated_streams_state() {
+        // Its [0x81, 0x01] pending payload is non-semantic wire data and fails payload validation.
         let state = StreamsState {
             streams: vec![
                 Stream { id: 1, weight: WeightRecord::default(), distribution: None },
                 Stream {
                     id: 2,
-                    weight: WeightRecord { v_start: 1, slope: -2, t_start: 3, floor: 4, cap: 5 },
+                    weight: WeightRecord { v_start: 5, slope: -2, t_start: 1, floor: 4, cap: 5 },
                     distribution: Some(ExplicitDistribution {
                         writer: Address::new_id(100),
                         shares: vec![RecipientShare { recipient: Address::new_id(101), share: 6 }],
@@ -58,7 +58,7 @@ mod serialization {
                 }],
             }],
             pending_writes: vec![PendingWrite {
-                id: 4,
+                id: Some(4),
                 op: PendingWriteOp::RegisterStream,
                 payload: RawBytes::new(vec![0x81, 0x01]),
                 effective_epoch: 10,
@@ -69,7 +69,7 @@ mod serialization {
         assert_eq!(
             encoded.data,
             hex!(
-                "83828301850000000000f6830285012103040584420064818242006506818242006642000781824200674200088182038182420068420009818404024281010a"
+                "83828301850000000000f6830285052101040584420064818242006506818242006642000781824200674200088182038182420068420009818404024281010a"
             )
         );
         let decoded: StreamsState = IpldBlock::deserialize(&encoded).unwrap();

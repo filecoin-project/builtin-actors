@@ -4,9 +4,10 @@
 use std::cell::RefCell;
 
 use fil_actor_reward::{
-    Actor as RewardActor, AwardBlockRewardParams, BASELINE_INITIAL_VALUE, BASELINE_TOTAL,
-    ExplicitDistribution, Method, PENALTY_MULTIPLIER, SIMPLE_TOTAL, State, Stream, StreamAccrual,
-    StreamsState, ThisEpochRewardReturn, WeightRecord, ext, testing::check_state_invariants,
+    Actor as RewardActor, AwardBlockRewardParams, BASELINE_INITIAL_VALUE, BASELINE_TOTAL, DENOM,
+    ExplicitDistribution, Method, PENALTY_MULTIPLIER, RecipientShare, SIMPLE_TOTAL, State, Stream,
+    StreamAccrual, StreamsState, ThisEpochRewardReturn, WeightRecord, ext,
+    testing::check_state_invariants,
 };
 use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
 use fil_actors_runtime::test_utils::*;
@@ -83,7 +84,7 @@ mod construction_tests {
                 weight: WeightRecord::default(),
                 distribution: Some(ExplicitDistribution {
                     writer: Address::new_id(100),
-                    shares: Vec::new(),
+                    shares: vec![RecipientShare { recipient: Address::new_id(101), share: DENOM }],
                     payable: Vec::new(),
                     claimed_period: Vec::new(),
                 }),
