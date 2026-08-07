@@ -32,6 +32,9 @@ lazy_static! {
     /// Mainnet's baseline allocation after the actors-v2 baseline migration.
     pub static ref BASELINE_TOTAL: TokenAmount =
         TokenAmount::from_atto(768335872210768889362796814u128);
+    /// Nominal storage-mining allocation credited to the reward actor.
+    pub static ref STORAGE_MINING_ALLOCATION: TokenAmount =
+        TokenAmount::from_whole(1_100_000_000);
     /// expLamSubOne = e^lambda - 1
     /// for Q.128: int(expLamSubOne * 2^128)
     static ref EXP_LAM_SUB_ONE: BigInt = BigInt::from(37396273494747879394193016954629u128);

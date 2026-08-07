@@ -7,8 +7,10 @@ use fil_actors_runtime::{
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error, extract_send_result,
 };
 
-use fvm_ipld_encoding::{CborStore, ipld_block::IpldBlock};
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::{CborStore, from_slice, ipld_block::IpldBlock};
 use fvm_shared::address::Address;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
@@ -363,51 +365,29 @@ impl Actor {
         let penalty: TokenAmount = &params.penalty * PENALTY_MULTIPLIER;
 
         let (miner_reward, burn, apply_result) = rt.transaction(|st: &mut State, rt| {
-            let streams = load_streams(rt, st)?;
-            validate_award_state_structure(&streams).map_err(|error| {
-                error.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "invalid non-accounting stream state",
-                )
-            })?;
-            if let Err(error) = compute_service_liability(&streams, &st.accrued) {
-                error!(
-                    "invalid explicit-stream accounting at epoch {}: {}; paying gas reward only",
-                    rt.curr_epoch(),
-                    error
-                );
-                return Ok((
-                    params.gas_reward.clone(),
-                    TokenAmount::zero(),
-                    ApplyResult::default(),
-                ));
-            }
-
-            // Project due writes separately so a degraded award commits no stream or accrual change.
-            let mut next_streams = streams;
-            let mut next_accrued = st.accrued.clone();
-            let transition_due = next_streams
-                .pending_writes
-                .first()
-                .is_some_and(|write| write.effective_epoch <= rt.curr_epoch());
-            let apply_result = if transition_due {
-                apply_due_writes(&mut next_streams, &mut next_accrued, rt.curr_epoch()).map_err(
-                    |e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to apply due writes",
-                        )
-                    },
-                )?
-            } else {
-                ApplyResult::default()
-            };
-            let liabilities = match compute_service_liability(&next_streams, &next_accrued) {
-                Ok(liabilities) => liabilities,
+            let stream_bytes = rt
+                .store()
+                .get(&st.streams_root)
+                .map_err(|error| {
+                    actor_error!(
+                        illegal_state,
+                        "failed to load streams state {}: {}",
+                        st.streams_root,
+                        error
+                    )
+                })?
+                .ok_or_else(|| {
+                    actor_error!(
+                        illegal_state,
+                        "streams state root {} not found",
+                        st.streams_root
+                    )
+                })?;
+            let streams: StreamsState = match from_slice(&stream_bytes) {
+                Ok(streams) => streams,
                 Err(error) => {
                     error!(
-                        "due writes produced invalid explicit-stream accounting at epoch {}: {};\
-                        paying gas reward only",
+                        "undecodable stream state at epoch {}: {}",
                         rt.curr_epoch(),
                         error
                     );
@@ -418,15 +398,85 @@ impl Actor {
                     ));
                 }
             };
-
-            let mut block_reward: TokenAmount =
+            if let Err(error) = validate_award_state_structure(&streams) {
+                error!("invalid stream structure at epoch {}: {}", rt.curr_epoch(), error);
+                return Ok((
+                    params.gas_reward.clone(),
+                    TokenAmount::zero(),
+                    ApplyResult::default(),
+                ));
+            }
+            let expected_block_reward: TokenAmount =
                 (&st.this_epoch_reward * params.win_count).div_floor(EXPECTED_LEADERS_PER_EPOCH);
+            let current_liabilities =
+                match compute_service_liability(&streams, &st.accrued) {
+                    Ok(liabilities) => liabilities,
+                    Err(error) => {
+                        error!(
+                            "invalid explicit-stream accounting at epoch {}: {};\
+                            suspending service accrual",
+                            rt.curr_epoch(),
+                            error
+                        );
+                        return allocate_without_service(
+                            st,
+                            &streams,
+                            rt.curr_epoch(),
+                            &prior_balance,
+                            &params.gas_reward,
+                            expected_block_reward,
+                        );
+                    }
+                };
+
+            // Project due writes separately so a degraded award commits no stream or accrual change.
+            let transition_due = streams
+                .pending_writes
+                .first()
+                .is_some_and(|write| write.effective_epoch <= rt.curr_epoch());
+            let (next_streams, mut next_accrued, apply_result, liabilities) = if transition_due {
+                let current_streams = streams.clone();
+                let mut next_streams = streams;
+                let mut next_accrued = st.accrued.clone();
+                let apply_result =
+                    apply_due_writes(&mut next_streams, &mut next_accrued, rt.curr_epoch())
+                        .map_err(|e| {
+                            e.downcast_default(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "failed to apply due writes",
+                            )
+                        })?;
+                let liabilities = match compute_service_liability(&next_streams, &next_accrued) {
+                    Ok(liabilities) => liabilities,
+                    Err(error) => {
+                        error!(
+                            "due writes produced invalid explicit-stream accounting at epoch {}: {};\
+                            suspending service accrual",
+                            rt.curr_epoch(),
+                            error
+                        );
+                        return allocate_without_service(
+                            st,
+                            &current_streams,
+                            rt.curr_epoch(),
+                            &prior_balance,
+                            &params.gas_reward,
+                            expected_block_reward,
+                        );
+                    }
+                };
+                (next_streams, next_accrued, apply_result, liabilities)
+            } else {
+                (streams, st.accrued.clone(), ApplyResult::default(), current_liabilities)
+            };
+
+            let mut block_reward = expected_block_reward;
             // Due folds leave dust out of the derived liability before its post-transaction
             // burn send, so it remains reserved until that send executes.
             let reserved = &params.gas_reward + &liabilities + &apply_result.burn;
-            if prior_balance < reserved {
+            if prior_balance <= reserved {
                 warn!(
-                    "reward balance {} does not cover gas {}, explicit-stream liabilities {},\
+                    "reward balance {} does not exceed gas {}, explicit-stream liabilities {},\
                     and pending dust {}; paying gas reward only",
                     prior_balance, params.gas_reward, liabilities, apply_result.burn
                 );
@@ -446,17 +496,28 @@ impl Actor {
                 block_reward = available_reward;
             }
 
-            // Structural and liability preflight guarantee a non-negative BR and one accrual row
-            // for each unique explicit stream.
-            let allocation = allocate_reward(&next_streams.streams, rt.curr_epoch(), &block_reward)
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to allocate reward")
-                })?;
+            let allocation =
+                match allocate_reward(&next_streams.streams, rt.curr_epoch(), &block_reward) {
+                    Ok(allocation) => allocation,
+                    Err(error) => {
+                        error!("failed to allocate reward at epoch {}: {}", rt.curr_epoch(), error);
+                        return Ok((
+                            params.gas_reward.clone(),
+                            TokenAmount::zero(),
+                            ApplyResult::default(),
+                        ));
+                    }
+                };
             if !allocation.schedule_valid {
                 warn!(
-                    "invalid stream weights at epoch {}; skipping explicit allocations",
+                    "invalid stream weights at epoch {}; paying gas reward only",
                     rt.curr_epoch()
                 );
+                return Ok((
+                    params.gas_reward.clone(),
+                    TokenAmount::zero(),
+                    ApplyResult::default(),
+                ));
             }
             accrue_service(&mut next_accrued, &allocation.service).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to accrue service reward")
@@ -581,6 +642,54 @@ impl Actor {
         })?;
         Ok(())
     }
+}
+fn allocate_without_service(
+    state: &mut State,
+    streams: &StreamsState,
+    epoch: ChainEpoch,
+    prior_balance: &TokenAmount,
+    gas_reward: &TokenAmount,
+    mut block_reward: TokenAmount,
+) -> Result<(TokenAmount, TokenAmount, ApplyResult), ActorError> {
+    let supply_remaining = &*STORAGE_MINING_ALLOCATION - &state.total_minted_reward;
+    let available_reward = prior_balance - gas_reward;
+    if supply_remaining <= TokenAmount::zero() || available_reward <= TokenAmount::zero() {
+        warn!(
+            "reward allocation remainder {} or post-gas balance {} is non-positive;\
+            paying gas reward only",
+            supply_remaining, available_reward
+        );
+        return Ok((gas_reward.clone(), TokenAmount::zero(), ApplyResult::default()));
+    }
+
+    if block_reward > supply_remaining {
+        block_reward = supply_remaining;
+    }
+    if block_reward > available_reward {
+        warn!(
+            "reward actor post-gas balance {} below capped block reward {},\
+            paying out post-gas balance",
+            available_reward, block_reward
+        );
+        block_reward = available_reward;
+    }
+    let allocation = match allocate_reward(&streams.streams, epoch, &block_reward) {
+        Ok(allocation) => allocation,
+        Err(error) => {
+            error!("failed to allocate degraded reward at epoch {epoch}: {error}");
+            return Ok((gas_reward.clone(), TokenAmount::zero(), ApplyResult::default()));
+        }
+    };
+    if !allocation.schedule_valid {
+        warn!("invalid stream weights at epoch {epoch}; paying gas reward only");
+        return Ok((gas_reward.clone(), TokenAmount::zero(), ApplyResult::default()));
+    }
+    let miner = allocation.miner;
+    let burn = &block_reward - &miner;
+    state.total_minted_reward += &block_reward;
+    state.total_burn_minted += &burn;
+
+    Ok((gas_reward + miner, burn, ApplyResult::default()))
 }
 
 fn validate_swa(rt: &impl Runtime) -> Result<(), ActorError> {

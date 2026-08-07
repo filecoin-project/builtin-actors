@@ -311,7 +311,12 @@ impl SupplyTracker {
     }
 
     fn assert_invariants(&self, streams: &StreamsState, accruals: &[StreamAccrual]) {
-        assert_eq!(self.actor_balance, service_liabilities(streams, accruals));
+        let liabilities = service_liabilities(streams, accruals);
+        assert_eq!(self.actor_balance, liabilities);
+        assert!(
+            liabilities <= self.total_service,
+            "conservative service reserve is below exact liability"
+        );
         let miner = &self.total_minted - &self.total_burn - &self.total_service;
         assert!(miner >= TokenAmount::zero());
         assert_eq!(self.f099_balance, &self.total_burn + &self.total_dust);
@@ -561,7 +566,7 @@ fn allocates_reward_in_stream_order_and_conserves_attos() {
 }
 
 #[test]
-fn preserves_the_miner_reward_when_evaluated_weights_exceed_denom() {
+fn invalid_weight_envelope_allocates_no_reward_portion() {
     let streams = vec![
         stream(1, pct(60), None),
         stream(2, pct(50), Some(explicit(200, shares(&[(101, DENOM)])))),
@@ -571,23 +576,36 @@ fn preserves_the_miner_reward_when_evaluated_weights_exceed_denom() {
     let allocation = allocate_reward(&streams, 0, &reward).unwrap();
 
     assert!(!allocation.schedule_valid);
-    assert_eq!(TokenAmount::from_atto(4), allocation.miner);
+    assert_eq!(TokenAmount::zero(), allocation.miner);
     assert!(allocation.service.is_empty());
-    assert_eq!(TokenAmount::from_atto(3), allocation.burn);
+    assert_eq!(TokenAmount::zero(), allocation.burn);
 }
 
 #[test]
-fn bounds_the_miner_reward_when_implicit_weight_exceeds_denom() {
-    let streams = vec![
-        stream(1, DENOM + 1, None),
-        stream(2, pct(20), Some(explicit(200, shares(&[(101, DENOM)])))),
-    ];
+fn malformed_implicit_weight_allocates_no_reward_portion() {
+    let mut malformed = stream(1, 0, None);
+    malformed.weight.cap = DENOM + 1;
+    let streams = vec![malformed, stream(2, pct(20), Some(explicit(200, shares(&[(101, DENOM)]))))];
     let reward = TokenAmount::from_atto(7);
 
     let allocation = allocate_reward(&streams, 0, &reward).unwrap();
 
     assert!(!allocation.schedule_valid);
-    assert_eq!(reward, allocation.miner);
+    assert_eq!(TokenAmount::zero(), allocation.miner);
+    assert!(allocation.service.is_empty());
+    assert_eq!(TokenAmount::zero(), allocation.burn);
+}
+
+#[test]
+fn malformed_explicit_weight_allocates_no_reward_portion() {
+    let mut malformed = stream(2, 0, Some(explicit(200, shares(&[(101, DENOM)]))));
+    malformed.weight.cap = DENOM + 1;
+    let reward = TokenAmount::from_atto(7);
+
+    let allocation = allocate_reward(&[malformed], 0, &reward).unwrap();
+
+    assert!(!allocation.schedule_valid);
+    assert_eq!(TokenAmount::zero(), allocation.miner);
     assert!(allocation.service.is_empty());
     assert_eq!(TokenAmount::zero(), allocation.burn);
 }

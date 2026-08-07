@@ -5,9 +5,10 @@ use fil_actor_reward::{
     Actor as RewardActor, AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn,
     DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, MOCK_SWA_ACTOR_ADDR, Method,
     PENALTY_MULTIPLIER, PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare,
-    RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, SetDistributionParams,
-    SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State, Stream, StreamAccrual,
-    StreamsState, WeightRecord, WeightRecordUpdate, compute_service_liability, ext,
+    RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, STORAGE_MINING_ALLOCATION,
+    SetDistributionParams, SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State,
+    Stream, StreamAccrual, StreamsState, WeightRecord, WeightRecordUpdate,
+    compute_service_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
     EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
@@ -20,7 +21,7 @@ use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use multihash_codetable::Code;
+use multihash_codetable::{Code, MultihashDigest};
 use num_traits::Zero;
 
 const WRITER: u64 = 200;
@@ -876,18 +877,21 @@ fn mutation_applies_due_write_from_queue_head() {
 }
 
 #[test]
-fn award_bounds_a_malformed_implicit_weight_until_a_schedule_repair_applies() {
+fn award_pays_only_gas_for_malformed_weights_until_repaired() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
     let mut streams = load_streams(&rt);
-    streams.streams[0].weight = weight(DENOM + 1);
+    streams.streams[0].weight = weight(0);
+    streams.streams[0].weight.cap = DENOM + 1;
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     state.this_epoch_reward = TokenAmount::from_atto(25);
     rt.replace_state(&state);
     rt.set_balance(TokenAmount::from_atto(100));
 
-    expect_miner_reward(&rt, TokenAmount::from_atto(5), TokenAmount::zero(), ExitCode::OK);
-    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
+    let gas = TokenAmount::from_atto(2);
+    let penalty = TokenAmount::from_atto(3);
+    expect_miner_reward(&rt, gas.clone(), penalty.clone(), ExitCode::OK);
+    award(&rt, gas, penalty, 1).unwrap();
     rt.verify();
 
     let params = SetWeightRecordsParams {
@@ -916,7 +920,7 @@ fn award_bounds_a_malformed_implicit_weight_until_a_schedule_repair_applies() {
     rt.verify();
 
     let state: State = rt.get_state();
-    assert_eq!(TokenAmount::from_atto(10), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(1), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(1), state.total_explicit_minted);
     assert_eq!(TokenAmount::from_atto(1), service_liability(&rt));
@@ -924,7 +928,7 @@ fn award_bounds_a_malformed_implicit_weight_until_a_schedule_repair_applies() {
 }
 
 #[test]
-fn award_bounds_an_invalid_weight_envelope_until_a_schedule_repair_applies() {
+fn award_pays_only_gas_for_invalid_weight_envelope_until_repaired() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
     let mut streams = load_streams(&rt);
@@ -935,14 +939,14 @@ fn award_bounds_an_invalid_weight_envelope_until_a_schedule_repair_applies() {
     rt.replace_state(&state);
     rt.set_balance(TokenAmount::from_atto(100));
 
-    expect_miner_reward(&rt, TokenAmount::from_atto(4), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::OK);
-    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
+    let gas = TokenAmount::from_atto(2);
+    expect_miner_reward(&rt, gas.clone(), TokenAmount::zero(), ExitCode::OK);
+    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
     rt.verify();
 
     let state: State = rt.get_state();
-    assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
-    assert_eq!(TokenAmount::from_atto(1), state.total_burn_minted);
+    assert_eq!(TokenAmount::zero(), state.total_minted_reward);
+    assert_eq!(TokenAmount::zero(), state.total_burn_minted);
     assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
     assert_eq!(TokenAmount::zero(), state.accrued[0].amount);
 
@@ -972,8 +976,8 @@ fn award_bounds_an_invalid_weight_envelope_until_a_schedule_repair_applies() {
     rt.verify();
 
     let state: State = rt.get_state();
-    assert_eq!(TokenAmount::from_atto(10), state.total_minted_reward);
-    assert_eq!(TokenAmount::from_atto(2), state.total_burn_minted);
+    assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(1), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(1), state.total_explicit_minted);
     assert_eq!(TokenAmount::from_atto(1), state.accrued[0].amount);
 }
@@ -1269,19 +1273,119 @@ fn award_reserves_existing_service_liabilities_when_reward_balance_is_low() {
 }
 
 #[test]
-fn award_pays_only_gas_until_invalid_service_accounting_is_repaired() {
+fn award_uses_allocation_remainder_until_invalid_service_accounting_is_repaired() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
+    let supply_total = STORAGE_MINING_ALLOCATION.clone();
+    let mut streams = load_streams(&rt);
+    let pending = PendingWrite {
+        id: None,
+        op: PendingWriteOp::SetWeightRecords,
+        payload: RawBytes::serialize(&SetWeightRecordsParams {
+            updates: vec![WeightRecordUpdate { id: 1, weight: weight(pct(60)) }],
+        })
+        .unwrap(),
+        effective_epoch: 0,
+    };
+    streams.pending_writes = vec![pending.clone()];
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     state.this_epoch_reward = TokenAmount::from_atto(25);
+    state.total_minted_reward = &supply_total - TokenAmount::from_atto(3);
+    state.total_burn_minted = TokenAmount::from_atto(2);
+    state.total_explicit_minted = TokenAmount::from_atto(10);
     state.accrued[0].amount = TokenAmount::from_atto(-1);
+    let before = state.clone();
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_atto(15));
+
+    let gas = TokenAmount::from_atto(2);
+    let penalty = TokenAmount::from_atto(3);
+    expect_miner_reward(&rt, TokenAmount::from_atto(3), penalty.clone(), ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
+    award(&rt, gas.clone(), penalty, 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(before.streams_root, state.streams_root);
+    assert_eq!(supply_total, state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(4), state.total_burn_minted);
+    assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
+    assert_eq!(before.accrued, state.accrued);
+    assert_eq!(TokenAmount::from_atto(10), *rt.balance.borrow());
+
+    let mut repaired = state;
+    repaired.total_minted_reward = &*STORAGE_MINING_ALLOCATION - TokenAmount::from_atto(5);
+    repaired.accrued[0].amount = TokenAmount::from_atto(10);
+    rt.replace_state(&repaired);
+    rt.set_balance(TokenAmount::from_atto(100));
+    expect_write_event(&rt, "write-applied", &pending, false);
+    expect_miner_reward(&rt, TokenAmount::from_atto(5), TokenAmount::zero(), ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::OK);
+    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(*STORAGE_MINING_ALLOCATION, state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(5), state.total_burn_minted);
+    assert_eq!(TokenAmount::from_atto(11), state.total_explicit_minted);
+    assert_eq!(TokenAmount::from_atto(11), state.accrued[0].amount);
+}
+
+#[test]
+fn award_uses_allocation_remainder_when_a_claimed_recipient_is_absent_from_shares() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    let supply_total = STORAGE_MINING_ALLOCATION.clone();
+    let mut streams = load_streams(&rt);
+    state.this_epoch_reward = TokenAmount::from_atto(25);
+    state.total_minted_reward = &supply_total - TokenAmount::from_atto(5);
+    state.total_burn_minted = TokenAmount::from_atto(2);
+    state.total_explicit_minted = TokenAmount::from_atto(99);
+    state.accrued[0].amount = TokenAmount::from_atto(10);
+    streams.streams[1].distribution.as_mut().unwrap().claimed_period = vec![RecipientAmount {
+        recipient: Address::new_id(RECIPIENT_B),
+        amount: TokenAmount::from_atto(10),
+    }];
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     let before = state.clone();
     rt.replace_state(&state);
     rt.set_balance(TokenAmount::from_atto(100));
 
     let gas = TokenAmount::from_atto(2);
-    let penalty = TokenAmount::from_atto(3);
-    expect_miner_reward(&rt, gas.clone(), penalty.clone(), ExitCode::OK);
-    award(&rt, gas.clone(), penalty, 1).unwrap();
+    expect_miner_reward(&rt, TokenAmount::from_atto(5), TokenAmount::zero(), ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
+    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(before.streams_root, state.streams_root);
+    assert_eq!(supply_total, state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(4), state.total_burn_minted);
+    assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
+    assert_eq!(before.accrued, state.accrued);
+    assert_eq!(TokenAmount::from_atto(93), *rt.balance.borrow());
+}
+
+#[test]
+fn award_pays_only_gas_when_accounting_and_weights_are_invalid() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    let supply_total = STORAGE_MINING_ALLOCATION.clone();
+    let mut streams = load_streams(&rt);
+    state.this_epoch_reward = TokenAmount::from_atto(25);
+    state.total_minted_reward = &supply_total - TokenAmount::from_atto(5);
+    state.total_burn_minted = TokenAmount::from_atto(2);
+    state.total_explicit_minted = TokenAmount::from_atto(10);
+    state.accrued[0].amount = TokenAmount::from_atto(-1);
+    streams.streams[0].weight = weight(DENOM + 1);
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    let before = state.clone();
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_atto(100));
+
+    let gas = TokenAmount::from_atto(2);
+    expect_miner_reward(&rt, gas.clone(), TokenAmount::zero(), ExitCode::OK);
+    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
     rt.verify();
 
     let state: State = rt.get_state();
@@ -1290,35 +1394,18 @@ fn award_pays_only_gas_until_invalid_service_accounting_is_repaired() {
     assert_eq!(before.total_burn_minted, state.total_burn_minted);
     assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
     assert_eq!(before.accrued, state.accrued);
-    assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
-
-    let mut repaired = state;
-    repaired.accrued[0].amount = TokenAmount::zero();
-    rt.replace_state(&repaired);
-    expect_miner_reward(&rt, TokenAmount::from_atto(5), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::OK);
-    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
-    rt.verify();
-
-    let state: State = rt.get_state();
-    assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
-    assert_eq!(TokenAmount::from_atto(1), state.total_burn_minted);
-    assert_eq!(TokenAmount::from_atto(1), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(1), state.accrued[0].amount);
 }
 
 #[test]
-fn award_pays_only_gas_when_a_claimed_recipient_is_absent_from_shares() {
+fn award_pays_only_gas_when_the_allocation_remainder_is_zero() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
-    let mut streams = load_streams(&rt);
+    let supply_total = STORAGE_MINING_ALLOCATION.clone();
     state.this_epoch_reward = TokenAmount::from_atto(25);
-    state.accrued[0].amount = TokenAmount::from_atto(10);
-    streams.streams[1].distribution.as_mut().unwrap().claimed_period = vec![RecipientAmount {
-        recipient: Address::new_id(RECIPIENT_B),
-        amount: TokenAmount::from_atto(10),
-    }];
-    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    state.total_minted_reward = supply_total;
+    state.total_burn_minted = TokenAmount::from_atto(5);
+    state.total_explicit_minted = TokenAmount::from_atto(30);
+    state.accrued[0].amount = TokenAmount::from_atto(-1);
     let before = state.clone();
     rt.replace_state(&state);
     rt.set_balance(TokenAmount::from_atto(100));
@@ -1338,7 +1425,7 @@ fn award_pays_only_gas_when_a_claimed_recipient_is_absent_from_shares() {
 }
 
 #[test]
-fn award_aborts_atomically_for_malformed_non_accounting_state() {
+fn award_pays_only_gas_for_malformed_non_accounting_state() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
     let mut streams = load_streams(&rt);
@@ -1348,6 +1435,53 @@ fn award_aborts_atomically_for_malformed_non_accounting_state() {
     }];
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     state.this_epoch_reward = TokenAmount::from_atto(25);
+    let before = state.clone();
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_atto(100));
+
+    let gas = TokenAmount::from_atto(2);
+    expect_miner_reward(&rt, gas.clone(), TokenAmount::zero(), ExitCode::OK);
+    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(before.streams_root, state.streams_root);
+    assert_eq!(before.total_minted_reward, state.total_minted_reward);
+    assert_eq!(before.total_burn_minted, state.total_burn_minted);
+    assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
+    assert_eq!(before.accrued, state.accrued);
+    assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
+}
+
+#[test]
+fn award_pays_only_gas_for_an_unreadable_streams_root() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    state.streams_root = rt.store.put_cbor(&1_u64, Code::Blake2b256).unwrap();
+    state.this_epoch_reward = TokenAmount::from_atto(25);
+    let before = state.clone();
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_atto(100));
+
+    let gas = TokenAmount::from_atto(2);
+    expect_miner_reward(&rt, gas.clone(), TokenAmount::zero(), ExitCode::OK);
+    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(before.streams_root, state.streams_root);
+    assert_eq!(before.total_minted_reward, state.total_minted_reward);
+    assert_eq!(before.total_burn_minted, state.total_burn_minted);
+    assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
+    assert_eq!(before.accrued, state.accrued);
+    assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
+}
+
+#[test]
+fn award_aborts_for_a_missing_streams_root() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    state.streams_root = cid::Cid::new_v1(CBOR, Code::Blake2b256.digest(b"missing streams state"));
     let before = state.clone();
     rt.replace_state(&state);
     rt.set_balance(TokenAmount::from_atto(100));
