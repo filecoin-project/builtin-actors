@@ -1,3 +1,4 @@
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::clock::EPOCH_UNDEFINED;
 use fvm_shared::econ::TokenAmount;
@@ -47,6 +48,89 @@ fn base_state() -> (StreamsState, Vec<StreamAccrual>) {
     )
 }
 
+fn next_epoch(streams: &StreamsState) -> ChainEpoch {
+    streams.pending_writes.first().map_or(EPOCH_UNDEFINED, |write| write.effective_epoch)
+}
+
+fn tombstone(id: StreamId, first_recipient: u64, rows: usize) -> Tombstone {
+    Tombstone {
+        id,
+        payable: (0..rows)
+            .map(|offset| RecipientAmount {
+                recipient: Address::new_id(first_recipient + offset as u64),
+                amount: TokenAmount::from_atto(1),
+            })
+            .collect(),
+    }
+}
+
+fn delegated_address() -> Address {
+    Address::new_delegated(10, &[1; 20]).unwrap()
+}
+
+#[test]
+fn rejects_non_id_addresses_in_persisted_state_and_pending_payloads() {
+    let (base, accruals) = base_state();
+    let assert_invalid = |streams: StreamsState| {
+        let error = validate_streams_state(&streams, &accruals, 0).unwrap_err();
+        assert!(error.to_string().contains("not an ID address"), "{error}");
+    };
+
+    let mut streams = base.clone();
+    streams.streams[1].distribution.as_mut().unwrap().writer = delegated_address();
+    assert_invalid(streams);
+
+    let mut streams = base.clone();
+    streams.streams[1].distribution.as_mut().unwrap().shares[0].recipient = delegated_address();
+    assert_invalid(streams);
+
+    let mut streams = base.clone();
+    streams.streams[1].distribution.as_mut().unwrap().payable =
+        vec![RecipientAmount { recipient: delegated_address(), amount: TokenAmount::from_atto(1) }];
+    assert_invalid(streams);
+
+    let mut streams = base.clone();
+    streams.streams[1].distribution.as_mut().unwrap().claimed_period =
+        vec![RecipientAmount { recipient: delegated_address(), amount: TokenAmount::from_atto(1) }];
+    assert_invalid(streams);
+
+    let mut streams = base.clone();
+    streams.tombstones = vec![Tombstone {
+        id: 3,
+        payable: vec![RecipientAmount {
+            recipient: delegated_address(),
+            amount: TokenAmount::from_atto(1),
+        }],
+    }];
+    assert_invalid(streams);
+
+    let mut streams = base.clone();
+    streams.pending_writes = vec![PendingWrite {
+        id: Some(3),
+        op: PendingWriteOp::RegisterStream,
+        payload: RawBytes::serialize(&RegisterStreamPayload {
+            weight: constant_weight(pct(10)),
+            distribution: Some(DistributionInit {
+                writer: delegated_address(),
+                shares: shares(&[(103, DENOM)]),
+            }),
+        })
+        .unwrap(),
+        effective_epoch: 10,
+    }];
+    assert_invalid(streams);
+
+    let mut streams = base;
+    streams.pending_writes = vec![PendingWrite {
+        id: Some(2),
+        op: PendingWriteOp::SetDistribution,
+        payload: RawBytes::serialize(&SetDistributionPayload { writer: delegated_address() })
+            .unwrap(),
+        effective_epoch: 10,
+    }];
+    assert_invalid(streams);
+}
+
 #[test]
 fn deferred_payloads_have_stable_cbor() {
     let weight = WeightRecord { v_start: 2, slope: -1, t_start: 3, floor: 0, cap: 4 };
@@ -55,6 +139,7 @@ fn deferred_payloads_have_stable_cbor() {
             WeightRecordUpdate { id: 1, weight: weight.clone() },
             WeightRecordUpdate {
                 id: 5,
+
                 weight: WeightRecord { v_start: 8, slope: 0, t_start: 7, floor: 8, cap: 9 },
             },
         ],
@@ -110,6 +195,56 @@ fn deferred_payloads_have_stable_cbor() {
         .bytes()
     );
 }
+#[test]
+fn removal_admission_reserves_tombstone_rows_and_claim_relieves_the_bound() {
+    let (base, accruals) = base_state();
+
+    let mut at_boundary = base.clone();
+    at_boundary.tombstones = vec![tombstone(3, 1_000, 192)];
+    queue_remove_stream(&mut at_boundary, 0, 1, 2).unwrap();
+
+    let mut over = base;
+    over.tombstones = vec![tombstone(3, 1_000, 193)];
+    let error = queue_remove_stream(&mut over, 0, 1, 2).unwrap_err();
+    assert!(error.to_string().contains("tombstone row reservation 257"), "{error}");
+
+    let paid = claim(&mut over, &accruals, 3, &[Address::new_id(1_000)]).unwrap();
+    assert_eq!(vec![TokenAmount::from_atto(1)], paid);
+    queue_remove_stream(&mut over, 0, 1, 2).unwrap();
+}
+
+#[test]
+fn rejects_persisted_tombstone_rows_above_the_bound() {
+    let (mut streams, accruals) = base_state();
+    streams.tombstones = vec![tombstone(3, 1_000, MAX_TOMBSTONE_ROWS + 1)];
+    let error = validate_streams_state(&streams, &accruals, 0).unwrap_err();
+    assert!(error.to_string().contains("tombstone row reservation 257"), "{error}");
+}
+
+#[test]
+fn pending_removal_bound_survives_share_folds_during_the_hold() {
+    let (mut streams, mut accruals) = base_state();
+    streams.tombstones = vec![tombstone(3, 1_000, 192)];
+    accruals[0].amount = TokenAmount::from_atto(1);
+    queue_remove_stream(&mut streams, 0, 1, 2).unwrap();
+
+    let share = DENOM / MAX_RECIPIENTS as u64;
+    let replacement: Vec<_> = (0..MAX_RECIPIENTS)
+        .map(|offset| RecipientShare { recipient: Address::new_id(2_000 + offset as u64), share })
+        .collect();
+    let before = streams.clone();
+    let before_accruals = accruals.clone();
+    let error = set_shares(&mut streams, &mut accruals, 2, replacement.clone()).unwrap_err();
+    assert!(error.to_string().contains("tombstone row reservation 257"), "{error}");
+    assert_eq!(before, streams);
+    assert_eq!(before_accruals, accruals);
+
+    claim(&mut streams, &accruals, 3, &[Address::new_id(1_000)]).unwrap();
+    set_shares(&mut streams, &mut accruals, 2, replacement).unwrap();
+    apply_due_writes(&mut streams, &mut accruals, 1).unwrap();
+    let rows: usize = streams.tombstones.iter().map(|row| row.payable.len()).sum();
+    assert!(rows <= MAX_TOMBSTONE_ROWS);
+}
 
 fn amount(rows: &[RecipientAmount], recipient: u64) -> TokenAmount {
     rows.iter()
@@ -118,23 +253,7 @@ fn amount(rows: &[RecipientAmount], recipient: u64) -> TokenAmount {
 }
 
 fn service_liabilities(streams: &StreamsState, accruals: &[StreamAccrual]) -> TokenAmount {
-    let mut total = accruals.iter().fold(TokenAmount::zero(), |total, row| total + &row.amount);
-    for stream in &streams.streams {
-        if let Some(distribution) = &stream.distribution {
-            for row in &distribution.payable {
-                total += &row.amount;
-            }
-            for row in &distribution.claimed_period {
-                total -= &row.amount;
-            }
-        }
-    }
-    for tombstone in &streams.tombstones {
-        for row in &tombstone.payable {
-            total += &row.amount;
-        }
-    }
-    total
+    compute_service_liability(streams, accruals).unwrap()
 }
 
 fn assert_service_conserved(
@@ -169,6 +288,7 @@ impl SupplyTracker {
         reward: TokenAmount,
     ) {
         let allocation = allocate_reward(&streams.streams, epoch, &reward).unwrap();
+        assert!(allocation.schedule_valid, "valid randomized state entered degradation");
         let service =
             allocation.service.iter().fold(TokenAmount::zero(), |total, row| total + &row.amount);
         accrue_service(accruals, &allocation.service).unwrap();
@@ -224,7 +344,7 @@ fn computes_signed_clamped_weights_without_overflow() {
     assert_eq!(DENOM, compute_weight(&extreme, i64::MIN));
 
     let reversed = WeightRecord { v_start: 10, slope: 0, t_start: 0, floor: 20, cap: 4 };
-    assert_eq!(4, compute_weight(&reversed, 0));
+    assert_eq!(20, compute_weight(&reversed, 0));
 }
 
 #[test]
@@ -364,10 +484,8 @@ fn rejects_out_of_band_anchors_on_every_weight_queue_operation() {
         for (message, weight) in &invalid {
             let (mut streams, _) = base_state();
             let before = streams.clone();
-            let mut next = EPOCH_UNDEFINED;
             let error = queue_weight_records(
                 &mut streams,
-                &mut next,
                 0,
                 1,
                 op,
@@ -376,17 +494,15 @@ fn rejects_out_of_band_anchors_on_every_weight_queue_operation() {
             .unwrap_err();
             assert!(error.to_string().contains(message));
             assert_eq!(before, streams);
-            assert_eq!(EPOCH_UNDEFINED, next);
+            assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
         }
     }
 
     for (message, weight) in invalid {
         let (mut streams, _) = base_state();
         let before = streams.clone();
-        let mut next = EPOCH_UNDEFINED;
         let error = queue_register_stream(
             &mut streams,
-            &mut next,
             0,
             1,
             Stream { id: 3, weight, distribution: None },
@@ -395,7 +511,7 @@ fn rejects_out_of_band_anchors_on_every_weight_queue_operation() {
         .unwrap_err();
         assert!(error.to_string().contains(message));
         assert_eq!(before, streams);
-        assert_eq!(EPOCH_UNDEFINED, next);
+        assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
     }
 }
 
@@ -414,6 +530,7 @@ fn allocates_reward_in_stream_order_and_conserves_attos() {
     assert_eq!(TokenAmount::from_atto(1), allocation.service[0].amount);
     assert_eq!(TokenAmount::zero(), allocation.service[1].amount);
     assert_eq!(TokenAmount::from_atto(3), allocation.burn);
+    assert!(allocation.schedule_valid);
     assert_eq!(
         reward,
         &allocation.miner
@@ -441,6 +558,38 @@ fn allocates_reward_in_stream_order_and_conserves_attos() {
         .is_err()
     );
     assert_eq!(before, accruals);
+}
+
+#[test]
+fn preserves_the_miner_reward_when_evaluated_weights_exceed_denom() {
+    let streams = vec![
+        stream(1, pct(60), None),
+        stream(2, pct(50), Some(explicit(200, shares(&[(101, DENOM)])))),
+    ];
+    let reward = TokenAmount::from_atto(7);
+
+    let allocation = allocate_reward(&streams, 0, &reward).unwrap();
+
+    assert!(!allocation.schedule_valid);
+    assert_eq!(TokenAmount::from_atto(4), allocation.miner);
+    assert!(allocation.service.is_empty());
+    assert_eq!(TokenAmount::from_atto(3), allocation.burn);
+}
+
+#[test]
+fn bounds_the_miner_reward_when_implicit_weight_exceeds_denom() {
+    let streams = vec![
+        stream(1, DENOM + 1, None),
+        stream(2, pct(20), Some(explicit(200, shares(&[(101, DENOM)])))),
+    ];
+    let reward = TokenAmount::from_atto(7);
+
+    let allocation = allocate_reward(&streams, 0, &reward).unwrap();
+
+    assert!(!allocation.schedule_valid);
+    assert_eq!(reward, allocation.miner);
+    assert!(allocation.service.is_empty());
+    assert_eq!(TokenAmount::zero(), allocation.burn);
 }
 
 #[test]
@@ -597,22 +746,19 @@ fn claims_tombstones_and_deletes_them_when_drained() {
 #[test]
 fn rejects_a_new_call_that_strands_an_existing_call() {
     let (mut streams, _) = base_state();
-    let mut next = EPOCH_UNDEFINED;
 
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         30,
         PendingWriteOp::SetWeightRecords,
         &[WeightRecordUpdate { id: 2, weight: constant_weight(pct(40)) }],
     )
     .unwrap();
-    assert_eq!(30, next);
+    assert_eq!(30, next_epoch(&streams));
 
     let error = queue_weight_records(
         &mut streams,
-        &mut next,
         10,
         10,
         PendingWriteOp::StepWeightRecords,
@@ -624,13 +770,40 @@ fn rejects_a_new_call_that_strands_an_existing_call() {
 }
 
 #[test]
+fn removal_rejects_stranding_an_inflight_gate_write() {
+    let (mut streams, mut accruals) = base_state();
+    queue_weight_records(
+        &mut streams,
+        0,
+        2,
+        PendingWriteOp::StepWeightRecords,
+        &[WeightRecordUpdate { id: 2, weight: constant_weight(pct(30)) }],
+    )
+    .unwrap();
+
+    let before = streams.clone();
+    let error = queue_remove_stream(&mut streams, 0, 1, 2).unwrap_err();
+    assert!(error.to_string().contains("invalidates an existing pending call"));
+    assert_eq!(before, streams);
+
+    let result = apply_due_writes(&mut streams, &mut accruals, 2).unwrap();
+    assert_eq!(
+        vec![PendingWriteOp::StepWeightRecords],
+        result.applied.iter().map(|w| w.op).collect::<Vec<_>>()
+    );
+    assert!(result.dropped.is_empty());
+    assert_eq!(pct(30), streams.streams[1].weight.v_start);
+
+    queue_remove_stream(&mut streams, 2, 1, 2).unwrap();
+    assert_eq!(3, next_epoch(&streams));
+}
+
+#[test]
 fn rejects_a_schedule_that_depends_on_a_later_call() {
     let (mut streams, _) = base_state();
-    let mut next = EPOCH_UNDEFINED;
 
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         20,
         PendingWriteOp::SetWeightRecords,
@@ -639,7 +812,6 @@ fn rejects_a_schedule_that_depends_on_a_later_call() {
     .unwrap();
     let error = queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::StepWeightRecords,
@@ -658,13 +830,12 @@ fn rejects_a_schedule_that_depends_on_a_later_call() {
 
     assert!(error.to_string().contains("exceed DENOM"));
     assert_eq!(1, streams.pending_writes.len());
-    assert_eq!(20, next);
+    assert_eq!(20, next_epoch(&streams));
 }
 
 #[test]
-fn queues_batches_cancels_slots_and_maintains_transition_epoch() {
+fn queues_batches_cancels_slots_and_tracks_queue_head() {
     let (mut streams, mut accruals) = base_state();
-    let mut next = EPOCH_UNDEFINED;
     let updates = [
         WeightRecordUpdate { id: 1, weight: constant_weight(pct(65)) },
         WeightRecordUpdate { id: 2, weight: constant_weight(pct(35)) },
@@ -672,78 +843,44 @@ fn queues_batches_cancels_slots_and_maintains_transition_epoch() {
 
     assert_eq!(
         17,
-        queue_weight_records(
-            &mut streams,
-            &mut next,
-            10,
-            7,
-            PendingWriteOp::SetWeightRecords,
-            &updates,
-        )
-        .unwrap()
+        queue_weight_records(&mut streams, 10, 7, PendingWriteOp::SetWeightRecords, &updates,)
+            .unwrap()
     );
-    assert_eq!(17, next);
+    assert_eq!(17, next_epoch(&streams));
     assert_eq!(1, streams.pending_writes.len());
     assert_eq!(None, streams.pending_writes[0].id);
     let payload: WeightRecordsPayload = streams.pending_writes[0].payload.deserialize().unwrap();
     assert_eq!(updates, payload.updates.as_slice());
     assert!(
-        queue_weight_records(
-            &mut streams,
-            &mut next,
-            10,
-            7,
-            PendingWriteOp::SetWeightRecords,
-            &updates[..1],
-        )
-        .is_err()
-    );
-
-    assert!(
-        cancel_pending(&mut streams, &mut next, Some(999), PendingWriteOp::SetWeightRecords)
+        queue_weight_records(&mut streams, 10, 7, PendingWriteOp::SetWeightRecords, &updates[..1],)
             .is_err()
     );
-    assert_eq!(17, next);
-    assert!(
-        cancel_pending(&mut streams, &mut next, None, PendingWriteOp::SetWeightRecords).unwrap()
-    );
-    assert_eq!(EPOCH_UNDEFINED, next);
-    assert!(
-        !cancel_pending(&mut streams, &mut next, None, PendingWriteOp::SetWeightRecords).unwrap()
-    );
-    assert!(cancel_pending(&mut streams, &mut next, None, PendingWriteOp::RemoveStream).is_err());
 
-    queue_weight_records(
-        &mut streams,
-        &mut next,
-        20,
-        7,
-        PendingWriteOp::SetWeightRecords,
-        &updates[1..],
-    )
-    .unwrap();
-    assert_eq!(27, next);
+    assert!(cancel_pending(&mut streams, Some(999), PendingWriteOp::SetWeightRecords).is_err());
+    assert_eq!(17, next_epoch(&streams));
     assert!(
-        cancel_pending(&mut streams, &mut next, None, PendingWriteOp::SetWeightRecords).unwrap()
+        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some()
     );
-    assert_eq!(EPOCH_UNDEFINED, next);
+    assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
+    assert!(
+        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_none()
+    );
+    assert!(cancel_pending(&mut streams, None, PendingWriteOp::RemoveStream).is_err());
 
-    queue_weight_records(
-        &mut streams,
-        &mut next,
-        10,
-        7,
-        PendingWriteOp::StepWeightRecords,
-        &updates[..1],
-    )
-    .unwrap();
+    queue_weight_records(&mut streams, 20, 7, PendingWriteOp::SetWeightRecords, &updates[1..])
+        .unwrap();
+    assert_eq!(27, next_epoch(&streams));
     assert!(
-        cancel_pending(&mut streams, &mut next, None, PendingWriteOp::StepWeightRecords).is_err()
+        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some()
     );
+    assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
+
+    queue_weight_records(&mut streams, 10, 7, PendingWriteOp::StepWeightRecords, &updates[..1])
+        .unwrap();
+    assert!(cancel_pending(&mut streams, None, PendingWriteOp::StepWeightRecords).is_err());
     let result = apply_due_writes_and_cancel(
         &mut streams,
         &mut accruals,
-        &mut next,
         17,
         None,
         PendingWriteOp::SetWeightRecords,
@@ -755,14 +892,13 @@ fn queues_batches_cancels_slots_and_maintains_transition_epoch() {
         result.apply_result.applied.iter().map(|write| write.op).collect::<Vec<_>>()
     );
     assert!(result.apply_result.dropped.is_empty());
-    assert!(!result.removed);
+    assert!(result.removed.is_none());
     assert_eq!(pct(65), streams.streams[0].weight.v_start);
 
     assert_eq!(
         17,
         queue_weight_records(
             &mut streams,
-            &mut next,
             17,
             0,
             PendingWriteOp::SetWeightRecords,
@@ -770,19 +906,17 @@ fn queues_batches_cancels_slots_and_maintains_transition_epoch() {
         )
         .unwrap()
     );
-    assert_eq!(17, next);
-    apply_due_writes(&mut streams, &mut accruals, &mut next, 17).unwrap();
+    assert_eq!(17, next_epoch(&streams));
+    apply_due_writes(&mut streams, &mut accruals, 17).unwrap();
     assert_eq!(pct(30), streams.streams[1].weight.v_start);
-    assert_eq!(EPOCH_UNDEFINED, next);
+    assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
 }
 
 #[test]
 fn apply_and_cancel_surfaces_calls_dropped_before_cancellation() {
     let (mut streams, mut accruals) = base_state();
-    let mut next = EPOCH_UNDEFINED;
     queue_register_stream(
         &mut streams,
-        &mut next,
         0,
         10,
         stream(3, 0, Some(explicit(203, shares(&[(103, DENOM)])))),
@@ -791,7 +925,6 @@ fn apply_and_cancel_surfaces_calls_dropped_before_cancellation() {
     .unwrap();
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::SetWeightRecords,
@@ -799,13 +932,12 @@ fn apply_and_cancel_surfaces_calls_dropped_before_cancellation() {
     )
     .unwrap();
     assert!(
-        cancel_pending(&mut streams, &mut next, Some(3), PendingWriteOp::RegisterStream).unwrap()
+        cancel_pending(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some()
     );
 
     let result = apply_due_writes_and_cancel(
         &mut streams,
         &mut accruals,
-        &mut next,
         10,
         Some(99),
         PendingWriteOp::RemoveStream,
@@ -813,19 +945,18 @@ fn apply_and_cancel_surfaces_calls_dropped_before_cancellation() {
     .unwrap();
     assert_eq!(1, result.apply_result.dropped.len());
     assert_eq!(PendingWriteOp::SetWeightRecords, result.apply_result.dropped[0].op);
-    assert!(!result.removed);
+    assert!(result.removed.is_none());
     assert!(streams.pending_writes.is_empty());
 }
 
 #[test]
 fn enforces_registration_bounds_and_id_availability() {
     let (mut streams, _) = base_state();
-    let mut next = EPOCH_UNDEFINED;
     let new_stream =
         stream(3, 0, Some(explicit(201, shares(&[(103, DENOM / 2), (102, DENOM - DENOM / 2)]))));
 
-    assert!(queue_register_stream(&mut streams, &mut next, 10, 7, new_stream.clone(), 16).is_err());
-    assert_eq!(17, queue_register_stream(&mut streams, &mut next, 10, 7, new_stream, 17).unwrap());
+    assert!(queue_register_stream(&mut streams, 10, 7, new_stream.clone(), 16).is_err());
+    assert_eq!(17, queue_register_stream(&mut streams, 10, 7, new_stream, 17).unwrap());
     let payload: RegisterStreamPayload = streams.pending_writes[0].payload.deserialize().unwrap();
     assert_eq!(
         vec![Address::new_id(102), Address::new_id(103)],
@@ -834,7 +965,6 @@ fn enforces_registration_bounds_and_id_availability() {
     assert!(
         queue_register_stream(
             &mut streams,
-            &mut next,
             10,
             7,
             stream(3, 0, Some(explicit(201, shares(&[(102, DENOM)])))),
@@ -851,12 +981,10 @@ fn enforces_registration_bounds_and_id_availability() {
             (id != 1).then(|| explicit(200 + id, shares(&[(100 + id, DENOM)]))),
         ));
     }
-    let mut full_next = EPOCH_UNDEFINED;
     assert_eq!(MAX_STREAMS, full.streams.len());
     assert!(
         queue_register_stream(
             &mut full,
-            &mut full_next,
             0,
             1,
             stream(9, 0, Some(explicit(209, shares(&[(109, DENOM)])))),
@@ -873,10 +1001,8 @@ fn enforces_registration_bounds_and_id_availability() {
             (id != 1).then(|| explicit(200 + id, shares(&[(100 + id, DENOM)]))),
         ));
     }
-    let mut seven_next = EPOCH_UNDEFINED;
     queue_register_stream(
         &mut seven,
-        &mut seven_next,
         0,
         1,
         stream(8, 0, Some(explicit(208, shares(&[(108, DENOM)])))),
@@ -886,7 +1012,7 @@ fn enforces_registration_bounds_and_id_availability() {
     let mut seven_accruals = (2..MAX_STREAMS as u64)
         .map(|id| StreamAccrual { id, amount: TokenAmount::zero() })
         .collect();
-    apply_due_writes(&mut seven, &mut seven_accruals, &mut seven_next, 1).unwrap();
+    apply_due_writes(&mut seven, &mut seven_accruals, 1).unwrap();
     assert_eq!(MAX_STREAMS, seven.streams.len());
 
     let mut tombstoned = StreamsState {
@@ -899,11 +1025,9 @@ fn enforces_registration_bounds_and_id_availability() {
         }],
         ..Default::default()
     };
-    let mut tombstoned_next = EPOCH_UNDEFINED;
     assert!(
         queue_register_stream(
             &mut tombstoned,
-            &mut tombstoned_next,
             0,
             1,
             stream(4, 0, Some(explicit(204, shares(&[(104, DENOM)])))),
@@ -911,18 +1035,32 @@ fn enforces_registration_bounds_and_id_availability() {
         )
         .is_err()
     );
+
+    let claimed = claim(&mut tombstoned, &[], 4, &[Address::new_id(101)]).unwrap();
+    assert_eq!(vec![TokenAmount::from_atto(1)], claimed);
+    assert!(tombstoned.tombstones.is_empty());
+    assert_eq!(
+        1,
+        queue_register_stream(
+            &mut tombstoned,
+            0,
+            1,
+            stream(4, 0, Some(explicit(204, shares(&[(104, DENOM)])))),
+            1,
+        )
+        .unwrap()
+    );
 }
 
 #[test]
 fn rejects_invalid_timelocks_without_mutation() {
     let (mut streams, _) = base_state();
     let before = streams.clone();
-    let mut next = EPOCH_UNDEFINED;
 
-    assert!(queue_remove_stream(&mut streams, &mut next, 0, -1, 2).is_err());
-    assert!(queue_remove_stream(&mut streams, &mut next, i64::MAX, 1, 2).is_err());
+    assert!(queue_remove_stream(&mut streams, 0, -1, 2).is_err());
+    assert!(queue_remove_stream(&mut streams, i64::MAX, 1, 2).is_err());
     assert_eq!(before, streams);
-    assert_eq!(EPOCH_UNDEFINED, next);
+    assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
 }
 
 #[test]
@@ -958,12 +1096,11 @@ fn rejects_malformed_pending_order_without_mutation() {
     ];
     let before_streams = streams.clone();
     let before_accruals = accruals.clone();
-    let mut next = 1;
 
-    assert!(apply_due_writes(&mut streams, &mut accruals, &mut next, 2).is_err());
+    assert!(apply_due_writes(&mut streams, &mut accruals, 2).is_err());
     assert_eq!(before_streams, streams);
     assert_eq!(before_accruals, accruals);
-    assert_eq!(1, next);
+    assert_eq!(2, next_epoch(&streams));
 }
 
 #[test]
@@ -977,53 +1114,48 @@ fn rejects_malformed_pending_payload_without_mutation() {
     });
     let before_streams = streams.clone();
     let before_accruals = accruals.clone();
-    let mut next = 1;
 
-    assert!(apply_due_writes(&mut streams, &mut accruals, &mut next, 1).is_err());
+    assert!(apply_due_writes(&mut streams, &mut accruals, 1).is_err());
     assert_eq!(before_streams, streams);
     assert_eq!(before_accruals, accruals);
-    assert_eq!(1, next);
+    assert_eq!(1, next_epoch(&streams));
 }
 
 #[test]
 fn rejects_missing_accrual_state_without_dropping_the_call() {
     let (mut streams, mut accruals) = base_state();
-    let mut next = EPOCH_UNDEFINED;
-    queue_remove_stream(&mut streams, &mut next, 0, 1, 2).unwrap();
+    queue_remove_stream(&mut streams, 0, 1, 2).unwrap();
     accruals.clear();
     let before_streams = streams.clone();
 
-    assert!(apply_due_writes(&mut streams, &mut accruals, &mut next, 1).is_err());
+    assert!(apply_due_writes(&mut streams, &mut accruals, 1).is_err());
     assert_eq!(before_streams, streams);
     assert!(accruals.is_empty());
-    assert_eq!(1, next);
+    assert_eq!(1, next_epoch(&streams));
 }
 
 #[test]
 fn applies_same_epoch_lifecycle_writes_in_operation_order() {
     let (mut streams, mut accruals) = base_state();
-    let mut next = EPOCH_UNDEFINED;
     let new_stream = stream(3, 0, Some(explicit(203, shares(&[(103, DENOM)]))));
-    queue_register_stream(&mut streams, &mut next, 0, 10, new_stream, 10).unwrap();
-    queue_remove_stream(&mut streams, &mut next, 0, 10, 3).unwrap();
+    queue_register_stream(&mut streams, 0, 10, new_stream, 10).unwrap();
+    queue_remove_stream(&mut streams, 0, 10, 3).unwrap();
 
-    apply_due_writes(&mut streams, &mut accruals, &mut next, 9).unwrap();
+    apply_due_writes(&mut streams, &mut accruals, 9).unwrap();
     assert_eq!(2, streams.streams.len());
-    assert_eq!(10, next);
+    assert_eq!(10, next_epoch(&streams));
 
-    apply_due_writes(&mut streams, &mut accruals, &mut next, 10).unwrap();
+    apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert_eq!(vec![1, 2], streams.streams.iter().map(|stream| stream.id).collect::<Vec<_>>());
     assert_eq!(vec![2], accruals.iter().map(|row| row.id).collect::<Vec<_>>());
-    assert_eq!(EPOCH_UNDEFINED, next);
+    assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
 }
 
 #[test]
 fn drops_a_weight_batch_stranded_by_cancelled_registration() {
     let (mut streams, mut accruals) = base_state();
-    let mut next = EPOCH_UNDEFINED;
     queue_register_stream(
         &mut streams,
-        &mut next,
         0,
         10,
         stream(3, 0, Some(explicit(203, shares(&[(103, DENOM)])))),
@@ -1032,7 +1164,6 @@ fn drops_a_weight_batch_stranded_by_cancelled_registration() {
     .unwrap();
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::SetWeightRecords,
@@ -1042,12 +1173,12 @@ fn drops_a_weight_batch_stranded_by_cancelled_registration() {
         ],
     )
     .unwrap();
-    queue_set_distribution(&mut streams, &mut next, 0, 10, 2, Address::new_id(999)).unwrap();
+    queue_set_distribution(&mut streams, 0, 10, 2, Address::new_id(999)).unwrap();
     assert!(
-        cancel_pending(&mut streams, &mut next, Some(3), PendingWriteOp::RegisterStream).unwrap()
+        cancel_pending(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some()
     );
 
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, 10).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert_eq!(1, result.dropped.len());
     assert_eq!(PendingWriteOp::SetWeightRecords, result.dropped[0].op);
     assert_eq!(
@@ -1057,7 +1188,7 @@ fn drops_a_weight_batch_stranded_by_cancelled_registration() {
     assert_eq!(vec![1, 2], streams.streams.iter().map(|stream| stream.id).collect::<Vec<_>>());
     assert_eq!(pct(60), streams.streams[0].weight.v_start);
     assert_eq!(Address::new_id(999), streams.streams[1].distribution.as_ref().unwrap().writer);
-    assert_eq!(EPOCH_UNDEFINED, next);
+    assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
 
     let allocation = allocate_reward(&streams.streams, 10, &TokenAmount::from_atto(100)).unwrap();
     assert_eq!(TokenAmount::from_atto(60), allocation.miner);
@@ -1066,12 +1197,84 @@ fn drops_a_weight_batch_stranded_by_cancelled_registration() {
 }
 
 #[test]
+fn admits_a_timelocked_weight_repair_and_drops_non_repairing_due_writes() {
+    let (mut streams, mut accruals) = base_state();
+    queue_set_distribution(&mut streams, 0, 2, 2, Address::new_id(999)).unwrap();
+
+    streams.streams[0].weight = constant_weight(pct(90));
+    assert!(validate_streams_state(&streams, &accruals, 0).is_err());
+    assert!(queue_register_stream(&mut streams, 0, 2, stream(3, 0, None), 2,).is_err());
+    assert!(
+        queue_weight_records(
+            &mut streams,
+            0,
+            2,
+            PendingWriteOp::StepWeightRecords,
+            &[WeightRecordUpdate { id: 1, weight: constant_weight(pct(70)) }],
+        )
+        .is_err()
+    );
+
+    queue_weight_records(
+        &mut streams,
+        0,
+        2,
+        PendingWriteOp::SetWeightRecords,
+        &[WeightRecordUpdate { id: 1, weight: constant_weight(pct(70)) }],
+    )
+    .unwrap();
+
+    let before = streams.clone();
+    assert_eq!(ApplyResult::default(), apply_due_writes(&mut streams, &mut accruals, 1).unwrap());
+    assert_eq!(before, streams);
+    assert_eq!(2, next_epoch(&streams));
+
+    let result = apply_due_writes(&mut streams, &mut accruals, 2).unwrap();
+    assert_eq!(
+        vec![PendingWriteOp::SetDistribution],
+        result.dropped.iter().map(|write| write.op).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        vec![PendingWriteOp::SetWeightRecords],
+        result.applied.iter().map(|write| write.op).collect::<Vec<_>>()
+    );
+    assert_eq!(pct(70), streams.streams[0].weight.v_start);
+    assert_eq!(Address::new_id(200), streams.streams[1].distribution.as_ref().unwrap().writer);
+    assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
+    validate_streams_state(&streams, &accruals, 2).unwrap();
+}
+
+#[test]
+fn applies_a_due_weight_repair_from_a_malformed_record() {
+    let (mut streams, mut accruals) = base_state();
+    streams.streams[0].weight = constant_weight(DENOM + 1);
+
+    queue_weight_records(
+        &mut streams,
+        0,
+        2,
+        PendingWriteOp::SetWeightRecords,
+        &[WeightRecordUpdate { id: 1, weight: constant_weight(pct(60)) }],
+    )
+    .unwrap();
+
+    let result = apply_due_writes(&mut streams, &mut accruals, 2).unwrap();
+
+    assert_eq!(
+        vec![PendingWriteOp::SetWeightRecords],
+        result.applied.iter().map(|write| write.op).collect::<Vec<_>>()
+    );
+    assert!(result.dropped.is_empty());
+    assert_eq!(pct(60), streams.streams[0].weight.v_start);
+    assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
+    validate_streams_state(&streams, &accruals, 2).unwrap();
+}
+
+#[test]
 fn drops_two_dependents_stranded_by_one_cancelled_registration() {
     let (mut streams, mut accruals) = base_state();
-    let mut next = EPOCH_UNDEFINED;
     queue_register_stream(
         &mut streams,
-        &mut next,
         0,
         10,
         stream(3, 0, Some(explicit(203, shares(&[(103, DENOM)])))),
@@ -1080,19 +1283,18 @@ fn drops_two_dependents_stranded_by_one_cancelled_registration() {
     .unwrap();
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::SetWeightRecords,
         &[WeightRecordUpdate { id: 3, weight: constant_weight(pct(10)) }],
     )
     .unwrap();
-    queue_set_distribution(&mut streams, &mut next, 0, 10, 3, Address::new_id(303)).unwrap();
+    queue_set_distribution(&mut streams, 0, 10, 3, Address::new_id(303)).unwrap();
     assert!(
-        cancel_pending(&mut streams, &mut next, Some(3), PendingWriteOp::RegisterStream).unwrap()
+        cancel_pending(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some()
     );
 
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, 10).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert_eq!(
         vec![PendingWriteOp::SetWeightRecords, PendingWriteOp::SetDistribution],
         result.dropped.iter().map(|write| write.op).collect::<Vec<_>>()
@@ -1104,10 +1306,8 @@ fn drops_two_dependents_stranded_by_one_cancelled_registration() {
 #[test]
 fn new_admission_can_revive_a_previously_stranded_call() {
     let (mut streams, mut accruals) = base_state();
-    let mut next = EPOCH_UNDEFINED;
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::SetWeightRecords,
@@ -1116,7 +1316,6 @@ fn new_admission_can_revive_a_previously_stranded_call() {
     .unwrap();
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         20,
         PendingWriteOp::StepWeightRecords,
@@ -1124,21 +1323,20 @@ fn new_admission_can_revive_a_previously_stranded_call() {
     )
     .unwrap();
     assert!(
-        cancel_pending(&mut streams, &mut next, None, PendingWriteOp::SetWeightRecords).unwrap()
+        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some()
     );
     let stranded = project_due_writes(&streams, &accruals, 20).unwrap();
     assert_eq!(1, stranded.apply_result.dropped.len());
 
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::SetWeightRecords,
         &[WeightRecordUpdate { id: 1, weight: constant_weight(pct(50)) }],
     )
     .unwrap();
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, 20).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, 20).unwrap();
     assert!(result.dropped.is_empty());
     assert_eq!(pct(50), streams.streams[0].weight.v_start);
     assert_eq!(pct(50), streams.streams[1].weight.v_start);
@@ -1147,10 +1345,8 @@ fn new_admission_can_revive_a_previously_stranded_call() {
 #[test]
 fn drops_a_stranded_gate_batch_and_accepts_the_next_absolute_level() {
     let (mut streams, mut accruals) = base_state();
-    let mut next = EPOCH_UNDEFINED;
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::SetWeightRecords,
@@ -1159,7 +1355,6 @@ fn drops_a_stranded_gate_batch_and_accepts_the_next_absolute_level() {
     .unwrap();
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::StepWeightRecords,
@@ -1167,24 +1362,23 @@ fn drops_a_stranded_gate_batch_and_accepts_the_next_absolute_level() {
     )
     .unwrap();
     assert!(
-        cancel_pending(&mut streams, &mut next, None, PendingWriteOp::SetWeightRecords).unwrap()
+        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some()
     );
 
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, 10).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert_eq!(1, result.dropped.len());
     assert_eq!(PendingWriteOp::StepWeightRecords, result.dropped[0].op);
     assert_eq!(pct(20), streams.streams[1].weight.v_start);
 
     queue_weight_records(
         &mut streams,
-        &mut next,
         10,
         0,
         PendingWriteOp::StepWeightRecords,
         &[WeightRecordUpdate { id: 2, weight: constant_weight(pct(30)) }],
     )
     .unwrap();
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, 10).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert!(result.dropped.is_empty());
     assert_eq!(pct(30), streams.streams[1].weight.v_start);
 }
@@ -1195,10 +1389,8 @@ fn repairs_a_dropped_terminal_gate_with_a_discretionary_write() {
     streams.streams[0].weight = constant_weight(pct(55));
     streams.streams[1].weight = constant_weight(pct(45));
     let steps = 8;
-    let mut next = EPOCH_UNDEFINED;
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::SetWeightRecords,
@@ -1207,7 +1399,6 @@ fn repairs_a_dropped_terminal_gate_with_a_discretionary_write() {
     .unwrap();
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::StepWeightRecords,
@@ -1215,17 +1406,16 @@ fn repairs_a_dropped_terminal_gate_with_a_discretionary_write() {
     )
     .unwrap();
     assert!(
-        cancel_pending(&mut streams, &mut next, None, PendingWriteOp::SetWeightRecords).unwrap()
+        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some()
     );
 
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, 10).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert_eq!(1, result.dropped.len());
     assert_eq!(pct(45), streams.streams[1].weight.v_start);
     assert_eq!(8, steps);
 
     queue_weight_records(
         &mut streams,
-        &mut next,
         10,
         0,
         PendingWriteOp::SetWeightRecords,
@@ -1235,7 +1425,7 @@ fn repairs_a_dropped_terminal_gate_with_a_discretionary_write() {
         ],
     )
     .unwrap();
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, 10).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert!(result.dropped.is_empty());
     assert_eq!(pct(50), streams.streams[0].weight.v_start);
     assert_eq!(pct(50), streams.streams[1].weight.v_start);
@@ -1245,11 +1435,10 @@ fn repairs_a_dropped_terminal_gate_with_a_discretionary_write() {
 #[test]
 fn preserves_queue_position_for_equal_epoch_calls() {
     let (mut streams, mut accruals) = base_state();
-    let mut next = EPOCH_UNDEFINED;
-    queue_set_distribution(&mut streams, &mut next, 0, 10, 2, Address::new_id(999)).unwrap();
-    queue_remove_stream(&mut streams, &mut next, 0, 10, 2).unwrap();
+    queue_set_distribution(&mut streams, 0, 10, 2, Address::new_id(999)).unwrap();
+    queue_remove_stream(&mut streams, 0, 10, 2).unwrap();
 
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, 10).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert!(result.dropped.is_empty());
     assert_eq!(vec![1], streams.streams.iter().map(|stream| stream.id).collect::<Vec<_>>());
 }
@@ -1268,10 +1457,9 @@ fn removal_settles_into_a_claimable_tombstone() {
         amount: TokenAmount::from_atto(2),
     });
     accruals[0].amount = TokenAmount::from_atto(11);
-    let mut next = EPOCH_UNDEFINED;
 
-    queue_remove_stream(&mut streams, &mut next, 0, 1, 2).unwrap();
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, 1).unwrap();
+    queue_remove_stream(&mut streams, 0, 1, 2).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, 1).unwrap();
     assert_eq!(TokenAmount::from_atto(1), result.burn);
     assert_eq!(vec![1], streams.streams.iter().map(|stream| stream.id).collect::<Vec<_>>());
     assert!(accruals.is_empty());
@@ -1290,10 +1478,9 @@ fn writer_replacement_settles_before_repointing() {
     streams.streams[1].distribution.as_mut().unwrap().shares =
         shares(&[(101, DENOM / 2), (102, DENOM - DENOM / 2)]);
     accruals[0].amount = TokenAmount::from_atto(5);
-    let mut next = EPOCH_UNDEFINED;
 
-    queue_set_distribution(&mut streams, &mut next, 0, 1, 2, Address::new_id(999)).unwrap();
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, 1).unwrap();
+    queue_set_distribution(&mut streams, 0, 1, 2, Address::new_id(999)).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, 1).unwrap();
     let distribution = streams.streams[1].distribution.as_ref().unwrap();
     assert_eq!(TokenAmount::from_atto(1), result.burn);
     assert_eq!(Address::new_id(999), distribution.writer);
@@ -1331,10 +1518,8 @@ fn conserves_service_value_across_claims_folds_and_removal() {
     let result = claim(&mut streams, &accruals, 2, &[Address::new_id(104)]).unwrap();
     paid += &result[0];
     assert_service_conserved(&gross, &paid, &burned, &streams, &accruals);
-
-    let mut next = EPOCH_UNDEFINED;
-    queue_remove_stream(&mut streams, &mut next, 0, 1, 2).unwrap();
-    burned += apply_due_writes(&mut streams, &mut accruals, &mut next, 1).unwrap().burn;
+    queue_remove_stream(&mut streams, 0, 1, 2).unwrap();
+    burned += apply_due_writes(&mut streams, &mut accruals, 1).unwrap().burn;
     assert_service_conserved(&gross, &paid, &burned, &streams, &accruals);
 
     let result =
@@ -1347,10 +1532,8 @@ fn conserves_service_value_across_claims_folds_and_removal() {
 #[test]
 fn projects_due_writes_without_mutating_stored_state() {
     let (mut streams, accruals) = base_state();
-    let mut next = EPOCH_UNDEFINED;
     queue_weight_records(
         &mut streams,
-        &mut next,
         0,
         10,
         PendingWriteOp::SetWeightRecords,
@@ -1361,19 +1544,17 @@ fn projects_due_writes_without_mutating_stored_state() {
     let projected = project_due_writes(&streams, &accruals, 10).unwrap();
     assert_eq!(pct(70), projected.streams.streams[0].weight.v_start);
     assert!(projected.streams.pending_writes.is_empty());
-    assert_eq!(EPOCH_UNDEFINED, projected.next_transition_epoch);
     assert_eq!(TokenAmount::zero(), projected.apply_result.burn);
 
     assert_eq!(pct(60), streams.streams[0].weight.v_start);
     assert_eq!(1, streams.pending_writes.len());
-    assert_eq!(10, next);
+    assert_eq!(10, next_epoch(&streams));
 }
 
 #[test]
 fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
     let (mut streams, mut accruals) = base_state();
     let mut supply = SupplyTracker::default();
-    let mut next = EPOCH_UNDEFINED;
     let mut random = 0x05ee_df02_u64;
     let mut epoch = 0;
     let mut next_id = 4;
@@ -1381,7 +1562,6 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
 
     queue_register_stream(
         &mut streams,
-        &mut next,
         epoch,
         2,
         stream(3, 0, Some(explicit(203, shares(&[(103, DENOM)])))),
@@ -1391,7 +1571,6 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
     covered[3] = true;
     queue_weight_records(
         &mut streams,
-        &mut next,
         epoch,
         2,
         PendingWriteOp::SetWeightRecords,
@@ -1399,21 +1578,21 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
     )
     .unwrap();
     covered[6] = true;
-    queue_set_distribution(&mut streams, &mut next, epoch, 2, 3, Address::new_id(303)).unwrap();
+    queue_set_distribution(&mut streams, epoch, 2, 3, Address::new_id(303)).unwrap();
     covered[5] = true;
     assert!(
-        cancel_pending(&mut streams, &mut next, Some(3), PendingWriteOp::RegisterStream).unwrap()
+        cancel_pending(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some()
     );
     covered[8] = true;
     epoch += 2;
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, epoch).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, epoch).unwrap();
     assert_eq!(2, result.dropped.len());
     supply.burn_dust(result.burn);
     let mut dropped = result.dropped.len();
 
     for _ in 0..512 {
         epoch += 1;
-        let result = apply_due_writes(&mut streams, &mut accruals, &mut next, epoch).unwrap();
+        let result = apply_due_writes(&mut streams, &mut accruals, epoch).unwrap();
         dropped += result.dropped.len();
         supply.burn_dust(result.burn);
 
@@ -1479,9 +1658,7 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
                 let id = next_id;
                 let new_stream =
                     stream(id, 0, Some(explicit(20_000 + id, shares(&[(30_000 + id, DENOM)]))));
-                if queue_register_stream(&mut streams, &mut next, epoch, 2, new_stream, epoch + 2)
-                    .is_ok()
-                {
+                if queue_register_stream(&mut streams, epoch, 2, new_stream, epoch + 2).is_ok() {
                     next_id += 1;
                     covered[3] = true;
                 }
@@ -1495,7 +1672,7 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
                     .collect();
                 if !ids.is_empty() {
                     let id = ids[random_u64(&mut random) as usize % ids.len()];
-                    if queue_remove_stream(&mut streams, &mut next, epoch, 2, id).is_ok() {
+                    if queue_remove_stream(&mut streams, epoch, 2, id).is_ok() {
                         covered[4] = true;
                     }
                 }
@@ -1510,8 +1687,7 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
                 if !ids.is_empty() {
                     let id = ids[random_u64(&mut random) as usize % ids.len()];
                     let writer = Address::new_id(40_000 + random_u64(&mut random) % 32);
-                    if queue_set_distribution(&mut streams, &mut next, epoch, 2, id, writer).is_ok()
-                    {
+                    if queue_set_distribution(&mut streams, epoch, 2, id, writer).is_ok() {
                         covered[5] = true;
                     }
                 }
@@ -1532,7 +1708,7 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
                         .weight
                         .clone(),
                 };
-                if queue_weight_records(&mut streams, &mut next, epoch, 2, op, &[update]).is_ok() {
+                if queue_weight_records(&mut streams, epoch, 2, op, &[update]).is_ok() {
                     covered[if op == PendingWriteOp::SetWeightRecords { 6 } else { 7 }] = true;
                 }
             }
@@ -1546,7 +1722,7 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
                 if !cancellable.is_empty() {
                     let (id, op) =
                         cancellable[random_u64(&mut random) as usize % cancellable.len()];
-                    if cancel_pending(&mut streams, &mut next, id, op).unwrap() {
+                    if cancel_pending(&mut streams, id, op).unwrap().is_some() {
                         covered[8] = true;
                     }
                 }
@@ -1558,9 +1734,10 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
         assert!(supply.total_burn >= previous.1);
         assert!(supply.total_service >= previous.2);
         supply.assert_invariants(&streams, &accruals);
+        validate_streams_state(&streams, &accruals, epoch).unwrap();
     }
 
-    let result = apply_due_writes(&mut streams, &mut accruals, &mut next, epoch + 2).unwrap();
+    let result = apply_due_writes(&mut streams, &mut accruals, epoch + 2).unwrap();
     dropped += result.dropped.len();
     supply.burn_dust(result.burn);
     supply.assert_invariants(&streams, &accruals);

@@ -1,11 +1,14 @@
 use std::collections::BTreeSet;
 
-use crate::{State, StreamsState, streams::validate_streams_state};
+use crate::{
+    State, StreamsState,
+    streams::{compute_service_liability, validate_streams_state},
+};
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
-use num_traits::{Signed, Zero};
+use num_traits::Signed;
 
 #[derive(Default)]
 pub struct StateSummary {
@@ -18,6 +21,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     state: &State,
     store: &BS,
     prior_epoch: ChainEpoch,
+    current_epoch: ChainEpoch,
     balance: &TokenAmount,
 ) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
@@ -63,15 +67,15 @@ pub fn check_state_invariants<BS: Blockstore>(
     for (name, amount) in [
         ("total minted reward", &state.total_minted_reward),
         ("total burn minted", &state.total_burn_minted),
-        ("total service minted", &state.total_service_minted),
+        ("total explicit minted", &state.total_explicit_minted),
     ] {
         acc.require(!amount.is_negative(), format!("{name} is negative ({amount})"));
     }
     acc.require(
-        &state.total_burn_minted + &state.total_service_minted <= state.total_minted_reward,
+        &state.total_burn_minted + &state.total_explicit_minted <= state.total_minted_reward,
         format!(
             "burn {} + service {} exceeds total minted {}",
-            state.total_burn_minted, state.total_service_minted, state.total_minted_reward
+            state.total_burn_minted, state.total_explicit_minted, state.total_minted_reward
         ),
     );
     acc.require(
@@ -79,13 +83,13 @@ pub fn check_state_invariants<BS: Blockstore>(
         format!("SWA timelock is negative ({})", state.swa_timelock_epochs),
     );
     acc.require(
-        state.service_accrued.windows(2).all(|rows| rows[0].id < rows[1].id),
-        "service accrual rows are not strictly ordered by stream ID",
+        state.accrued.windows(2).all(|rows| rows[0].id < rows[1].id),
+        "explicit-stream accrual rows are not strictly ordered by stream ID",
     );
-    for row in &state.service_accrued {
+    for row in &state.accrued {
         acc.require(
             !row.amount.is_negative(),
-            format!("service accrual for stream {} is negative ({})", row.id, row.amount),
+            format!("explicit-stream accrual for stream {} is negative ({})", row.id, row.amount),
         );
     }
 
@@ -100,8 +104,7 @@ pub fn check_state_invariants<BS: Blockstore>(
             return (StateSummary::default(), acc);
         }
     };
-    if let Err(error) = validate_streams_state(&streams_state, &state.service_accrued, state.epoch)
-    {
+    if let Err(error) = validate_streams_state(&streams_state, &state.accrued, current_epoch) {
         acc.add(format!("invalid streams state: {error}"));
     }
     let summary = StateSummary {
@@ -126,7 +129,7 @@ pub fn check_state_invariants<BS: Blockstore>(
         .filter(|stream| stream.distribution.is_some())
         .map(|stream| stream.id)
         .collect();
-    let accrual_ids: BTreeSet<_> = state.service_accrued.iter().map(|row| row.id).collect();
+    let accrual_ids: BTreeSet<_> = state.accrued.iter().map(|row| row.id).collect();
     let tombstone_ids: BTreeSet<_> =
         streams_state.tombstones.iter().map(|tombstone| tombstone.id).collect();
     acc.require(stream_ids.is_disjoint(&tombstone_ids), "a stream ID is both live and tombstoned");
@@ -137,7 +140,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     acc.require(
         missing_accruals.is_empty() && unexpected_accruals.is_empty(),
         format!(
-            "service accrual IDs do not match live explicit streams: missing {missing_accruals:?}, unexpected {unexpected_accruals:?}"
+            "explicit-stream accrual IDs do not match live explicit streams: missing {missing_accruals:?}, unexpected {unexpected_accruals:?}"
         ),
     );
 
@@ -156,67 +159,24 @@ pub fn check_state_invariants<BS: Blockstore>(
         "pending writes are not ordered by effective epoch",
     );
 
-    let expected_next_transition = streams_state
-        .pending_writes
-        .first()
-        .map_or(fvm_shared::clock::EPOCH_UNDEFINED, |write| write.effective_epoch);
-    acc.require(
-        state.next_transition_epoch == expected_next_transition,
-        format!(
-            "next transition epoch {} does not match queue head {}",
-            state.next_transition_epoch, expected_next_transition
-        ),
-    );
-
-    let mut liabilities = TokenAmount::zero();
-    for row in &state.service_accrued {
-        liabilities += &row.amount;
-    }
-    for stream in &streams_state.streams {
-        if let Some(distribution) = &stream.distribution {
-            for row in &distribution.payable {
-                acc.require(
-                    !row.amount.is_negative(),
-                    format!("payable for stream {} is negative ({})", stream.id, row.amount),
-                );
-                liabilities += &row.amount;
-            }
-            for row in &distribution.claimed_period {
-                acc.require(
-                    !row.amount.is_negative(),
-                    format!("claimed amount for stream {} is negative ({})", stream.id, row.amount),
-                );
-                liabilities -= &row.amount;
-            }
-        }
-    }
-    for tombstone in &streams_state.tombstones {
-        for row in &tombstone.payable {
+    match compute_service_liability(&streams_state, &state.accrued) {
+        Ok(liabilities) => {
             acc.require(
-                !row.amount.is_negative(),
+                liabilities <= state.total_explicit_minted,
                 format!(
-                    "tombstone payable for stream {} is negative ({})",
-                    tombstone.id, row.amount
+                    "explicit-stream liabilities {liabilities} exceed total explicit minted {}",
+                    state.total_explicit_minted
                 ),
             );
-            liabilities += &row.amount;
+            acc.require(
+                balance >= &liabilities,
+                format!(
+                    "reward balance {balance} does not cover explicit-stream liabilities {liabilities}"
+                ),
+            );
         }
+        Err(error) => acc.add(format!("error computing explicit-stream liabilities: {error}")),
     }
-    acc.require(
-        !liabilities.is_negative(),
-        format!("service liabilities are negative ({liabilities})"),
-    );
-    acc.require(
-        liabilities <= state.total_service_minted,
-        format!(
-            "service liabilities {liabilities} exceed total service minted {}",
-            state.total_service_minted
-        ),
-    );
-    acc.require(
-        balance >= &liabilities,
-        format!("reward balance {balance} does not cover service liabilities {liabilities}"),
-    );
 
     (summary, acc)
 }

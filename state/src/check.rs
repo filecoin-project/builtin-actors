@@ -143,8 +143,13 @@ pub fn check_state_invariants<BS: Blockstore>(
             }
             Some(Type::Reward) => {
                 let state = get_state!(store, actor, RewardState);
-                let (summary, msgs) =
-                    reward::check_state_invariants(&state, store, prior_epoch, &actor.balance);
+                let (summary, msgs) = reward::check_state_invariants(
+                    &state,
+                    store,
+                    prior_epoch,
+                    prior_epoch + 1,
+                    &actor.balance,
+                );
                 acc.with_prefix("reward: ").add_all(&msgs);
                 reward_summary = Some(summary);
             }
