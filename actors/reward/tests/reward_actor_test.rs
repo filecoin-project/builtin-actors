@@ -19,7 +19,7 @@ use fvm_ipld_encoding::CborStore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
-use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
@@ -53,9 +53,8 @@ mod construction_tests {
         assert_eq!(&*BASELINE_INITIAL_VALUE, &state.effective_baseline_power);
         assert_eq!(TokenAmount::zero(), state.total_minted_reward);
         assert_eq!(TokenAmount::zero(), state.total_burn_minted);
-        assert_eq!(TokenAmount::zero(), state.total_service_minted);
-        assert!(state.service_accrued.is_empty());
-        assert_eq!(EPOCH_UNDEFINED, state.next_transition_epoch);
+        assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
+        assert!(state.accrued.is_empty());
         assert_eq!(0, state.swa_timelock_epochs);
 
         let streams: StreamsState =
@@ -75,7 +74,7 @@ mod construction_tests {
         let mut state: State = rt.get_state();
         let allocation = TokenAmount::from_whole(1_100_000_000);
 
-        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, &allocation);
+        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, 0, &allocation);
         acc.assert_empty();
 
         let streams = StreamsState {
@@ -93,29 +92,88 @@ mod construction_tests {
         };
         state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
         state.total_minted_reward = allocation;
-        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, &TokenAmount::zero());
+        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, 0, &TokenAmount::zero());
         assert!(acc.messages().iter().any(|message| message.contains("missing [2]")));
 
-        state.total_service_minted = TokenAmount::from_atto(10);
-        state.service_accrued = vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(10) }];
+        state.total_explicit_minted = TokenAmount::from_atto(10);
+        state.accrued = vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(10) }];
 
-        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, &TokenAmount::zero());
+        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, 0, &TokenAmount::zero());
         assert!(
             acc.messages()
                 .iter()
-                .any(|message| message.contains("does not cover service liabilities"))
+                .any(|message| message.contains("does not cover explicit-stream liabilities"))
         );
 
-        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, &TokenAmount::from_atto(10));
+        let (_, acc) =
+            check_state_invariants(&state, &*rt.store, -1, 0, &TokenAmount::from_atto(10));
         acc.assert_empty();
 
-        state.service_accrued[0].amount = TokenAmount::from_atto(-1);
-        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, &TokenAmount::from_atto(10));
+        state.accrued[0].amount = TokenAmount::from_atto(-1);
+        let (_, acc) =
+            check_state_invariants(&state, &*rt.store, -1, 0, &TokenAmount::from_atto(10));
         let messages = acc.messages();
-        assert!(messages.iter().any(|message| message.contains("service accrual")));
+        assert!(messages.iter().any(|message| message.contains("explicit-stream accrual")));
         assert!(
-            messages.iter().any(|message| message.contains("service liabilities are negative"))
+            messages
+                .iter()
+                .any(|message| message.contains("error computing explicit-stream liabilities"))
         );
+    }
+
+    #[test]
+    fn validates_stream_schedules_from_the_runtime_epoch() {
+        let rt = construct_and_verify(&StoragePower::from(0));
+        let mut state: State = rt.get_state();
+        let streams = StreamsState {
+            streams: vec![
+                Stream {
+                    id: 1,
+                    weight: WeightRecord {
+                        v_start: DENOM,
+                        slope: -((DENOM / 100 * 4) as i64),
+                        t_start: 0,
+                        floor: DENOM / 100 * 60,
+                        cap: DENOM,
+                    },
+                    distribution: None,
+                },
+                Stream {
+                    id: 2,
+                    weight: WeightRecord {
+                        v_start: DENOM / 100 * 20,
+                        slope: 0,
+                        t_start: 0,
+                        floor: DENOM / 100 * 20,
+                        cap: DENOM / 100 * 20,
+                    },
+                    distribution: Some(ExplicitDistribution {
+                        writer: Address::new_id(100),
+                        shares: vec![RecipientShare {
+                            recipient: Address::new_id(101),
+                            share: DENOM,
+                        }],
+                        payable: Vec::new(),
+                        claimed_period: Vec::new(),
+                    }),
+                },
+            ],
+            ..Default::default()
+        };
+        state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+        state.accrued = vec![StreamAccrual { id: 2, amount: TokenAmount::zero() }];
+        let allocation = TokenAmount::from_whole(1_100_000_000);
+
+        let (_, at_epoch_zero) = check_state_invariants(&state, &*rt.store, -1, 0, &allocation);
+        assert!(
+            at_epoch_zero
+                .messages()
+                .iter()
+                .any(|message| message.contains("invalid streams state"))
+        );
+
+        let (_, after_decline) = check_state_invariants(&state, &*rt.store, -1, 10, &allocation);
+        after_decline.assert_empty();
     }
 
     #[test]
@@ -220,6 +278,7 @@ mod test_award_block_reward {
     #[test]
     fn pays_reward_and_tracks_penalty() {
         let rt = construct_and_verify(&StoragePower::default());
+        install_consensus_stream(&rt);
         rt.set_balance(TokenAmount::from_whole(1_000_000_000));
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let penalty: TokenAmount = TokenAmount::from_atto(100);
@@ -255,6 +314,7 @@ mod test_award_block_reward {
     #[test]
     fn pays_out_current_balance_when_reward_exceeds_total_balance() {
         let rt = construct_and_verify(&StoragePower::from(1));
+        install_consensus_stream(&rt);
 
         // Total reward is a huge number, upon writing ~1e18, so 300 should be way less
         let small_reward = TokenAmount::from_atto(300);
@@ -291,6 +351,7 @@ mod test_award_block_reward {
     #[test]
     fn total_mined_tracks_correctly() {
         let rt = construct_and_verify(&StoragePower::from(1));
+        install_consensus_stream(&rt);
         let mut state: State = rt.get_state();
 
         assert_eq!(TokenAmount::zero(), state.total_minted_reward);
@@ -322,6 +383,7 @@ mod test_award_block_reward {
     #[test]
     fn funds_are_sent_to_burnt_funds_actor_if_sending_locked_funds_to_miner_fails() {
         let rt = construct_and_verify(&StoragePower::from(1));
+        install_consensus_stream(&rt);
         let mut state: State = rt.get_state();
 
         assert_eq!(TokenAmount::zero(), state.total_minted_reward);
@@ -415,6 +477,20 @@ fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
     assert!(ret.is_none());
     rt.verify();
     rt
+}
+
+fn install_consensus_stream(rt: &MockRuntime) {
+    let mut state: State = rt.get_state();
+    let streams = StreamsState {
+        streams: vec![Stream {
+            id: 1,
+            weight: WeightRecord { v_start: DENOM, slope: 0, t_start: 0, floor: DENOM, cap: DENOM },
+            distribution: None,
+        }],
+        ..Default::default()
+    };
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    rt.replace_state(&state);
 }
 
 fn award_block_reward(

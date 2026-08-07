@@ -2,8 +2,11 @@
 mod serialization {
     use cid::Cid;
     use fil_actor_reward::{
-        ExplicitDistribution, PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare, State,
-        Stream, StreamAccrual, StreamsState, Tombstone, WeightRecord,
+        CancelPendingParams, ClaimParams, ClaimReturn, DENOM, DistributionInit,
+        ExplicitDistribution, PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare,
+        RegisterStreamParams, RemoveStreamParams, SetDistributionParams, SetSharesParams,
+        SetWeightRecordsParams, State, Stream, StreamAccrual, StreamsState, Tombstone,
+        WeightRecord, WeightRecordUpdate,
     };
     use fil_actors_runtime::reward::FilterEstimate;
     use fil_actors_runtime::test_blockstores::MemoryBlockstore;
@@ -78,20 +81,16 @@ mod serialization {
 
     #[test]
     fn empty_reward_state_root() {
-        let state = State {
-            next_transition_epoch: -1,
-            streams_root: empty_streams_root(),
-            ..Default::default()
-        };
+        let state = State { streams_root: empty_streams_root(), ..Default::default() };
         let encoded = IpldBlock::serialize_cbor(&state).unwrap().unwrap();
         assert_eq!(
             encoded.data,
             hex!(
-                "8f40400040408240404000404040802000d82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
+                "8e404000404082404040004040408000d82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
             )
         );
         let decoded: State = IpldBlock::deserialize(&encoded).unwrap();
-        assert_eq!(-1, decoded.next_transition_epoch);
+        assert_eq!(state.streams_root, decoded.streams_root);
     }
 
     #[test]
@@ -107,9 +106,8 @@ mod serialization {
             epoch: 7,
             total_minted_reward: TokenAmount::from_atto(8),
             total_burn_minted: TokenAmount::from_atto(9),
-            total_service_minted: TokenAmount::from_atto(10),
-            service_accrued: vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(11) }],
-            next_transition_epoch: 12,
+            total_explicit_minted: TokenAmount::from_atto(10),
+            accrued: vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(11) }],
             swa_timelock_epochs: 13,
             streams_root: empty_streams_root(),
         };
@@ -118,11 +116,90 @@ mod serialization {
         assert_eq!(
             encoded.data,
             hex!(
-                "8f420001420002034200044200058240404200060742000842000942000a81820242000b0c0dd82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
+                "8e420001420002034200044200058240404200060742000842000942000a81820242000b0dd82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
             )
         );
         let decoded: State = IpldBlock::deserialize(&encoded).unwrap();
         assert_eq!(state.total_minted_reward, decoded.total_minted_reward);
         assert_eq!(state.streams_root, decoded.streams_root);
+    }
+
+    #[test]
+    fn stream_method_params_have_stable_cbor() {
+        let weight = WeightRecord { v_start: 2, slope: -1, t_start: 3, floor: 0, cap: 4 };
+        let update = WeightRecordUpdate { id: 1, weight: weight.clone() };
+
+        let set_weights = SetWeightRecordsParams { updates: vec![update] };
+        assert_eq!(
+            hex!("81818201850220030004").as_slice(),
+            IpldBlock::serialize_cbor(&set_weights).unwrap().unwrap().data
+        );
+        assert_eq!(
+            hex!("8403850220030004f60a").as_slice(),
+            IpldBlock::serialize_cbor(&RegisterStreamParams {
+                id: 3,
+                weight,
+                distribution: None,
+                activation_epoch: 10,
+            })
+            .unwrap()
+            .unwrap()
+            .data
+        );
+        assert_eq!(
+            hex!("8103").as_slice(),
+            IpldBlock::serialize_cbor(&RemoveStreamParams { id: 3 }).unwrap().unwrap().data
+        );
+        assert_eq!(
+            hex!("82024300c801").as_slice(),
+            IpldBlock::serialize_cbor(&SetDistributionParams {
+                id: 2,
+                writer: Address::new_id(200),
+            })
+            .unwrap()
+            .unwrap()
+            .data
+        );
+        assert_eq!(
+            hex!("820281824200651b0de0b6b3a7640000").as_slice(),
+            IpldBlock::serialize_cbor(&SetSharesParams {
+                id: 2,
+                shares: vec![RecipientShare { recipient: Address::new_id(101), share: DENOM }],
+            })
+            .unwrap()
+            .unwrap()
+            .data
+        );
+        assert_eq!(
+            hex!("82f600").as_slice(),
+            IpldBlock::serialize_cbor(&CancelPendingParams {
+                id: None,
+                op: PendingWriteOp::SetWeightRecords,
+            })
+            .unwrap()
+            .unwrap()
+            .data
+        );
+        assert_eq!(
+            hex!("820281420065").as_slice(),
+            IpldBlock::serialize_cbor(&ClaimParams { id: 2, wallets: vec![Address::new_id(101)] })
+                .unwrap()
+                .unwrap()
+                .data
+        );
+        assert_eq!(
+            hex!("8181420007").as_slice(),
+            IpldBlock::serialize_cbor(&ClaimReturn { amounts: vec![TokenAmount::from_atto(7)] })
+                .unwrap()
+                .unwrap()
+                .data
+        );
+
+        let distribution = DistributionInit {
+            writer: Address::new_id(200),
+            shares: vec![RecipientShare { recipient: Address::new_id(101), share: DENOM }],
+        };
+        let encoded = IpldBlock::serialize_cbor(&distribution).unwrap().unwrap();
+        assert_eq!(hex!("824300c80181824200651b0de0b6b3a7640000").as_slice(), encoded.data);
     }
 }

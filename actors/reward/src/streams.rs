@@ -7,9 +7,9 @@ use anyhow::Result;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::repr::*;
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::address::Address;
+use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::{ToPrimitive, Zero};
 
@@ -18,6 +18,7 @@ pub type StreamId = u64;
 pub const DENOM: u64 = 1_000_000_000_000_000_000;
 pub const MAX_STREAMS: usize = 8;
 pub const MAX_RECIPIENTS: usize = 64;
+pub const MAX_TOMBSTONE_ROWS: usize = 256;
 pub const MAX_PENDING_WRITES: usize = MAX_STREAMS * 3 + 2;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -176,12 +177,14 @@ pub struct RewardAllocation {
     pub miner: TokenAmount,
     pub service: Vec<StreamAccrual>,
     pub burn: TokenAmount,
+    /// False when weight state is invalid; explicit portions are then skipped.
+    pub schedule_valid: bool,
 }
 
 /// One claimed amount for each requested wallet, preserving request order.
 pub type ClaimResult = Vec<TokenAmount>;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ApplyResult {
     pub burn: TokenAmount,
     /// Successful writes for actor-layer events after a committed application. Admission-only
@@ -196,23 +199,24 @@ pub struct ApplyResult {
 pub struct ProjectedStreams {
     pub streams: StreamsState,
     pub accruals: Vec<StreamAccrual>,
-    pub next_transition_epoch: ChainEpoch,
     pub apply_result: ApplyResult,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CancelResult {
     pub apply_result: ApplyResult,
-    pub removed: bool,
+    /// Cancelled write for actor-layer events after a committed removal.
+    pub removed: Option<PendingWrite>,
 }
 
 /// Evaluates a weight at `epoch`, clamped to its inclusive floor and cap.
 pub fn compute_weight(record: &WeightRecord, epoch: ChainEpoch) -> u64 {
     let delta = BigInt::from(epoch) - BigInt::from(record.t_start);
     let value = BigInt::from(record.v_start) + BigInt::from(record.slope) * delta;
+    // Both clamp bounds are u64, so even malformed ordering cannot leave the u64 domain.
     value
-        .max(BigInt::from(record.floor))
         .min(BigInt::from(record.cap))
+        .max(BigInt::from(record.floor))
         .to_u64()
         .expect("bounded weight fits u64")
 }
@@ -229,6 +233,24 @@ pub fn validate_weight_record(record: &WeightRecord) -> Result<()> {
     }
     if record.cap > DENOM {
         return Err(anyhow::anyhow!("weight cap exceeds DENOM"));
+    }
+    Ok(())
+}
+
+fn validate_weight_updates(updates: &[WeightRecordUpdate]) -> Result<()> {
+    if updates.is_empty() {
+        return Err(anyhow::anyhow!("weight-record update is empty"));
+    }
+    for pair in updates.windows(2) {
+        if pair[0].id == pair[1].id {
+            return Err(anyhow::anyhow!("duplicate weight-record stream ID {}", pair[0].id));
+        }
+        if pair[0].id > pair[1].id {
+            return Err(anyhow::anyhow!("weight-record updates are not ordered"));
+        }
+    }
+    for update in updates {
+        validate_weight_record(&update.weight)?;
     }
     Ok(())
 }
@@ -310,7 +332,7 @@ fn validate_weight_schedule_through(
     Ok(())
 }
 
-/// Splits one block reward at `epoch`; the exact unallocated residual is burnt.
+/// Splits one block reward at `epoch`; invalid weight state pays only a bounded implicit portion.
 pub fn allocate_reward(
     streams: &[Stream],
     epoch: ChainEpoch,
@@ -325,26 +347,34 @@ pub fn allocate_reward(
     let mut allocated = TokenAmount::zero();
     let denom = BigInt::from(DENOM);
     let mut weight_sum = 0_u128;
+    let mut implicit_weight = 0_u128;
+    let mut records_valid = true;
 
     for stream in streams {
+        records_valid &= validate_weight_record(&stream.weight).is_ok();
         let weight = compute_weight(&stream.weight, epoch);
-        weight_sum += u128::from(weight);
+        weight_sum = weight_sum.saturating_add(u128::from(weight));
         let portion = TokenAmount::from_atto(block_reward.atto() * weight / &denom);
         allocated += &portion;
         if stream.distribution.is_some() {
             service.push(StreamAccrual { id: stream.id, amount: portion });
         } else {
+            implicit_weight = implicit_weight.saturating_add(u128::from(weight));
             miner += portion;
         }
     }
 
-    if weight_sum > u128::from(DENOM) {
-        return Err(anyhow::anyhow!("stream weights exceed DENOM at epoch {epoch}: {weight_sum}"));
+    let schedule_valid =
+        records_valid && weight_sum <= u128::from(DENOM) && allocated <= *block_reward;
+    if !schedule_valid {
+        let bounded_weight = implicit_weight.min(u128::from(DENOM));
+        let miner =
+            TokenAmount::from_atto(block_reward.atto() * BigInt::from(bounded_weight) / &denom);
+        let burn = block_reward - &miner;
+        return Ok(RewardAllocation { miner, service: Vec::new(), burn, schedule_valid });
     }
-    if allocated > *block_reward {
-        return Err(anyhow::anyhow!("allocated reward exceeds block reward"));
-    }
-    Ok(RewardAllocation { miner, service, burn: block_reward - allocated })
+
+    Ok(RewardAllocation { miner, service, burn: block_reward - allocated, schedule_valid })
 }
 
 pub fn validate_shares(shares: &[RecipientShare]) -> Result<()> {
@@ -358,6 +388,7 @@ pub fn validate_shares(shares: &[RecipientShare]) -> Result<()> {
     let mut recipients = BTreeSet::new();
     let mut total = 0_u128;
     for row in shares {
+        validate_id_address(&row.recipient, "share recipient")?;
         if row.share == 0 {
             return Err(anyhow::anyhow!("share for recipient {} is zero", row.recipient));
         }
@@ -386,19 +417,94 @@ pub fn accrue_service(accruals: &mut [StreamAccrual], portions: &[StreamAccrual]
             return Err(anyhow::anyhow!("missing accrual for stream {}", portion.id));
         }
     }
+    // The preflight above proves every lookup in this mutation pass succeeds.
     for portion in portions {
         let row = accruals
             .iter_mut()
             .find(|row| row.id == portion.id)
-            .expect("service accrual presence validated");
+            .expect("explicit-stream accrual presence validated");
         row.amount += &portion.amount;
     }
     Ok(())
 }
 
+/// Computes explicit-stream funds still held by f02.
+pub fn compute_service_liability(
+    streams: &StreamsState,
+    accruals: &[StreamAccrual],
+) -> Result<TokenAmount> {
+    let mut total = TokenAmount::zero();
+    let mut accruals = accruals.iter();
+
+    for stream in &streams.streams {
+        let Some(distribution) = &stream.distribution else {
+            // Implicit streams pay the miner directly and carry no service liability.
+            continue;
+        };
+        let accrual = accruals
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {}", stream.id))?;
+        if accrual.id != stream.id {
+            return Err(anyhow::anyhow!(
+                "explicit-stream accrual {} does not match explicit stream {}",
+                accrual.id,
+                stream.id
+            ));
+        }
+        if accrual.amount.is_negative() {
+            return Err(anyhow::anyhow!(
+                "explicit-stream accrual for stream {} is negative",
+                stream.id
+            ));
+        }
+        validate_period_claims(distribution, &accrual.amount)?;
+
+        let claimed = distribution
+            .claimed_period
+            .iter()
+            .fold(TokenAmount::zero(), |sum, row| sum + &row.amount);
+        total += &accrual.amount - claimed;
+        total +=
+            distribution.payable.iter().fold(TokenAmount::zero(), |sum, row| sum + &row.amount);
+    }
+    if let Some(accrual) = accruals.next() {
+        return Err(anyhow::anyhow!(
+            "explicit-stream accrual {} has no matching explicit stream",
+            accrual.id
+        ));
+    }
+    for tombstone in &streams.tombstones {
+        validate_amount_rows(&tombstone.payable, "tombstone payable")?;
+        total += tombstone.payable.iter().fold(TokenAmount::zero(), |sum, row| sum + &row.amount);
+    }
+    Ok(total)
+}
+
 /// Closes the current period, preserves unclaimed earnings, and installs new shares.
 /// Returns indivisible rounding dust for burning.
 pub fn set_shares(
+    streams: &mut StreamsState,
+    accruals: &mut [StreamAccrual],
+    id: StreamId,
+    shares: Vec<RecipientShare>,
+) -> Result<TokenAmount> {
+    if !streams.pending_writes.iter().any(|write| write.op == PendingWriteOp::RemoveStream) {
+        return set_shares_inner(streams, accruals, id, shares);
+    }
+
+    let mut next_streams = streams.clone();
+    let mut next_accruals = accruals.to_vec();
+    let burn = set_shares_inner(&mut next_streams, &mut next_accruals, id, shares)?;
+    validate_tombstone_capacity(&next_streams)?;
+    *streams = next_streams;
+    // The slice signature prevents either path from changing the accrual row count.
+    for (current, next) in accruals.iter_mut().zip(next_accruals) {
+        *current = next;
+    }
+    Ok(burn)
+}
+
+fn set_shares_inner(
     streams: &mut StreamsState,
     accruals: &mut [StreamAccrual],
     id: StreamId,
@@ -463,7 +569,7 @@ fn settle_period(
     pool: &TokenAmount,
 ) -> Result<TokenAmount> {
     if pool.is_negative() {
-        return Err(anyhow::anyhow!("service accrual is negative"));
+        return Err(anyhow::anyhow!("explicit-stream accrual is negative"));
     }
     validate_shares(&distribution.shares)?;
     validate_period_claims(distribution, pool)?;
@@ -486,7 +592,7 @@ fn claim_live(
     wallets: &[Address],
 ) -> Result<ClaimResult> {
     if pool.is_negative() {
-        return Err(anyhow::anyhow!("service accrual is negative"));
+        return Err(anyhow::anyhow!("explicit-stream accrual is negative"));
     }
     validate_shares(&distribution.shares)?;
     validate_period_claims(distribution, pool)?;
@@ -501,6 +607,7 @@ fn claim_live(
             .map_or(0, |row| row.share);
         let earned = TokenAmount::from_atto(pool.atto() * share / &denom);
         let claimed = amount_for(&distribution.claimed_period, wallet);
+        // validate_period_claims established this relation for every stored recipient.
         debug_assert!(claimed <= earned);
         let live = earned - claimed;
         let payable = amount_for(&distribution.payable, wallet);
@@ -562,6 +669,7 @@ fn validate_amount_rows(rows: &[RecipientAmount], label: &str) -> Result<()> {
         return Err(anyhow::anyhow!("{label} recipients are not ordered"));
     }
     for row in rows {
+        validate_id_address(&row.recipient, label)?;
         if row.amount <= TokenAmount::zero() {
             return Err(anyhow::anyhow!("{label} amount is not positive"));
         }
@@ -592,7 +700,6 @@ fn remove_amount(rows: &mut Vec<RecipientAmount>, recipient: &Address) -> TokenA
 /// Queues a weight batch at the timelock boundary after validating all projected writes.
 pub fn queue_weight_records(
     streams: &mut StreamsState,
-    next_transition_epoch: &mut ChainEpoch,
     current_epoch: ChainEpoch,
     timelock_epochs: ChainEpoch,
     op: PendingWriteOp,
@@ -601,38 +708,29 @@ pub fn queue_weight_records(
     if !(matches!(op, PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords)) {
         return Err(anyhow::anyhow!("invalid weight-record operation {op:?}"));
     }
-    if updates.is_empty() {
-        return Err(anyhow::anyhow!("weight-record update is empty"));
-    }
     let effective_epoch = timelock_epoch(current_epoch, timelock_epochs)?;
-    let mut ids = BTreeSet::new();
-    for update in updates {
-        if !ids.insert(update.id) {
-            return Err(anyhow::anyhow!("duplicate weight-record stream ID {}", update.id));
-        }
-        validate_weight_record(&update.weight)?;
-    }
+    let mut updates = updates.to_vec();
+    updates.sort_by_key(|update| update.id);
+    validate_weight_updates(&updates)?;
 
     let mut proposed = streams.clone();
     ensure_slot_available(&proposed, None, op)?;
     proposed.pending_writes.push(PendingWrite {
         id: None,
         op,
-        payload: RawBytes::serialize(&WeightRecordsPayload { updates: updates.to_vec() })?,
+        payload: RawBytes::serialize(&WeightRecordsPayload { updates })?,
         effective_epoch,
     });
     sort_pending(&mut proposed.pending_writes);
     validate_new_pending(streams, &proposed, current_epoch, (None, op))?;
 
     *streams = proposed;
-    refresh_next_transition(streams, next_transition_epoch);
     Ok(effective_epoch)
 }
 
 /// Queues registration at an activation epoch no earlier than the timelock boundary.
 pub fn queue_register_stream(
     streams: &mut StreamsState,
-    next_transition_epoch: &mut ChainEpoch,
     current_epoch: ChainEpoch,
     timelock_epochs: ChainEpoch,
     stream: Stream,
@@ -684,14 +782,12 @@ pub fn queue_register_stream(
     )?;
 
     *streams = proposed;
-    refresh_next_transition(streams, next_transition_epoch);
     Ok(activation_epoch)
 }
 
 /// Queues removal; explicit-stream liabilities are settled when the write applies.
 pub fn queue_remove_stream(
     streams: &mut StreamsState,
-    next_transition_epoch: &mut ChainEpoch,
     current_epoch: ChainEpoch,
     timelock_epochs: ChainEpoch,
     id: StreamId,
@@ -713,16 +809,15 @@ pub fn queue_remove_stream(
         current_epoch,
         (Some(id), PendingWriteOp::RemoveStream),
     )?;
+    validate_tombstone_capacity(&proposed)?;
 
     *streams = proposed;
-    refresh_next_transition(streams, next_transition_epoch);
     Ok(effective_epoch)
 }
 
 /// Queues writer replacement; the outgoing period is settled when the write applies.
 pub fn queue_set_distribution(
     streams: &mut StreamsState,
-    next_transition_epoch: &mut ChainEpoch,
     current_epoch: ChainEpoch,
     timelock_epochs: ChainEpoch,
     id: StreamId,
@@ -747,61 +842,61 @@ pub fn queue_set_distribution(
     )?;
 
     *streams = proposed;
-    refresh_next_transition(streams, next_transition_epoch);
     Ok(effective_epoch)
 }
 
 fn cancel_pending(
     streams: &mut StreamsState,
-    next_transition_epoch: &mut ChainEpoch,
     id: Option<StreamId>,
     op: PendingWriteOp,
-) -> Result<bool> {
-    if op == PendingWriteOp::StepWeightRecords {
-        return Err(anyhow::anyhow!("StepWeightRecords cannot be cancelled"));
-    }
-    validate_pending_target(id, op)?;
+) -> Result<Option<PendingWrite>> {
+    validate_cancel_target(id, op)?;
     let slot = pending_slot(id, op);
     let removed = streams
         .pending_writes
         .iter()
         .position(|write| pending_slot(write.id, write.op) == slot)
-        .map(|idx| streams.pending_writes.remove(idx))
-        .is_some();
-    refresh_next_transition(streams, next_transition_epoch);
+        .map(|idx| streams.pending_writes.remove(idx));
     Ok(removed)
+}
+
+pub(crate) fn validate_cancel_target(id: Option<StreamId>, op: PendingWriteOp) -> Result<()> {
+    if op == PendingWriteOp::StepWeightRecords {
+        return Err(anyhow::anyhow!("StepWeightRecords cannot be cancelled"));
+    }
+    validate_pending_target(id, op)
 }
 
 /// Applies writes due through `epoch` before attempting cancellation.
 pub fn apply_due_writes_and_cancel(
     streams: &mut StreamsState,
     accruals: &mut Vec<StreamAccrual>,
-    next_transition_epoch: &mut ChainEpoch,
     epoch: ChainEpoch,
     id: Option<StreamId>,
     op: PendingWriteOp,
 ) -> Result<CancelResult> {
+    validate_mutation_state(streams, accruals)?;
     let mut projected = project_due_writes(streams, accruals, epoch)?;
-    let removed =
-        cancel_pending(&mut projected.streams, &mut projected.next_transition_epoch, id, op)?;
+    let removed = cancel_pending(&mut projected.streams, id, op)?;
     *streams = projected.streams;
     *accruals = projected.accruals;
-    *next_transition_epoch = projected.next_transition_epoch;
     Ok(CancelResult { apply_result: projected.apply_result, removed })
 }
 
-/// Applies every write due through `epoch`. Calls stranded by cancellation are dropped atomically.
+/// Applies every write due through `epoch`. From invalid weight state, only writes that restore
+/// a valid schedule apply; the rest are dropped atomically.
 pub fn apply_due_writes(
     streams: &mut StreamsState,
     accruals: &mut Vec<StreamAccrual>,
-    next_transition_epoch: &mut ChainEpoch,
     epoch: ChainEpoch,
 ) -> Result<ApplyResult> {
+    validate_mutation_state(streams, accruals)?;
+    if streams.pending_writes.first().is_none_or(|write| write.effective_epoch > epoch) {
+        return Ok(ApplyResult::default());
+    }
+
     let mut next_streams = streams.clone();
     let mut next_accruals = accruals.clone();
-    let validation_epoch =
-        next_streams.pending_writes.first().map_or(epoch, |write| write.effective_epoch.min(epoch));
-    validate_streams_state(&next_streams, &next_accruals, validation_epoch)?;
 
     let due_count = next_streams
         .pending_writes
@@ -837,11 +932,8 @@ pub fn apply_due_writes(
         burn += write_burn;
     }
 
-    let mut next_epoch = EPOCH_UNDEFINED;
-    refresh_next_transition(&next_streams, &mut next_epoch);
     *streams = next_streams;
     *accruals = next_accruals;
-    *next_transition_epoch = next_epoch;
     Ok(ApplyResult { burn, applied, dropped })
 }
 
@@ -853,20 +945,8 @@ pub fn project_due_writes(
 ) -> Result<ProjectedStreams> {
     let mut projected_streams = streams.clone();
     let mut projected_accruals = accruals.to_vec();
-    let mut next_transition_epoch =
-        streams.pending_writes.first().map_or(EPOCH_UNDEFINED, |write| write.effective_epoch);
-    let apply_result = apply_due_writes(
-        &mut projected_streams,
-        &mut projected_accruals,
-        &mut next_transition_epoch,
-        epoch,
-    )?;
-    Ok(ProjectedStreams {
-        streams: projected_streams,
-        accruals: projected_accruals,
-        next_transition_epoch,
-        apply_result,
-    })
+    let apply_result = apply_due_writes(&mut projected_streams, &mut projected_accruals, epoch)?;
+    Ok(ProjectedStreams { streams: projected_streams, accruals: projected_accruals, apply_result })
 }
 
 fn timelock_epoch(current_epoch: ChainEpoch, timelock_epochs: ChainEpoch) -> Result<ChainEpoch> {
@@ -924,10 +1004,11 @@ fn ensure_stream_id_available(streams: &StreamsState, id: StreamId) -> Result<()
     Ok(())
 }
 
-/// Recomputes the queue head; a zero-timelock write may be due immediately.
-fn refresh_next_transition(streams: &StreamsState, next_transition_epoch: &mut ChainEpoch) {
-    *next_transition_epoch =
-        streams.pending_writes.first().map_or(EPOCH_UNDEFINED, |write| write.effective_epoch);
+pub(crate) fn validate_mutation_state(
+    streams: &StreamsState,
+    accruals: &[StreamAccrual],
+) -> Result<()> {
+    validate_streams_state_structure_without_weights(streams, accruals)
 }
 
 /// Stable sorting preserves insertion order among calls effective at the same epoch.
@@ -941,8 +1022,21 @@ fn validate_new_pending(
     current_epoch: ChainEpoch,
     new_slot: (Option<StreamId>, PendingWriteOp),
 ) -> Result<()> {
-    let accepted_before = validate_projected_queue(current, current_epoch, None)?;
-    let accepted_after = validate_projected_queue(proposed, current_epoch, Some(new_slot))?;
+    let accepted_before = match validate_projected_queue(current, current_epoch, None) {
+        Ok(accepted) => accepted,
+        Err(error) if new_slot.1 == PendingWriteOp::SetWeightRecords => {
+            validate_projected_queue_recovering(current, current_epoch, None).map_err(|_| error)?
+        }
+        Err(error) => return Err(error),
+    };
+    let accepted_after = match validate_projected_queue(proposed, current_epoch, Some(new_slot)) {
+        Ok(accepted) => accepted,
+        Err(error) if new_slot.1 == PendingWriteOp::SetWeightRecords => {
+            validate_projected_queue_recovering(proposed, current_epoch, Some(new_slot))
+                .map_err(|_| error)?
+        }
+        Err(error) => return Err(error),
+    };
     if !accepted_before.is_subset(&accepted_after) {
         return Err(anyhow::anyhow!("new call invalidates an existing pending call"));
     }
@@ -955,8 +1049,38 @@ fn validate_projected_queue(
     current_epoch: ChainEpoch,
     required_slot: Option<(Option<StreamId>, PendingWriteOp)>,
 ) -> Result<BTreeSet<(Option<StreamId>, PendingWriteOp)>> {
-    validate_pending_queue(&streams.pending_writes, Some(current_epoch))?;
-    validate_transition_state(streams, current_epoch)?;
+    validate_projected_queue_inner(
+        streams,
+        current_epoch,
+        required_slot,
+        false,
+        Some(current_epoch),
+    )
+}
+
+/// Projects a repair from otherwise well-formed state with invalid weight records or envelope.
+fn validate_projected_queue_recovering(
+    streams: &StreamsState,
+    current_epoch: ChainEpoch,
+    required_slot: Option<(Option<StreamId>, PendingWriteOp)>,
+) -> Result<BTreeSet<(Option<StreamId>, PendingWriteOp)>> {
+    validate_projected_queue_inner(streams, current_epoch, required_slot, true, Some(current_epoch))
+}
+
+fn validate_projected_queue_inner(
+    streams: &StreamsState,
+    current_epoch: ChainEpoch,
+    required_slot: Option<(Option<StreamId>, PendingWriteOp)>,
+    allow_invalid_initial_schedule: bool,
+    minimum_epoch: Option<ChainEpoch>,
+) -> Result<BTreeSet<(Option<StreamId>, PendingWriteOp)>> {
+    validate_pending_queue(&streams.pending_writes, minimum_epoch)?;
+    if allow_invalid_initial_schedule {
+        validate_stream_configuration_without_weights(&streams.streams)?;
+    } else {
+        validate_stream_configuration(&streams.streams)?;
+        validate_weight_schedule(&streams.streams, current_epoch)?;
+    }
     let mut projected = streams.clone();
     let mut accepted = BTreeSet::new();
 
@@ -987,10 +1111,19 @@ fn validate_projected_queue(
 
 fn validate_transition_state(streams: &StreamsState, start_epoch: ChainEpoch) -> Result<()> {
     validate_stream_configuration(&streams.streams)?;
-    validate_weight_schedule(&streams.streams, start_epoch)
+    validate_weight_schedule(&streams.streams, start_epoch)?;
+    validate_tombstone_capacity(streams)
 }
 
 fn validate_stream_configuration(streams: &[Stream]) -> Result<()> {
+    validate_stream_configuration_without_weights(streams)?;
+    for stream in streams {
+        validate_weight_record(&stream.weight)?;
+    }
+    Ok(())
+}
+
+fn validate_stream_configuration_without_weights(streams: &[Stream]) -> Result<()> {
     if streams.len() > MAX_STREAMS {
         return Err(anyhow::anyhow!("stream count exceeds maximum {MAX_STREAMS}"));
     }
@@ -1005,6 +1138,7 @@ fn validate_stream_configuration(streams: &[Stream]) -> Result<()> {
     }
     for stream in streams {
         if let Some(distribution) = &stream.distribution {
+            validate_id_address(&distribution.writer, "distribution writer")?;
             validate_shares(&distribution.shares)?;
             if !(distribution.shares.windows(2).all(|rows| rows[0].recipient < rows[1].recipient)) {
                 return Err(anyhow::anyhow!("share recipients are not ordered"));
@@ -1064,16 +1198,7 @@ fn validate_pending_payload(write: &PendingWrite) -> Result<()> {
     match write.op {
         PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords => {
             let payload: WeightRecordsPayload = write.payload.deserialize()?;
-            if payload.updates.is_empty() {
-                return Err(anyhow::anyhow!("weight-record update is empty"));
-            }
-            let mut ids = BTreeSet::new();
-            for update in payload.updates {
-                if !ids.insert(update.id) {
-                    return Err(anyhow::anyhow!("duplicate weight-record stream ID {}", update.id));
-                }
-                validate_weight_record(&update.weight)?;
-            }
+            validate_weight_updates(&payload.updates)?;
         }
         PendingWriteOp::RegisterStream => {
             let payload: RegisterStreamPayload = write.payload.deserialize()?;
@@ -1086,24 +1211,80 @@ fn validate_pending_payload(write: &PendingWrite) -> Result<()> {
             }
         }
         PendingWriteOp::SetDistribution => {
-            let _: SetDistributionPayload = write.payload.deserialize()?;
+            let payload: SetDistributionPayload = write.payload.deserialize()?;
+            validate_id_address(&payload.writer, "distribution writer")?;
         }
     }
     Ok(())
 }
 
-/// Validates persisted stream state and its queued schedule from `current_epoch` onward.
+/// Validates persisted stream state and its queued schedule at `current_epoch`.
 pub fn validate_streams_state(
     streams: &StreamsState,
     accruals: &[StreamAccrual],
     current_epoch: ChainEpoch,
 ) -> Result<()> {
-    validate_projected_queue(streams, current_epoch, None)?;
+    validate_streams_state_structure(streams, accruals)?;
+    // Persisted writes may be past due after null rounds or a quiet stream-engine interval.
+    validate_projected_queue_inner(streams, current_epoch, None, false, None)?;
+    Ok(())
+}
+
+/// Validates every persisted invariant except the aggregate weight envelope.
+fn validate_streams_state_structure(
+    streams: &StreamsState,
+    accruals: &[StreamAccrual],
+) -> Result<()> {
+    validate_streams_state_structure_without_weights(streams, accruals)?;
+    for stream in &streams.streams {
+        validate_weight_record(&stream.weight)?;
+    }
+    Ok(())
+}
+
+fn validate_streams_state_structure_without_weights(
+    streams: &StreamsState,
+    accruals: &[StreamAccrual],
+) -> Result<()> {
+    validate_award_state_structure(streams)?;
+    if !(accruals.windows(2).all(|rows| rows[0].id < rows[1].id)) {
+        return Err(anyhow::anyhow!("explicit-stream accruals are not ordered"));
+    }
+
+    let explicit_ids: BTreeSet<_> = streams
+        .streams
+        .iter()
+        .filter(|stream| stream.distribution.is_some())
+        .map(|stream| stream.id)
+        .collect();
+    let accrual_ids: BTreeSet<_> = accruals.iter().map(|row| row.id).collect();
+    if explicit_ids != accrual_ids {
+        return Err(anyhow::anyhow!(
+            "explicit-stream accrual IDs do not match live explicit streams"
+        ));
+    }
+    for accrual in accruals {
+        if accrual.amount.is_negative() {
+            return Err(anyhow::anyhow!("explicit-stream accrual {} is negative", accrual.id));
+        }
+        // Exact accrual-ID equality above proves this is a live explicit stream.
+        let distribution = streams
+            .streams
+            .iter()
+            .find(|stream| stream.id == accrual.id)
+            .and_then(|stream| stream.distribution.as_ref())
+            .expect("explicit-stream accrual IDs matched explicit streams");
+        validate_period_claims(distribution, &accrual.amount)?;
+    }
+    Ok(())
+}
+
+/// Validates award-critical state that is independent of weights and accrual accounting.
+pub(crate) fn validate_award_state_structure(streams: &StreamsState) -> Result<()> {
+    validate_pending_queue(&streams.pending_writes, None)?;
+    validate_stream_configuration_without_weights(&streams.streams)?;
     if !(streams.tombstones.windows(2).all(|rows| rows[0].id < rows[1].id)) {
         return Err(anyhow::anyhow!("tombstones are not ordered"));
-    }
-    if !(accruals.windows(2).all(|rows| rows[0].id < rows[1].id)) {
-        return Err(anyhow::anyhow!("service accruals are not ordered"));
     }
 
     let live_ids: BTreeSet<_> = streams.streams.iter().map(|stream| stream.id).collect();
@@ -1123,43 +1304,72 @@ pub fn validate_streams_state(
     }
     for write in &streams.pending_writes {
         if write.op == PendingWriteOp::RegisterStream {
+            // Pending-queue shape validation requires IDs on every per-stream operation.
             let id = write.id.expect("validated per-stream pending call has an ID");
             if live_ids.contains(&id) || tombstone_ids.contains(&id) {
                 return Err(anyhow::anyhow!("pending registration reuses stream ID {id}"));
             }
         }
     }
-
-    let explicit_ids: BTreeSet<_> = streams
-        .streams
-        .iter()
-        .filter(|stream| stream.distribution.is_some())
-        .map(|stream| stream.id)
-        .collect();
-    let accrual_ids: BTreeSet<_> = accruals.iter().map(|row| row.id).collect();
-    if explicit_ids != accrual_ids {
-        return Err(anyhow::anyhow!("service accrual IDs do not match live explicit streams"));
-    }
-    for accrual in accruals {
-        if accrual.amount.is_negative() {
-            return Err(anyhow::anyhow!("service accrual {} is negative", accrual.id));
-        }
-        let distribution = streams
-            .streams
-            .iter()
-            .find(|stream| stream.id == accrual.id)
-            .and_then(|stream| stream.distribution.as_ref())
-            .expect("service accrual IDs matched explicit streams");
-        validate_period_claims(distribution, &accrual.amount)?;
-    }
+    validate_tombstone_capacity(streams)?;
     Ok(())
 }
 
 fn validate_distribution_init(distribution: &Option<DistributionInit>) -> Result<()> {
     if let Some(distribution) = distribution {
+        validate_id_address(&distribution.writer, "distribution writer")?;
         validate_shares(&distribution.shares)?;
     }
     Ok(())
+}
+
+fn validate_id_address(address: &Address, label: &str) -> Result<()> {
+    if address.protocol() != Protocol::ID {
+        return Err(anyhow::anyhow!("{label} {address} is not an ID address"));
+    }
+    Ok(())
+}
+
+fn validate_tombstone_capacity(streams: &StreamsState) -> Result<()> {
+    let mut rows: usize = streams.tombstones.iter().map(|tombstone| tombstone.payable.len()).sum();
+    for write in &streams.pending_writes {
+        if write.op != PendingWriteOp::RemoveStream {
+            continue;
+        }
+        let id = write.id.expect("validated removal has a stream ID");
+        rows += streams
+            .streams
+            .iter()
+            .find(|stream| stream.id == id)
+            .and_then(|stream| stream.distribution.as_ref())
+            .map_or(MAX_RECIPIENTS, |distribution| {
+                MAX_RECIPIENTS.max(recipient_union_len(&distribution.payable, &distribution.shares))
+            });
+    }
+    if rows > MAX_TOMBSTONE_ROWS {
+        return Err(anyhow::anyhow!(
+            "tombstone row reservation {rows} exceeds maximum {MAX_TOMBSTONE_ROWS}"
+        ));
+    }
+    Ok(())
+}
+
+fn recipient_union_len(payable: &[RecipientAmount], shares: &[RecipientShare]) -> usize {
+    let mut payable_idx = 0;
+    let mut shares_idx = 0;
+    let mut count = 0;
+    while payable_idx < payable.len() && shares_idx < shares.len() {
+        count += 1;
+        match payable[payable_idx].recipient.cmp(&shares[shares_idx].recipient) {
+            std::cmp::Ordering::Less => payable_idx += 1,
+            std::cmp::Ordering::Equal => {
+                payable_idx += 1;
+                shares_idx += 1;
+            }
+            std::cmp::Ordering::Greater => shares_idx += 1,
+        }
+    }
+    count + payable.len() - payable_idx + shares.len() - shares_idx
 }
 
 /// Applies one captured call. Supplying accruals enables settlement and liability effects.
@@ -1174,16 +1384,7 @@ fn apply_pending_transition(
                 return Err(anyhow::anyhow!("schedule-wide call has a stream ID"));
             }
             let payload: WeightRecordsPayload = write.payload.deserialize()?;
-            if payload.updates.is_empty() {
-                return Err(anyhow::anyhow!("weight-record update is empty"));
-            }
-            let mut ids = BTreeSet::new();
-            for update in &payload.updates {
-                if !ids.insert(update.id) {
-                    return Err(anyhow::anyhow!("duplicate weight-record stream ID {}", update.id));
-                }
-                validate_weight_record(&update.weight)?;
-            }
+            validate_weight_updates(&payload.updates)?;
             for update in payload.updates {
                 let stream = state
                     .streams
@@ -1281,7 +1482,7 @@ fn remove_stream(
     let Some(distribution) = stream.distribution.as_mut() else {
         return Ok(TokenAmount::zero());
     };
-    // Removing without the accrual row would orphan an unknown service liability.
+    // Removing without the accrual row would orphan an unknown explicit-stream liability.
     let accrual_idx = accruals
         .iter()
         .position(|row| row.id == id)
@@ -1310,7 +1511,7 @@ fn replace_writer(
         .ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
     let distribution =
         stream.distribution.as_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
-    // Changing writers without the accrual row could reassign an unknown service liability.
+    // Changing writers without the accrual row could reassign an unknown explicit-stream liability.
     let accrual = accruals
         .iter_mut()
         .find(|row| row.id == id)

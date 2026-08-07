@@ -74,13 +74,10 @@ pub struct State {
     pub total_burn_minted: TokenAmount,
 
     /// Cumulative block reward accrued to explicit service streams.
-    pub total_service_minted: TokenAmount,
+    pub total_explicit_minted: TokenAmount,
 
     /// Current-period accrual for each explicit stream, ordered by stream ID.
-    pub service_accrued: Vec<StreamAccrual>,
-
-    /// Earliest queued transition epoch, or EPOCH_UNDEFINED when the queue is empty.
-    pub next_transition_epoch: ChainEpoch,
+    pub accrued: Vec<StreamAccrual>,
 
     /// Hold applied to SWA writes. Set only by the activation migration.
     pub swa_timelock_epochs: ChainEpoch,
@@ -103,7 +100,6 @@ impl State {
                 INITIAL_REWARD_POSITION_ESTIMATE.atto().clone(),
                 INITIAL_REWARD_VELOCITY_ESTIMATE.atto().clone(),
             ),
-            next_transition_epoch: EPOCH_UNDEFINED,
             streams_root,
             ..Default::default()
         };
