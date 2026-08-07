@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use crate::{
-    State, StreamsState,
+    STORAGE_MINING_ALLOCATION, State, StreamsState,
     streams::{compute_service_liability, validate_streams_state},
 };
 use fil_actors_runtime::MessageAccumulator;
@@ -26,14 +26,12 @@ pub fn check_state_invariants<BS: Blockstore>(
 ) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
 
-    let storage_mining_allocation_check = TokenAmount::from_whole(1_100_000_000);
-
     // Can't assert equality because anyone can send funds to reward actor (and already have on mainnet).
     acc.require(
-        &state.total_minted_reward + balance >= storage_mining_allocation_check,
+        (&state.total_minted_reward + balance).atto() >= STORAGE_MINING_ALLOCATION.atto(),
         format!(
             "reward minted {} + reward left {} < storage mining allocation {}",
-            state.total_minted_reward, balance, storage_mining_allocation_check
+            state.total_minted_reward, balance, *STORAGE_MINING_ALLOCATION
         ),
     );
 

@@ -332,7 +332,7 @@ fn validate_weight_schedule_through(
     Ok(())
 }
 
-/// Splits one block reward at `epoch`; invalid weight state pays only a bounded implicit portion.
+/// Splits one block reward at `epoch`; invalid weight state allocates no portion.
 pub fn allocate_reward(
     streams: &[Stream],
     epoch: ChainEpoch,
@@ -347,7 +347,6 @@ pub fn allocate_reward(
     let mut allocated = TokenAmount::zero();
     let denom = BigInt::from(DENOM);
     let mut weight_sum = 0_u128;
-    let mut implicit_weight = 0_u128;
     let mut records_valid = true;
 
     for stream in streams {
@@ -359,7 +358,6 @@ pub fn allocate_reward(
         if stream.distribution.is_some() {
             service.push(StreamAccrual { id: stream.id, amount: portion });
         } else {
-            implicit_weight = implicit_weight.saturating_add(u128::from(weight));
             miner += portion;
         }
     }
@@ -367,11 +365,12 @@ pub fn allocate_reward(
     let schedule_valid =
         records_valid && weight_sum <= u128::from(DENOM) && allocated <= *block_reward;
     if !schedule_valid {
-        let bounded_weight = implicit_weight.min(u128::from(DENOM));
-        let miner =
-            TokenAmount::from_atto(block_reward.atto() * BigInt::from(bounded_weight) / &denom);
-        let burn = block_reward - &miner;
-        return Ok(RewardAllocation { miner, service: Vec::new(), burn, schedule_valid });
+        return Ok(RewardAllocation {
+            miner: TokenAmount::zero(),
+            service: Vec::new(),
+            burn: TokenAmount::zero(),
+            schedule_valid,
+        });
     }
 
     Ok(RewardAllocation { miner, service, burn: block_reward - allocated, schedule_valid })
