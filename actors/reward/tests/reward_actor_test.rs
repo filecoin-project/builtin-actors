@@ -77,6 +77,11 @@ mod construction_tests {
         let (_, acc) = check_state_invariants(&state, &*rt.store, -1, 0, &allocation);
         acc.assert_empty();
 
+        state.swa_actor = Address::new_delegated(10, &[1; 20]).unwrap();
+        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, 0, &allocation);
+        assert!(acc.messages().iter().any(|message| message.contains("not an ID address")));
+        state.swa_actor = Address::new_id(0);
+
         let streams = StreamsState {
             streams: vec![Stream {
                 id: 2,

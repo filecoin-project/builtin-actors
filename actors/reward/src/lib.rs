@@ -44,11 +44,6 @@ pub mod ext;
 /// PenaltyMultiplier is the factor miner penalties are scaled up by
 pub const PENALTY_MULTIPLIER: u64 = 3;
 
-lazy_static::lazy_static! {
-    /// Temporary SWA identity used while the contract deployment address is unresolved.
-    pub static ref MOCK_SWA_ACTOR_ADDR: Address = Address::new_id(1001);
-}
-
 /// Reward actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -693,7 +688,8 @@ fn allocate_without_service(
 }
 
 fn validate_swa(rt: &impl Runtime) -> Result<(), ActorError> {
-    rt.validate_immediate_caller_is(std::iter::once(&*MOCK_SWA_ACTOR_ADDR))
+    let state: State = rt.state()?;
+    rt.validate_immediate_caller_is(std::iter::once(&state.swa_actor))
 }
 
 fn resolve_required(

@@ -7,7 +7,7 @@ use crate::{
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
-use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
+use fvm_shared::{address::Protocol, clock::ChainEpoch, econ::TokenAmount};
 use num_traits::Signed;
 
 #[derive(Default)]
@@ -79,6 +79,10 @@ pub fn check_state_invariants<BS: Blockstore>(
     acc.require(
         state.swa_timelock_epochs >= 0,
         format!("SWA timelock is negative ({})", state.swa_timelock_epochs),
+    );
+    acc.require(
+        state.swa_actor.protocol() == Protocol::ID,
+        format!("SWA actor {} is not an ID address", state.swa_actor),
     );
     acc.require(
         state.accrued.windows(2).all(|rows| rows[0].id < rows[1].id),

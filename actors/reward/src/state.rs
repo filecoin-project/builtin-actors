@@ -5,6 +5,7 @@ use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_encoding::tuple::*;
+use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
@@ -31,7 +32,7 @@ lazy_static! {
 }
 
 /// Reward actor state
-#[derive(Serialize_tuple, Deserialize_tuple, Default, Debug, Clone)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone)]
 pub struct State {
     /// Target CumsumRealized needs to reach for EffectiveNetworkTime to increase
     /// Expressed in byte-epochs.
@@ -82,8 +83,33 @@ pub struct State {
     /// Hold applied to SWA writes. Set only by the activation migration.
     pub swa_timelock_epochs: ChainEpoch,
 
+    /// SWA actor authorized to manage stream configuration. Set only by the activation migration.
+    pub swa_actor: Address,
+
     /// Offboarded stream, tombstone, and queued-write state.
     pub streams_root: Cid,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            cumsum_baseline: Default::default(),
+            cumsum_realized: Default::default(),
+            effective_network_time: Default::default(),
+            effective_baseline_power: Default::default(),
+            this_epoch_reward: Default::default(),
+            this_epoch_reward_smoothed: Default::default(),
+            this_epoch_baseline_power: Default::default(),
+            epoch: Default::default(),
+            total_minted_reward: Default::default(),
+            total_burn_minted: Default::default(),
+            total_explicit_minted: Default::default(),
+            accrued: Default::default(),
+            swa_timelock_epochs: Default::default(),
+            swa_actor: Address::new_id(0),
+            streams_root: Default::default(),
+        }
+    }
 }
 
 impl State {

@@ -1,5 +1,7 @@
 use fil_actor_account::State as AccountState;
+use fil_actor_reward::State as RewardState;
 use fil_actors_integration_tests::util::{assert_invariants, check_invariants};
+use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{EMPTY_ARR_CID, Policy};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID};
@@ -8,7 +10,7 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use num_traits::Zero;
-use test_vm::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, TestVM};
+use test_vm::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, TEST_SWA_ACTOR_ID, TestVM};
 use vm_api::util::{get_state, pk_addrs_from};
 use vm_api::{VM, new_actor};
 
@@ -40,6 +42,14 @@ fn state_control() {
     let invariants_check = check_invariants(&v, &Policy::default(), Some(TokenAmount::zero()));
     let err = invariants_check.unwrap_err();
     assert!(err.to_string().contains("AccountState is empty"), "unexpected error: {err}");
+}
+
+#[test]
+fn singleton_reward_state_has_test_swa_identity() {
+    let v = TestVM::new_with_singletons(MemoryBlockstore::new());
+    let state: RewardState = get_state(&v, &REWARD_ACTOR_ADDR).unwrap();
+
+    assert_eq!(Address::new_id(TEST_SWA_ACTOR_ID), state.swa_actor);
 }
 
 fn assert_account_actor(
