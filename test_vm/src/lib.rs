@@ -125,6 +125,14 @@ impl TestVM {
             new_actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),
         );
 
+        // test-network SWA
+        let swa_head =
+            v.put_store(&AccountState { address: Address::new_bls(TEST_SWA_KEY).unwrap() });
+        v.set_actor(
+            &Address::new_id(TEST_SWA_ACTOR_ID),
+            new_actor(*ACCOUNT_ACTOR_CODE_ID, swa_head, 0, TokenAmount::zero(), None),
+        );
+
         // cron
         let builtin_entries = vec![
             CronEntry {

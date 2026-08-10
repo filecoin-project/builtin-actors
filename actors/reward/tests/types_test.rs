@@ -141,60 +141,67 @@ mod serialization {
 
     #[test]
     fn set_weight_records_params() {
-        let test_cases = vec![(
-            SetWeightRecordsParams {
-                updates: vec![
-                    WeightRecordUpdate { id: 23, weight: weight(23, -24, 23, 0, 23) },
-                    WeightRecordUpdate { id: 24, weight: weight(24, -25, 24, 0, 24) },
-                    WeightRecordUpdate { id: 255, weight: weight(255, -256, 255, 0, 255) },
-                    WeightRecordUpdate { id: 256, weight: weight(256, -257, 256, 0, 256) },
-                    WeightRecordUpdate {
-                        id: 65_535,
-                        weight: weight(65_535, -65_536, 65_535, 0, 65_535),
-                    },
-                    WeightRecordUpdate {
-                        id: 65_536,
-                        weight: weight(65_536, -65_537, 65_536, 0, 65_536),
-                    },
-                    WeightRecordUpdate {
-                        id: u32::MAX as u64,
-                        weight: weight(
-                            u32::MAX as u64,
-                            -(1_i64 << 32),
-                            u32::MAX as i64,
-                            0,
-                            u32::MAX as u64,
-                        ),
-                    },
-                    WeightRecordUpdate {
-                        id: 1_u64 << 32,
-                        weight: weight(
-                            1_u64 << 32,
-                            -((1_i64 << 32) + 1),
-                            1_i64 << 32,
-                            0,
-                            1_u64 << 32,
-                        ),
-                    },
-                ],
-            },
-            // [[
-            //   [23,[23,-24,23,0,23]], [24,[24,-25,24,0,24]],
-            //   [255,[255,-256,255,0,255]], [256,[256,-257,256,0,256]],
-            //   [65535,[65535,-65536,65535,0,65535]],
-            //   [65536,[65536,-65537,65536,0,65536]],
-            //   [4294967295,[4294967295,-4294967296,4294967295,0,4294967295]],
-            //   [4294967296,[4294967296,-4294967297,4294967296,0,4294967296]]
-            // ]]
-            &hex!(
-                "81888217851737170017821818851818381818180018188218ff8518ff38ff18ff0018ff"
-                "8219010085190100390100190100001901008219ffff8519ffff39ffff19ffff0019ffff"
-                "821a00010000851a000100003a000100001a00010000001a00010000"
-                "821affffffff851affffffff3affffffff1affffffff001affffffff"
-                "821b0000000100000000851b00000001000000003b0000000100000000"
-                "1b0000000100000000001b0000000100000000"
-            )[..],
-        )];
+        let test_cases = vec![
+            (
+                SetWeightRecordsParams { updates: Vec::new() },
+                // [[]] encodes canonically but is rejected by method validation.
+                &hex!("8180")[..],
+            ),
+            (
+                SetWeightRecordsParams {
+                    updates: vec![
+                        WeightRecordUpdate { id: 23, weight: weight(23, -24, 23, 0, 23) },
+                        WeightRecordUpdate { id: 24, weight: weight(24, -25, 24, 0, 24) },
+                        WeightRecordUpdate { id: 255, weight: weight(255, -256, 255, 0, 255) },
+                        WeightRecordUpdate { id: 256, weight: weight(256, -257, 256, 0, 256) },
+                        WeightRecordUpdate {
+                            id: 65_535,
+                            weight: weight(65_535, -65_536, 65_535, 0, 65_535),
+                        },
+                        WeightRecordUpdate {
+                            id: 65_536,
+                            weight: weight(65_536, -65_537, 65_536, 0, 65_536),
+                        },
+                        WeightRecordUpdate {
+                            id: u32::MAX as u64,
+                            weight: weight(
+                                u32::MAX as u64,
+                                -(1_i64 << 32),
+                                u32::MAX as i64,
+                                0,
+                                u32::MAX as u64,
+                            ),
+                        },
+                        WeightRecordUpdate {
+                            id: 1_u64 << 32,
+                            weight: weight(
+                                1_u64 << 32,
+                                -((1_i64 << 32) + 1),
+                                1_i64 << 32,
+                                0,
+                                1_u64 << 32,
+                            ),
+                        },
+                    ],
+                },
+                // [[
+                //   [23,[23,-24,23,0,23]], [24,[24,-25,24,0,24]],
+                //   [255,[255,-256,255,0,255]], [256,[256,-257,256,0,256]],
+                //   [65535,[65535,-65536,65535,0,65535]],
+                //   [65536,[65536,-65537,65536,0,65536]],
+                //   [4294967295,[4294967295,-4294967296,4294967295,0,4294967295]],
+                //   [4294967296,[4294967296,-4294967297,4294967296,0,4294967296]]
+                // ]]
+                &hex!(
+                    "81888217851737170017821818851818381818180018188218ff8518ff38ff18ff0018ff"
+                    "8219010085190100390100190100001901008219ffff8519ffff39ffff19ffff0019ffff"
+                    "821a00010000851a000100003a000100001a00010000001a00010000"
+                    "821affffffff851affffffff3affffffff1affffffff001affffffff"
+                    "821b0000000100000000851b00000001000000003b0000000100000000"
+                    "1b0000000100000000001b0000000100000000"
+                )[..],
+            ),
+        ];
 
         for (params, expected_hex) in test_cases {
             let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
