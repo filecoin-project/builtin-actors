@@ -3,12 +3,11 @@ use std::cell::RefCell;
 use fil_actor_reward::testing::check_state_invariants;
 use fil_actor_reward::{
     Actor as RewardActor, AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn,
-    DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, MOCK_SWA_ACTOR_ADDR, Method,
-    PENALTY_MULTIPLIER, PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare,
-    RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, STORAGE_MINING_ALLOCATION,
-    SetDistributionParams, SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State,
-    Stream, StreamAccrual, StreamsState, WeightRecord, WeightRecordUpdate,
-    compute_service_liability, ext,
+    DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, Method, PENALTY_MULTIPLIER,
+    PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare, RegisterStreamParams,
+    RegisterStreamPayload, RemoveStreamParams, STORAGE_MINING_ALLOCATION, SetDistributionParams,
+    SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State, Stream, StreamAccrual,
+    StreamsState, WeightRecord, WeightRecordUpdate, compute_service_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
     EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
@@ -24,9 +23,14 @@ use fvm_shared::error::ExitCode;
 use multihash_codetable::{Code, MultihashDigest};
 use num_traits::Zero;
 
+const SWA_ACTOR_ID: u64 = 1001;
 const WRITER: u64 = 200;
 const RECIPIENT_A: u64 = 201;
 const RECIPIENT_B: u64 = 202;
+
+fn swa_actor() -> Address {
+    Address::new_id(SWA_ACTOR_ID)
+}
 
 fn weight(value: u64) -> WeightRecord {
     WeightRecord { v_start: value, slope: 0, t_start: 0, floor: value, cap: value }
@@ -39,11 +43,11 @@ fn pct(value: u64) -> u64 {
 fn base_runtime() -> MockRuntime {
     let rt = MockRuntime {
         receiver: REWARD_ACTOR_ADDR,
-        caller: RefCell::new(*MOCK_SWA_ACTOR_ADDR),
+        caller: RefCell::new(swa_actor()),
         caller_type: RefCell::new(*EVM_ACTOR_CODE_ID),
         ..Default::default()
     };
-    for id in [MOCK_SWA_ACTOR_ADDR.id().unwrap(), WRITER, RECIPIENT_A, RECIPIENT_B] {
+    for id in [SWA_ACTOR_ID, WRITER, RECIPIENT_A, RECIPIENT_B] {
         rt.set_address_actor_type(Address::new_id(id), *EVM_ACTOR_CODE_ID);
     }
     let streams = StreamsState {
@@ -70,6 +74,7 @@ fn base_runtime() -> MockRuntime {
         epoch: 0,
         accrued: vec![StreamAccrual { id: 2, amount: TokenAmount::zero() }],
         swa_timelock_epochs: 2,
+        swa_actor: swa_actor(),
         streams_root,
         ..Default::default()
     });
@@ -213,7 +218,7 @@ fn enforces_caller_boundaries_and_existing_share_recipients() {
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(999));
     for (method, params) in requests {
-        rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![swa_actor()]);
         expect_abort(ExitCode::USR_FORBIDDEN, rt.call::<RewardActor>(method as u64, params));
         rt.verify();
     }
@@ -231,6 +236,38 @@ fn enforces_caller_boundaries_and_existing_share_recipients() {
             },
         ),
     );
+    rt.verify();
+}
+
+#[test]
+fn authorizes_the_swa_address_stored_in_state() {
+    let rt = base_runtime();
+    let configured = Address::new_id(333);
+    let mut state: State = rt.get_state();
+    state.swa_actor = configured;
+    rt.replace_state(&state);
+    rt.set_address_actor_type(configured, *EVM_ACTOR_CODE_ID);
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, swa_actor());
+    rt.expect_validate_caller_addr(vec![configured]);
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        call(
+            &rt,
+            Method::CancelPendingExported,
+            &CancelPendingParams { id: None, op: PendingWriteOp::SetWeightRecords },
+        ),
+    );
+    rt.verify();
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, configured);
+    rt.expect_validate_caller_addr(vec![configured]);
+    call(
+        &rt,
+        Method::CancelPendingExported,
+        &CancelPendingParams { id: None, op: PendingWriteOp::SetWeightRecords },
+    )
+    .unwrap();
     rt.verify();
 }
 
@@ -281,7 +318,7 @@ fn rejects_invalid_method_parameters_without_state_changes() {
 
     macro_rules! swa_reject {
         ($method:expr, $params:expr) => {{
-            rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+            rt.expect_validate_caller_addr(vec![swa_actor()]);
             expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, call(&rt, $method, &$params));
             rt.verify();
         }};
@@ -365,8 +402,8 @@ fn mutations_reject_inconsistent_accounting_without_a_due_write() {
     );
     rt.verify();
 
-    rt.set_caller(*EVM_ACTOR_CODE_ID, *MOCK_SWA_ACTOR_ADDR);
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, swa_actor());
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_abort(
         ExitCode::USR_ILLEGAL_STATE,
         call(
@@ -388,7 +425,7 @@ fn mutations_reject_inconsistent_accounting_without_a_due_write() {
 #[test]
 fn queue_rejection_has_a_deterministic_exit_code() {
     let rt = base_runtime();
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         call(
@@ -446,14 +483,14 @@ fn queues_cancels_and_applies_weight_writes() {
         effective_epoch: 2,
     };
 
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-queued", &queued, true);
     call(&rt, Method::SetWeightRecordsExported, &params).unwrap();
     rt.verify();
     assert_eq!(1, load_streams(&rt).pending_writes.len());
 
     rt.epoch.replace(1);
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-cancelled", &queued, false);
     call(
         &rt,
@@ -465,7 +502,7 @@ fn queues_cancels_and_applies_weight_writes() {
     assert!(load_streams(&rt).pending_writes.is_empty());
 
     let queued = PendingWrite { effective_epoch: 3, ..queued };
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-queued", &queued, true);
     call(&rt, Method::SetWeightRecordsExported, &params).unwrap();
     rt.verify();
@@ -699,7 +736,7 @@ fn cancellation_strands_a_call_and_emits_drop_on_next_mutation() {
         .unwrap(),
         effective_epoch: 2,
     };
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-queued", &registration, true);
     call(&rt, Method::RegisterStreamExported, &register_params).unwrap();
     rt.verify();
@@ -713,13 +750,13 @@ fn cancellation_strands_a_call_and_emits_drop_on_next_mutation() {
         payload: RawBytes::serialize(&weights).unwrap(),
         effective_epoch: 2,
     };
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-queued", &stranded, true);
     call(&rt, Method::SetWeightRecordsExported, &weights).unwrap();
     rt.verify();
 
     rt.epoch.replace(1);
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-cancelled", &registration, false);
     call(
         &rt,
@@ -906,8 +943,8 @@ fn award_pays_only_gas_for_malformed_weights_until_repaired() {
         payload: RawBytes::serialize(&params).unwrap(),
         effective_epoch: 2,
     };
-    rt.set_caller(*EVM_ACTOR_CODE_ID, *MOCK_SWA_ACTOR_ADDR);
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, swa_actor());
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-queued", &repair, true);
     call(&rt, Method::SetWeightRecordsExported, &params).unwrap();
     rt.verify();
@@ -962,8 +999,8 @@ fn award_pays_only_gas_for_invalid_weight_envelope_until_repaired() {
         payload: RawBytes::serialize(&params).unwrap(),
         effective_epoch: 2,
     };
-    rt.set_caller(*EVM_ACTOR_CODE_ID, *MOCK_SWA_ACTOR_ADDR);
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, swa_actor());
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-queued", &repair, true);
     call(&rt, Method::SetWeightRecordsExported, &params).unwrap();
     rt.verify();
@@ -999,7 +1036,7 @@ fn full_explicit_stream_decommission_preserves_and_drains_liabilities() {
         payload: RawBytes::new(vec![0x80]),
         effective_epoch: 2,
     };
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-queued", &removal, true);
     call(&rt, Method::RemoveStreamExported, &RemoveStreamParams { id: 2 }).unwrap();
     rt.verify();
@@ -1087,7 +1124,7 @@ fn gate_write_for_a_removed_stream_reverts_at_admission() {
         payload: RawBytes::new(vec![0x80]),
         effective_epoch: 2,
     };
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-queued", &removal, true);
     call(&rt, Method::RemoveStreamExported, &RemoveStreamParams { id: 2 }).unwrap();
     rt.verify();
@@ -1107,8 +1144,8 @@ fn gate_write_for_a_removed_stream_reverts_at_admission() {
     let params = SetWeightRecordsParams {
         updates: vec![WeightRecordUpdate { id: 2, weight: weight(pct(20)) }],
     };
-    rt.set_caller(*EVM_ACTOR_CODE_ID, *MOCK_SWA_ACTOR_ADDR);
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, swa_actor());
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         call(&rt, Method::StepWeightRecordsExported, &params),
@@ -1180,7 +1217,7 @@ fn consensus_stream_removal_uses_the_normal_queue_and_award_paths() {
         payload: RawBytes::new(vec![0x80]),
         effective_epoch: 2,
     };
-    rt.expect_validate_caller_addr(vec![*MOCK_SWA_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-queued", &removal, true);
     call(&rt, Method::RemoveStreamExported, &RemoveStreamParams { id: 1 }).unwrap();
     rt.verify();

@@ -86,7 +86,7 @@ mod serialization {
         assert_eq!(
             encoded.data,
             hex!(
-                "8e404000404082404040004040408000d82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
+                "8f404000404082404040004040408000420000d82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
             )
         );
         let decoded: State = IpldBlock::deserialize(&encoded).unwrap();
@@ -109,6 +109,7 @@ mod serialization {
             total_explicit_minted: TokenAmount::from_atto(10),
             accrued: vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(11) }],
             swa_timelock_epochs: 13,
+            swa_actor: Address::new_id(1001),
             streams_root: empty_streams_root(),
         };
 
@@ -116,7 +117,7 @@ mod serialization {
         assert_eq!(
             encoded.data,
             hex!(
-                "8e420001420002034200044200058240404200060742000842000942000a81820242000b0dd82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
+                "8f420001420002034200044200058240404200060742000842000942000a81820242000b0d4300e907d82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
             )
         );
         let decoded: State = IpldBlock::deserialize(&encoded).unwrap();
