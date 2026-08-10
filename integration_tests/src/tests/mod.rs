@@ -52,3 +52,5 @@ pub mod fip0118_test;
 pub use fip0118_test::*;
 pub mod upgrade_sector_quality_test;
 pub use upgrade_sector_quality_test::*;
+mod reward_f02_test;
+pub use reward_f02_test::*;
