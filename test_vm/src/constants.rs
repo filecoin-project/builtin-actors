@@ -14,6 +14,9 @@ pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
 pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
 pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
 
+// account actor installed as the test-network SWA
+pub const TEST_SWA_KEY: &[u8] = &[154; fvm_shared::address::BLS_PUB_LEN];
+
 // static values for predictable testing
 pub const TEST_VM_RAND_ARRAY: [u8; 32] = [
     1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
