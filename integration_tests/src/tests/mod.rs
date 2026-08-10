@@ -48,3 +48,5 @@ mod prove_commit_niporep_test;
 pub use prove_commit_niporep_test::*;
 mod replica_update3_test;
 pub use replica_update3_test::*;
+mod reward_f02_test;
+pub use reward_f02_test::*;

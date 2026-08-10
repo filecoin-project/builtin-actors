@@ -17,6 +17,7 @@ mod prove_commit3_test;
 mod prove_commit_niporep_test;
 mod publish_deals_test;
 mod replica_update3_test;
+mod reward_f02_test;
 mod terminate_test;
 mod test_vm_test;
 mod verified_claim_test;
