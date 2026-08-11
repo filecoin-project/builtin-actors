@@ -22,6 +22,16 @@ fn shares(rows: &[(u64, u64)]) -> Vec<RecipientShare> {
         .collect()
 }
 
+fn full_share_map(first_recipient: u64) -> Vec<RecipientShare> {
+    let share = DENOM / MAX_RECIPIENTS as u64;
+    (0..MAX_RECIPIENTS)
+        .map(|idx| RecipientShare {
+            recipient: Address::new_id(first_recipient + idx as u64),
+            share,
+        })
+        .collect()
+}
+
 fn explicit(writer: u64, shares: Vec<RecipientShare>) -> ExplicitDistribution {
     ExplicitDistribution {
         writer: Address::new_id(writer),
@@ -697,6 +707,112 @@ fn folds_period_under_outgoing_shares_and_burns_only_dust() {
     assert_eq!(TokenAmount::from_atto(3), amount(&distribution.payable, 102));
     assert_eq!(TokenAmount::from_atto(3), amount(&distribution.payable, 103));
     assert_eq!(TokenAmount::from_atto(5), amount(&distribution.payable, 104));
+}
+
+#[test]
+fn caps_payable_rows_at_128_rejects_129_atomically_and_recovers_through_claims() {
+    let old_shares = full_share_map(100);
+    let new_shares = full_share_map(200);
+    let mut distribution = explicit(300, old_shares.clone());
+    distribution.payable = old_shares
+        .iter()
+        .map(|row| RecipientAmount { recipient: row.recipient, amount: TokenAmount::from_atto(1) })
+        .chain([RecipientAmount {
+            recipient: Address::new_id(1_000),
+            amount: TokenAmount::from_atto(1),
+        }])
+        .collect();
+    let mut streams = StreamsState {
+        streams: vec![stream(2, pct(20), Some(distribution))],
+        ..Default::default()
+    };
+    let mut accruals =
+        vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(MAX_RECIPIENTS as u64) }];
+
+    let streams_before = streams.clone();
+    let accruals_before = accruals.clone();
+    let error = set_shares(&mut streams, &mut accruals, 2, new_shares.clone()).unwrap_err();
+    assert_eq!(
+        format!(
+            "stream 2 payable row reservation {} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}",
+            MAX_PAYABLE_ROWS_PER_STREAM + 1
+        ),
+        error.to_string()
+    );
+    assert_eq!(streams_before, streams);
+    assert_eq!(accruals_before, accruals);
+
+    assert_eq!(
+        vec![TokenAmount::from_atto(1)],
+        claim(&mut streams, &accruals, 2, &[Address::new_id(1_000)]).unwrap()
+    );
+    set_shares(&mut streams, &mut accruals, 2, new_shares.clone()).unwrap();
+    let distribution = streams.streams[0].distribution.as_ref().unwrap();
+    assert_eq!(
+        MAX_PAYABLE_ROWS_PER_STREAM,
+        payable_row_reservation(&distribution.payable, &distribution.shares,)
+    );
+
+    accruals[0].amount = TokenAmount::from_atto(MAX_RECIPIENTS as u64);
+    set_shares(&mut streams, &mut accruals, 2, new_shares.clone()).unwrap();
+    let distribution = streams.streams[0].distribution.as_ref().unwrap();
+    assert_eq!(MAX_PAYABLE_ROWS_PER_STREAM, distribution.payable.len());
+    let mut writer_streams = streams.clone();
+    let mut writer_accruals = accruals.clone();
+    writer_accruals[0].amount = TokenAmount::from_atto(MAX_RECIPIENTS as u64);
+    replace_writer(&mut writer_streams.streams, &mut writer_accruals, 2, Address::new_id(301))
+        .unwrap();
+    assert_eq!(
+        MAX_PAYABLE_ROWS_PER_STREAM,
+        writer_streams.streams[0].distribution.as_ref().unwrap().payable.len()
+    );
+
+    let mut removed_streams = streams.clone();
+    let mut removed_accruals = accruals.clone();
+    removed_accruals[0].amount = TokenAmount::from_atto(MAX_RECIPIENTS as u64);
+    remove_stream(
+        &mut removed_streams.streams,
+        &mut removed_streams.tombstones,
+        &mut removed_accruals,
+        2,
+    )
+    .unwrap();
+    assert_eq!(MAX_PAYABLE_ROWS_PER_STREAM, removed_streams.tombstones[0].payable.len());
+
+    let old_wallets: Vec<_> = old_shares.iter().map(|row| row.recipient).collect();
+    let new_wallets: Vec<_> = new_shares.iter().map(|row| row.recipient).collect();
+    let first_batch = claim(&mut streams, &accruals, 2, &old_wallets).unwrap();
+    assert_eq!(MAX_RECIPIENTS, first_batch.len());
+    assert!(first_batch.iter().all(|amount| amount == &TokenAmount::from_atto(2)));
+    assert_eq!(MAX_RECIPIENTS, streams.streams[0].distribution.as_ref().unwrap().payable.len());
+    let second_batch = claim(&mut streams, &accruals, 2, &new_wallets).unwrap();
+    assert_eq!(MAX_RECIPIENTS, second_batch.len());
+    assert!(second_batch.iter().all(|amount| amount == &TokenAmount::from_atto(1)));
+    assert!(streams.streams[0].distribution.as_ref().unwrap().payable.is_empty());
+}
+
+#[test]
+fn structural_validation_rejects_payable_reservation_over_cap() {
+    let mut distribution = explicit(300, full_share_map(100));
+    distribution.payable = (0..=MAX_PAYABLE_ROWS_PER_STREAM)
+        .map(|idx| RecipientAmount {
+            recipient: Address::new_id(100 + idx as u64),
+            amount: TokenAmount::from_atto(1),
+        })
+        .collect();
+    let streams = StreamsState {
+        streams: vec![stream(2, pct(20), Some(distribution))],
+        ..Default::default()
+    };
+
+    let error = validate_award_state_structure(&streams).unwrap_err();
+    assert_eq!(
+        format!(
+            "stream 2 payable row reservation {} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}",
+            MAX_PAYABLE_ROWS_PER_STREAM + 1
+        ),
+        error.to_string()
+    );
 }
 
 #[test]
