@@ -1,9 +1,10 @@
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::EPOCH_UNDEFINED;
 use fvm_shared::econ::TokenAmount;
 use hex_literal::hex;
-use num_traits::Zero;
+use num_traits::{ToPrimitive, Zero};
 
 use super::*;
 
@@ -328,8 +329,41 @@ fn random_u64(state: &mut u64) -> u64 {
     *state
 }
 
+fn compute_weight_unbounded(record: &WeightRecord, epoch: ChainEpoch) -> u64 {
+    let delta = BigInt::from(epoch) - BigInt::from(record.t_start);
+    let value = BigInt::from(record.v_start) + BigInt::from(record.slope) * delta;
+    value.min(BigInt::from(record.cap)).max(BigInt::from(record.floor)).to_u64().unwrap()
+}
+
 #[test]
-fn computes_signed_clamped_weights_without_overflow() {
+fn computes_weights_without_overflow_at_integer_boundaries() {
+    let values = [0, 1, DENOM, u64::MAX];
+    let slopes = [i64::MIN, i64::MIN + 1, -1, 0, 1, i64::MAX];
+    let epochs = [i64::MIN, -1, 0, 1, i64::MAX];
+    let bounds = [0, DENOM, u64::MAX];
+
+    for &v_start in &values {
+        for &slope in &slopes {
+            for &t_start in &epochs {
+                for &epoch in &epochs {
+                    for &floor in &bounds {
+                        for &cap in &bounds {
+                            let record = WeightRecord { v_start, slope, t_start, floor, cap };
+                            assert_eq!(
+                                compute_weight_unbounded(&record, epoch),
+                                compute_weight(&record, epoch),
+                                "record {record:?} at epoch {epoch}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn computes_signed_clamped_weights() {
     let rising = WeightRecord { v_start: 10, slope: 2, t_start: 5, floor: 4, cap: 20 };
     assert_eq!(4, compute_weight(&rising, 0));
     assert_eq!(10, compute_weight(&rising, 5));
@@ -347,6 +381,15 @@ fn computes_signed_clamped_weights_without_overflow() {
     let extreme =
         WeightRecord { v_start: DENOM, slope: i64::MIN, t_start: i64::MAX, floor: 0, cap: DENOM };
     assert_eq!(DENOM, compute_weight(&extreme, i64::MIN));
+
+    let overflowing = WeightRecord {
+        v_start: u64::MAX,
+        slope: i64::MIN,
+        t_start: i64::MAX,
+        floor: 0,
+        cap: u64::MAX,
+    };
+    assert_eq!(u64::MAX, compute_weight(&overflowing, i64::MIN));
 
     let reversed = WeightRecord { v_start: 10, slope: 0, t_start: 0, floor: 20, cap: 4 };
     assert_eq!(20, compute_weight(&reversed, 0));

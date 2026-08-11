@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::repr::*;
 use fvm_ipld_encoding::tuple::*;
@@ -11,7 +11,7 @@ use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use num_traits::{ToPrimitive, Zero};
+use num_traits::Zero;
 
 pub type StreamId = u64;
 
@@ -19,7 +19,11 @@ pub const DENOM: u64 = 1_000_000_000_000_000_000;
 pub const MAX_STREAMS: usize = 8;
 pub const MAX_RECIPIENTS: usize = 64;
 pub const MAX_TOMBSTONE_ROWS: usize = 256;
-pub const MAX_PENDING_WRITES: usize = MAX_STREAMS * 3 + 2;
+const STREAM_SCOPED_PENDING_OPS: usize = 3;
+const SCHEDULE_WIDE_PENDING_OPS: usize = 2;
+pub const MAX_PENDING_WRITES: usize =
+    MAX_STREAMS * STREAM_SCOPED_PENDING_OPS + SCHEDULE_WIDE_PENDING_OPS;
+const EMPTY_TUPLE_CBOR: &[u8] = &[0x80];
 
 ////////////////////////////////////////////////////////////////////////////////
 // Consensus-serialized types
@@ -211,43 +215,28 @@ pub struct CancelResult {
 
 /// Evaluates a weight at `epoch`, clamped to its inclusive floor and cap.
 pub fn compute_weight(record: &WeightRecord, epoch: ChainEpoch) -> u64 {
-    let delta = BigInt::from(epoch) - BigInt::from(record.t_start);
-    let value = BigInt::from(record.v_start) + BigInt::from(record.slope) * delta;
-    // Both clamp bounds are u64, so even malformed ordering cannot leave the u64 domain.
-    value
-        .min(BigInt::from(record.cap))
-        .max(BigInt::from(record.floor))
-        .to_u64()
+    let delta = i128::from(epoch) - i128::from(record.t_start);
+    // |delta| <= 2^64 - 1 and |slope| <= 2^63, so the product fits i128.
+    let product = i128::from(record.slope) * delta;
+    // Saturation affects only malformed v_start > DENOM and is equivalent before the u64 clamp.
+    let value = i128::from(record.v_start).saturating_add(product);
+    u64::try_from(value.min(i128::from(record.cap)).max(i128::from(record.floor)))
         .expect("bounded weight fits u64")
 }
 
 pub fn validate_weight_record(record: &WeightRecord) -> Result<()> {
-    if record.floor > record.cap {
-        return Err(anyhow::anyhow!("weight floor exceeds cap"));
-    }
-    if record.v_start < record.floor {
-        return Err(anyhow::anyhow!("weight v_start is below floor"));
-    }
-    if record.v_start > record.cap {
-        return Err(anyhow::anyhow!("weight v_start exceeds cap"));
-    }
-    if record.cap > DENOM {
-        return Err(anyhow::anyhow!("weight cap exceeds DENOM"));
-    }
+    ensure!(record.floor <= record.cap, "weight floor exceeds cap");
+    ensure!(record.v_start >= record.floor, "weight v_start is below floor");
+    ensure!(record.v_start <= record.cap, "weight v_start exceeds cap");
+    ensure!(record.cap <= DENOM, "weight cap exceeds DENOM");
     Ok(())
 }
 
 fn validate_weight_updates(updates: &[WeightRecordUpdate]) -> Result<()> {
-    if updates.is_empty() {
-        return Err(anyhow::anyhow!("weight-record update is empty"));
-    }
+    ensure!(!updates.is_empty(), "weight-record update is empty");
     for pair in updates.windows(2) {
-        if pair[0].id == pair[1].id {
-            return Err(anyhow::anyhow!("duplicate weight-record stream ID {}", pair[0].id));
-        }
-        if pair[0].id > pair[1].id {
-            return Err(anyhow::anyhow!("weight-record updates are not ordered"));
-        }
+        ensure!(pair[0].id != pair[1].id, "duplicate weight-record stream ID {}", pair[0].id);
+        ensure!(pair[0].id <= pair[1].id, "weight-record updates are not ordered");
     }
     for update in updates {
         validate_weight_record(&update.weight)?;
@@ -267,14 +256,15 @@ pub fn weight_breakpoints(record: &WeightRecord, start_epoch: ChainEpoch) -> Vec
     if record.slope != 0 {
         // A canonical anchor has one crossing in the slope's forward direction. The opposite
         // crossing can matter only when validation begins before the anchor.
-        let start = BigInt::from(record.t_start);
-        let value = BigInt::from(record.v_start);
-        let slope = BigInt::from(record.slope);
+        let start = i128::from(record.t_start);
+        let value = i128::from(record.v_start);
+        let slope = i128::from(record.slope);
+        // The numerator and quotient are within +/-u64::MAX, leaving ample i128 headroom.
         let mut insert_crossing = |bound: u64| {
-            let quotient = (BigInt::from(bound) - &value) / &slope;
-            for offset in [-1_i64, 0, 1] {
-                let epoch = &start + &quotient + offset;
-                if let Some(epoch) = epoch.to_i64()
+            let quotient = (i128::from(bound) - value) / slope;
+            for offset in [-1_i128, 0, 1] {
+                let epoch = start + quotient + offset;
+                if let Ok(epoch) = ChainEpoch::try_from(epoch)
                     && epoch >= start_epoch
                 {
                     epochs.insert(epoch);
@@ -309,9 +299,7 @@ fn validate_weight_schedule_through(
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
 ) -> Result<()> {
-    if end_epoch < start_epoch {
-        return Err(anyhow::anyhow!("weight schedule interval is reversed"));
-    }
+    ensure!(end_epoch >= start_epoch, "weight schedule interval is reversed");
     let mut epochs = BTreeSet::from([start_epoch, end_epoch]);
     for stream in streams {
         validate_weight_record(&stream.weight)?;
@@ -325,9 +313,7 @@ fn validate_weight_schedule_through(
     for epoch in epochs {
         let sum: u128 =
             streams.iter().map(|stream| u128::from(compute_weight(&stream.weight, epoch))).sum();
-        if sum > u128::from(DENOM) {
-            return Err(anyhow::anyhow!("stream weights exceed DENOM at epoch {epoch}: {sum}"));
-        }
+        ensure!(sum <= u128::from(DENOM), "stream weights exceed DENOM at epoch {epoch}: {sum}");
     }
     Ok(())
 }
@@ -338,9 +324,7 @@ pub fn allocate_reward(
     epoch: ChainEpoch,
     block_reward: &TokenAmount,
 ) -> Result<RewardAllocation> {
-    if block_reward.is_negative() {
-        return Err(anyhow::anyhow!("block reward is negative"));
-    }
+    ensure!(!block_reward.is_negative(), "block reward is negative");
 
     let mut miner = TokenAmount::zero();
     let mut service = Vec::with_capacity(streams.len());
@@ -377,28 +361,21 @@ pub fn allocate_reward(
 }
 
 pub fn validate_shares(shares: &[RecipientShare]) -> Result<()> {
-    if shares.len() > MAX_RECIPIENTS {
-        return Err(anyhow::anyhow!(
-            "recipient count {} exceeds maximum {MAX_RECIPIENTS}",
-            shares.len()
-        ));
-    }
+    ensure!(
+        shares.len() <= MAX_RECIPIENTS,
+        "recipient count {} exceeds maximum {MAX_RECIPIENTS}",
+        shares.len()
+    );
 
     let mut recipients = BTreeSet::new();
     let mut total = 0_u128;
     for row in shares {
         validate_id_address(&row.recipient, "share recipient")?;
-        if row.share == 0 {
-            return Err(anyhow::anyhow!("share for recipient {} is zero", row.recipient));
-        }
-        if !(recipients.insert(row.recipient)) {
-            return Err(anyhow::anyhow!("duplicate share recipient {}", row.recipient));
-        }
+        ensure!(row.share != 0, "share for recipient {} is zero", row.recipient);
+        ensure!(recipients.insert(row.recipient), "duplicate share recipient {}", row.recipient);
         total += u128::from(row.share);
     }
-    if total != u128::from(DENOM) {
-        return Err(anyhow::anyhow!("shares sum to {total}, expected {DENOM}"));
-    }
+    ensure!(total == u128::from(DENOM), "shares sum to {total}, expected {DENOM}");
     Ok(())
 }
 
@@ -406,15 +383,13 @@ pub fn validate_shares(shares: &[RecipientShare]) -> Result<()> {
 pub fn accrue_service(accruals: &mut [StreamAccrual], portions: &[StreamAccrual]) -> Result<()> {
     let mut seen = BTreeSet::new();
     for portion in portions {
-        if portion.amount.is_negative() {
-            return Err(anyhow::anyhow!("service portion is negative"));
-        }
-        if !(seen.insert(portion.id)) {
-            return Err(anyhow::anyhow!("duplicate service portion for stream {}", portion.id));
-        }
-        if !(accruals.iter().any(|row| row.id == portion.id)) {
-            return Err(anyhow::anyhow!("missing accrual for stream {}", portion.id));
-        }
+        ensure!(!portion.amount.is_negative(), "service portion is negative");
+        ensure!(seen.insert(portion.id), "duplicate service portion for stream {}", portion.id);
+        ensure!(
+            accruals.iter().any(|row| row.id == portion.id),
+            "missing accrual for stream {}",
+            portion.id
+        );
     }
     // The preflight above proves every lookup in this mutation pass succeeds.
     for portion in portions {
@@ -443,28 +418,22 @@ pub fn compute_service_liability(
         let accrual = accruals
             .next()
             .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {}", stream.id))?;
-        if accrual.id != stream.id {
-            return Err(anyhow::anyhow!(
-                "explicit-stream accrual {} does not match explicit stream {}",
-                accrual.id,
-                stream.id
-            ));
-        }
-        if accrual.amount.is_negative() {
-            return Err(anyhow::anyhow!(
-                "explicit-stream accrual for stream {} is negative",
-                stream.id
-            ));
-        }
+        ensure!(
+            accrual.id == stream.id,
+            "explicit-stream accrual {} does not match explicit stream {}",
+            accrual.id,
+            stream.id
+        );
+        ensure!(
+            !accrual.amount.is_negative(),
+            "explicit-stream accrual for stream {} is negative",
+            stream.id
+        );
         validate_period_claims(distribution, &accrual.amount)?;
 
-        let claimed = distribution
-            .claimed_period
-            .iter()
-            .fold(TokenAmount::zero(), |sum, row| sum + &row.amount);
+        let claimed: TokenAmount = distribution.claimed_period.iter().map(|row| &row.amount).sum();
         total += &accrual.amount - claimed;
-        total +=
-            distribution.payable.iter().fold(TokenAmount::zero(), |sum, row| sum + &row.amount);
+        total += distribution.payable.iter().map(|row| &row.amount).sum::<TokenAmount>();
     }
     if let Some(accrual) = accruals.next() {
         return Err(anyhow::anyhow!(
@@ -474,7 +443,7 @@ pub fn compute_service_liability(
     }
     for tombstone in &streams.tombstones {
         validate_amount_rows(&tombstone.payable, "tombstone payable")?;
-        total += tombstone.payable.iter().fold(TokenAmount::zero(), |sum, row| sum + &row.amount);
+        total += tombstone.payable.iter().map(|row| &row.amount).sum::<TokenAmount>();
     }
     Ok(total)
 }
@@ -497,9 +466,7 @@ pub fn set_shares(
     validate_tombstone_capacity(&next_streams)?;
     *streams = next_streams;
     // The slice signature prevents either path from changing the accrual row count.
-    for (current, next) in accruals.iter_mut().zip(next_accruals) {
-        *current = next;
-    }
+    accruals.clone_from_slice(&next_accruals);
     Ok(burn)
 }
 
@@ -567,9 +534,7 @@ fn settle_period(
     distribution: &mut ExplicitDistribution,
     pool: &TokenAmount,
 ) -> Result<TokenAmount> {
-    if pool.is_negative() {
-        return Err(anyhow::anyhow!("explicit-stream accrual is negative"));
-    }
+    ensure!(!pool.is_negative(), "explicit-stream accrual is negative");
     validate_shares(&distribution.shares)?;
     validate_period_claims(distribution, pool)?;
 
@@ -590,9 +555,7 @@ fn claim_live(
     pool: &TokenAmount,
     wallets: &[Address],
 ) -> Result<ClaimResult> {
-    if pool.is_negative() {
-        return Err(anyhow::anyhow!("explicit-stream accrual is negative"));
-    }
+    ensure!(!pool.is_negative(), "explicit-stream accrual is negative");
     validate_shares(&distribution.shares)?;
     validate_period_claims(distribution, pool)?;
     let denom = BigInt::from(DENOM);
@@ -653,25 +616,23 @@ fn validate_period_claims(distribution: &ExplicitDistribution, pool: &TokenAmoun
                 .find(|share| share.recipient == claimed.recipient)
                 .ok_or_else(|| anyhow::anyhow!("claimed-period recipient is absent from shares"))?;
         let earned = TokenAmount::from_atto(pool.atto() * share.share / &denom);
-        if claimed.amount > earned {
-            return Err(anyhow::anyhow!(
-                "claimed amount exceeds earnings for recipient {}",
-                claimed.recipient
-            ));
-        }
+        ensure!(
+            claimed.amount <= earned,
+            "claimed amount exceeds earnings for recipient {}",
+            claimed.recipient
+        );
     }
     Ok(())
 }
 
 fn validate_amount_rows(rows: &[RecipientAmount], label: &str) -> Result<()> {
-    if !(rows.windows(2).all(|rows| rows[0].recipient < rows[1].recipient)) {
-        return Err(anyhow::anyhow!("{label} recipients are not ordered"));
-    }
+    ensure!(
+        rows.is_sorted_by(|a, b| a.recipient < b.recipient),
+        "{label} recipients are not ordered"
+    );
     for row in rows {
         validate_id_address(&row.recipient, label)?;
-        if row.amount <= TokenAmount::zero() {
-            return Err(anyhow::anyhow!("{label} amount is not positive"));
-        }
+        ensure!(row.amount > TokenAmount::zero(), "{label} amount is not positive");
     }
     Ok(())
 }
@@ -704,9 +665,10 @@ pub fn queue_weight_records(
     op: PendingWriteOp,
     updates: &[WeightRecordUpdate],
 ) -> Result<ChainEpoch> {
-    if !(matches!(op, PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords)) {
-        return Err(anyhow::anyhow!("invalid weight-record operation {op:?}"));
-    }
+    ensure!(
+        matches!(op, PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords),
+        "invalid weight-record operation {op:?}"
+    );
     let effective_epoch = timelock_epoch(current_epoch, timelock_epochs)?;
     let mut updates = updates.to_vec();
     updates.sort_by_key(|update| update.id);
@@ -735,9 +697,7 @@ pub fn queue_register_stream(
     stream: Stream,
     activation_epoch: ChainEpoch,
 ) -> Result<ChainEpoch> {
-    if stream.id == 0 {
-        return Err(anyhow::anyhow!("stream ID 0 is reserved"));
-    }
+    ensure!(stream.id != 0, "stream ID 0 is reserved");
     validate_weight_record(&stream.weight)?;
     if let Some(distribution) = &stream.distribution
         && (!distribution.payable.is_empty() || !distribution.claimed_period.is_empty())
@@ -756,11 +716,10 @@ pub fn queue_register_stream(
     ensure_slot_available(streams, Some(stream.id), PendingWriteOp::RegisterStream)?;
 
     let earliest = timelock_epoch(current_epoch, timelock_epochs)?;
-    if activation_epoch < earliest {
-        return Err(anyhow::anyhow!(
-            "activation epoch {activation_epoch} is before timelock floor {earliest}"
-        ));
-    }
+    ensure!(
+        activation_epoch >= earliest,
+        "activation epoch {activation_epoch} is before timelock floor {earliest}"
+    );
 
     let mut proposed = streams.clone();
     proposed.pending_writes.push(PendingWrite {
@@ -798,7 +757,7 @@ pub fn queue_remove_stream(
     proposed.pending_writes.push(PendingWrite {
         id: Some(id),
         op: PendingWriteOp::RemoveStream,
-        payload: RawBytes::new(vec![0x80]),
+        payload: RawBytes::new(EMPTY_TUPLE_CBOR.to_vec()),
         effective_epoch,
     });
     sort_pending(&mut proposed.pending_writes);
@@ -860,9 +819,7 @@ fn cancel_pending(
 }
 
 pub(crate) fn validate_cancel_target(id: Option<StreamId>, op: PendingWriteOp) -> Result<()> {
-    if op == PendingWriteOp::StepWeightRecords {
-        return Err(anyhow::anyhow!("StepWeightRecords cannot be cancelled"));
-    }
+    ensure!(op != PendingWriteOp::StepWeightRecords, "StepWeightRecords cannot be cancelled");
     validate_pending_target(id, op)
 }
 
@@ -949,9 +906,7 @@ pub fn project_due_writes(
 }
 
 fn timelock_epoch(current_epoch: ChainEpoch, timelock_epochs: ChainEpoch) -> Result<ChainEpoch> {
-    if timelock_epochs < 0 {
-        return Err(anyhow::anyhow!("timelock is negative"));
-    }
+    ensure!(timelock_epochs >= 0, "timelock is negative");
     current_epoch
         .checked_add(timelock_epochs)
         .ok_or_else(|| anyhow::anyhow!("timelock epoch overflow"))
@@ -980,26 +935,31 @@ fn ensure_slot_available(
     op: PendingWriteOp,
 ) -> Result<()> {
     let slot = pending_slot(id, op);
-    if streams.pending_writes.iter().any(|write| pending_slot(write.id, write.op) == slot) {
-        return Err(anyhow::anyhow!("pending slot ({:?}, {:?}) is occupied", slot.0, slot.1));
-    }
+    ensure!(
+        !streams.pending_writes.iter().any(|write| pending_slot(write.id, write.op) == slot),
+        "pending slot ({:?}, {:?}) is occupied",
+        slot.0,
+        slot.1
+    );
     Ok(())
 }
 
 fn ensure_stream_id_available(streams: &StreamsState, id: StreamId) -> Result<()> {
-    if streams.streams.iter().any(|stream| stream.id == id) {
-        return Err(anyhow::anyhow!("stream ID {id} is already registered"));
-    }
-    if streams.tombstones.iter().any(|tombstone| tombstone.id == id) {
-        return Err(anyhow::anyhow!("stream ID {id} is tombstoned"));
-    }
-    if streams
-        .pending_writes
-        .iter()
-        .any(|write| write.id == Some(id) && write.op == PendingWriteOp::RegisterStream)
-    {
-        return Err(anyhow::anyhow!("stream ID {id} has a pending registration"));
-    }
+    ensure!(
+        !streams.streams.iter().any(|stream| stream.id == id),
+        "stream ID {id} is already registered"
+    );
+    ensure!(
+        !streams.tombstones.iter().any(|tombstone| tombstone.id == id),
+        "stream ID {id} is tombstoned"
+    );
+    ensure!(
+        !streams
+            .pending_writes
+            .iter()
+            .any(|write| write.id == Some(id) && write.op == PendingWriteOp::RegisterStream),
+        "stream ID {id} has a pending registration"
+    );
     Ok(())
 }
 
@@ -1036,9 +996,10 @@ fn validate_new_pending(
         }
         Err(error) => return Err(error),
     };
-    if !accepted_before.is_subset(&accepted_after) {
-        return Err(anyhow::anyhow!("new call invalidates an existing pending call"));
-    }
+    ensure!(
+        accepted_before.is_subset(&accepted_after),
+        "new call invalidates an existing pending call"
+    );
     Ok(())
 }
 
@@ -1123,25 +1084,21 @@ fn validate_stream_configuration(streams: &[Stream]) -> Result<()> {
 }
 
 fn validate_stream_configuration_without_weights(streams: &[Stream]) -> Result<()> {
-    if streams.len() > MAX_STREAMS {
-        return Err(anyhow::anyhow!("stream count exceeds maximum {MAX_STREAMS}"));
-    }
-    if !(streams.windows(2).all(|rows| rows[0].id < rows[1].id)) {
-        return Err(anyhow::anyhow!("stream IDs are not ordered"));
-    }
-    if streams.iter().any(|stream| stream.id == 0) {
-        return Err(anyhow::anyhow!("stream ID 0 is reserved"));
-    }
-    if streams.iter().filter(|stream| stream.distribution.is_none()).count() > 1 {
-        return Err(anyhow::anyhow!("multiple implicit streams"));
-    }
+    ensure!(streams.len() <= MAX_STREAMS, "stream count exceeds maximum {MAX_STREAMS}");
+    ensure!(streams.is_sorted_by(|a, b| a.id < b.id), "stream IDs are not ordered");
+    ensure!(!streams.iter().any(|stream| stream.id == 0), "stream ID 0 is reserved");
+    ensure!(
+        streams.iter().filter(|stream| stream.distribution.is_none()).count() <= 1,
+        "multiple implicit streams"
+    );
     for stream in streams {
         if let Some(distribution) = &stream.distribution {
             validate_id_address(&distribution.writer, "distribution writer")?;
+            ensure!(
+                distribution.shares.is_sorted_by(|a, b| a.recipient < b.recipient),
+                "share recipients are not ordered"
+            );
             validate_shares(&distribution.shares)?;
-            if !(distribution.shares.windows(2).all(|rows| rows[0].recipient < rows[1].recipient)) {
-                return Err(anyhow::anyhow!("share recipients are not ordered"));
-            }
             validate_amount_rows(&distribution.payable, "payable")?;
             validate_amount_rows(&distribution.claimed_period, "claimed-period")?;
         }
@@ -1153,33 +1110,30 @@ fn validate_pending_queue(
     writes: &[PendingWrite],
     minimum_epoch: Option<ChainEpoch>,
 ) -> Result<()> {
-    if !(writes.windows(2).all(|rows| rows[0].effective_epoch <= rows[1].effective_epoch)) {
-        return Err(anyhow::anyhow!("pending writes are not ordered"));
-    }
-    if writes.len() > MAX_PENDING_WRITES {
-        return Err(anyhow::anyhow!(
-            "pending write count {} exceeds maximum {MAX_PENDING_WRITES}",
-            writes.len()
-        ));
-    }
+    ensure!(
+        writes.is_sorted_by_key(|write| write.effective_epoch),
+        "pending writes are not ordered"
+    );
+    ensure!(
+        writes.len() <= MAX_PENDING_WRITES,
+        "pending write count {} exceeds maximum {MAX_PENDING_WRITES}",
+        writes.len()
+    );
     let mut slots = BTreeSet::new();
     for write in writes {
         let is_schedule = matches!(
             write.op,
             PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords
         );
-        if is_schedule != write.id.is_none() {
-            return Err(anyhow::anyhow!(
-                "pending call ({:?}, {:?}) has a non-canonical stream ID",
-                write.id,
-                write.op
-            ));
-        }
+        ensure!(
+            is_schedule == write.id.is_none(),
+            "pending call ({:?}, {:?}) has a non-canonical stream ID",
+            write.id,
+            write.op
+        );
         validate_pending_payload(write)?;
         let slot = pending_slot(write.id, write.op);
-        if !slots.insert(slot) {
-            return Err(anyhow::anyhow!("duplicate pending slot ({:?}, {:?})", slot.0, slot.1));
-        }
+        ensure!(slots.insert(slot), "duplicate pending slot ({:?}, {:?})", slot.0, slot.1);
         if let Some(epoch) = minimum_epoch
             && write.effective_epoch < epoch
         {
@@ -1205,9 +1159,10 @@ fn validate_pending_payload(write: &PendingWrite) -> Result<()> {
             validate_distribution_init(&payload.distribution)?;
         }
         PendingWriteOp::RemoveStream => {
-            if write.payload.bytes() != [0x80] {
-                return Err(anyhow::anyhow!("RemoveStream payload is not an empty tuple"));
-            }
+            ensure!(
+                write.payload.bytes() == EMPTY_TUPLE_CBOR,
+                "RemoveStream payload is not an empty tuple"
+            );
         }
         PendingWriteOp::SetDistribution => {
             let payload: SetDistributionPayload = write.payload.deserialize()?;
@@ -1246,9 +1201,7 @@ fn validate_streams_state_structure_without_weights(
     accruals: &[StreamAccrual],
 ) -> Result<()> {
     validate_award_state_structure(streams)?;
-    if !(accruals.windows(2).all(|rows| rows[0].id < rows[1].id)) {
-        return Err(anyhow::anyhow!("explicit-stream accruals are not ordered"));
-    }
+    ensure!(accruals.is_sorted_by(|a, b| a.id < b.id), "explicit-stream accruals are not ordered");
 
     let explicit_ids: BTreeSet<_> = streams
         .streams
@@ -1257,15 +1210,16 @@ fn validate_streams_state_structure_without_weights(
         .map(|stream| stream.id)
         .collect();
     let accrual_ids: BTreeSet<_> = accruals.iter().map(|row| row.id).collect();
-    if explicit_ids != accrual_ids {
-        return Err(anyhow::anyhow!(
-            "explicit-stream accrual IDs do not match live explicit streams"
-        ));
-    }
+    ensure!(
+        explicit_ids == accrual_ids,
+        "explicit-stream accrual IDs do not match live explicit streams"
+    );
     for accrual in accruals {
-        if accrual.amount.is_negative() {
-            return Err(anyhow::anyhow!("explicit-stream accrual {} is negative", accrual.id));
-        }
+        ensure!(
+            !accrual.amount.is_negative(),
+            "explicit-stream accrual {} is negative",
+            accrual.id
+        );
         // Exact accrual-ID equality above proves this is a live explicit stream.
         let distribution = streams
             .streams
@@ -1282,32 +1236,25 @@ fn validate_streams_state_structure_without_weights(
 pub(crate) fn validate_award_state_structure(streams: &StreamsState) -> Result<()> {
     validate_pending_queue(&streams.pending_writes, None)?;
     validate_stream_configuration_without_weights(&streams.streams)?;
-    if !(streams.tombstones.windows(2).all(|rows| rows[0].id < rows[1].id)) {
-        return Err(anyhow::anyhow!("tombstones are not ordered"));
-    }
+    ensure!(streams.tombstones.is_sorted_by(|a, b| a.id < b.id), "tombstones are not ordered");
 
     let live_ids: BTreeSet<_> = streams.streams.iter().map(|stream| stream.id).collect();
     let tombstone_ids: BTreeSet<_> =
         streams.tombstones.iter().map(|tombstone| tombstone.id).collect();
-    if !(live_ids.is_disjoint(&tombstone_ids)) {
-        return Err(anyhow::anyhow!("a stream ID is live and tombstoned"));
-    }
+    ensure!(live_ids.is_disjoint(&tombstone_ids), "a stream ID is live and tombstoned");
     for tombstone in &streams.tombstones {
-        if tombstone.id == 0 {
-            return Err(anyhow::anyhow!("stream ID 0 is reserved"));
-        }
-        if tombstone.payable.is_empty() {
-            return Err(anyhow::anyhow!("tombstone {} is empty", tombstone.id));
-        }
+        ensure!(tombstone.id != 0, "stream ID 0 is reserved");
+        ensure!(!tombstone.payable.is_empty(), "tombstone {} is empty", tombstone.id);
         validate_amount_rows(&tombstone.payable, "tombstone payable")?;
     }
     for write in &streams.pending_writes {
         if write.op == PendingWriteOp::RegisterStream {
             // Pending-queue shape validation requires IDs on every per-stream operation.
             let id = write.id.expect("validated per-stream pending call has an ID");
-            if live_ids.contains(&id) || tombstone_ids.contains(&id) {
-                return Err(anyhow::anyhow!("pending registration reuses stream ID {id}"));
-            }
+            ensure!(
+                !live_ids.contains(&id) && !tombstone_ids.contains(&id),
+                "pending registration reuses stream ID {id}"
+            );
         }
     }
     validate_tombstone_capacity(streams)?;
@@ -1323,9 +1270,7 @@ fn validate_distribution_init(distribution: &Option<DistributionInit>) -> Result
 }
 
 fn validate_id_address(address: &Address, label: &str) -> Result<()> {
-    if address.protocol() != Protocol::ID {
-        return Err(anyhow::anyhow!("{label} {address} is not an ID address"));
-    }
+    ensure!(address.protocol() == Protocol::ID, "{label} {address} is not an ID address");
     Ok(())
 }
 
@@ -1345,11 +1290,10 @@ fn validate_tombstone_capacity(streams: &StreamsState) -> Result<()> {
                 MAX_RECIPIENTS.max(recipient_union_len(&distribution.payable, &distribution.shares))
             });
     }
-    if rows > MAX_TOMBSTONE_ROWS {
-        return Err(anyhow::anyhow!(
-            "tombstone row reservation {rows} exceeds maximum {MAX_TOMBSTONE_ROWS}"
-        ));
-    }
+    ensure!(
+        rows <= MAX_TOMBSTONE_ROWS,
+        "tombstone row reservation {rows} exceeds maximum {MAX_TOMBSTONE_ROWS}"
+    );
     Ok(())
 }
 
@@ -1379,9 +1323,7 @@ fn apply_pending_transition(
 ) -> Result<TokenAmount> {
     match write.op {
         PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords => {
-            if write.id.is_some() {
-                return Err(anyhow::anyhow!("schedule-wide call has a stream ID"));
-            }
+            ensure!(write.id.is_none(), "schedule-wide call has a stream ID");
             let payload: WeightRecordsPayload = write.payload.deserialize()?;
             validate_weight_updates(&payload.updates)?;
             for update in payload.updates {
@@ -1397,18 +1339,18 @@ fn apply_pending_transition(
         PendingWriteOp::RegisterStream => {
             let id =
                 write.id.ok_or_else(|| anyhow::anyhow!("RegisterStream call has no stream ID"))?;
-            if id == 0 {
-                return Err(anyhow::anyhow!("stream ID 0 is reserved"));
-            }
+            ensure!(id != 0, "stream ID 0 is reserved");
             let payload: RegisterStreamPayload = write.payload.deserialize()?;
             validate_weight_record(&payload.weight)?;
             validate_distribution_init(&payload.distribution)?;
-            if state.streams.iter().any(|stream| stream.id == id) {
-                return Err(anyhow::anyhow!("stream ID {id} is already registered"));
-            }
-            if state.tombstones.iter().any(|tombstone| tombstone.id == id) {
-                return Err(anyhow::anyhow!("stream ID {id} is tombstoned"));
-            }
+            ensure!(
+                !state.streams.iter().any(|stream| stream.id == id),
+                "stream ID {id} is already registered"
+            );
+            ensure!(
+                !state.tombstones.iter().any(|tombstone| tombstone.id == id),
+                "stream ID {id} is tombstoned"
+            );
             let distribution = payload.distribution.map(|distribution| ExplicitDistribution {
                 writer: distribution.writer,
                 shares: distribution.shares,
@@ -1489,9 +1431,10 @@ fn remove_stream(
     let accrual = accruals.remove(accrual_idx);
     let burn = settle_period(distribution, &accrual.amount)?;
     if !distribution.payable.is_empty() {
-        if tombstones.iter().any(|tombstone| tombstone.id == id) {
-            return Err(anyhow::anyhow!("stream ID {id} is already tombstoned"));
-        }
+        ensure!(
+            !tombstones.iter().any(|tombstone| tombstone.id == id),
+            "stream ID {id} is already tombstoned"
+        );
         tombstones.push(Tombstone { id, payable: std::mem::take(&mut distribution.payable) });
         tombstones.sort_by_key(|tombstone| tombstone.id);
     }
