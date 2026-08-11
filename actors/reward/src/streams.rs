@@ -18,6 +18,7 @@ pub type StreamId = u64;
 pub const DENOM: u64 = 1_000_000_000_000_000_000;
 pub const MAX_STREAMS: usize = 8;
 pub const MAX_RECIPIENTS: usize = 64;
+pub const MAX_PAYABLE_ROWS_PER_STREAM: usize = 2 * MAX_RECIPIENTS;
 pub const MAX_TOMBSTONE_ROWS: usize = 256;
 const STREAM_SCOPED_PENDING_OPS: usize = 3;
 const SCHEDULE_WIDE_PENDING_OPS: usize = 2;
@@ -491,9 +492,17 @@ fn set_shares_inner(
         .find(|row| row.id == id)
         .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?;
 
-    let burn = settle_period(distribution, &accrual.amount)?;
+    let mut next_distribution = distribution.clone();
+    let burn = settle_period(&mut next_distribution, &accrual.amount)?;
+    let reserved_rows = payable_row_reservation(&next_distribution.payable, &shares);
+    ensure!(
+        reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
+        "stream {id} payable row reservation {reserved_rows} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}"
+    );
+    next_distribution.shares = shares;
+
+    *distribution = next_distribution;
     accrual.amount = TokenAmount::zero();
-    distribution.shares = shares;
     Ok(burn)
 }
 
@@ -602,6 +611,22 @@ fn claim_payable(payable: &mut Vec<RecipientAmount>, wallets: &[Address]) -> Res
         amounts.push(entitlement);
     }
     Ok(amounts)
+}
+
+fn payable_row_reservation(payable: &[RecipientAmount], shares: &[RecipientShare]) -> usize {
+    let (mut payable_idx, mut share_idx, mut rows) = (0, 0, 0);
+    while payable_idx < payable.len() && share_idx < shares.len() {
+        rows += 1;
+        match payable[payable_idx].recipient.cmp(&shares[share_idx].recipient) {
+            std::cmp::Ordering::Less => payable_idx += 1,
+            std::cmp::Ordering::Greater => share_idx += 1,
+            std::cmp::Ordering::Equal => {
+                payable_idx += 1;
+                share_idx += 1;
+            }
+        }
+    }
+    rows + payable.len() - payable_idx + shares.len() - share_idx
 }
 
 fn validate_period_claims(distribution: &ExplicitDistribution, pool: &TokenAmount) -> Result<()> {
@@ -1101,6 +1126,19 @@ fn validate_stream_configuration_without_weights(streams: &[Stream]) -> Result<(
             validate_shares(&distribution.shares)?;
             validate_amount_rows(&distribution.payable, "payable")?;
             validate_amount_rows(&distribution.claimed_period, "claimed-period")?;
+            let reserved_rows =
+                payable_row_reservation(&distribution.payable, &distribution.shares);
+            ensure!(
+                reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
+                "stream {} payable row reservation {reserved_rows} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}",
+                stream.id
+            );
+            ensure!(
+                distribution.claimed_period.len() <= MAX_RECIPIENTS,
+                "stream {} claimed-period row count {} exceeds maximum {MAX_RECIPIENTS}",
+                stream.id,
+                distribution.claimed_period.len()
+            );
         }
     }
     Ok(())
