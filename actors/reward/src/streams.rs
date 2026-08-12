@@ -494,7 +494,7 @@ fn set_shares_inner(
 
     let mut next_distribution = distribution.clone();
     let burn = settle_period(&mut next_distribution, &accrual.amount)?;
-    let reserved_rows = payable_row_reservation(&next_distribution.payable, &shares);
+    let reserved_rows = recipient_union_len(&next_distribution.payable, &shares);
     ensure!(
         reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
         "stream {id} payable row reservation {reserved_rows} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}"
@@ -611,22 +611,6 @@ fn claim_payable(payable: &mut Vec<RecipientAmount>, wallets: &[Address]) -> Res
         amounts.push(entitlement);
     }
     Ok(amounts)
-}
-
-fn payable_row_reservation(payable: &[RecipientAmount], shares: &[RecipientShare]) -> usize {
-    let (mut payable_idx, mut share_idx, mut rows) = (0, 0, 0);
-    while payable_idx < payable.len() && share_idx < shares.len() {
-        rows += 1;
-        match payable[payable_idx].recipient.cmp(&shares[share_idx].recipient) {
-            std::cmp::Ordering::Less => payable_idx += 1,
-            std::cmp::Ordering::Greater => share_idx += 1,
-            std::cmp::Ordering::Equal => {
-                payable_idx += 1;
-                share_idx += 1;
-            }
-        }
-    }
-    rows + payable.len() - payable_idx + shares.len() - share_idx
 }
 
 fn validate_period_claims(distribution: &ExplicitDistribution, pool: &TokenAmount) -> Result<()> {
@@ -1126,8 +1110,7 @@ fn validate_stream_configuration_without_weights(streams: &[Stream]) -> Result<(
             validate_shares(&distribution.shares)?;
             validate_amount_rows(&distribution.payable, "payable")?;
             validate_amount_rows(&distribution.claimed_period, "claimed-period")?;
-            let reserved_rows =
-                payable_row_reservation(&distribution.payable, &distribution.shares);
+            let reserved_rows = recipient_union_len(&distribution.payable, &distribution.shares);
             ensure!(
                 reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
                 "stream {} payable row reservation {reserved_rows} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}",

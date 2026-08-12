@@ -4,23 +4,167 @@
 mod serialization {
     use cid::Cid;
     use fil_actor_reward::{
-        CancelPendingParams, ClaimParams, ClaimReturn, DENOM, DistributionInit,
-        ExplicitDistribution, MAX_RECIPIENTS, PendingWrite, PendingWriteOp, RecipientAmount,
-        RecipientShare, RegisterStreamParams, RemoveStreamParams, SetDistributionParams,
-        SetSharesParams, SetWeightRecordsParams, State, StepWeightRecordsParams, Stream,
-        StreamAccrual, StreamsState, Tombstone, WeightRecord, WeightRecordUpdate,
+        AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn, ConstructorParams,
+        DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, PendingWrite,
+        PendingWriteOp, RecipientAmount, RecipientShare, RegisterStreamParams, RemoveStreamParams,
+        SetDistributionParams, SetSharesParams, SetWeightRecordsParams, State,
+        StepWeightRecordsParams, Stream, StreamAccrual, StreamsState, ThisEpochRewardReturn,
+        Tombstone, UpdateNetworkKPIParams, WeightRecord, WeightRecordUpdate,
     };
     use fil_actors_runtime::reward::FilterEstimate;
     use fil_actors_runtime::test_blockstores::MemoryBlockstore;
     use fvm_ipld_encoding::{CborStore, RawBytes, ipld_block::IpldBlock};
     use fvm_shared::address::Address;
-    use fvm_shared::bigint::BigInt;
+    use fvm_shared::bigint::{BigInt, bigint_ser::BigIntDe};
     use fvm_shared::econ::TokenAmount;
     use hex_literal::hex;
     use multihash_codetable::Code;
 
     fn empty_streams_root() -> Cid {
         MemoryBlockstore::default().put_cbor(&StreamsState::default(), Code::Blake2b256).unwrap()
+    }
+
+    fn assert_state_eq(expected: &State, actual: &State) {
+        assert_eq!(expected.cumsum_baseline, actual.cumsum_baseline);
+        assert_eq!(expected.cumsum_realized, actual.cumsum_realized);
+        assert_eq!(expected.effective_network_time, actual.effective_network_time);
+        assert_eq!(expected.effective_baseline_power, actual.effective_baseline_power);
+        assert_eq!(expected.this_epoch_reward, actual.this_epoch_reward);
+        assert_eq!(expected.this_epoch_reward_smoothed, actual.this_epoch_reward_smoothed);
+        assert_eq!(expected.this_epoch_baseline_power, actual.this_epoch_baseline_power);
+        assert_eq!(expected.epoch, actual.epoch);
+        assert_eq!(expected.total_minted_reward, actual.total_minted_reward);
+        assert_eq!(expected.total_burn_minted, actual.total_burn_minted);
+        assert_eq!(expected.total_explicit_minted, actual.total_explicit_minted);
+        assert_eq!(expected.accrued, actual.accrued);
+        assert_eq!(expected.swa_timelock_epochs, actual.swa_timelock_epochs);
+        assert_eq!(expected.swa_actor, actual.swa_actor);
+        assert_eq!(expected.streams_root, actual.streams_root);
+    }
+
+    #[test]
+    fn constructor_params() {
+        let test_cases = vec![
+            (ConstructorParams { power: None }, &hex!("f6")[..]),
+            // BigInt has no negative zero; zero canonically encodes as an empty byte string.
+            (ConstructorParams { power: Some(BigIntDe(BigInt::from(0))) }, &hex!("40")[..]),
+            (ConstructorParams { power: Some(BigIntDe(BigInt::from(255))) }, &hex!("4200ff")[..]),
+            (ConstructorParams { power: Some(BigIntDe(BigInt::from(256))) }, &hex!("43000100")[..]),
+            (ConstructorParams { power: Some(BigIntDe(BigInt::from(-255))) }, &hex!("4201ff")[..]),
+            (
+                ConstructorParams { power: Some(BigIntDe(BigInt::from(-256))) },
+                &hex!("43010100")[..],
+            ),
+        ];
+
+        for (params, expected_hex) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex);
+            let decoded: ConstructorParams = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(params, decoded);
+        }
+    }
+
+    #[test]
+    fn update_network_kpi_params() {
+        let test_cases = vec![
+            (UpdateNetworkKPIParams { curr_realized_power: None }, &hex!("f6")[..]),
+            (
+                UpdateNetworkKPIParams { curr_realized_power: Some(BigIntDe(BigInt::from(0))) },
+                &hex!("40")[..],
+            ),
+            (
+                UpdateNetworkKPIParams { curr_realized_power: Some(BigIntDe(BigInt::from(255))) },
+                &hex!("4200ff")[..],
+            ),
+            (
+                UpdateNetworkKPIParams { curr_realized_power: Some(BigIntDe(BigInt::from(256))) },
+                &hex!("43000100")[..],
+            ),
+            (
+                UpdateNetworkKPIParams { curr_realized_power: Some(BigIntDe(BigInt::from(-255))) },
+                &hex!("4201ff")[..],
+            ),
+            (
+                UpdateNetworkKPIParams { curr_realized_power: Some(BigIntDe(BigInt::from(-256))) },
+                &hex!("43010100")[..],
+            ),
+        ];
+
+        for (params, expected_hex) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex);
+            let decoded: UpdateNetworkKPIParams = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(params, decoded);
+        }
+    }
+
+    #[test]
+    fn award_block_reward_params() {
+        let test_cases = vec![
+            (
+                AwardBlockRewardParams {
+                    miner: Address::new_id(100),
+                    penalty: TokenAmount::from_atto(0),
+                    gas_reward: TokenAmount::from_atto(0),
+                    win_count: 0,
+                },
+                &hex!("84420064404000")[..],
+            ),
+            (
+                AwardBlockRewardParams {
+                    miner: delegated_address(),
+                    penalty: TokenAmount::from_atto(255),
+                    gas_reward: TokenAmount::from_atto(256),
+                    win_count: -1,
+                },
+                &hex!("8456040a11111111111111111111111111111111111111114200ff4300010020")[..],
+            ),
+            (
+                AwardBlockRewardParams {
+                    miner: Address::new_id(100),
+                    penalty: TokenAmount::from_atto(256),
+                    gas_reward: TokenAmount::from_atto(255),
+                    win_count: i64::MAX,
+                },
+                &hex!("84420064430001004200ff1b7fffffffffffffff")[..],
+            ),
+            (
+                AwardBlockRewardParams {
+                    miner: delegated_address(),
+                    penalty: TokenAmount::from_atto(1),
+                    gas_reward: TokenAmount::from_atto(1),
+                    win_count: i64::MIN,
+                },
+                &hex!(
+                    "8456040a11111111111111111111111111111111111111114200014200013b7fffffffffffffff"
+                )[..],
+            ),
+        ];
+
+        for (params, expected_hex) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex);
+            let decoded: AwardBlockRewardParams = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(params, decoded);
+        }
+    }
+
+    #[test]
+    fn this_epoch_reward_return() {
+        let value = ThisEpochRewardReturn {
+            this_epoch_reward_smoothed: FilterEstimate::new(BigInt::from(1), BigInt::from(-2)),
+            this_epoch_baseline_power: BigInt::from(256),
+        };
+        let encoded = IpldBlock::serialize_cbor(&value).unwrap().unwrap();
+        assert_eq!(
+            encoded.data,
+            hex!(
+                "8282520001000000000000000000000000000000005201020000000000000000000000000000000043000100"
+            )
+        );
+        let decoded: ThisEpochRewardReturn = IpldBlock::deserialize(&encoded).unwrap();
+        assert_eq!(value, decoded);
     }
 
     #[test]
@@ -82,7 +226,7 @@ mod serialization {
     }
 
     #[test]
-    fn empty_reward_state_root() {
+    fn empty_reward_state() {
         let state = State { streams_root: empty_streams_root(), ..Default::default() };
         let encoded = IpldBlock::serialize_cbor(&state).unwrap().unwrap();
         assert_eq!(
@@ -92,11 +236,11 @@ mod serialization {
             )
         );
         let decoded: State = IpldBlock::deserialize(&encoded).unwrap();
-        assert_eq!(state.streams_root, decoded.streams_root);
+        assert_state_eq(&state, &decoded);
     }
 
     #[test]
-    fn reward_state_root() {
+    fn populated_reward_state() {
         let state = State {
             cumsum_baseline: BigInt::from(1),
             cumsum_realized: BigInt::from(2),
@@ -123,8 +267,7 @@ mod serialization {
             )
         );
         let decoded: State = IpldBlock::deserialize(&encoded).unwrap();
-        assert_eq!(state.total_minted_reward, decoded.total_minted_reward);
-        assert_eq!(state.streams_root, decoded.streams_root);
+        assert_state_eq(&state, &decoded);
     }
 
     fn weight(v_start: u64, slope: i64, t_start: i64, floor: u64, cap: u64) -> WeightRecord {
@@ -466,6 +609,8 @@ mod serialization {
 
     #[test]
     fn claim_params() {
+        let max_wallets =
+            (1000..1000 + MAX_RECIPIENTS as u64).map(Address::new_id).collect::<Vec<_>>();
         let test_cases = vec![
             (
                 ClaimParams { id: 1_u64 << 32, wallets: Vec::new() },
@@ -484,6 +629,19 @@ mod serialization {
                 &hex!(
                     "821a000100008246008080808010"
                     "56040a1111111111111111111111111111111111111111"
+                )[..],
+            ),
+            (
+                ClaimParams { id: 65_536, wallets: max_wallets },
+                &hex!(
+                    "821a0001000098404300e8074300e9074300ea074300eb074300ec074300ed074300ee0743"
+                    "00ef074300f0074300f1074300f2074300f3074300f4074300f5074300f6074300f7074300"
+                    "f8074300f9074300fa074300fb074300fc074300fd074300fe074300ff0743008008430081"
+                    "08430082084300830843008408430085084300860843008708430088084300890843008a08"
+                    "43008b0843008c0843008d0843008e0843008f084300900843009108430092084300930843"
+                    "009408430095084300960843009708430098084300990843009a0843009b0843009c084300"
+                    "9d0843009e0843009f084300a0084300a1084300a2084300a3084300a4084300a5084300a6"
+                    "084300a708"
                 )[..],
             ),
         ];

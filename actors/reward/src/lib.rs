@@ -419,7 +419,7 @@ impl Actor {
                             rt.curr_epoch(),
                             &prior_balance,
                             &params.gas_reward,
-                            expected_block_reward,
+                            &expected_block_reward,
                         );
                     }
                 };
@@ -429,43 +429,70 @@ impl Actor {
                 .pending_writes
                 .first()
                 .is_some_and(|write| write.effective_epoch <= rt.curr_epoch());
-            let (next_streams, mut next_accrued, apply_result, liabilities) = if transition_due {
-                let current_streams = streams.clone();
-                let mut next_streams = streams;
-                let mut next_accrued = st.accrued.clone();
-                let apply_result =
-                    apply_due_writes(&mut next_streams, &mut next_accrued, rt.curr_epoch())
-                        .map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                "failed to apply due writes",
-                            )
-                        })?;
-                let liabilities = match compute_service_liability(&next_streams, &next_accrued) {
-                    Ok(liabilities) => liabilities,
-                    Err(error) => {
-                        error!(
-                            "due writes produced invalid explicit-stream accounting at epoch {}: {};\
-                            suspending service accrual",
-                            rt.curr_epoch(),
-                            error
-                        );
-                        return allocate_without_service(
-                            st,
-                            &current_streams,
-                            rt.curr_epoch(),
-                            &prior_balance,
-                            &params.gas_reward,
-                            expected_block_reward,
-                        );
-                    }
+            let (next_streams, mut next_accrued, apply_result, liabilities, prior_streams) =
+                if transition_due {
+                    let current_streams = streams.clone();
+                    let mut next_streams = streams;
+                    let mut next_accrued = st.accrued.clone();
+                    let apply_result =
+                        match apply_due_writes(&mut next_streams, &mut next_accrued, rt.curr_epoch())
+                        {
+                            Ok(result) => result,
+                            Err(error) => {
+                                error!(
+                                    "failed to apply due writes at epoch {}: {};\
+                                    suspending service accrual",
+                                    rt.curr_epoch(),
+                                    error
+                                );
+                                return allocate_without_service(
+                                    st,
+                                    &current_streams,
+                                    rt.curr_epoch(),
+                                    &prior_balance,
+                                    &params.gas_reward,
+                                    &expected_block_reward,
+                                );
+                            }
+                        };
+                    let liabilities =
+                        match compute_service_liability(&next_streams, &next_accrued) {
+                            Ok(liabilities) => liabilities,
+                            Err(error) => {
+                                error!(
+                                    "due writes produced invalid explicit-stream accounting at epoch {}: {};\
+                                    suspending service accrual",
+                                    rt.curr_epoch(),
+                                    error
+                                );
+                                return allocate_without_service(
+                                    st,
+                                    &current_streams,
+                                    rt.curr_epoch(),
+                                    &prior_balance,
+                                    &params.gas_reward,
+                                    &expected_block_reward,
+                                );
+                            }
+                        };
+                    (
+                        next_streams,
+                        next_accrued,
+                        apply_result,
+                        liabilities,
+                        Some(current_streams),
+                    )
+                } else {
+                    (
+                        streams,
+                        st.accrued.clone(),
+                        ApplyResult::default(),
+                        current_liabilities,
+                        None,
+                    )
                 };
-                (next_streams, next_accrued, apply_result, liabilities)
-            } else {
-                (streams, st.accrued.clone(), ApplyResult::default(), current_liabilities)
-            };
 
-            let mut block_reward = expected_block_reward;
+            let mut block_reward = expected_block_reward.clone();
             // Due folds leave dust out of the derived liability before its post-transaction
             // burn send, so it remains reserved until that send executes.
             let reserved = &params.gas_reward + &liabilities + &apply_result.burn;
@@ -514,9 +541,22 @@ impl Actor {
                     ApplyResult::default(),
                 ));
             }
-            accrue_service(&mut next_accrued, &allocation.service).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to accrue service reward")
-            })?;
+            if let Err(error) = accrue_service(&mut next_accrued, &allocation.service) {
+                error!(
+                    "failed to accrue explicit-stream reward at epoch {}: {};\
+                    suspending service accrual",
+                    rt.curr_epoch(),
+                    error
+                );
+                return allocate_without_service(
+                    st,
+                    prior_streams.as_ref().unwrap_or(&next_streams),
+                    rt.curr_epoch(),
+                    &prior_balance,
+                    &params.gas_reward,
+                    &expected_block_reward,
+                );
+            }
             let service = allocation
                 .service
                 .iter()
@@ -644,8 +684,9 @@ fn allocate_without_service(
     epoch: ChainEpoch,
     prior_balance: &TokenAmount,
     gas_reward: &TokenAmount,
-    mut block_reward: TokenAmount,
+    block_reward: &TokenAmount,
 ) -> Result<(TokenAmount, TokenAmount, ApplyResult), ActorError> {
+    let mut block_reward = block_reward.clone();
     let supply_remaining = &*STORAGE_MINING_ALLOCATION - &state.total_minted_reward;
     let available_reward = prior_balance - gas_reward;
     if supply_remaining <= TokenAmount::zero() || available_reward <= TokenAmount::zero() {

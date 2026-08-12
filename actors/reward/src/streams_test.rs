@@ -750,7 +750,7 @@ fn caps_payable_rows_at_128_rejects_129_atomically_and_recovers_through_claims()
     let distribution = streams.streams[0].distribution.as_ref().unwrap();
     assert_eq!(
         MAX_PAYABLE_ROWS_PER_STREAM,
-        payable_row_reservation(&distribution.payable, &distribution.shares,)
+        recipient_union_len(&distribution.payable, &distribution.shares)
     );
 
     accruals[0].amount = TokenAmount::from_atto(MAX_RECIPIENTS as u64);

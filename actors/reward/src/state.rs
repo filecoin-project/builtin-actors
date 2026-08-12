@@ -80,10 +80,12 @@ pub struct State {
     /// Current-period accrual for each explicit stream, ordered by stream ID.
     pub accrued: Vec<StreamAccrual>,
 
-    /// Hold applied to SWA writes. Set only by the activation migration.
+    /// Hold applied to SWA writes. Construction leaves zero; the activation migration sets the
+    /// operational value.
     pub swa_timelock_epochs: ChainEpoch,
 
-    /// SWA actor authorized to manage stream configuration. Set only by the activation migration.
+    /// SWA actor authorized to manage stream configuration. Construction uses f00; the activation
+    /// migration sets the operational address.
     pub swa_actor: Address,
 
     /// Offboarded stream, tombstone, and queued-write state.
@@ -176,9 +178,5 @@ impl State {
             AlphaBetaFilter::load(&self.this_epoch_reward_smoothed, &DEFAULT_ALPHA, &DEFAULT_BETA);
         self.this_epoch_reward_smoothed =
             filter_reward.next_estimate(self.this_epoch_reward.atto(), delta);
-    }
-
-    pub fn into_total_minted_reward(self) -> TokenAmount {
-        self.total_minted_reward
     }
 }
