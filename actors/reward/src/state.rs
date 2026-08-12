@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_ipld_encoding::repr::*;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::bigint_ser;
@@ -9,7 +8,6 @@ use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
 use lazy_static::lazy_static;
-use num_derive::FromPrimitive;
 
 use fil_actors_runtime::builtin::reward::smooth::{
     AlphaBetaFilter, DEFAULT_ALPHA, DEFAULT_BETA, FilterEstimate,
@@ -147,39 +145,5 @@ impl State {
 
     pub fn into_total_storage_power_reward(self) -> TokenAmount {
         self.total_storage_power_reward
-    }
-}
-
-/// Defines vestion function type for reward actor.
-#[derive(Clone, Debug, PartialEq, Eq, Copy, FromPrimitive, Serialize_repr, Deserialize_repr)]
-#[repr(u8)]
-pub enum VestingFunction {
-    None = 0,
-    Linear = 1,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct Reward {
-    pub vesting_function: VestingFunction,
-    pub start_epoch: ChainEpoch,
-    pub end_epoch: ChainEpoch,
-    pub value: TokenAmount,
-    pub amount_withdrawn: TokenAmount,
-}
-
-impl Reward {
-    pub fn amount_vested(&self, curr_epoch: ChainEpoch) -> TokenAmount {
-        match self.vesting_function {
-            VestingFunction::None => self.value.clone(),
-            VestingFunction::Linear => {
-                let elapsed = curr_epoch - self.start_epoch;
-                let vest_duration = self.end_epoch - self.start_epoch;
-                if elapsed >= vest_duration {
-                    self.value.clone()
-                } else {
-                    (self.value.clone() * elapsed as u64).div_floor(vest_duration)
-                }
-            }
-        }
     }
 }

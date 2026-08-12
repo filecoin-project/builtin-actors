@@ -15,7 +15,7 @@ use log::{error, warn};
 use num_derive::FromPrimitive;
 
 pub use self::logic::*;
-pub use self::state::{Reward, State, VestingFunction};
+pub use self::state::State;
 pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
