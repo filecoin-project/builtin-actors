@@ -1011,6 +1011,102 @@ fn rejects_a_schedule_that_depends_on_a_later_call() {
 }
 
 #[test]
+fn rejects_single_epoch_overlap_on_either_side_of_a_clamp_crossing() {
+    struct Case {
+        name: &'static str,
+        updates: [WeightRecordUpdate; 2],
+        crossing_epoch: ChainEpoch,
+        violating_epoch: ChainEpoch,
+    }
+
+    let cases = [
+        Case {
+            name: "before a falling stream leaves its cap",
+            updates: [
+                WeightRecordUpdate {
+                    id: 1,
+                    weight: WeightRecord {
+                        v_start: pct(12),
+                        slope: -(pct(40) as i64),
+                        t_start: 14,
+                        floor: 0,
+                        cap: pct(90),
+                    },
+                },
+                WeightRecordUpdate {
+                    id: 2,
+                    weight: WeightRecord {
+                        v_start: pct(21),
+                        slope: pct(5) as i64,
+                        t_start: 14,
+                        floor: 0,
+                        cap: DENOM,
+                    },
+                },
+            ],
+            crossing_epoch: 13,
+            violating_epoch: 12,
+        },
+        Case {
+            name: "after a rising stream reaches its cap",
+            updates: [
+                WeightRecordUpdate {
+                    id: 1,
+                    weight: WeightRecord {
+                        v_start: pct(31),
+                        slope: pct(40) as i64,
+                        t_start: 11,
+                        floor: 0,
+                        cap: pct(81),
+                    },
+                },
+                WeightRecordUpdate {
+                    id: 2,
+                    weight: WeightRecord {
+                        v_start: pct(35),
+                        slope: -(pct(5) as i64),
+                        t_start: 10,
+                        floor: 0,
+                        cap: DENOM,
+                    },
+                },
+            ],
+            crossing_epoch: 12,
+            violating_epoch: 13,
+        },
+    ];
+
+    for case in cases {
+        assert_eq!(1, (case.violating_epoch - case.crossing_epoch).abs(), "{}", case.name);
+        let weight_sum = |epoch| {
+            case.updates
+                .iter()
+                .map(|update| u128::from(compute_weight(&update.weight, epoch)))
+                .sum::<u128>()
+        };
+        assert!(weight_sum(case.violating_epoch - 1) <= u128::from(DENOM), "{}", case.name);
+        assert!(weight_sum(case.violating_epoch) > u128::from(DENOM), "{}", case.name);
+        assert!(weight_sum(case.violating_epoch + 1) <= u128::from(DENOM), "{}", case.name);
+
+        let (mut streams, _) = base_state();
+        let error = queue_weight_records(
+            &mut streams,
+            0,
+            10,
+            PendingWriteOp::SetWeightRecords,
+            &case.updates,
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains(&format!("exceed DENOM at epoch {}", case.violating_epoch)),
+            "{}: {error}",
+            case.name
+        );
+        assert!(streams.pending_writes.is_empty(), "{}", case.name);
+    }
+}
+
+#[test]
 fn queues_batches_cancels_slots_and_tracks_queue_head() {
     let (mut streams, mut accruals) = base_state();
     let updates = [
