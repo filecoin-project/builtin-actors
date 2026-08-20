@@ -1,6 +1,4 @@
-use fil_actor_miner::{
-    QUALITY_BASE_MULTIPLIER, SECTOR_QUALITY_PRECISION, VERIFIED_DEAL_WEIGHT_MULTIPLIER,
-};
+use fil_actor_miner::{MAX_QUALITY_MULTIPLIER, QUALITY_BASE_MULTIPLIER, SECTOR_QUALITY_PRECISION};
 use fil_actor_miner::{
     SectorOnChainInfo, SectorOnChainInfoFlags, qa_power_for_sector, qa_power_max,
 };
@@ -20,8 +18,8 @@ fn quality_is_independent_of_size_and_duration() {
     // Quality of space with no deals. This doesn't depend on either the sector size or duration.
     let empty_quality = BigInt::from(1 << SECTOR_QUALITY_PRECISION);
     // Quality space filled with verified deals.
-    let verified_quality = &empty_quality
-        * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
+    let verified_quality =
+        &empty_quality * (MAX_QUALITY_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
     // Quality space half filled with verified deals.
     let half_verified_quality =
         &empty_quality / BigInt::from(2) + &verified_quality / BigInt::from(2);
@@ -93,8 +91,8 @@ fn quality_scales_with_verified_weight_proportion() {
     // Quality of space with no deals. This doesn't depend on either the sector size or duration.
     let empty_quality = BigInt::from(1 << SECTOR_QUALITY_PRECISION);
     // Quality space filled with verified deals.
-    let verified_quality = &empty_quality
-        * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
+    let verified_quality =
+        &empty_quality * (MAX_QUALITY_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
 
     let sector_size = SectorSize::_64GiB;
     let sector_duration = ChainEpoch::from(1_000_000); // ~350 days
@@ -152,8 +150,7 @@ fn empty_sector_has_power_equal_to_size() {
 
 #[test]
 fn verified_sector_has_power_a_multiple_of_size() {
-    let verified_multiplier =
-        VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone();
+    let verified_multiplier = MAX_QUALITY_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone();
     let size_range: Vec<SectorSize> = vec![
         SectorSize::_2KiB,
         SectorSize::_8MiB,
@@ -183,8 +180,7 @@ fn verified_weight_adds_proportional_power() {
     let sector_weight = weight(sector_size, sector_duration);
 
     let fully_empty_power = BigInt::from(sector_size as i64);
-    let fully_verified_power = (BigInt::from(sector_size as i64)
-        * VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone())
+    let fully_verified_power = (BigInt::from(sector_size as i64) * MAX_QUALITY_MULTIPLIER.clone())
         / QUALITY_BASE_MULTIPLIER.clone();
 
     let max_error = BigInt::from(1 << SECTOR_QUALITY_PRECISION);
@@ -226,7 +222,7 @@ fn verified_weight_adds_proportional_power() {
 #[test]
 fn demonstrate_standard_sectors() {
     let sector_duration = 180 * EPOCHS_IN_DAY;
-    let vmul = VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone();
+    let vmul = MAX_QUALITY_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone();
 
     // 32 GiB
     let sector_size = SectorSize::_32GiB;
@@ -288,7 +284,7 @@ fn original_quality_for_weight(
     let weighted_base_space_time =
         (&sector_space_time - total_deal_space_time) * &*QUALITY_BASE_MULTIPLIER;
     let weighted_deal_space_time = deal_weight * BigInt::from(10);
-    let weighted_verified_space_time = verified_weight * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER;
+    let weighted_verified_space_time = verified_weight * &*MAX_QUALITY_MULTIPLIER;
     let weighted_sum_space_time =
         weighted_base_space_time + weighted_deal_space_time + weighted_verified_space_time;
     let scaled_up_weighted_sum_space_time: BigInt =

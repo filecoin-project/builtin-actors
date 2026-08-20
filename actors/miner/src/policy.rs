@@ -25,8 +25,9 @@ lazy_static! {
     /// Quality multiplier for committed capacity (no deals) in a sector
     pub static ref QUALITY_BASE_MULTIPLIER: BigInt = BigInt::from(10);
 
-    /// Quality multiplier for verified deals in a sector
-    pub static ref VERIFIED_DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(100);
+    /// Quality multiplier for maximum quality-adjusted power: applied to verified deal
+    /// weight on the legacy path, and to every sector carrying `FULL_QA_POWER`.
+    pub static ref MAX_QUALITY_MULTIPLIER: BigInt = BigInt::from(100);
 }
 
 /// The maximum number of partitions that may be required to be loaded in a single invocation,
@@ -113,11 +114,12 @@ pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<
 /// minimum number of epochs past the current epoch a sector may be set to expire
 pub const MIN_SECTOR_EXPIRATION: i64 = 180 * EPOCHS_IN_DAY;
 
-/// VerifiedDealWeight is spacetime occupied by verified pieces in a sector.
-/// VerifiedDealWeight should be less than or equal to total SpaceTime of a sector.
-/// Sectors full of VerifiedDeals will have a BigInt of VerifiedDealWeightMultiplier/QualityBaseMultiplier.
-/// Sectors without VerifiedDeals will have a BigInt of QualityBaseMultiplier/QualityBaseMultiplier.
-/// BigInt of a sector is a weighted average of multipliers based on their proportions.
+/// Sector quality derived from verified deal weight, for sectors without `FULL_QA_POWER`.
+/// `verified_weight` is the spacetime occupied by verified pieces and is at most the
+/// sector's total spacetime. A fully verified sector reaches
+/// `MAX_QUALITY_MULTIPLIER / QUALITY_BASE_MULTIPLIER`, an unverified one
+/// `QUALITY_BASE_MULTIPLIER / QUALITY_BASE_MULTIPLIER`, and a partially verified one the
+/// weighted average of the two in proportion to the verified share.
 pub fn quality_for_weight(
     size: SectorSize,
     duration: ChainEpoch,
@@ -127,7 +129,7 @@ pub fn quality_for_weight(
 
     let weighted_base_space_time =
         (&sector_space_time - verified_weight) * &*QUALITY_BASE_MULTIPLIER;
-    let weighted_verified_space_time = verified_weight * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER;
+    let weighted_verified_space_time = verified_weight * &*MAX_QUALITY_MULTIPLIER;
     let weighted_sum_space_time = weighted_base_space_time + weighted_verified_space_time;
     let scaled_up_weighted_sum_space_time: BigInt =
         weighted_sum_space_time << SECTOR_QUALITY_PRECISION;
@@ -139,8 +141,7 @@ pub fn quality_for_weight(
 
 /// Returns maximum achievable QA power.
 pub fn qa_power_max(size: SectorSize) -> StoragePower {
-    (BigInt::from(size as u64) * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER)
-        .div_floor(&QUALITY_BASE_MULTIPLIER)
+    (BigInt::from(size as u64) * &*MAX_QUALITY_MULTIPLIER).div_floor(&QUALITY_BASE_MULTIPLIER)
 }
 
 /// Returns the power for a sector size and weight.

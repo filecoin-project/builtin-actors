@@ -3,15 +3,12 @@ use std::cmp::min;
 
 use fil_actor_market::SettleDealPaymentsParams;
 use fil_actor_market::SettleDealPaymentsReturn;
-use frc46_token::token::types::TransferParams;
-use frc46_token::token::types::TransferReturn;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::crypto::signature::SignatureType;
@@ -24,7 +21,6 @@ use fvm_shared::sector::PoStProof;
 use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::sector::StoragePower;
 use num_traits::Zero;
 
 use fil_actor_cron::Method as CronMethod;
@@ -42,32 +38,19 @@ use fil_actor_miner::{
     State as MinerState, SubmitWindowedPoStParams, WithdrawBalanceParams, WithdrawBalanceReturn,
     max_prove_commit_duration,
 };
-use fil_actor_multisig::Method as MultisigMethod;
-use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
-use fil_actor_verifreg::AllocationsResponse;
-use fil_actor_verifreg::ClaimExtensionRequest;
-use fil_actor_verifreg::{
-    AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams, Method as VerifregMethod,
-    RemoveExpiredAllocationsParams, State as VerifregState, VerifierParams,
-};
-use fil_actor_verifreg::{AllocationRequest, DataCap};
-use fil_actor_verifreg::{AllocationRequests, state};
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::DealWeight;
-use fil_actors_runtime::EventBuilder;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ID;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
-use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
 use vm_api::VM;
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::DynBlockstore;
@@ -793,155 +776,6 @@ pub fn submit_invalid_post(
     );
 }
 
-pub fn verifier_balance_event(verifier: ActorID, data_cap: DataCap) -> EmittedEvent {
-    EmittedEvent {
-        emitter: VERIFIED_REGISTRY_ACTOR_ID,
-        event: EventBuilder::new()
-            .typ("verifier-balance")
-            .field_indexed("verifier", &verifier)
-            .field("balance", &BigIntSer(&data_cap))
-            .build()
-            .unwrap(),
-    }
-}
-
-pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePower) {
-    let add_verifier_params = VerifierParams { address: *verifier, allowance: data_cap.clone() };
-    // root address is msig, send proposal from root key
-    let proposal = ProposeParams {
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        value: TokenAmount::zero(),
-        method: VerifregMethod::AddVerifier as u64,
-        params: serialize(&add_verifier_params, "verifreg add verifier params").unwrap(),
-    };
-
-    apply_ok(
-        v,
-        &TEST_VERIFREG_ROOT_SIGNER_ADDR,
-        &TEST_VERIFREG_ROOT_ADDR,
-        &TokenAmount::zero(),
-        MultisigMethod::Propose as u64,
-        Some(proposal),
-    );
-    ExpectInvocation {
-        from: TEST_VERIFREG_ROOT_SIGNER_ID,
-        to: TEST_VERIFREG_ROOT_ADDR,
-        method: MultisigMethod::Propose as u64,
-        subinvocs: Some(vec![ExpectInvocation {
-            from: TEST_VERIFREG_ROOT_ID,
-            to: VERIFIED_REGISTRY_ACTOR_ADDR,
-            method: VerifregMethod::AddVerifier as u64,
-            params: Some(IpldBlock::serialize_cbor(&add_verifier_params).unwrap()),
-            subinvocs: Some(vec![Expect::frc42_balance(
-                VERIFIED_REGISTRY_ACTOR_ID,
-                DATACAP_TOKEN_ACTOR_ADDR,
-                *verifier,
-            )]),
-            events: Some(vec![verifier_balance_event(verifier.id().unwrap(), data_cap)]),
-            ..Default::default()
-        }]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
-}
-
-pub fn verifreg_extend_claim_terms(
-    v: &dyn VM,
-    client: &Address,
-    provider: &Address,
-    claim: ClaimID,
-    new_term: ChainEpoch,
-) {
-    let params = ExtendClaimTermsParams {
-        terms: vec![ClaimTerm {
-            provider: provider.id().unwrap(),
-            claim_id: claim,
-            term_max: new_term,
-        }],
-    };
-    apply_ok(
-        v,
-        client,
-        &VERIFIED_REGISTRY_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        VerifregMethod::ExtendClaimTerms as u64,
-        Some(params),
-    );
-}
-
-pub fn verifreg_remove_expired_allocations(
-    v: &dyn VM,
-    caller: &Address,
-    client: &Address,
-    ids: Vec<AllocationID>,
-    datacap_refund: u64,
-    expected_expirations: Vec<AllocationID>,
-) {
-    let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-    let mut allocs = v_st.load_allocs(&store).unwrap();
-    let expected_events: Vec<EmittedEvent> = expected_expirations
-        .iter()
-        .map(|id| {
-            let alloc = allocs.get(client.id().unwrap(), *id).unwrap().unwrap();
-            Expect::build_verifreg_allocation_event(
-                "allocation-removed",
-                *id,
-                client.id().unwrap(),
-                alloc.provider,
-                &alloc.data,
-                alloc.size.0,
-                alloc.term_min,
-                alloc.term_max,
-                alloc.expiration,
-            )
-        })
-        .collect();
-
-    let caller_id = v.resolve_id_address(caller).unwrap().id().unwrap();
-    let params =
-        RemoveExpiredAllocationsParams { client: client.id().unwrap(), allocation_ids: ids };
-    apply_ok(
-        v,
-        caller,
-        &VERIFIED_REGISTRY_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        VerifregMethod::RemoveExpiredAllocations as u64,
-        Some(params),
-    );
-    ExpectInvocation {
-        from: caller_id,
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        method: VerifregMethod::RemoveExpiredAllocations as u64,
-        subinvocs: Some(vec![ExpectInvocation {
-            from: VERIFIED_REGISTRY_ACTOR_ID,
-            to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::TransferExported as u64,
-            params: Some(
-                IpldBlock::serialize_cbor(&TransferParams {
-                    to: *client,
-                    amount: TokenAmount::from_whole(datacap_refund),
-                    operator_data: Default::default(),
-                })
-                .unwrap(),
-            ),
-            subinvocs: Some(vec![Expect::frc46_receiver(
-                DATACAP_TOKEN_ACTOR_ID,
-                *client,
-                VERIFIED_REGISTRY_ACTOR_ID,
-                client.id().unwrap(),
-                VERIFIED_REGISTRY_ACTOR_ID,
-                TokenAmount::from_whole(datacap_refund),
-                None,
-            )]),
-            ..Default::default()
-        }]),
-        events: Some(expected_events),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
-}
-
 pub fn datacap_get_balance(v: &dyn VM, address: &Address) -> TokenAmount {
     let ret = apply_ok(
         v,
@@ -952,129 +786,6 @@ pub fn datacap_get_balance(v: &dyn VM, address: &Address) -> TokenAmount {
         Some(address),
     );
     deserialize(&ret, "balance of return value").unwrap()
-}
-
-pub fn datacap_create_allocations(
-    v: &dyn VM,
-    client: &Address,
-    reqs: &[AllocationRequest],
-) -> Vec<AllocationID> {
-    let payload = AllocationRequests { allocations: reqs.to_vec(), extensions: vec![] };
-    let token_amount = TokenAmount::from_whole(reqs.iter().map(|r| r.size.0).sum::<u64>());
-    let operator_data = serialize(&payload, "allocation requests").unwrap();
-    let transfer_params = TransferParams {
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        amount: token_amount.clone(),
-        operator_data: operator_data.clone(),
-    };
-
-    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
-    let tfer_result: TransferReturn = apply_ok(
-        v,
-        client,
-        &DATACAP_TOKEN_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        DataCapMethod::TransferExported as u64,
-        Some(transfer_params),
-    )
-    .deserialize()
-    .unwrap();
-    let alloc_response: AllocationsResponse = tfer_result.recipient_data.deserialize().unwrap();
-
-    let events: Vec<EmittedEvent> = alloc_response
-        .new_allocations
-        .iter()
-        .enumerate()
-        .map(|(i, alloc_id)| {
-            Expect::build_verifreg_allocation_event(
-                "allocation",
-                *alloc_id,
-                client.id().unwrap(),
-                reqs[i].provider,
-                &reqs[i].data,
-                reqs[i].size.0,
-                reqs[i].term_min,
-                reqs[i].term_max,
-                reqs[i].expiration,
-            )
-        })
-        .collect::<Vec<EmittedEvent>>();
-
-    Expect::datacap_transfer_to_verifreg(
-        client_id,
-        token_amount,
-        operator_data,
-        false, // No burn
-        events,
-    )
-    .matches(v.take_invocations().last().unwrap());
-
-    alloc_response.new_allocations
-}
-
-pub fn datacap_extend_claim(
-    v: &dyn VM,
-    client: &Address,
-    provider: &Address,
-    claim: ClaimID,
-    size: u64,
-    new_term: ChainEpoch,
-) {
-    // read existing claim with claim id from VerifReg state
-    let v_st: fil_actor_verifreg::State = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-    let mut claims = v_st.load_claims(&store).unwrap();
-    let mut existing_claim =
-        state::get_claim(&mut claims, provider.id().unwrap(), claim).unwrap().unwrap().clone();
-    existing_claim.term_max = new_term;
-
-    let payload = AllocationRequests {
-        allocations: vec![],
-        extensions: vec![ClaimExtensionRequest {
-            provider: provider.id().unwrap(),
-            claim,
-            term_max: new_term,
-        }],
-    };
-    let token_amount = TokenAmount::from_whole(size);
-    let operator_data = serialize(&payload, "allocation requests").unwrap();
-    let transfer_params = TransferParams {
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        amount: token_amount.clone(),
-        operator_data: operator_data.clone(),
-    };
-
-    apply_ok(
-        v,
-        client,
-        &DATACAP_TOKEN_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        DataCapMethod::TransferExported as u64,
-        Some(transfer_params),
-    );
-
-    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
-    let claim_updated_event = Expect::build_verifreg_claim_event(
-        "claim-updated",
-        claim,
-        existing_claim.client,
-        provider.id().unwrap(),
-        &existing_claim.data,
-        existing_claim.size.0,
-        existing_claim.term_min,
-        existing_claim.term_max,
-        existing_claim.term_start,
-        existing_claim.sector,
-    );
-
-    Expect::datacap_transfer_to_verifreg(
-        client_id,
-        token_amount,
-        operator_data,
-        true, // Burn
-        vec![claim_updated_event],
-    )
-    .matches(v.take_invocations().last().unwrap());
 }
 
 pub fn market_add_balance(
@@ -1220,17 +931,9 @@ pub fn get_deal(v: &dyn VM, deal_id: DealID) -> DealProposal {
     state.get_proposal(&bs, deal_id).unwrap()
 }
 
-// return (deal_weight, verified_deal_weight)
-pub fn get_deal_weights(
-    v: &dyn VM,
-    deal_id: DealID,
-    duration: ChainEpoch,
-) -> (DealWeight, DealWeight) {
-    let deal = get_deal(v, deal_id);
-    if deal.verified_deal {
-        return (DealWeight::zero(), DealWeight::from(deal.piece_size.0 * duration as u64));
-    }
-    (DealWeight::from(deal.piece_size.0 * duration as u64), DealWeight::zero())
+/// Spacetime a deal's piece occupies over the given duration.
+pub fn deal_spacetime(v: &dyn VM, deal_id: DealID, duration: ChainEpoch) -> DealWeight {
+    DealWeight::from(get_deal(v, deal_id).piece_size.0 * duration as u64)
 }
 
 pub fn make_piece_manifests_from_deal_ids(

@@ -23,7 +23,6 @@ use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof};
 use num_traits::Zero;
 
 use export_macro::vm_test;
-// FIP-0118: AllocationID no longer used
 use vm_api::VM;
 use vm_api::util::{DynBlockstore, apply_ok, get_state};
 

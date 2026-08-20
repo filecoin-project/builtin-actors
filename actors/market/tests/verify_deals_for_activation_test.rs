@@ -8,10 +8,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
 
-use fil_actor_market::{
-    ActivatedDeal, Actor as MarketActor, Method, NO_ALLOCATION_ID, SectorDeals,
-    VerifyDealsForActivationParams,
-};
+use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams};
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{
@@ -55,15 +52,10 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
     let s_response = a_response.activations.first().unwrap();
     assert_eq!(1, v_response.unsealed_cids.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.unsealed_cids[0]);
-    assert_eq!(1, s_response.activated.len());
+    assert_eq!(1, s_response.len());
     assert_eq!(
-        ActivatedDeal {
-            client: CLIENT_ADDR.id().unwrap(),
-            allocation_id: NO_ALLOCATION_ID,
-            data: deal_proposal.piece_cid,
-            size: deal_proposal.piece_size
-        },
-        *s_response.activated.first().unwrap()
+        PieceInfo { size: deal_proposal.piece_size, cid: deal_proposal.piece_cid },
+        *s_response.first().unwrap()
     );
 
     check_state(&rt);
@@ -99,11 +91,9 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
 
     assert_eq!(1, response.unsealed_cids.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), response.unsealed_cids[0]);
-    assert_eq!(1, s_response.activated.len());
-    assert_eq!(deal_proposal.piece_size, s_response.activated[0].size);
-    assert_eq!(deal_proposal.client.id().unwrap(), s_response.activated[0].client);
-    assert_eq!(deal_proposal.piece_cid, s_response.activated[0].data);
-    assert_eq!(NO_ALLOCATION_ID, s_response.activated[0].allocation_id);
+    assert_eq!(1, s_response.len());
+    assert_eq!(deal_proposal.piece_size, s_response[0].size);
+    assert_eq!(deal_proposal.piece_cid, s_response[0].cid);
     check_state(&rt);
 }
 
@@ -151,42 +141,22 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
     let a_response =
         activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &deal_ids);
     let s_response = a_response.activations.first().unwrap();
-    assert_eq!(4, s_response.activated.len());
+    assert_eq!(4, s_response.len());
     assert_eq!(
-        &ActivatedDeal {
-            client: CLIENT_ADDR.id().unwrap(),
-            allocation_id: NO_ALLOCATION_ID,
-            data: verified_deal_1.piece_cid,
-            size: verified_deal_1.piece_size,
-        },
-        &s_response.activated[0],
+        &PieceInfo { size: verified_deal_1.piece_size, cid: verified_deal_1.piece_cid },
+        &s_response[0],
     );
     assert_eq!(
-        &ActivatedDeal {
-            client: CLIENT_ADDR.id().unwrap(),
-            allocation_id: NO_ALLOCATION_ID,
-            data: verified_deal_2.piece_cid,
-            size: verified_deal_2.piece_size,
-        },
-        &s_response.activated[1],
+        &PieceInfo { size: verified_deal_2.piece_size, cid: verified_deal_2.piece_cid },
+        &s_response[1],
     );
     assert_eq!(
-        &ActivatedDeal {
-            client: CLIENT_ADDR.id().unwrap(),
-            allocation_id: NO_ALLOCATION_ID,
-            data: unverified_deal_1.piece_cid,
-            size: unverified_deal_1.piece_size,
-        },
-        &s_response.activated[2],
+        &PieceInfo { size: unverified_deal_1.piece_size, cid: unverified_deal_1.piece_cid },
+        &s_response[2],
     );
     assert_eq!(
-        &ActivatedDeal {
-            client: CLIENT_ADDR.id().unwrap(),
-            allocation_id: NO_ALLOCATION_ID,
-            data: unverified_deal_2.piece_cid,
-            size: unverified_deal_2.piece_size,
-        },
-        &s_response.activated[3],
+        &PieceInfo { size: unverified_deal_2.piece_size, cid: unverified_deal_2.piece_cid },
+        &s_response[3],
     );
 
     check_state(&rt);

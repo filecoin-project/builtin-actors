@@ -7,7 +7,7 @@ use fil_actor_miner::{
 };
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
-use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
+use fil_actor_verifreg::{Claim, State as VerifregState};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::CREATE_MINER_DEPOSIT_POWER;
 use fil_actors_runtime::test_utils::make_piece_cid;
@@ -209,11 +209,11 @@ pub fn market_list_sectors_deals(
     found
 }
 
-pub fn verifreg_list_claims(v: &dyn VM, provider: ActorID) -> HashMap<ClaimID, Claim> {
+pub fn verifreg_list_claims(v: &dyn VM, provider: ActorID) -> HashMap<u64, Claim> {
     let st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let bs = &DynBlockstore::wrap(v.blockstore());
     let mut claims = st.load_claims(bs).unwrap();
-    let mut found: HashMap<ClaimID, Claim> = HashMap::new();
+    let mut found: HashMap<u64, Claim> = HashMap::new();
     claims
         .for_each_in(provider, |id, claim| {
             found.insert(parse_uint_key(id).unwrap(), claim.clone());

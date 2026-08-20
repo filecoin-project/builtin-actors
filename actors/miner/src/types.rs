@@ -24,11 +24,6 @@ use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::{BatchReturn, DealWeight};
 
 use crate::commd::CompactCommD;
-// FIP-0118: these types were previously imported from ext::verifreg, now defined locally
-// since the verifreg ext module has been removed. They remain for backward compatibility
-// of PieceActivationManifest and SectorClaim structs.
-pub type AllocationID = u64;
-pub type ClaimID = u64;
 
 use super::beneficiary::*;
 
@@ -200,7 +195,7 @@ pub struct PieceActivationManifest {
     pub cid: Cid,
     // Piece size.
     pub size: PaddedPieceSize,
-    // Identifies a verified allocation to be claimed.
+    // Accepted and ignored since FIP-0118 removed allocations; QA power comes from the flag.
     pub verified_allocation_key: Option<VerifiedAllocationKey>,
     // Synchronous notifications to be sent to other actors after activation.
     pub notify: Vec<DataActivationNotification>,
@@ -209,7 +204,7 @@ pub struct PieceActivationManifest {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifiedAllocationKey {
     pub client: ActorID,
-    pub id: AllocationID,
+    pub id: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
@@ -245,16 +240,19 @@ pub struct ExtendSectorExpiration2Params {
 #[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorClaim {
     pub sector_number: SectorNumber,
-    pub maintain_claims: Vec<ClaimID>,
-    pub drop_claims: Vec<ClaimID>,
+    // Claim instructions, accepted and ignored since FIP-0118 removed claim validation.
+    pub maintain_claims: Vec<u64>,
+    pub drop_claims: Vec<u64>,
 }
 
 #[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ExpirationExtension2 {
     pub deadline: u64,
     pub partition: u64,
-    // IDs of sectors without FIL+ claims
+    // Sectors to extend. Originally those without FIL+ claims.
     pub sectors: BitField,
+    // Also sectors to extend. FIP-0118 removed claim validation, so these extend exactly as
+    // `sectors` does; retained for callers that still populate it.
     pub sectors_with_claims: Vec<SectorClaim>,
     pub new_expiration: ChainEpoch,
 }
@@ -413,10 +411,13 @@ pub struct SectorOnChainInfo {
     pub activation: ChainEpoch,
     /// Epoch during which the sector expires
     pub expiration: ChainEpoch,
-    /// Integral of active deals over sector lifetime
+    /// Spacetime of legacy unverified deals. Zero for sectors activated since FIP-0118, which
+    /// record piece spacetime in `verified_deal_weight`; legacy sectors keep theirs and carry
+    /// it across extensions, because the data-presence checks read both fields.
     #[serde(with = "bigint_ser")]
     pub deal_weight: DealWeight,
-    /// Integral of active verified deals over sector lifetime
+    /// Spacetime of the sector's pieces, restated across extensions so quality is unchanged.
+    /// Nothing is verified since FIP-0118; directly onboarded data lands here too.
     #[serde(with = "bigint_ser")]
     pub verified_deal_weight: DealWeight,
     /// Pledge collected to commit this sector

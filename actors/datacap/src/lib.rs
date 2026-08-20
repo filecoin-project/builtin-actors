@@ -140,8 +140,6 @@ impl Actor {
 
     pub fn mint(rt: &impl Runtime, _params: MintParams) -> Result<MintReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: datacap is deprecated. No new datacap can be minted, and
-        // existing balances are frozen in place.
         Err(actor_error!(
             forbidden,
             "FIP-0118: datacap is deprecated, minting is no longer supported"
@@ -172,7 +170,6 @@ impl Actor {
         _params: TransferParams,
     ) -> Result<TransferReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: datacap is deprecated, existing balances are frozen in place.
         Err(actor_error!(
             forbidden,
             "FIP-0118: datacap is deprecated, transfer is no longer supported"
@@ -184,7 +181,6 @@ impl Actor {
         _params: TransferFromParams,
     ) -> Result<TransferFromReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: datacap is deprecated, existing balances are frozen in place.
         Err(actor_error!(
             forbidden,
             "FIP-0118: datacap is deprecated, transfer is no longer supported"
@@ -253,7 +249,6 @@ impl Actor {
 
     pub fn burn(rt: &impl Runtime, _params: BurnParams) -> Result<BurnReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: datacap is deprecated, existing balances are frozen in place.
         Err(actor_error!(forbidden, "FIP-0118: datacap is deprecated, burn is no longer supported"))
     }
 
@@ -262,7 +257,6 @@ impl Actor {
         _params: BurnFromParams,
     ) -> Result<BurnFromReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: datacap is deprecated, existing balances are frozen in place.
         Err(actor_error!(forbidden, "FIP-0118: datacap is deprecated, burn is no longer supported"))
     }
 }

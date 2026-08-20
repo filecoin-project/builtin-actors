@@ -60,7 +60,7 @@ pub enum Method {
 
 pub struct Actor;
 
-// FIP-0118: datacap is deprecated; callers still apply their own caller validation first.
+// Callers apply their own caller validation before calling this.
 fn datacap_deprecated<T>(reason: &str) -> Result<T, ActorError> {
     Err(actor_error!(
         forbidden,
@@ -88,7 +88,6 @@ impl Actor {
 
     pub fn add_verifier(rt: &impl Runtime, _params: AddVerifierParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: datacap minting is deprecated. No new verifiers can be added.
         datacap_deprecated("adding new verifiers")
     }
 
@@ -97,7 +96,6 @@ impl Actor {
         _params: RemoveVerifierParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: datacap is deprecated. Verifiers are no longer managed on-chain.
         datacap_deprecated("removing verifiers")
     }
 
@@ -106,7 +104,6 @@ impl Actor {
         _params: AddVerifiedClientParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: datacap minting is deprecated. No new datacap can be granted.
         datacap_deprecated("minting new datacap")
     }
 
@@ -115,7 +112,6 @@ impl Actor {
         _params: RemoveDataCapParams,
     ) -> Result<RemoveDataCapReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: datacap is deprecated. Verified clients' datacap balances are frozen in place.
         datacap_deprecated("removing verified client data cap")
     }
 
@@ -177,14 +173,8 @@ impl Actor {
         Ok(GetClaimsReturn { batch_info: batch_gen.generate(), claims })
     }
 
-    /// Extends the maximum term of some claims up to the largest value they could have been
-    /// originally allocated.
-    /// Callable only by the claims' client.
-    /// Cannot reduce a claim's term.
-    /// Can extend the term even if the claim has already expired.
-    /// Note that this method can't extend the term past the original limit,
-    // FIP-0118: extend claim terms is disabled. Claim extensions are pointless
-    // without QAP benefit.
+    /// Always rejects. Extending a claim's term bought more time at 10x quality, which
+    /// FIP-0118 grants unconditionally, so there is nothing left to extend.
     pub fn extend_claim_terms(
         rt: &impl Runtime,
         _params: ExtendClaimTermsParams,
@@ -243,11 +233,8 @@ impl Actor {
         Ok(RemoveExpiredClaimsReturn { considered, results: batch_ret })
     }
 
-    // Receives data cap tokens (only) and creates allocations according to one or more
-    // allocation requests specified in the transfer's operator data.
-    // The token amount received must exactly correspond to the sum of the requested allocation sizes.
-    // FIP-0118: datacap is deprecated. No new allocations or claim extensions can be created.
-    // This method now always rejects incoming datacap tokens.
+    // Always rejects. This received datacap tokens and created allocations from them;
+    // FIP-0118 disables allocations, and datacap balances are frozen so none can arrive.
     pub fn universal_receiver_hook(
         rt: &impl Runtime,
         _params: UniversalReceiverParams,

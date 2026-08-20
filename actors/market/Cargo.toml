@@ -38,7 +38,6 @@ multihash-codetable = { workspace = true }
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
 fil_actor_power = { workspace = true }
 fil_actor_reward = { workspace = true }
-fil_actor_verifreg = { workspace = true }
 fvm_ipld_amt = { workspace = true }
 regex = { workspace = true }
 itertools = { workspace = true }

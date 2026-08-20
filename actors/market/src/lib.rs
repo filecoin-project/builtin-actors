@@ -13,7 +13,6 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{DAG_CBOR, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::deal::DealID;
@@ -269,6 +268,16 @@ impl Actor {
         let mut valid_input_bf = BitField::default();
 
         let state: State = rt.state()?;
+        // Nothing below writes state, so these are loaded once rather than per deal.
+        let escrow_table =
+            BalanceTable::from_root(rt.store(), &state.escrow_table, "escrow table")?;
+        let locked_table =
+            BalanceTable::from_root(rt.store(), &state.locked_table, "locked table")?;
+        let pending_deals = state.load_pending_deals(rt.store())?;
+        // One provider per batch, enforced above, so its balances are fixed for the loop.
+        let provider_addr = Address::new_id(provider_id);
+        let provider_escrow = escrow_table.get(&provider_addr)?;
+        let provider_locked = locked_table.get(&provider_addr)?;
 
         for (di, mut deal) in params.deals.into_iter().enumerate() {
             if !*validity_index.get(di).context_code(
@@ -303,8 +312,9 @@ impl Actor {
                 total_client_lockup.get(&client_id).cloned().unwrap_or_default();
             client_lockup += deal.proposal.client_balance_requirement();
 
-            let client_balance_ok =
-                state.balance_covered(rt.store(), Address::new_id(client_id), &client_lockup)?;
+            let client_addr = Address::new_id(client_id);
+            let client_balance_ok = (locked_table.get(&client_addr)? + &client_lockup)
+                <= escrow_table.get(&client_addr)?;
 
             if !client_balance_ok {
                 info!("invalid deal: {}: insufficient client funds to cover proposal cost", di);
@@ -313,11 +323,7 @@ impl Actor {
 
             let mut provider_lockup = total_provider_lockup.clone();
             provider_lockup += &deal.proposal.provider_collateral;
-            let provider_balance_ok = state.balance_covered(
-                rt.store(),
-                Address::new_id(provider_id),
-                &provider_lockup,
-            )?;
+            let provider_balance_ok = (&provider_locked + &provider_lockup) <= provider_escrow;
 
             if !provider_balance_ok {
                 info!("invalid deal: {}: insufficient provider funds to cover proposal cost", di);
@@ -338,7 +344,7 @@ impl Actor {
 
             // check proposalCids for duplication within message batch
             // check state PendingProposals for duplication across messages
-            let duplicate_in_state = state.has_pending_deal(rt.store(), &pcid)?;
+            let duplicate_in_state = pending_deals.has(&pcid)?;
 
             let duplicate_in_message = proposal_cid_lookup.contains(&pcid);
             if duplicate_in_state || duplicate_in_message {
@@ -457,7 +463,7 @@ impl Actor {
                 &miner_addr,
                 sector.sector_expiry,
                 curr_epoch,
-                Some(sector_size),
+                sector_size,
             )
             .context("failed to validate deal proposals for activation")?;
 
@@ -474,8 +480,7 @@ impl Actor {
         Ok(VerifyDealsForActivationReturn { unsealed_cids })
     }
 
-    /// Activate a set of deals grouped by sector, returning the size and
-    /// extra info about verified deals.
+    /// Activates a set of deals grouped by sector, returning each sector's pieces.
     /// Sectors' deals are activated in parameter-defined order.
     /// Each sector's deals are activated or fail as a group, but independently of other sectors.
     /// Note that confirming all deals fit within a sector is the caller's responsibility
@@ -493,12 +498,10 @@ impl Actor {
             let proposals = st.load_proposals(rt.store())?;
             let states = st.load_deal_states(rt.store())?;
             let pending_deals = st.load_pending_deals(rt.store())?;
-            let mut pending_deal_allocation_ids =
-                st.load_pending_deal_allocation_ids(rt.store())?;
 
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
             let mut batch_gen = BatchReturnGen::new(params.sectors.len());
-            let mut activations: Vec<SectorDealActivation> = vec![];
+            let mut activations: Vec<Vec<PieceInfo>> = vec![];
             let mut activated_deals: HashSet<DealID> = HashSet::new();
             let mut sectors_deals: Vec<(SectorNumber, Vec<DealID>)> = vec![];
 
@@ -548,14 +551,9 @@ impl Actor {
                 // Any error must abort.
                 for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
                     activated_deals.insert(*deal_id);
-                    pending_deal_allocation_ids.delete(deal_id)?;
 
-                    activated.push(ActivatedDeal {
-                        client: proposal.client.id().unwrap(),
-                        allocation_id: NO_ALLOCATION_ID,
-                        data: proposal.piece_cid,
-                        size: proposal.piece_size,
-                    });
+                    activated
+                        .push(PieceInfo { size: proposal.piece_size, cid: proposal.piece_cid });
 
                     // Prepare initial deal state.
                     deal_states.push((
@@ -569,14 +567,8 @@ impl Actor {
                     ));
                 }
 
-                let data_commitment = if params.compute_cid && !sector.deal_ids.is_empty() {
-                    Some(compute_data_commitment(rt, &validated_proposals, sector.sector_type)?)
-                } else {
-                    None
-                };
-
                 sectors_deals.push((sector.sector_number, sector.deal_ids.clone()));
-                activations.push(SectorDealActivation { activated, unsealed_cid: data_commitment });
+                activations.push(activated);
 
                 for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
                     emit::deal_activated(
@@ -592,7 +584,6 @@ impl Actor {
 
             st.put_deal_states(rt.store(), &deal_states)?;
             st.put_sector_deal_ids(rt.store(), miner_addr.id().unwrap(), &sectors_deals)?;
-            st.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
             Ok((activations, batch_gen.generate()))
         })?;
 
@@ -614,8 +605,6 @@ impl Actor {
             let proposals = st.load_proposals(rt.store())?;
             let states = st.load_deal_states(rt.store())?;
             let pending_deals = st.load_pending_deals(rt.store())?;
-            let mut pending_deal_allocation_ids =
-                st.load_pending_deal_allocation_ids(rt.store())?;
 
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
             let mut activated_deals: HashSet<DealID> = HashSet::new();
@@ -678,7 +667,6 @@ impl Actor {
 
                     // No continue below here, to ensure state changes are consistent.
                     activated_deals.insert(deal_id);
-                    pending_deal_allocation_ids.delete(&deal_id)?;
 
                     emit::deal_activated(
                         rt,
@@ -706,7 +694,6 @@ impl Actor {
             }
             st.put_deal_states(rt.store(), &deal_states)?;
             st.put_sector_deal_ids(rt.store(), miner_addr.id().unwrap(), &sectors_deals)?;
-            st.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
 
             assert_eq!(sectors_ret.len(), params.sectors.len(), "mismatched sector returns");
             Ok(sectors_ret)
@@ -1053,9 +1040,8 @@ impl Actor {
         Ok(GetDealProviderCollateralReturn { collateral: found.provider_collateral })
     }
 
-    /// Returns the verified flag for a deal proposal.
-    /// Note that the source of truth for verified allocations and claims is
-    /// the verified registry actor.
+    /// Returns the verified flag for a deal proposal. The flag records what the client
+    /// requested at publish time and has no effect on activation, power or payment.
     fn get_deal_verified(
         rt: &impl Runtime,
         params: GetDealVerifiedParams,
@@ -1333,28 +1319,20 @@ pub fn validate_deals_for_sector(
     miner_addr: &Address,
     sector_expiry: ChainEpoch,
     sector_activation: ChainEpoch,
-    sector_size: Option<SectorSize>,
+    sector_size: SectorSize,
 ) -> Result<(), ActorError> {
-    let mut deal_space = BigInt::zero();
-    let mut verified_deal_space = BigInt::zero();
+    let mut deal_space: u64 = 0;
 
     for (deal_id, proposal) in proposals {
         validate_deal_can_activate(proposal, miner_addr, sector_expiry, sector_activation)
             .with_context(|| format!("cannot activate deal {}", deal_id))?;
-
-        if proposal.verified_deal {
-            verified_deal_space += proposal.piece_size.0;
-        } else {
-            deal_space += proposal.piece_size.0;
-        }
-    }
-    if let Some(sector_size) = sector_size {
-        let total_deal_space = deal_space.clone() + verified_deal_space.clone();
-        if total_deal_space > BigInt::from(sector_size as u64) {
+        // Saturating: a bogus size lands above the sector bound rather than wrapping.
+        deal_space = deal_space.saturating_add(proposal.piece_size.0);
+        if deal_space > sector_size as u64 {
             return Err(actor_error!(
                 illegal_argument,
                 "deals too large to fit in sector {} > {}",
-                total_deal_space,
+                deal_space,
                 sector_size
             ));
         }

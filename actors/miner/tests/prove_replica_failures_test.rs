@@ -8,8 +8,8 @@ use fvm_shared::sector::RegisteredAggregateProof::SnarkPackV2;
 use fvm_shared::sector::SectorNumber;
 
 use fil_actor_miner::{
-    AllocationID, ERR_NOTIFICATION_RECEIVER_ABORTED, ERR_NOTIFICATION_REJECTED,
-    ProveReplicaUpdates3Params, SectorUpdateManifest, State,
+    ERR_NOTIFICATION_RECEIVER_ABORTED, ERR_NOTIFICATION_REJECTED, ProveReplicaUpdates3Params,
+    SectorUpdateManifest, State,
 };
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Runtime;
@@ -195,7 +195,7 @@ fn reject_required_notification_rejected() {
 fn setup(
     sector_count: usize,
     client: ActorID,
-    alloc: AllocationID,
+    alloc: u64,
     deal: DealID,
 ) -> (ActorHarness, MockRuntime, Vec<SectorUpdateManifest>) {
     let h = ActorHarness::new_with_options(HarnessOptions::default());

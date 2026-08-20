@@ -1,12 +1,11 @@
 use cid::Cid;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::ActorID;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 
@@ -38,27 +37,12 @@ pub mod market {
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct BatchActivateDealsParams {
         pub sectors: Vec<SectorDeals>,
-        pub compute_cid: bool,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct ActivatedDeal {
-        pub client: ActorID,
-        pub allocation_id: u64,
-        pub data: Cid,
-        pub size: PaddedPieceSize,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct SectorDealActivation {
-        pub activated: Vec<ActivatedDeal>,
-        pub unsealed_cid: Option<Cid>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
     pub struct BatchActivateDealsResult {
         pub activation_results: BatchReturn,
-        pub activations: Vec<SectorDealActivation>,
+        pub activations: Vec<Vec<PieceInfo>>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]

@@ -43,12 +43,12 @@ use num_traits::Signed;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivatedDeal, BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod,
-    NO_ALLOCATION_ID, OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod, NO_ALLOCATION_ID,
+    OnMinerSectorsTerminateParams, SectorDeals, VerifyDealsForActivationParams,
+    VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::{
-    ActiveBeneficiary, Actor, AllocationID, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
+    ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
     CRON_EVENT_PROVING_DEADLINE, ChangeBeneficiaryParams, ChangeMultiaddrsParams,
     ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams, CompactCommD,
     CompactPartitionsParams, CompactSectorNumbersParams, CronEventPayload,
@@ -57,23 +57,23 @@ use fil_actor_miner::{
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, FaultDeclaration,
     GenerateSectorLocationParams, GenerateSectorLocationReturn, GetAvailableBalanceReturn,
     GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn,
-    GetNominalSectorExpirationReturn, GetPeerIDReturn, Method, Method as MinerMethod,
-    MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION, Partition,
-    PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
-    PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitSectorParams, ProveCommitSectors3Params, ProveCommitSectors3Return, QuantSpec,
-    RecoveryDeclaration, ReportConsensusFaultParams, SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH,
-    SectorActivationManifest, SectorChanges, SectorContentChangedParams,
-    SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    SectorReturn, SectorStatusCode, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
-    TerminateSectorsParams, TerminationDeclaration, ValidateSectorStatusParams,
-    ValidateSectorStatusReturn, VerifiedAllocationKey, WindowedPoSt, WithdrawBalanceParams,
-    WithdrawBalanceReturn, consensus_fault_penalty, ext,
+    GetNominalSectorExpirationReturn, GetPeerIDReturn, InternalSectorSetupForPresealParams, Method,
+    Method as MinerMethod, MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION,
+    Partition, PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn,
+    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
+    PreCommitSectorParams, ProveCommitSectorParams, ProveCommitSectors3Params,
+    ProveCommitSectors3Return, QuantSpec, RecoveryDeclaration, ReportConsensusFaultParams,
+    SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH, SectorActivationManifest, SectorChanges,
+    SectorContentChangedParams, SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, SectorReturn, SectorStatusCode, SectorUpdateManifest, Sectors,
+    State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
+    ValidateSectorStatusParams, ValidateSectorStatusReturn, VerifiedAllocationKey, WindowedPoSt,
+    WithdrawBalanceParams, WithdrawBalanceReturn, consensus_fault_penalty, ext,
     ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
     ext::power::UPDATE_CLAIMED_POWER_METHOD,
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
-    qa_power_for_sector, qa_power_for_weight, qa_power_max, reward_for_consensus_slash_report,
+    qa_power_for_sector, qa_power_max, reward_for_consensus_slash_report,
     testing::{DeadlineStateSummary, check_deadline_state_invariants, check_state_invariants},
 };
 use fil_actor_miner::{
@@ -90,6 +90,7 @@ use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, BURNT_FUNDS_ACTOR_ADDR, DealWeight, INIT_ACTOR_ADDR,
     MessageAccumulator, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fil_actors_runtime::{BatchReturnGen, EventBuilder, test_utils::*};
 
@@ -1030,7 +1031,7 @@ impl ActorHarness {
 
         // build expectations per sector
         let mut sector_activation_params: Vec<SectorDeals> = Vec::new();
-        let mut sector_activations: Vec<SectorDealActivation> = Vec::new();
+        let mut sector_activations: Vec<Vec<PieceInfo>> = Vec::new();
         let mut sector_activation_results = BatchReturnGen::new(pcs.len());
         let mut pieces: HashMap<SectorNumber, Vec<(Cid, u64)>> = HashMap::new();
 
@@ -1046,17 +1047,11 @@ impl ActorHarness {
                 };
                 sector_activation_params.push(activate_params);
 
-                let ret = SectorDealActivation {
-                    activated: cfg
-                        .activated_deals
-                        .get(&pc.info.sector_number)
-                        .cloned()
-                        .unwrap_or_default(),
-                    unsealed_cid: None,
-                };
+                let ret: Vec<PieceInfo> =
+                    cfg.activated_deals.get(&pc.info.sector_number).cloned().unwrap_or_default();
 
-                for info in &ret.activated {
-                    pieces.get_mut(&pc.info.sector_number).unwrap().push((info.data, info.size.0));
+                for info in &ret {
+                    pieces.get_mut(&pc.info.sector_number).unwrap().push((info.cid, info.size.0));
                 }
 
                 match cfg.verify_deals_exit.get(&pc.info.sector_number) {
@@ -1077,8 +1072,7 @@ impl ActorHarness {
                     sector_expiry: pc.info.expiration,
                     sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 });
-                sector_activations
-                    .push(SectorDealActivation { activated: vec![], unsealed_cid: None });
+                sector_activations.push(vec![]);
                 sector_activation_results.add_success();
                 valid_pcs.push(pc);
             }
@@ -1090,7 +1084,6 @@ impl ActorHarness {
                 MarketMethod::BatchActivateDeals as u64,
                 IpldBlock::serialize_cbor(&BatchActivateDealsParams {
                     sectors: sector_activation_params,
-                    compute_cid: false,
                 })
                 .unwrap(),
                 TokenAmount::zero(),
@@ -1108,19 +1101,13 @@ impl ActorHarness {
 
         if !valid_pcs.is_empty() {
             let mut expected_pledge = TokenAmount::zero();
-            let mut expected_qa_power = BigInt::from(0);
-            let mut expected_raw_power = BigInt::from(0);
 
             for pc in valid_pcs {
-                let verified_deal_space = cfg.verified_deal_space(pc.info.sector_number);
                 let duration = pc.info.expiration - *rt.epoch.borrow();
-                let verified_deal_weight = verified_deal_space * duration;
                 if duration >= rt.policy.min_sector_expiration {
-                    let qa_power_delta =
-                        qa_power_for_weight(self.sector_size, duration, &verified_deal_weight);
-                    expected_qa_power += &qa_power_delta;
-                    expected_raw_power += self.sector_size as u64;
-                    expected_pledge += self.initial_pledge_for_power(rt, &qa_power_delta);
+                    // Every sector onboarded post-FIP-0118 carries FULL_QA_POWER.
+                    expected_pledge +=
+                        self.initial_pledge_for_power(rt, &qa_power_max(self.sector_size));
                 }
             }
 
@@ -1128,6 +1115,47 @@ impl ActorHarness {
         }
 
         pieces
+    }
+
+    /// Drives `InternalSectorSetupForPreseal`, the system-only entry point that activates
+    /// genesis presealed sectors.
+    pub fn internal_sector_setup_for_preseal(
+        &self,
+        rt: &MockRuntime,
+        cfg: ProveCommitConfig,
+        pcs: Vec<SectorPreCommitOnChainInfo>,
+    ) -> Result<(), ActorError> {
+        let pieces = self.expect_sectors_activated(rt, cfg.clone(), &pcs);
+
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
+
+        for pc in pcs.iter() {
+            if cfg.verify_deals_exit.contains_key(&pc.info.sector_number) {
+                continue;
+            }
+            let num = &pc.info.sector_number;
+            expect_sector_event(
+                rt,
+                "sector-activated",
+                num,
+                pc.info.unsealed_cid.0,
+                pieces.get(num).unwrap(),
+            );
+        }
+
+        let params = InternalSectorSetupForPresealParams {
+            sectors: pcs.iter().map(|pc| pc.info.sector_number).collect(),
+            reward_smoothed: self.epoch_reward_smooth.clone(),
+            reward_baseline_power: self.baseline_power.clone(),
+            quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),
+        };
+        rt.call::<Actor>(
+            Method::InternalSectorSetupForPreseal as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        rt.verify();
+        Ok(())
     }
 
     pub fn prove_commit_sectors3(
@@ -2755,17 +2783,14 @@ impl PreCommitConfig {
 pub struct ProveCommitConfig {
     pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
     pub claim_allocs_exit: HashMap<SectorNumber, ExitCode>,
-    pub activated_deals: HashMap<SectorNumber, Vec<ActivatedDeal>>,
+    pub activated_deals: HashMap<SectorNumber, Vec<PieceInfo>>,
 }
 
 #[allow(dead_code)]
-pub fn test_activated_deal(space: u64, alloc: AllocationID) -> ActivatedDeal {
-    // only set size for testing and zero out remaining fields
-    ActivatedDeal {
-        client: 0,
-        allocation_id: alloc,
-        data: make_unsealed_cid("test activated deal".as_bytes()),
+pub fn test_activated_deal(space: u64) -> PieceInfo {
+    PieceInfo {
         size: PaddedPieceSize(space),
+        cid: make_unsealed_cid("test activated deal".as_bytes()),
     }
 }
 
@@ -2779,7 +2804,7 @@ impl ProveCommitConfig {
         }
     }
 
-    pub fn add_activated_deals(&mut self, sector: SectorNumber, deals: Vec<ActivatedDeal>) {
+    pub fn add_activated_deals(&mut self, sector: SectorNumber, deals: Vec<PieceInfo>) {
         self.activated_deals.insert(sector, deals);
     }
 
@@ -2788,19 +2813,6 @@ impl ProveCommitConfig {
             None => BigInt::zero(),
             Some(infos) => infos
                 .iter()
-                .filter(|info| info.allocation_id == NO_ALLOCATION_ID)
-                .map(|info| BigInt::from(info.size.0))
-                .reduce(|x, a| x + a)
-                .unwrap_or_default(),
-        }
-    }
-
-    pub fn verified_deal_space(&self, sector: SectorNumber) -> BigInt {
-        match self.activated_deals.get(&sector) {
-            None => BigInt::zero(),
-            Some(infos) => infos
-                .iter()
-                .filter(|info| info.allocation_id != NO_ALLOCATION_ID)
                 .map(|info| BigInt::from(info.size.0))
                 .reduce(|x, a| x + a)
                 .unwrap_or_default(),
@@ -3090,7 +3102,7 @@ pub fn sector_commd_from_pieces(pieces: &[Cid]) -> CompactCommD {
 #[allow(dead_code)]
 pub fn make_activation_manifest(
     sector_number: SectorNumber,
-    piece_specs: &[(u64, ActorID, AllocationID, DealID)], // (size, client, allocation, deal)
+    piece_specs: &[(u64, ActorID, u64, DealID)], // (size, client, allocation, deal)
 ) -> SectorActivationManifest {
     let pieces: Vec<PieceActivationManifest> = piece_specs
         .iter()
@@ -3107,7 +3119,7 @@ pub fn make_update_manifest(
     st: &State,
     store: &impl Blockstore,
     sector: SectorNumber,
-    piece_specs: &[(u64, ActorID, AllocationID, DealID)], // (size, client, allocation, deal)
+    piece_specs: &[(u64, ActorID, u64, DealID)], // (size, client, allocation, deal)
 ) -> SectorUpdateManifest {
     let (deadline, partition) = st.find_sector(store, sector).unwrap();
     let new_sealed_cid = make_sector_commr(sector);
@@ -3127,7 +3139,7 @@ pub fn make_piece_manifest(
     seq: usize,
     size: u64,
     alloc_client: ActorID,
-    alloc_id: AllocationID,
+    alloc_id: u64,
     deal: DealID,
 ) -> PieceActivationManifest {
     PieceActivationManifest {
@@ -3153,8 +3165,8 @@ pub fn make_piece_specs_from_configs(
     sector_number: u64,
     deal_ids: &Vec<DealID>,
     prove_cfg: &ProveCommitConfig,
-) -> Vec<(u64, ActorID, AllocationID, DealID)> {
-    static EMPTY_VEC: Vec<ActivatedDeal> = Vec::new();
+) -> Vec<(u64, ActorID, u64, DealID)> {
+    static EMPTY_VEC: Vec<PieceInfo> = Vec::new();
     let configured_deals = prove_cfg.activated_deals.get(&sector_number).unwrap_or(&EMPTY_VEC);
     // The old configuration system had duplicated information between cfg and precommit inputs
     // To ensure passed in configuration is internally consistent check that cfg deals are a subset
@@ -3168,7 +3180,7 @@ pub fn make_piece_specs_from_configs(
             let deal = configured_deals.get(i).unwrap();
             // Configured deals don't specify deal_id use deal_ids configuration info
             // Piece specs don't specify piece cid but deterministically derive it so ignore deal.Cid
-            piece_specs.push((deal.size.0, deal.client, deal.allocation_id, deal_id.clone()));
+            piece_specs.push((deal.size.0, DEFAULT_CLIENT_ID, NO_ALLOCATION_ID, deal_id.clone()));
         } else {
             piece_specs.push((
                 DEFAULT_PIECE_SIZE,
@@ -3458,10 +3470,9 @@ pub fn verify_weights(
 
     // Deal IDs are deprecated and never set.
     assert!(s.deprecated_deal_ids.is_empty());
-    // FIP-0118: all piece data is unverified_space, verified_deal_weight is 0
     let total_data_size = unverified_data_size + verified_data_size;
-    assert_eq!(DealWeight::from(total_data_size) * duration, s.deal_weight);
-    assert_eq!(DealWeight::zero(), s.verified_deal_weight);
+    assert_eq!(DealWeight::zero(), s.deal_weight);
+    assert_eq!(DealWeight::from(total_data_size) * duration, s.verified_deal_weight);
     assert_eq!(pledge, s.initial_pledge);
 }
 

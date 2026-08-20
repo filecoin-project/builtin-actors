@@ -36,8 +36,8 @@ use crate::expects::Expect;
 use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_index,
     advance_to_proving_deadline, assert_invariants, check_sector_active, check_sector_faulty,
-    create_accounts, create_miner, cron_tick, deadline_state, declare_recovery, expect_invariants,
-    get_deal_weights, get_network_stats, invariant_failure_patterns, make_bitfield,
+    create_accounts, create_miner, cron_tick, deadline_state, deal_spacetime, declare_recovery,
+    expect_invariants, get_network_stats, invariant_failure_patterns, make_bitfield,
     make_piece_manifests_from_deal_ids, market_add_balance, market_list_deals,
     market_list_sectors_deals, market_publish_deal, miner_balance, miner_power, miner_prove_sector,
     override_compute_unsealed_sector_cid, piece_change, precommit_sectors_v2, prove_commit_sectors,
@@ -84,9 +84,10 @@ pub fn replica_update_full_path_success_test(v: &dyn VM) {
         &miner_id,
         deadline_info,
         partition_index,
+        // Recovering restores the sector's full power; FIP-0118 makes that 10x raw.
         Some(PowerPair {
             raw: StoragePower::from(sector_size as i64),
-            qa: StoragePower::from(sector_size as i64),
+            qa: StoragePower::from(10 * sector_size as i64),
         }),
     );
 
@@ -140,9 +141,10 @@ pub fn upgrade_and_miss_post_test(v: &dyn VM) {
         &miner_id,
         deadline_info,
         partition_index,
+        // Recovering restores the sector's full power; FIP-0118 makes that 10x raw.
         Some(PowerPair {
             raw: StoragePower::from(sector_size as i64),
-            qa: StoragePower::from(sector_size as i64),
+            qa: StoragePower::from(10 * sector_size as i64),
         }),
     );
 
@@ -287,15 +289,13 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
 
     let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number_p1);
     let duration = new_sector_info_p1.expiration - new_sector_info_p1.power_base_epoch;
-    let deal_weights1 = get_deal_weights(v, deal_ids[0], duration);
-    assert_eq!(deal_weights1.0, new_sector_info_p1.deal_weight);
-    assert_eq!(deal_weights1.1, new_sector_info_p1.verified_deal_weight);
+    assert!(new_sector_info_p1.deal_weight.is_zero());
+    assert_eq!(deal_spacetime(v, deal_ids[0], duration), new_sector_info_p1.verified_deal_weight);
     assert_eq!(old_sector_commr_p1, new_sector_info_p1.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid1, new_sector_info_p1.sealed_cid);
     let new_sector_info_p2 = sector_info(v, &maddr, first_sector_number_p2);
-    let deal_weights2 = get_deal_weights(v, deal_ids[1], duration);
-    assert_eq!(deal_weights2.0, new_sector_info_p2.deal_weight);
-    assert_eq!(deal_weights2.1, new_sector_info_p2.verified_deal_weight);
+    assert!(new_sector_info_p2.deal_weight.is_zero());
+    assert_eq!(deal_spacetime(v, deal_ids[1], duration), new_sector_info_p2.verified_deal_weight);
     assert_eq!(old_sector_commr_p2, new_sector_info_p2.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
 
@@ -627,9 +627,8 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
     // sanity check the sector after update
     let new_sector_info = sector_info(v, &maddr, sector_number);
     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
-    let weights = get_deal_weights(v, deal_ids[0], duration);
-    assert_eq!(weights.0, new_sector_info.deal_weight);
-    assert_eq!(weights.1, new_sector_info.verified_deal_weight);
+    assert!(new_sector_info.deal_weight.is_zero());
+    assert_eq!(deal_spacetime(v, deal_ids[0], duration), new_sector_info.verified_deal_weight);
     assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid, new_sector_info.sealed_cid);
 
@@ -992,15 +991,15 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
 
     let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number);
     let duration = new_sector_info_p1.expiration - new_sector_info_p1.power_base_epoch;
-    let weights1 = get_deal_weights(v, deal_ids[0], duration);
-    let weights2 = get_deal_weights(v, deal_ids[1], duration);
-    assert_eq!(&weights1.0 + &weights2.0, new_sector_info_p1.deal_weight);
-    assert_eq!(&weights1.1 + &weights2.1, new_sector_info_p1.verified_deal_weight);
+    let spacetime1 = deal_spacetime(v, deal_ids[0], duration);
+    let spacetime2 = deal_spacetime(v, deal_ids[1], duration);
+    assert!(new_sector_info_p1.deal_weight.is_zero());
+    assert_eq!(&spacetime1 + &spacetime2, new_sector_info_p1.verified_deal_weight);
     assert_eq!(new_sealed_cid1, new_sector_info_p1.sealed_cid);
 
     let new_sector_info_p2 = sector_info(v, &maddr, first_sector_number + 1);
-    assert_eq!(weights1.0 + weights2.0, new_sector_info_p2.deal_weight);
-    assert_eq!(weights1.1 + weights2.1, new_sector_info_p2.verified_deal_weight);
+    assert!(new_sector_info_p2.deal_weight.is_zero());
+    assert_eq!(spacetime1 + spacetime2, new_sector_info_p2.verified_deal_weight);
     assert_eq!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
 
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
@@ -1203,9 +1202,8 @@ pub fn create_miner_and_upgrade_sector(
     // sanity check the sector after update
     let new_sector_info = sector_info(v, &maddr, sector_number);
     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
-    let weights = get_deal_weights(v, deal_ids[0], duration);
-    assert_eq!(weights.0, new_sector_info.deal_weight);
-    assert_eq!(weights.1, new_sector_info.verified_deal_weight);
+    assert!(new_sector_info.deal_weight.is_zero());
+    assert_eq!(deal_spacetime(v, deal_ids[0], duration), new_sector_info.verified_deal_weight);
     assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid, new_sector_info.sealed_cid);
     (new_sector_info, worker, maddr, d_idx, p_idx, seal_proof.sector_size().unwrap())
@@ -1511,15 +1509,14 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         BigInt::from(full_piece_size.0 * (sector_expiry - update_epoch) as u64);
     assert_eq!(BigInt::zero(), sectors[0].deal_weight);
     assert_eq!(BigInt::zero(), sectors[0].verified_deal_weight);
-    assert_eq!(full_sector_weight, sectors[1].deal_weight);
-    assert_eq!(BigInt::zero(), sectors[1].verified_deal_weight);
-    // FIP-0118: Without verified_allocation_key, deal weight goes to deal_weight
-    assert_eq!(full_sector_weight, sectors[2].deal_weight);
-    assert_eq!(BigInt::zero(), sectors[2].verified_deal_weight);
-    assert_eq!(full_sector_weight, sectors[3].deal_weight);
-    assert_eq!(BigInt::zero(), sectors[3].verified_deal_weight);
-    assert_eq!(full_sector_weight / 2, sectors[4].deal_weight);
-    assert_eq!(BigInt::zero(), sectors[4].verified_deal_weight);
+    assert_eq!(BigInt::zero(), sectors[1].deal_weight);
+    assert_eq!(full_sector_weight, sectors[1].verified_deal_weight);
+    assert_eq!(BigInt::zero(), sectors[2].deal_weight);
+    assert_eq!(full_sector_weight, sectors[2].verified_deal_weight);
+    assert_eq!(BigInt::zero(), sectors[3].deal_weight);
+    assert_eq!(full_sector_weight, sectors[3].verified_deal_weight);
+    assert_eq!(BigInt::zero(), sectors[4].deal_weight);
+    assert_eq!(full_sector_weight / 2, sectors[4].verified_deal_weight);
 
     // FIP-0118: No claims to verify
 

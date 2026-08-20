@@ -279,22 +279,21 @@ pub fn prove_commit_sectors3_test(v: &dyn VM) {
     assert_eq!(BigInt::zero(), sectors[0].verified_deal_weight);
     assert_eq!(full_sector_daily_fee, sectors[0].daily_fee);
 
-    assert_eq!(full_sector_weight, sectors[1].deal_weight);
-    assert_eq!(BigInt::zero(), sectors[1].verified_deal_weight);
+    assert_eq!(BigInt::zero(), sectors[1].deal_weight);
+    assert_eq!(full_sector_weight, sectors[1].verified_deal_weight);
     assert_eq!(full_sector_daily_fee, sectors[1].daily_fee);
 
-    // FIP-0118: Without verifreg allocation, deal weight goes to deal_weight (not verified)
-    assert_eq!(full_sector_weight, sectors[2].deal_weight);
-    assert_eq!(BigInt::zero(), sectors[2].verified_deal_weight);
+    assert_eq!(BigInt::zero(), sectors[2].deal_weight);
+    assert_eq!(full_sector_weight, sectors[2].verified_deal_weight);
     assert_eq!(full_sector_daily_fee, sectors[2].daily_fee);
 
-    assert_eq!(full_sector_weight, sectors[3].deal_weight);
-    assert_eq!(BigInt::zero(), sectors[3].verified_deal_weight);
+    assert_eq!(BigInt::zero(), sectors[3].deal_weight);
+    assert_eq!(full_sector_weight, sectors[3].verified_deal_weight);
     assert_eq!(full_sector_daily_fee, sectors[3].daily_fee);
 
     // Sector 4 has a half-size deal
-    assert_eq!(full_sector_weight / 2, sectors[4].deal_weight);
-    assert_eq!(BigInt::zero(), sectors[4].verified_deal_weight);
+    assert_eq!(BigInt::zero(), sectors[4].deal_weight);
+    assert_eq!(full_sector_weight / 2, sectors[4].verified_deal_weight);
     assert_eq!(full_sector_daily_fee, sectors[4].daily_fee);
 
     // FIP-0118: No claims to verify
