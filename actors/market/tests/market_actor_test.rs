@@ -27,10 +27,9 @@ use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal, DEAL_OPS_BY_EPOCH_CONFIG,
     DealArray, DealMetaArray, DealOpsByEpoch, EX_DEAL_EXPIRED, Label, MARKET_NOTIFY_DEAL_METHOD,
-    MarketNotifyDealParams, Method, PENDING_ALLOCATIONS_CONFIG, PENDING_PROPOSALS_CONFIG,
-    PROPOSALS_AMT_BITWIDTH, PendingDealAllocationsMap, PendingProposalsSet,
-    PublishStorageDealsParams, PublishStorageDealsReturn, STATES_AMT_BITWIDTH, SectorDeals, State,
-    WithdrawBalanceParams,
+    MarketNotifyDealParams, Method, PENDING_PROPOSALS_CONFIG, PROPOSALS_AMT_BITWIDTH,
+    PendingProposalsSet, PublishStorageDealsParams, PublishStorageDealsReturn, STATES_AMT_BITWIDTH,
+    SectorDeals, State, WithdrawBalanceParams,
 };
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -743,64 +742,6 @@ fn deal_expires() {
     // The proposal is gone
     assert!(DealArray::load(&st.proposals, &rt.store).unwrap().get(deal_id).unwrap().is_none());
 
-    // Pending allocation ID is gone
-    let pending_allocs = PendingDealAllocationsMap::load(
-        &rt.store,
-        &st.pending_deal_allocation_ids,
-        PENDING_ALLOCATIONS_CONFIG,
-        "pending allocations",
-    )
-    .unwrap();
-    assert!(pending_allocs.get(&deal_id).unwrap().is_none());
-
-    check_state(&rt);
-}
-
-#[test]
-fn activation_removes_legacy_pending_allocation() {
-    // Simulates a deal published before FIP-0118, when publish_storage_deals still recorded a
-    // pending verified allocation. Activation must still drain that entry even though the
-    // allocation-claiming pipeline itself is now disabled.
-    let start_epoch = 100;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let publish_epoch = ChainEpoch::from(1);
-    let sector_number = 7;
-
-    let rt = setup();
-    rt.set_epoch(publish_epoch);
-    let (deal_id, _) = generate_and_publish_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-    );
-
-    // Seed a pending allocation entry directly, as legacy pre-upgrade state would have.
-    let mut st: State = rt.get_state();
-    let mut pending_allocs = PendingDealAllocationsMap::load(
-        &rt.store,
-        &st.pending_deal_allocation_ids,
-        PENDING_ALLOCATIONS_CONFIG,
-        "pending allocations",
-    )
-    .unwrap();
-    pending_allocs.set(&deal_id, 1).unwrap();
-    st.pending_deal_allocation_ids = pending_allocs.flush().unwrap();
-    rt.replace_state(&st);
-
-    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, sector_number, &[deal_id]);
-
-    let st: State = rt.get_state();
-    let pending_allocs = PendingDealAllocationsMap::load(
-        &rt.store,
-        &st.pending_deal_allocation_ids,
-        PENDING_ALLOCATIONS_CONFIG,
-        "pending allocations",
-    )
-    .unwrap();
-    assert!(pending_allocs.get(&deal_id).unwrap().is_none());
-
     check_state(&rt);
 }
 
@@ -904,7 +845,6 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         None,
     );
 
-    // No datacap operations - FIP-0118 removed datacap flow from market actor
     let mut normalized_deal = deal;
     normalized_deal.provider = provider_resolved;
     normalized_deal.client = client_resolved;
@@ -953,50 +893,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
 }
 
 #[test]
-fn datacap_transfers_batched() {
-    let rt = setup();
-    let start_epoch = 42;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    rt.set_epoch(start_epoch);
-
-    let client1_addr = Address::new_id(900);
-    let client2_addr = Address::new_id(901);
-
-    // Propose two deals for client1, and one for client2.
-    let mut deal1 = generate_deal_and_add_funds(
-        &rt,
-        client1_addr,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-    );
-    let mut deal2 = generate_deal_and_add_funds(
-        &rt,
-        client1_addr,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch + 1,
-    );
-    let mut deal3 = generate_deal_and_add_funds(
-        &rt,
-        client2_addr,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-    );
-    deal1.verified_deal = true;
-    deal2.verified_deal = true;
-    deal3.verified_deal = true;
-
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids = publish_deals(&rt, &MinerAddresses::default(), &[deal1, deal2, deal3]);
-    assert_eq!(3, ids.len());
-
-    check_state(&rt);
-}
-
-#[test]
-fn datacap_transfer_drops_deal_when_cap_insufficient() {
+fn verified_deals_publish_without_datacap() {
     let rt = setup();
     let start_epoch = 42;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
@@ -1021,7 +918,6 @@ fn datacap_transfer_drops_deal_when_cap_insufficient() {
     deal2.verified_deal = true;
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    // With FIP-0118 there are no datacap ops, so both deals should publish
     let ids = publish_deals(&rt, &MinerAddresses::default(), &[deal1, deal2]);
     assert_eq!(2, ids.len());
 
@@ -1497,7 +1393,6 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
         }],
-        false,
         &[],
     )
     .unwrap();
@@ -1535,7 +1430,6 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
         }],
-        false,
         &[],
     )
     .unwrap();
@@ -1565,12 +1459,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
         start_epoch,
         end_epoch,
     );
-    batch_activate_deals(
-        &rt,
-        PROVIDER_ADDR,
-        &[(sector_number, sector_expiry, vec![deal_id1])],
-        false,
-    );
+    batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_number, sector_expiry, vec![deal_id1])]);
 
     let (deal_id2, _) = generate_and_publish_deal(
         &rt,
@@ -1589,7 +1478,6 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id1, deal_id2],
         }],
-        false,
         &[],
     )
     .unwrap();

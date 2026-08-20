@@ -125,7 +125,6 @@ fn assert_activation_failure(
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
         }],
-        false,
         &[],
     )
     .unwrap();

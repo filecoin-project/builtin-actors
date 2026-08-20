@@ -405,7 +405,6 @@ pub fn activate_deals_for(
     expected_deal_activations: &[DealID],
 ) -> BatchActivateDealsResult {
     rt.set_epoch(current_epoch);
-    let compute_cid = false;
     let ret = batch_activate_deals_raw(
         rt,
         provider,
@@ -415,7 +414,6 @@ pub fn activate_deals_for(
             sector_expiry,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
         }],
-        compute_cid,
         expected_deal_activations,
     )
     .unwrap();
@@ -440,7 +438,6 @@ pub fn batch_activate_deals(
     rt: &MockRuntime,
     provider: Address,
     sectors: &[(SectorNumber, ChainEpoch, Vec<DealID>)],
-    compute_cid: bool,
 ) -> BatchActivateDealsResult {
     let sectors_deals: Vec<SectorDeals> = sectors
         .iter()
@@ -455,8 +452,7 @@ pub fn batch_activate_deals(
     let deal_ids =
         sectors.iter().flat_map(|(_, _, deal_ids)| deal_ids).cloned().collect::<Vec<_>>();
 
-    let ret =
-        batch_activate_deals_raw(rt, provider, sectors_deals, compute_cid, &deal_ids).unwrap();
+    let ret = batch_activate_deals_raw(rt, provider, sectors_deals, &deal_ids).unwrap();
 
     let ret: BatchActivateDealsResult =
         ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
@@ -471,13 +467,12 @@ pub fn batch_activate_deals_raw(
     rt: &MockRuntime,
     provider: Address,
     sectors_deals: Vec<SectorDeals>,
-    compute_cid: bool,
     expected_activated_deals: &[DealID],
 ) -> Result<Option<IpldBlock>, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![Type::Miner]);
 
-    let params = BatchActivateDealsParams { sectors: sectors_deals, compute_cid };
+    let params = BatchActivateDealsParams { sectors: sectors_deals };
 
     for deal_id in expected_activated_deals {
         let dp = get_deal_proposal(rt, *deal_id);
@@ -742,8 +737,6 @@ pub fn publish_deals(
             None,
         );
     }
-
-    // No datacap operations - FIP-0118 removed datacap flow from market actor
 
     let mut deal_id = next_deal_id;
     for deal in publish_deals {

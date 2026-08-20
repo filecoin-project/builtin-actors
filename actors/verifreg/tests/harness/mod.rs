@@ -6,22 +6,20 @@ use cid::Cid;
 use frc46_token::receiver::FRC46TokenReceived;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, MethodNum};
-use num_traits::Zero;
 
 use fil_actor_verifreg::state::{DATACAP_MAP_CONFIG, DataCapMap};
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     Actor as VerifregActor, Allocation, AllocationClaim, AllocationID, AllocationRequest,
-    AllocationRequests, Claim, ClaimExtensionRequest, ClaimID, DataCap, ExtendClaimTermsParams,
-    ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method, RemoveExpiredClaimsParams,
-    RemoveExpiredClaimsReturn, SectorAllocationClaims, State,
+    AllocationRequests, Claim, ClaimExtensionRequest, ClaimID, DataCap, GetClaimsParams,
+    GetClaimsReturn, Method, RemoveExpiredClaimsParams, RemoveExpiredClaimsReturn,
+    SectorAllocationClaims, State,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
@@ -99,28 +97,6 @@ impl Harness {
         let state: State = rt.get_state();
         assert_eq!(self.root, state.root_key);
         assert_eq!(empty_map, state.verifiers);
-    }
-
-    pub fn remove_verifier(&self, rt: &MockRuntime, verifier: &Address) -> Result<(), ActorError> {
-        rt.expect_validate_caller_addr(vec![self.root]);
-
-        rt.expect_emitted_event(
-            EventBuilder::new()
-                .typ("verifier-balance")
-                .field_indexed("verifier", &verifier.id().unwrap())
-                .field("balance", &BigIntSer(&DataCap::zero()))
-                .build()?,
-        );
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
-        let ret = rt.call::<VerifregActor>(
-            Method::RemoveVerifier as MethodNum,
-            IpldBlock::serialize_cbor(verifier).unwrap(),
-        )?;
-        assert!(ret.is_none());
-        rt.verify();
-
-        self.assert_verifier_removed(rt, verifier);
-        Ok(())
     }
 
     /// Directly inserts a verifier into state without calling the (now-deprecated) AddVerifier method.
@@ -266,43 +242,6 @@ impl Harness {
             .unwrap()
             .deserialize()
             .expect("failed to deserialize get claims return");
-        rt.verify();
-        Ok(ret)
-    }
-
-    pub fn extend_claim_terms(
-        &self,
-        rt: &MockRuntime,
-        params: &ExtendClaimTermsParams,
-        expected: Vec<(ClaimID, Claim)>,
-    ) -> Result<ExtendClaimTermsReturn, ActorError> {
-        for (id, mut new_claim) in expected {
-            let ext = params.terms.iter().find(|c| c.claim_id == id).unwrap();
-            new_claim.term_max = ext.term_max;
-            expect_claim_emitted(
-                rt,
-                "claim-updated",
-                id,
-                new_claim.client,
-                new_claim.provider,
-                &new_claim.data,
-                new_claim.size.0,
-                new_claim.sector,
-                new_claim.term_min,
-                new_claim.term_max,
-                new_claim.term_start,
-            )
-        }
-
-        rt.expect_validate_caller_any();
-        let ret = rt
-            .call::<VerifregActor>(
-                Method::ExtendClaimTerms as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            )?
-            .unwrap()
-            .deserialize()
-            .expect("failed to deserialize extend claim terms return");
         rt.verify();
         Ok(ret)
     }

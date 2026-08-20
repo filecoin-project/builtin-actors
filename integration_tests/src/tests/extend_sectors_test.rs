@@ -148,16 +148,17 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
         .unwrap()
         .unwrap();
     assert_eq!(180 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
-    // FIP-0118: Without verified_allocation_key, deal weight goes to deal_weight (not verified)
-    assert_eq!(DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30)), sector_info.deal_weight);
-    assert_eq!(StoragePower::zero(), sector_info.verified_deal_weight);
+    assert_eq!(
+        DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30)),
+        sector_info.verified_deal_weight
+    );
+    assert_eq!(StoragePower::zero(), sector_info.deal_weight);
     // For the legacy sector test below, we need to manually set up verified deal weight.
 
-    // Note: we don't need to explicitly set verified weight using the legacy method
-    // because legacy and simple qa power deal weight calculations line up for fully packed sectors
-    // We do need to set simple_qa_power to false
+    // Craft a genuine pre-FIP-0045 sector: neither flag, so quality derives from weight
+    // rather than from FULL_QA_POWER. Fully packed, so that quality is 10x.
     sector_info.flags.set(SectorOnChainInfoFlags::SIMPLE_QA_POWER, false);
-    // Manually set verified_deal_weight for legacy sector simulation
+    sector_info.flags.set(SectorOnChainInfoFlags::FULL_QA_POWER, false);
     sector_info.verified_deal_weight = DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30));
     sector_info.deal_weight = StoragePower::zero();
 
@@ -169,7 +170,8 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
         st.sectors = sectors.amt.flush().unwrap();
     });
 
-    let _initial_verified_deal_weight = sector_info.verified_deal_weight;
+    let initial_space =
+        &sector_info.verified_deal_weight / (sector_info.expiration - sector_info.power_base_epoch);
     let initial_deal_weight = sector_info.deal_weight;
 
     // advance to proving period and submit post
@@ -194,17 +196,10 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
         deadline_info.index + 1 % policy.wpost_period_deadlines,
     );
 
-    // Advance halfway through life and extend another 6 months. We need to spread the remaining 90
-    // days of 10x power over 90 + 180 days
-    // subtract half the remaining deal weight:
-    //   - verified deal weight /= 2
-    //
-    // normalize 90 days of 10x power plus 180 days of 1x power over 90+180 days:
-    //   - multiplier = ((10 * 90) + (1 * 180)) / (90 + 180)
-    //   - multiplier = 4
-    //
-    // delta from the previous 10x power multiplier:
-    // - power delta = (10-4)*32GiB = 6*32GiB
+    // Advance halfway through life and extend another 6 months. Verified weight is restated
+    // over the new duration, so the derived space and therefore quality are unchanged and the
+    // sector stays at 10x. Before FIP-0118 this path kept only remaining spacetime and the
+    // sector dropped to 4x.
     advance_by_deadline_to_epoch_while_proving(
         v,
         &miner_id,
@@ -234,6 +229,11 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
         .unwrap();
     assert_eq!(180 * 2 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
     assert_eq!(initial_deal_weight, sector_info.deal_weight); // 0 space time, unchanged
+    // The whole point of the ratio restatement: space survives the extension.
+    assert_eq!(
+        initial_space,
+        &sector_info.verified_deal_weight / (sector_info.expiration - sector_info.power_base_epoch)
+    );
 
     // FIP-0118: Extension preserves power proportionally
     advance_by_deadline_to_epoch_while_proving(
@@ -656,12 +656,11 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         .unwrap()
         .unwrap();
 
-    // FIP-0118: Without verified allocation, deal weight goes to deal_weight (not verified_deal_weight)
     assert_eq!(
         DealWeight::from((sector_info_after_update.expiration - v.epoch()) * (32i64 << 30)),
-        sector_info_after_update.deal_weight
+        sector_info_after_update.verified_deal_weight
     );
-    assert_eq!(StoragePower::zero(), sector_info_after_update.verified_deal_weight);
+    assert_eq!(StoragePower::zero(), sector_info_after_update.deal_weight);
 
     // power base epoch is updated correctly
     assert_eq!(v.epoch(), sector_info_after_update.power_base_epoch);
@@ -705,8 +704,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         .unwrap()
         .unwrap();
 
-    // FIP-0118: deal_weight is proportionally extended
-    assert_eq!(StoragePower::zero(), sector_info_after_extension.verified_deal_weight);
+    assert_eq!(StoragePower::zero(), sector_info_after_extension.deal_weight);
 
     assert_eq!(sector_info_after_extension.power_base_epoch, v.epoch());
     assert_eq!(sector_info_after_update.activation, sector_info_after_extension.activation);

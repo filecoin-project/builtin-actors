@@ -95,10 +95,6 @@ pub mod miner {
     }
 }
 
-pub mod verifreg {
-    pub type AllocationID = u64;
-}
-
 pub mod reward {
     pub const THIS_EPOCH_REWARD_METHOD: u64 = 3;
 }

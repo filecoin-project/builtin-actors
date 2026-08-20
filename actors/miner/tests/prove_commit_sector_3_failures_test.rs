@@ -6,8 +6,8 @@ use fvm_shared::sector::{RegisteredAggregateProof, SectorNumber};
 use fvm_shared::{ActorID, clock::ChainEpoch};
 
 use fil_actor_miner::{
-    AllocationID, ERR_NOTIFICATION_RECEIVER_ABORTED, ERR_NOTIFICATION_REJECTED,
-    ProveCommitSectors3Params, SectorActivationManifest,
+    ERR_NOTIFICATION_RECEIVER_ABORTED, ERR_NOTIFICATION_REJECTED, ProveCommitSectors3Params,
+    SectorActivationManifest,
 };
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::policy_constants;
@@ -345,7 +345,7 @@ fn setup_basic() -> (ActorHarness, MockRuntime) {
 }
 
 fn setup_precommits(
-    confs: &[(ActorID, AllocationID, DealID)],
+    confs: &[(ActorID, u64, DealID)],
 ) -> (ActorHarness, MockRuntime, Vec<SectorActivationManifest>) {
     let (h, rt) = setup_basic();
 

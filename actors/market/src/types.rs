@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use super::ext::verifreg::AllocationID;
 use cid::Cid;
 use fil_actors_runtime::Array;
 use fil_actors_runtime::BatchReturn;
@@ -10,11 +9,10 @@ use fvm_ipld_encoding::strict_bytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::ActorID;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{BigInt, bigint_ser};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 
 use crate::Label;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
@@ -98,43 +96,15 @@ pub struct BatchActivateDealsParams {
     /// A failed deal activation will cause other deals in the same sector group to also fail,
     /// but allow other sectors to proceed.
     pub sectors: Vec<SectorDeals>,
-    /// Requests computation of an unsealed CID for each sector from the provided deals.
-    pub compute_cid: bool,
-}
-
-// Information about a deal that has been activated.
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ActivatedDeal {
-    pub client: ActorID,
-    pub allocation_id: AllocationID, // NO_ALLOCATION_ID for unverified deals.
-    pub data: Cid,
-    pub size: PaddedPieceSize,
-}
-
-// Information about a sector-grouping of deals that have been activated.
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct SectorDealActivation {
-    /// Information about each deal activated.
-    pub activated: Vec<ActivatedDeal>,
-    /// Unsealed CID computed from the deals specified for the sector.
-    /// A None indicates no deals were specified, or the computation was not requested.
-    pub unsealed_cid: Option<Cid>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct BatchActivateDealsResult {
     /// Status of each sector grouping of deals.
     pub activation_results: BatchReturn,
-    /// Activation information for the sector groups that were activated.
-    pub activations: Vec<SectorDealActivation>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct DealSpaces {
-    #[serde(with = "bigint_ser")]
-    pub deal_space: BigInt,
-    #[serde(with = "bigint_ser")]
-    pub verified_deal_space: BigInt,
+    /// Pieces activated for each successful sector group, in input order.
+    /// Its length equals `activation_results.success_count`.
+    pub activations: Vec<Vec<PieceInfo>>,
 }
 
 /// A specialization of a array to deals.

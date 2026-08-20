@@ -15,7 +15,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes, from_slice};
 use fvm_shared::address::{Address, Payload, Protocol};
-use fvm_shared::bigint::{BigInt, Integer};
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -936,22 +936,15 @@ impl Actor {
             })
             .collect();
 
-        // Activate data for proven updates.
-        let (data_batch, data_activations) = activate_sectors_pieces(rt, data_activation_inputs)?;
-        if data_batch.success_count == 0 {
-            return Err(actor_error!(illegal_argument, "all data activations failed"));
-        }
-
-        // Successful data activation is required for sector activation.
-        let successful_manifests = data_batch.successes(&proven_manifests);
+        let data_activations = validate_and_summarize_pieces(rt, data_activation_inputs)?;
 
         let mut state_updates_by_dline = BTreeMap::<u64, Vec<ReplicaUpdateStateInputs>>::new();
         for ((update, sector_info), data_activation) in
-            successful_manifests.iter().zip(data_activations)
+            proven_manifests.iter().zip(data_activations)
         {
             let activated_data = ReplicaUpdateActivatedData {
                 seal_cid: update.new_sealed_cid,
-                unverified_space: data_activation.unverified_space.clone(),
+                space: data_activation.space,
             };
             state_updates_by_dline.entry(update.deadline).or_default().push(
                 ReplicaUpdateStateInputs {
@@ -966,7 +959,7 @@ impl Actor {
         let (power_delta, pledge_delta) = update_replica_states(
             rt,
             &state_updates_by_dline,
-            successful_manifests.len(),
+            proven_manifests.len(),
             &mut sectors,
             info.sector_size,
         )?;
@@ -976,14 +969,15 @@ impl Actor {
 
         // Notify data consumers.
         let mut notifications: Vec<ActivationNotifications> = vec![];
-        for (update, sector_info) in successful_manifests {
+        for (update, sector_info) in proven_manifests {
             notifications.push(ActivationNotifications {
                 sector_number: update.sector,
                 sector_expiration: sector_info.expiration,
                 pieces: &update.pieces,
             });
 
-            let pieces: Vec<(Cid, u64)> = update.pieces.iter().map(|x| (x.cid, x.size.0)).collect();
+            let pieces: Vec<PieceInfo> =
+                update.pieces.iter().map(|x| PieceInfo { cid: x.cid, size: x.size }).collect();
 
             emit::sector_updated(
                 rt,
@@ -994,7 +988,7 @@ impl Actor {
         }
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
-        let result = util::stack(&[validation_batch, proven_batch, data_batch]);
+        let result = util::stack(&[validation_batch, proven_batch]);
         Ok(ProveReplicaUpdates3Return { activation_results: result })
     }
 
@@ -1622,16 +1616,9 @@ impl Actor {
             })
             .collect();
 
-        // Activate data for proven sectors.
-        let (data_batch, data_activations) = activate_sectors_pieces(rt, data_activation_inputs)?;
-        if data_batch.success_count == 0 {
-            return Err(actor_error!(illegal_argument, "all data activations failed"));
-        }
-
-        // Successful data activation is required for sector activation.
-        let successful_sector_activations = data_batch.successes(&proven_activation_inputs);
+        let data_activations = validate_and_summarize_pieces(rt, data_activation_inputs)?;
         let successful_precommits =
-            successful_sector_activations.iter().map(|(_, second)| *second).collect();
+            proven_activation_inputs.iter().map(|(_, second)| *second).collect();
 
         // Activate sector info state
         let rew = request_current_epoch_block_reward(rt)?;
@@ -1655,22 +1642,22 @@ impl Actor {
 
         // Notify data consumers.
         let mut notifications: Vec<ActivationNotifications> = vec![];
-        for (activations, sector) in &successful_sector_activations {
+        for (activations, sector) in &proven_activation_inputs {
             notifications.push(ActivationNotifications {
                 sector_number: activations.sector_number,
                 sector_expiration: sector.info.expiration,
                 pieces: &activations.pieces,
             });
 
-            let pieces: Vec<(Cid, u64)> =
-                activations.pieces.iter().map(|p| (p.cid, p.size.0)).collect();
+            let pieces: Vec<PieceInfo> =
+                activations.pieces.iter().map(|p| PieceInfo { cid: p.cid, size: p.size }).collect();
             let unsealed_cid = sector.info.unsealed_cid.0;
 
             emit::sector_activated(rt, sector.info.sector_number, unsealed_cid, &pieces)?;
         }
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
-        let result = util::stack(&[validation_batch, proven_batch, data_batch]);
+        let result = util::stack(&[validation_batch, proven_batch]);
         Ok(ProveCommitSectors3Return { activation_results: result })
     }
 
@@ -1694,15 +1681,7 @@ impl Actor {
             precommited_sectors.iter().map(|x| x.clone().into()).collect();
         let info = get_miner_info(rt.store(), &st)?;
 
-        /*
-            For all sectors
-            - CommD was specified at precommit
-            - If deal IDs were specified at precommit the CommD was checked against them
-            Therefore CommD on precommit has already been provided and checked so no further processing needed
-        */
-        let compute_commd = false;
-        let (batch_return, data_activations) =
-            activate_sectors_deals(rt, &data_activations, compute_commd)?;
+        let (batch_return, data_activations) = activate_sectors_deals(rt, &data_activations)?;
         let successful_activations = batch_return.successes(&precommited_sectors);
 
         let pledge_inputs = NetworkPledgeInputs {
@@ -2126,15 +2105,28 @@ impl Actor {
         }
     }
 
-    // Up to date version of extend_sector_expiration that correctly handles simple qap sectors
-    // with FIL+ claims. Extension is only allowed if all claim max terms extend past new expiration
-    // or claims are dropped.  Power only changes when claims are dropped.
+    // Extends sector expirations. Declarations may name sectors carrying FIL+ claims; those
+    // claims are no longer consulted, so such sectors extend like any other and extension
+    // never changes power.
     fn extend_sector_expiration2(
         rt: &impl Runtime,
         params: ExtendSectorExpiration2Params,
     ) -> Result<(), ActorError> {
-        let extend_expiration_inner = validate_extension_declarations(rt, params.extensions)?;
-        Self::extend_sector_expiration_inner(rt, extend_expiration_inner)
+        let policy = rt.policy();
+        for decl in &params.extensions {
+            if decl.deadline >= policy.wpost_period_deadlines {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "deadline {} not in range 0..{}",
+                    decl.deadline,
+                    policy.wpost_period_deadlines
+                ));
+            }
+        }
+        let inner = ExtendExpirationsInner {
+            extensions: params.extensions.into_iter().map(|e2| e2.into()).collect(),
+        };
+        Self::extend_sector_expiration_inner(rt, inner)
     }
 
     fn extend_sector_expiration_inner(
@@ -3434,6 +3426,9 @@ pub struct ValidatedExpirationExtension {
     pub new_expiration: ChainEpoch,
 }
 
+// The two sector lists differed only in whether FIL+ claims needed per-sector instructions.
+// FIP-0118 removed claim validation, so they now mean the same thing and merge. Merging is
+// idempotent, so a sector named in both is extended once.
 impl From<ExpirationExtension2> for ValidatedExpirationExtension {
     fn from(e2: ExpirationExtension2) -> Self {
         let mut sectors = BitField::new();
@@ -3451,27 +3446,6 @@ impl From<ExpirationExtension2> for ValidatedExpirationExtension {
     }
 }
 
-// FIP-0118: claim validation with the verifreg actor has been removed.
-// sectors_with_claims in declarations is ignored; extensions proceed with
-// proportional deal weight reduction for legacy sectors.
-fn validate_extension_declarations(
-    rt: &impl Runtime,
-    extensions: Vec<ExpirationExtension2>,
-) -> Result<ExtendExpirationsInner, ActorError> {
-    for decl in &extensions {
-        let policy = rt.policy();
-        if decl.deadline >= policy.wpost_period_deadlines {
-            return Err(actor_error!(
-                illegal_argument,
-                "deadline {} not in range 0..{}",
-                decl.deadline,
-                policy.wpost_period_deadlines
-            ));
-        }
-    }
-    Ok(ExtendExpirationsInner { extensions: extensions.into_iter().map(|e2| e2.into()).collect() })
-}
-
 #[allow(clippy::too_many_arguments)]
 fn extend_sector_committment(
     policy: &Policy,
@@ -3484,14 +3458,7 @@ fn extend_sector_committment(
 ) -> Result<SectorOnChainInfo, ActorError> {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector_info)?;
 
-    // FIP-0118: claim validation has been removed. Both paths now use proportional
-    // deal weight reduction. FULL_QA_POWER sectors get 10x regardless.
-    let mut new_sector_info = if sector_info.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER)
-    {
-        extend_simple_qap_sector(new_expiration, curr_epoch, sector_info)
-    } else {
-        extend_non_simple_qap_sector(new_expiration, curr_epoch, sector_info)
-    }?;
+    let mut new_sector_info = extend_sector_weights(new_expiration, curr_epoch, sector_info)?;
 
     // qa_power_for_sector handles FULL_QA_POWER flag correctly (returns qa_power_max).
     let new_qa_power = qa_power_for_sector(sector_size, &new_sector_info);
@@ -3549,10 +3516,12 @@ fn validate_extended_expiration(
     Ok(())
 }
 
-// FIP-0118: claim validation has been removed. Verified deal weight is reduced
-// proportionally for remaining sector lifetime, same as deal_weight.
-// For FULL_QA_POWER sectors, stored weights are informational only (QAP comes from the flag).
-fn extend_simple_qap_sector(
+// Carries a sector's recorded weights across an extension. One algorithm covers legacy and
+// new sectors: verified weight is restated over the new duration so quality, and therefore
+// power, is unchanged, while deal weight keeps only what remains, since deals do not outlive
+// the expiration they activated against. For FULL_QA_POWER sectors both are informational,
+// QAP coming from the flag.
+fn extend_sector_weights(
     new_expiration: ChainEpoch,
     curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
@@ -3564,49 +3533,22 @@ fn extend_simple_qap_sector(
     let old_duration = sector.expiration - sector.power_base_epoch;
     let new_duration = new_sector.expiration - new_sector.power_base_epoch;
 
-    // Update the non-verified deal weights. This won't change power, it'll just keep it the same
-    // relative to the updated power base epoch.
+    // Deals do not outlive the expiration they activated against, so carry only what remains.
     if sector.deal_weight.is_positive() {
-        // (old_deal_weight) / old_duration -> old_space
-        // old_space * (old_expiration - curr_epoch) -> remaining spacetime in the deals.
         new_sector.deal_weight =
             &sector.deal_weight * (sector.expiration - curr_epoch) / old_duration;
     }
 
-    // Proportional reduction of verified deal weight (no claims needed).
+    // Restate over the new duration, preserving space and therefore quality.
     if sector.verified_deal_weight.is_positive() {
         let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
         new_sector.verified_deal_weight = old_verified_deal_space * new_duration;
-
-        new_sector.expected_day_reward = None;
-        new_sector.expected_storage_pledge = None;
-        new_sector.replaced_day_reward = None;
     }
 
-    Ok(new_sector)
-}
-
-fn extend_non_simple_qap_sector(
-    new_expiration: ChainEpoch,
-    curr_epoch: ChainEpoch,
-    sector: &SectorOnChainInfo,
-) -> Result<SectorOnChainInfo, ActorError> {
-    let mut new_sector = sector.clone();
-    // Remove "spent" deal weights for non simple_qa_power sectors with deal weight > 0
-    let new_deal_weight = (&sector.deal_weight * (sector.expiration - curr_epoch))
-        .div_floor(&BigInt::from(sector.expiration - sector.power_base_epoch));
-
-    let new_verified_deal_weight = (&sector.verified_deal_weight
-        * (sector.expiration - curr_epoch))
-        .div_floor(&BigInt::from(sector.expiration - sector.power_base_epoch));
-
-    new_sector.expiration = new_expiration;
-    new_sector.deal_weight = new_deal_weight;
-    new_sector.verified_deal_weight = new_verified_deal_weight;
-    new_sector.power_base_epoch = curr_epoch;
+    // Deprecated by FIP-0100 and read nowhere; cleared as sectors are touched.
     new_sector.expected_day_reward = None;
-    new_sector.replaced_day_reward = None;
     new_sector.expected_storage_pledge = None;
+    new_sector.replaced_day_reward = None;
 
     Ok(new_sector)
 }
@@ -3946,9 +3888,8 @@ fn update_existing_sector_info(
 
     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
 
-    new_sector_info.deal_weight = activated_data.unverified_space.clone() * duration;
-    // FIP-0118: verified_space is always zero; QAP comes from FULL_QA_POWER instead.
-    new_sector_info.verified_deal_weight = DealWeight::zero();
+    new_sector_info.deal_weight = DealWeight::zero();
+    new_sector_info.verified_deal_weight = BigInt::from(activated_data.space) * duration;
 
     new_sector_info.expected_day_reward = None;
     new_sector_info.replaced_day_reward = None;
@@ -3961,11 +3902,12 @@ fn update_existing_sector_info(
         new_sector_info.daily_fee =
             daily_proof_fee(policy, &pledge_inputs.circulating_supply, new_qa_power);
     } else {
-        // Use qa_power_for_sector which handles both FULL_QA_POWER and legacy sectors.
-        // daily_proof_fee_adjust is a no-op when the power hasn't changed.
         let old_qa_power = qa_power_for_sector(sector_size, sector_info);
-        new_sector_info.daily_fee =
-            daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, new_qa_power);
+        // Unchanged is the common case now; skip the clone.
+        if old_qa_power != *new_qa_power {
+            new_sector_info.daily_fee =
+                daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, new_qa_power);
+        }
     }
     new_sector_info
 }
@@ -5158,9 +5100,7 @@ fn activate_new_sector_infos(
                 ));
             }
 
-            let deal_weight = &deal_spaces.unverified_space * duration;
-            // FIP-0118: verified_space is always zero; QAP comes from FULL_QA_POWER instead.
-            let verified_deal_weight = BigInt::zero();
+            let verified_deal_weight = BigInt::from(deal_spaces.space) * duration;
 
             deposit_to_unlock += pci.pre_commit_deposit.clone();
             total_pledge += &initial_pledge;
@@ -5172,7 +5112,7 @@ fn activate_new_sector_infos(
                 deprecated_deal_ids: vec![], // deal ids field deprecated
                 expiration: pci.info.expiration,
                 activation: activation_epoch,
-                deal_weight,
+                deal_weight: DealWeight::zero(),
                 verified_deal_weight,
                 initial_pledge: initial_pledge.clone(),
                 expected_day_reward: None,
@@ -5301,8 +5241,8 @@ impl From<&UpdateAndSectorInfo<'_>> for DealsActivationInput {
 // Data activation results for one sector
 #[derive(Clone)]
 struct DataActivationOutput {
-    pub unverified_space: BigInt,
-    pub pieces: Vec<(Cid, u64)>,
+    pub space: u64,
+    pub pieces: Vec<PieceInfo>,
 }
 
 // Track information needed to update a sector info's data during ProveReplicaUpdate
@@ -5323,20 +5263,17 @@ struct ReplicaUpdateStateInputs<'a> {
 // Summary of activated data for a replica update.
 struct ReplicaUpdateActivatedData {
     seal_cid: Cid,
-    unverified_space: BigInt,
+    space: u64,
 }
 
-// Activates data pieces in sectors.
-// FIP-0118: verified allocation claims are no longer made; all sectors get 10x QA power
-// via the FULL_QA_POWER flag regardless of content. The verified_allocation_key field
-// on piece manifests is preserved for API backward compat but ignored.
-// Pieces are grouped by sector and succeed or fail in sector groups.
-// If an activation input specifies an expected CommD for the sector, a CommD
-// is calculated from the pieces and must match.
-fn activate_sectors_pieces(
+// Checks each sector's pieces against a declared CommD, where one is given, and totals piece
+// space per sector.
+// `verified_allocation_key` on piece manifests is accepted and ignored: QA power comes from
+// the FULL_QA_POWER flag rather than from allocations (FIP-0118).
+fn validate_and_summarize_pieces(
     rt: &impl Runtime,
     activation_inputs: Vec<SectorPiecesActivationInput>,
-) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
+) -> Result<Vec<DataActivationOutput>, ActorError> {
     let mut activation_outputs = Vec::with_capacity(activation_inputs.len());
 
     for activation_info in &activation_inputs {
@@ -5361,40 +5298,35 @@ fn activate_sectors_pieces(
             }
         }
 
-        // FIP-0118: all piece space is treated as unverified_space; QAP comes from the flag.
-        let mut unverified_space = BigInt::zero();
+        let mut space: u64 = 0;
         let mut pieces = Vec::with_capacity(activation_info.piece_manifests.len());
         for piece in &activation_info.piece_manifests {
-            unverified_space += piece.size.0;
-            pieces.push((piece.cid, piece.size.0));
+            // Caller-supplied sizes are unbounded until CommD is computed, which is optional.
+            space = space.checked_add(piece.size.0).ok_or_else(|| {
+                actor_error!(
+                    illegal_argument,
+                    "piece sizes overflow for sector {}",
+                    activation_info.sector_number
+                )
+            })?;
+            pieces.push(PieceInfo { cid: piece.cid, size: piece.size });
         }
-        activation_outputs.push(DataActivationOutput { unverified_space, pieces });
+        activation_outputs.push(DataActivationOutput { space, pieces });
     }
 
-    let batch_return = BatchReturn::ok(activation_inputs.len() as u32);
-    Ok((batch_return, activation_outputs))
+    Ok(activation_outputs)
 }
 
-/// Activates deals in sectors.
-/// FIP-0118: verified allocation claims are no longer made; all sectors get 10x QA power
-/// via the FULL_QA_POWER flag regardless of deal content. allocation_id from market is ignored.
-/// Deals and claims are grouped by sectors.
-/// Successfully activated sectors have their DealSpaces returned.
+/// Asks the market to activate each sector's deals, returning the pieces it resolved from
+/// them. Only the market can map a deal id to its piece.
 fn activate_sectors_deals(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInput],
-    compute_unsealed_cid: bool,
 ) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
     let batch_activation_res = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
         true => ext::market::BatchActivateDealsResult {
             // if all sectors are empty of deals, skip calling the market actor
-            activations: vec![
-                ext::market::SectorDealActivation {
-                    activated: Vec::default(),
-                    unsealed_cid: None,
-                };
-                activation_infos.len()
-            ],
+            activations: vec![Vec::default(); activation_infos.len()],
             activation_results: BatchReturn::ok(activation_infos.len() as u32),
         },
         false => {
@@ -5412,7 +5344,6 @@ fn activate_sectors_deals(
                 ext::market::BATCH_ACTIVATE_DEALS_METHOD,
                 IpldBlock::serialize_cbor(&ext::market::BatchActivateDealsParams {
                     sectors: sector_activation_params,
-                    compute_cid: compute_unsealed_cid,
                 })?,
                 TokenAmount::zero(),
             ))?;
@@ -5425,21 +5356,20 @@ fn activate_sectors_deals(
         return Err(actor_error!(illegal_argument, "all deals failed to activate"));
     }
 
-    // FIP-0118: no verifreg claim step. All deal space is treated as unverified;
-    // QAP comes from the FULL_QA_POWER flag.
     let activation_outputs = batch_activation_res
         .activations
-        .iter()
-        .map(|sector_deals| {
-            let mut sector_pieces = Vec::with_capacity(sector_deals.activated.len());
-            let mut unverified_deal_space = BigInt::zero();
-            for info in &sector_deals.activated {
-                sector_pieces.push((info.data, info.size.0));
-                unverified_deal_space += info.size.0;
+        .into_iter()
+        .map(|pieces| {
+            let mut space: u64 = 0;
+            for piece in &pieces {
+                // Sizes come from market state, but the sum is still checked.
+                space = space.checked_add(piece.size.0).ok_or_else(|| {
+                    actor_error!(illegal_state, "piece sizes overflow for activated deals")
+                })?;
             }
-            DataActivationOutput { unverified_space: unverified_deal_space, pieces: sector_pieces }
+            Ok(DataActivationOutput { space, pieces })
         })
-        .collect();
+        .collect::<Result<Vec<_>, ActorError>>()?;
 
     // Return the deal spaces for activated sectors only
     Ok((batch_activation_res.activation_results, activation_outputs))

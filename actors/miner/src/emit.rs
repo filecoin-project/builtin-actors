@@ -1,6 +1,7 @@
 use cid::Cid;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{ActorError, EventBuilder};
+use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::SectorNumber;
 
 /// Indicates a sector has been pre-committed.
@@ -15,7 +16,7 @@ pub fn sector_activated(
     rt: &impl Runtime,
     sector: SectorNumber,
     unsealed_cid: Option<Cid>,
-    pieces: &[(Cid, u64)],
+    pieces: &[PieceInfo],
 ) -> Result<(), ActorError> {
     rt.emit_event(
         &EventBuilder::new()
@@ -30,7 +31,7 @@ pub fn sector_updated(
     rt: &impl Runtime,
     sector: SectorNumber,
     unsealed_cid: Option<Cid>,
-    pieces: &[(Cid, u64)],
+    pieces: &[PieceInfo],
 ) -> Result<(), ActorError> {
     rt.emit_event(
         &EventBuilder::new()
@@ -52,7 +53,7 @@ trait WithSectorInfo {
         self,
         sector: SectorNumber,
         unsealed_cid: Option<Cid>,
-        pieces: &[(Cid, u64)],
+        pieces: &[PieceInfo],
     ) -> EventBuilder;
 }
 
@@ -61,13 +62,13 @@ impl WithSectorInfo for EventBuilder {
         self,
         sector: SectorNumber,
         unsealed_cid: Option<Cid>,
-        pieces: &[(Cid, u64)],
+        pieces: &[PieceInfo],
     ) -> EventBuilder {
         let mut event =
             self.field_indexed("sector", &sector).field_indexed("unsealed-cid", &unsealed_cid);
 
         for piece in pieces {
-            event = event.field_indexed("piece-cid", &piece.0).field("piece-size", &piece.1);
+            event = event.field_indexed("piece-cid", &piece.cid).field("piece-size", &piece.size);
         }
         event
     }

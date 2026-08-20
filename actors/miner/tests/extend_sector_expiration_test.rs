@@ -1,4 +1,3 @@
-use fil_actor_market::ActivatedDeal;
 use fil_actor_miner::{
     ExpirationExtension2, ExtendSectorExpiration2Params, PoStPartition, SectorClaim,
     SectorOnChainInfo, State, daily_proof_fee, power_for_sector,
@@ -14,6 +13,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::piece::PieceInfo;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{
     clock::ChainEpoch,
@@ -245,12 +245,7 @@ fn updates_expiration_and_daily_fee(nv: u32) {
     rt.set_network_version(NetworkVersion::from(nv));
 
     // Create deal for v2 cases
-    let deal = ActivatedDeal {
-        client: 0,
-        allocation_id: 1,
-        data: Default::default(),
-        size: PaddedPieceSize(h.sector_size as u64),
-    };
+    let deal = PieceInfo { size: PaddedPieceSize(h.sector_size as u64), cid: Default::default() };
 
     // Configure sectors
     let sector_pieces = vec![vec![], vec![1]];
@@ -510,8 +505,8 @@ fn update_expiration2_multiple_claims() {
     let (mut h, rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        test_activated_deal(h.sector_size as u64 / 2, 1),
-        test_activated_deal(h.sector_size as u64 / 2, 2),
+        test_activated_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
     h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
@@ -576,8 +571,8 @@ fn update_expiration2_failure_cases() {
     // Extensions that previously failed due to claim validation now succeed.
     let (mut h, rt) = setup();
     let verified_deals = vec![
-        test_activated_deal(h.sector_size as u64 / 2, 1),
-        test_activated_deal(h.sector_size as u64 / 2, 2),
+        test_activated_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
     h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
@@ -617,19 +612,19 @@ fn update_expiration2_failure_cases() {
 fn extend_expiration2_drop_claims() {
     // FIP-0118: claim validation and dropping has been removed from extensions.
     // sectors_with_claims references are ignored; all sectors get FULL_QA_POWER (10x).
-    // verified_deal_weight is always 0 for new sectors.
     let (mut h, rt) = setup();
     let verified_deals = vec![
-        test_activated_deal(h.sector_size as u64 / 2, 1),
-        test_activated_deal(h.sector_size as u64 / 2, 2),
+        test_activated_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
     let state: State = rt.get_state();
     let (deadline_index, partition_index) =
         state.find_sector(rt.store(), old_sector.sector_number).unwrap();
 
-    // FIP-0118: verified_deal_weight is 0 for all new sectors
-    assert!(old_sector.verified_deal_weight.is_zero());
+    // Piece spacetime is recorded in verified_deal_weight; deal_weight is unused.
+    assert!(old_sector.deal_weight.is_zero());
+    assert!(!old_sector.verified_deal_weight.is_zero());
 
     {
         // sanity check deadline and partition state is correct for original sector's fees
@@ -723,8 +718,8 @@ fn update_expiration2_drop_claims_failure_cases() {
     // removed from extensions. Extensions with drop_claims now succeed regardless of timing.
     let (mut h, rt) = setup();
     let verified_deals = vec![
-        test_activated_deal(h.sector_size as u64 / 2, 1),
-        test_activated_deal(h.sector_size as u64 / 2, 2),
+        test_activated_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
     h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
@@ -762,7 +757,7 @@ fn update_expiration2_drop_claims_failure_cases() {
 }
 
 fn commit_sector_verified_deals(
-    verified_deals: &[ActivatedDeal],
+    verified_deals: &[PieceInfo],
     h: &mut ActorHarness,
     rt: &MockRuntime,
 ) -> SectorOnChainInfo {
