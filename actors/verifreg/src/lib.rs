@@ -4,7 +4,6 @@
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_shared::METHOD_CONSTRUCTOR;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::error::ExitCode;
 use log::info;
 use num_derive::FromPrimitive;
@@ -13,8 +12,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 use fil_actors_runtime::{
-    ActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, actor_dispatch,
-    actor_error,
+    ActorError, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error,
 };
 
 pub use self::state::Allocation;
@@ -24,8 +22,6 @@ pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
-
-mod emit;
 
 pub mod expiration;
 pub mod ext;
@@ -125,25 +121,12 @@ impl Actor {
         datacap_deprecated("removing expired allocations")
     }
 
-    // FIP-0118: allocations are cleared by the network upgrade migration and QAP is now
-    // derived from sector state directly, so claiming is a no-op that always succeeds,
-    // regardless of whether a claimed allocation ever existed.
     pub fn claim_allocations(
         rt: &impl Runtime,
-        params: ClaimAllocationsParams,
+        _params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-        let sector_claims = params
-            .sectors
-            .iter()
-            .map(|sector| SectorClaimSummary {
-                claimed_space: sector.claims.iter().map(|claim| BigInt::from(claim.size.0)).sum(),
-            })
-            .collect();
-        Ok(ClaimAllocationsReturn {
-            sector_results: BatchReturn::ok(params.sectors.len() as u32),
-            sector_claims,
-        })
+        datacap_deprecated("claiming allocations")
     }
 
     // get claims for a provider
@@ -187,50 +170,10 @@ impl Actor {
     // If no claims are specified, all eligible claims are removed.
     pub fn remove_expired_claims(
         rt: &impl Runtime,
-        params: RemoveExpiredClaimsParams,
+        _params: RemoveExpiredClaimsParams,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
-        // Since the claims are expired, this is safe to be called by anyone.
         rt.validate_immediate_caller_accept_any()?;
-        let curr_epoch = rt.curr_epoch();
-        let mut batch_ret = BatchReturn::empty();
-        let mut considered = Vec::<ClaimID>::new();
-        rt.transaction(|st: &mut State, rt| {
-            let mut claims = st.load_claims(rt.store())?;
-            let to_remove: Vec<&ClaimID>;
-            if params.claim_ids.is_empty() {
-                // Find all expired claims for the provider.
-                considered = expiration::find_expired(&mut claims, params.provider, curr_epoch)?;
-                batch_ret = BatchReturn::ok(considered.len() as u32);
-                to_remove = considered.iter().collect();
-            } else {
-                considered = params.claim_ids.clone();
-                batch_ret = expiration::check_expired(
-                    &mut claims,
-                    &params.claim_ids,
-                    params.provider,
-                    curr_epoch,
-                )?;
-                to_remove = batch_ret.successes(&params.claim_ids);
-            }
-
-            for id in to_remove {
-                let removed = claims
-                    .remove(params.provider, *id)
-                    .context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to remove claim {}", id),
-                    )?
-                    .unwrap();
-
-                emit::claim_removed(rt, *id, &removed)?;
-            }
-
-            st.save_claims(&mut claims)?;
-            Ok(())
-        })
-        .context("state transaction failed")?;
-
-        Ok(RemoveExpiredClaimsReturn { considered, results: batch_ret })
+        datacap_deprecated("removing expired claims")
     }
 
     // Always rejects. This received datacap tokens and created allocations from them;

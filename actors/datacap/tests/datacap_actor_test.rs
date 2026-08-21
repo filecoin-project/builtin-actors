@@ -232,7 +232,6 @@ mod burn {
 mod destroy {
     use crate::{ALICE, BOB, make_harness};
     use fil_actor_datacap::DestroyParams;
-    use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
     use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, expect_abort_contains_message};
     use fvm_shared::MethodNum;
     use fvm_shared::econ::TokenAmount;
@@ -241,31 +240,29 @@ mod destroy {
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::error::ExitCode;
 
+    // Datacap balances are frozen, so destroying is rejected for every caller, the governor
+    // included.
     #[test]
-    fn only_governor_allowed() {
+    fn rejected_for_all_callers() {
         let (rt, h) = make_harness();
 
         let amt = TokenAmount::from_whole(1);
         h.mint_directly(&rt, &ALICE, &(2 * amt.clone()));
-
-        // destroying from operator does not work
         let params = DestroyParams { owner: *ALICE, amount: amt.clone() };
 
-        rt.expect_validate_caller_addr(vec![VERIFIED_REGISTRY_ACTOR_ADDR]);
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *BOB);
-        expect_abort_contains_message(
-            ExitCode::USR_FORBIDDEN,
-            "caller address",
-            rt.call::<Actor>(
-                Method::DestroyExported as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
-        );
+        for caller in [*BOB, h.governor] {
+            rt.expect_validate_caller_any();
+            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
+            expect_abort_contains_message(
+                ExitCode::USR_FORBIDDEN,
+                "datacap is deprecated",
+                rt.call::<Actor>(
+                    Method::DestroyExported as MethodNum,
+                    IpldBlock::serialize_cbor(&params).unwrap(),
+                ),
+            );
+        }
 
-        // Destroying from 0 allowance having governor works
-        assert!(h.get_allowance_between(&rt, &ALICE, &h.governor).is_zero());
-        let ret = h.destroy(&rt, &ALICE, &amt).unwrap();
-        assert_eq!(ret.balance, amt); // burned 2 amt - amt = amt
         h.check_state(&rt)
     }
 }

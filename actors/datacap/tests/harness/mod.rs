@@ -1,16 +1,15 @@
 use std::cell::RefCell;
 
-use frc46_token::token::types::BurnReturn;
 use fvm_shared::MethodNum;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 
 use fil_actor_datacap::testing::check_state_invariants;
-use fil_actor_datacap::{Actor as DataCapActor, DestroyParams, Method, State};
+use fil_actor_datacap::{Actor as DataCapActor, Method, State};
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    ActorError, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
@@ -78,26 +77,6 @@ impl Harness {
         rt.replace_state(&st);
     }
 
-    pub fn destroy(
-        &self,
-        rt: &MockRuntime,
-        owner: &Address,
-        amount: &TokenAmount,
-    ) -> Result<BurnReturn, ActorError> {
-        rt.expect_validate_caller_addr(vec![VERIFIED_REGISTRY_ACTOR_ADDR]);
-
-        let params = DestroyParams { owner: *owner, amount: amount.clone() };
-
-        rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
-        let ret = rt.call::<DataCapActor>(
-            Method::DestroyExported as MethodNum,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )?;
-
-        rt.verify();
-        Ok(ret.unwrap().deserialize().unwrap())
-    }
-
     // Reads a balance from state directly.
     pub fn get_balance(&self, rt: &MockRuntime, address: &Address) -> TokenAmount {
         rt.expect_validate_caller_any();
@@ -112,19 +91,6 @@ impl Harness {
             .unwrap();
         rt.verify();
         ret
-    }
-
-    // Reads allowance from state directly
-    pub fn get_allowance_between(
-        &self,
-        rt: &MockRuntime,
-        owner: &Address,
-        operator: &Address,
-    ) -> TokenAmount {
-        rt.get_state::<State>()
-            .token
-            .get_allowance_between(rt.store(), owner.id().unwrap(), operator.id().unwrap())
-            .unwrap()
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
