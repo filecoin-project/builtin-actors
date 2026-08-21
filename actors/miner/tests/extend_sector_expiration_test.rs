@@ -14,7 +14,6 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::version::NetworkVersion;
 use fvm_shared::{
     clock::ChainEpoch,
     error::ExitCode,
@@ -27,7 +26,6 @@ use std::collections::HashMap;
 mod util;
 
 use itertools::Itertools;
-use test_case::test_case;
 use util::*;
 
 // an expiration ~10 days greater than effective min expiration taking into account 30 days max between pre and prove commit
@@ -230,9 +228,8 @@ fn updates_expiration_with_valid_params() {
     h.check_state(&rt);
 }
 
-#[test_case(25; "v2_grace")]
-#[test_case(26; "v2_active")]
-fn updates_expiration_and_daily_fee(nv: u32) {
+#[test]
+fn updates_expiration_and_daily_fee() {
     // Start with sectors that have a zero fee (i.e. indicating they are pre-FIP-0100). Two sectors
     // for both cases, but we will make the second sector fully verified to test the fee
     // calculation.
@@ -242,7 +239,6 @@ fn updates_expiration_and_daily_fee(nv: u32) {
     // Common setup
     h.construct_and_verify(&rt);
     rt.set_circulating_supply(TokenAmount::zero());
-    rt.set_network_version(NetworkVersion::from(nv));
 
     // Create deal for v2 cases
     let deal = PieceInfo { size: PaddedPieceSize(h.sector_size as u64), cid: Default::default() };
@@ -313,20 +309,13 @@ fn updates_expiration_and_daily_fee(nv: u32) {
         assert_eq!(new_expiration, sector.expiration);
     }
 
-    // Calculate expected fee for a full verified sector and the total fee of our two sectors
-    // combined, taking into account the grace period during which fees are zero.
-    let (full_verified_fee, total_fee) = if nv >= 26 {
-        (
-            daily_proof_fee(
-                &rt.policy,
-                &rt.circulating_supply.borrow(),
-                &BigInt::from(h.sector_size as u64 * 10),
-            ),
-            new_sectors[0].daily_fee.clone() + new_sectors[1].daily_fee.clone(),
-        )
-    } else {
-        (TokenAmount::zero(), TokenAmount::zero()) // grace period
-    };
+    // Extending a pre-FIP-0100 sector attaches its first fee.
+    let full_verified_fee = daily_proof_fee(
+        &rt.policy,
+        &rt.circulating_supply.borrow(),
+        &BigInt::from(h.sector_size as u64 * 10),
+    );
+    let total_fee = new_sectors[0].daily_fee.clone() + new_sectors[1].daily_fee.clone();
 
     // FIP-0118: both sectors have FULL_QA_POWER, so both get full verified fee
     assert_eq!(full_verified_fee, new_sectors[0].daily_fee);
