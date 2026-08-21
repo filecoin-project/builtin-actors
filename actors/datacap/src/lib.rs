@@ -150,19 +150,12 @@ impl Actor {
     /// Only the governor can call this method.
     /// This method is not part of the fungible token standard, and is named distinctly from
     /// "burn" to reflect that distinction.
-    pub fn destroy(rt: &impl Runtime, params: DestroyParams) -> Result<BurnReturn, ActorError> {
-        rt.transaction(|st: &mut State, rt| {
-            // Only the governor can destroy datacap tokens on behalf of a holder.
-            rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
-
-            let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-            let mut token = as_token(st, &runtime);
-            // Burn tokens as if the holder had invoked burn() themselves.
-            // The governor doesn't need an allowance.
-            token.burn(&params.owner, &params.amount).actor_result()
-        })
-        .context("state transaction failed")
+    pub fn destroy(rt: &impl Runtime, _params: DestroyParams) -> Result<BurnReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        Err(actor_error!(
+            forbidden,
+            "FIP-0118: datacap is deprecated, destroying datacap is no longer supported"
+        ))
     }
 
     pub fn transfer(
@@ -189,62 +182,35 @@ impl Actor {
 
     pub fn increase_allowance(
         rt: &impl Runtime,
-        params: IncreaseAllowanceParams,
+        _params: IncreaseAllowanceParams,
     ) -> Result<IncreaseAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let owner = rt.message().caller();
-        let operator = params.operator;
-
-        rt.transaction(|st: &mut State, rt| {
-            let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-            let mut token = as_token(st, &runtime);
-            token
-                .increase_allowance(&owner, &operator, &params.increase)
-                .map(|new_allowance| IncreaseAllowanceReturn { new_allowance })
-                .actor_result()
-        })
-        .context("state transaction failed")
+        Err(actor_error!(
+            forbidden,
+            "FIP-0118: datacap is deprecated, increasing allowance is no longer supported"
+        ))
     }
 
     pub fn decrease_allowance(
         rt: &impl Runtime,
-        params: DecreaseAllowanceParams,
+        _params: DecreaseAllowanceParams,
     ) -> Result<DecreaseAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let owner = &rt.message().caller();
-        let operator = &params.operator;
-
-        rt.transaction(|st: &mut State, rt| {
-            let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-            let mut token = as_token(st, &runtime);
-            token
-                .decrease_allowance(owner, operator, &params.decrease)
-                .map(|new_allowance| DecreaseAllowanceReturn { new_allowance })
-                .actor_result()
-        })
-        .context("state transaction failed")
+        Err(actor_error!(
+            forbidden,
+            "FIP-0118: datacap is deprecated, decreasing allowance is no longer supported"
+        ))
     }
 
     pub fn revoke_allowance(
         rt: &impl Runtime,
-        params: RevokeAllowanceParams,
+        _params: RevokeAllowanceParams,
     ) -> Result<RevokeAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let owner = &rt.message().caller();
-        let operator = &params.operator;
-
-        rt.transaction(|st: &mut State, rt| {
-            let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
-            let mut token = as_token(st, &runtime);
-            token
-                .revoke_allowance(owner, operator)
-                .map(|old_allowance| RevokeAllowanceReturn { old_allowance })
-                .actor_result()
-        })
-        .context("state transaction failed")
+        Err(actor_error!(
+            forbidden,
+            "FIP-0118: datacap is deprecated, revoking allowance is no longer supported"
+        ))
     }
 
     pub fn burn(rt: &impl Runtime, _params: BurnParams) -> Result<BurnReturn, ActorError> {

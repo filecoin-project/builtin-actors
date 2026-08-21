@@ -548,8 +548,8 @@ mod allocs_claims {
     use fvm_shared::{ActorID, MethodNum};
 
     use fil_actor_verifreg::{
-        Actor, AllocationID, ClaimTerm, ExtendClaimTermsParams, GetClaimsParams, Method,
-        RemoveExpiredAllocationsParams, State,
+        Actor, ClaimTerm, ExtendClaimTermsParams, GetClaimsParams, Method,
+        RemoveExpiredAllocationsParams,
     };
     use fil_actors_runtime::FailCode;
     use fil_actors_runtime::runtime::policy_constants::{
@@ -587,51 +587,33 @@ mod allocs_claims {
     }
 
     #[test]
-    fn claim_allocs() {
-        // FIP-0118: allocations are cleared by the network upgrade migration and QAP no
-        // longer depends on claims, so ClaimAllocations always succeeds for a miner
-        // caller, whether or not the referenced allocation ever existed.
+    fn claim_allocs_rejected() {
         let (h, rt) = new_harness();
 
         let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
         let alloc1 = make_alloc("1", CLIENT1, PROVIDER1, size);
         let id1 = h.create_alloc(&rt, &alloc1).unwrap();
-        let missing_id = id1 + 100; // Never created (as if cleared by the migration).
 
-        let sector = 1000;
-        let expiry = MINIMUM_VERIFIED_ALLOCATION_TERM;
-
-        let reqs = vec![
-            make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
-            make_claim_reqs(sector + 1, expiry, &[(missing_id, &alloc1)]),
-        ];
         rt.expect_validate_caller_type(vec![fil_actors_runtime::runtime::builtins::Type::Miner]);
         rt.set_caller(
             *fil_actors_runtime::test_utils::MINER_ACTOR_CODE_ID,
             Address::new_id(PROVIDER1),
         );
-        let params =
-            fil_actor_verifreg::ClaimAllocationsParams { sectors: reqs, all_or_nothing: false };
-        let ret: fil_actor_verifreg::ClaimAllocationsReturn = rt
-            .call::<Actor>(
+        let params = fil_actor_verifreg::ClaimAllocationsParams {
+            sectors: vec![make_claim_reqs(
+                1000,
+                MINIMUM_VERIFIED_ALLOCATION_TERM,
+                &[(id1, &alloc1)],
+            )],
+            all_or_nothing: false,
+        };
+        expect_abort_contains_message(
+            ExitCode::USR_FORBIDDEN,
+            "datacap is deprecated",
+            rt.call::<Actor>(
                 Method::ClaimAllocations as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
-            )
-            .unwrap()
-            .unwrap()
-            .deserialize()
-            .unwrap();
-        assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.sector_results.codes());
-        assert_eq!(
-            vec![
-                fil_actor_verifreg::SectorClaimSummary {
-                    claimed_space: fvm_shared::bigint::BigInt::from(alloc1.size.0)
-                },
-                fil_actor_verifreg::SectorClaimSummary {
-                    claimed_space: fvm_shared::bigint::BigInt::from(alloc1.size.0)
-                },
-            ],
-            ret.sector_claims
+            ),
         );
         h.check_state(&rt);
     }
@@ -724,80 +706,28 @@ mod allocs_claims {
     }
 
     #[test]
-    fn expire_claims() {
+    fn expire_claims_rejected() {
         let (h, rt) = new_harness();
-        let term_start = 0;
         let term_min = MINIMUM_VERIFIED_ALLOCATION_TERM;
-        let sector = 0;
-
-        // expires at term_start + term_min + 100
-        let claim1 = make_claim(
-            "1",
-            CLIENT1,
-            PROVIDER1,
-            ALLOC_SIZE,
-            term_min,
-            term_min + 100,
-            term_start,
-            sector,
-        );
-        // expires at term_start + 200 + term_min (i.e. 100 epochs later)
-        let claim2 = make_claim(
-            "2",
-            CLIENT1,
-            PROVIDER1,
-            ALLOC_SIZE * 2,
-            term_min,
-            term_min,
-            term_start + 200,
-            sector,
-        );
-
+        let claim1 = make_claim("1", CLIENT1, PROVIDER1, ALLOC_SIZE, term_min, term_min, 0, 0);
         let id1 = h.create_claim(&rt, &claim1).unwrap();
-        let id2 = h.create_claim(&rt, &claim2).unwrap();
-        let state_with_allocs: State = rt.get_state();
 
-        // Removal of expired claims shares most of its implementation with removing expired allocations.
-        // The full test suite is not duplicated here,   simple ones to ensure that the expiration
-        // is correctly computed.
-
-        let expect_1 = vec![(id1, claim1.clone())];
-        let expect_2 = vec![(id2, claim2.clone())];
-        let expect_both = vec![(id1, claim1), (id2, claim2)];
-
-        // None expired yet
-        rt.set_epoch(term_start + term_min + 99);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2], vec![]).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN], ret.results.codes());
-
-        // One expired
-        rt.set_epoch(term_start + term_min + 100);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2], expect_1).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::OK, ExitCode::USR_FORBIDDEN], ret.results.codes());
-
-        // Both now expired
-        rt.set_epoch(term_start + term_min + 200);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2], expect_2).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::OK], ret.results.codes());
-
-        // Reset state, and show that specifying none removes only expired allocations
-        rt.set_epoch(term_start + term_min);
-        rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![], vec![]).unwrap();
-        assert_eq!(Vec::<AllocationID>::new(), ret.considered);
-        assert_eq!(Vec::<ExitCode>::new(), ret.results.codes());
+        // Well past expiry, and still refused: claims are frozen in place.
+        rt.set_epoch(term_min + 1000);
+        rt.expect_validate_caller_any();
+        expect_abort_contains_message(
+            ExitCode::USR_FORBIDDEN,
+            "datacap is deprecated",
+            rt.call::<Actor>(
+                Method::RemoveExpiredClaims as MethodNum,
+                IpldBlock::serialize_cbor(&fil_actor_verifreg::RemoveExpiredClaimsParams {
+                    provider: PROVIDER1,
+                    claim_ids: vec![id1],
+                })
+                .unwrap(),
+            ),
+        );
         assert!(h.load_claim(&rt, PROVIDER1, id1).is_some());
-        assert!(h.load_claim(&rt, PROVIDER1, id2).is_some());
-
-        rt.set_epoch(term_start + term_min + 200);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![], expect_both).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
-        assert!(h.load_claim(&rt, PROVIDER1, id1).is_none()); // removed
-        assert!(h.load_claim(&rt, PROVIDER1, id2).is_none()); // removed
         h.check_state(&rt);
     }
 
