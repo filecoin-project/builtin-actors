@@ -10,7 +10,7 @@ use fil_actor_reward::{
     StreamsState, WeightRecord, WeightRecordUpdate, compute_service_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
-    EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
+    ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
 };
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, EventBuilder, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -50,6 +50,7 @@ fn base_runtime() -> MockRuntime {
     for id in [SWA_ACTOR_ID, WRITER, RECIPIENT_A, RECIPIENT_B] {
         rt.set_address_actor_type(Address::new_id(id), *EVM_ACTOR_CODE_ID);
     }
+    rt.set_address_actor_type(BURNT_FUNDS_ACTOR_ADDR, *ACCOUNT_ACTOR_CODE_ID);
     let streams = StreamsState {
         streams: vec![
             Stream { id: 1, weight: weight(pct(60)), distribution: None },
@@ -773,6 +774,107 @@ fn cancellation_strands_a_call_and_emits_drop_on_next_mutation() {
     call(&rt, Method::ClaimExported, &ClaimParams { id: 999, wallets: Vec::new() }).unwrap();
     rt.verify();
     assert!(load_streams(&rt).pending_writes.is_empty());
+}
+
+#[test]
+fn award_burns_sentinel_share_immediately_and_counts_it() {
+    let rt = base_runtime();
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    rt.expect_validate_caller_any();
+    call(
+        &rt,
+        Method::SetSharesExported,
+        &SetSharesParams {
+            id: 2,
+            shares: vec![
+                RecipientShare { recipient: BURNT_FUNDS_ACTOR_ADDR, share: pct(25) },
+                RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: pct(25) },
+                RecipientShare { recipient: BURNT_FUNDS_ACTOR_ADDR, share: pct(25) },
+                RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: pct(25) },
+            ],
+        },
+    )
+    .unwrap();
+    rt.verify();
+
+    let streams = load_streams(&rt);
+    let distribution = streams.streams[1].distribution.as_ref().unwrap();
+    assert_eq!(
+        vec![Address::new_id(RECIPIENT_A), Address::new_id(RECIPIENT_B)],
+        distribution.shares.iter().map(|row| row.recipient).collect::<Vec<_>>()
+    );
+
+    let mut state: State = rt.get_state();
+    state.this_epoch_reward = TokenAmount::from_atto(500);
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
+    expect_miner_reward(&rt, TokenAmount::from_atto(60), TokenAmount::zero(), ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(30), ExitCode::OK);
+    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(TokenAmount::from_atto(100), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(30), state.total_burn_minted);
+    assert_eq!(TokenAmount::from_atto(10), state.total_explicit_minted);
+    assert_eq!(TokenAmount::from_atto(10), state.accrued[0].amount);
+    assert_eq!(
+        TokenAmount::from_atto(60),
+        &state.total_minted_reward - &state.total_burn_minted - &state.total_explicit_minted
+    );
+    assert_state_invariants(&rt);
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(300));
+    rt.expect_validate_caller_any();
+    let result = call(
+        &rt,
+        Method::ClaimExported,
+        &ClaimParams { id: 2, wallets: vec![BURNT_FUNDS_ACTOR_ADDR] },
+    )
+    .unwrap()
+    .unwrap();
+    let result: ClaimReturn = result.deserialize().unwrap();
+    rt.verify();
+    assert_eq!(vec![TokenAmount::zero()], result.amounts);
+    let streams = load_streams(&rt);
+    let distribution = streams.streams[1].distribution.as_ref().unwrap();
+    assert!(
+        distribution
+            .payable
+            .iter()
+            .chain(&distribution.claimed_period)
+            .all(|row| row.recipient != BURNT_FUNDS_ACTOR_ADDR)
+    );
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    rt.expect_validate_caller_any();
+    call(
+        &rt,
+        Method::SetSharesExported,
+        &SetSharesParams {
+            id: 2,
+            shares: vec![RecipientShare { recipient: BURNT_FUNDS_ACTOR_ADDR, share: DENOM }],
+        },
+    )
+    .unwrap();
+    rt.verify();
+    let streams = load_streams(&rt);
+    let distribution = streams.streams[1].distribution.as_ref().unwrap();
+    assert!(distribution.shares.is_empty());
+    assert!(distribution.claimed_period.is_empty());
+    assert!(distribution.payable.iter().all(|row| row.recipient != BURNT_FUNDS_ACTOR_ADDR));
+
+    expect_miner_reward(&rt, TokenAmount::from_atto(60), TokenAmount::zero(), ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(40), ExitCode::OK);
+    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(TokenAmount::from_atto(200), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(70), state.total_burn_minted);
+    assert_eq!(TokenAmount::from_atto(10), state.total_explicit_minted);
+    assert_eq!(TokenAmount::zero(), state.accrued[0].amount);
+    assert_state_invariants(&rt);
 }
 
 #[test]

@@ -127,9 +127,11 @@ impl Actor {
         let distribution = params
             .distribution
             .map(|distribution| -> Result<ExplicitDistribution, ActorError> {
+                let shares = resolve_shares(rt, distribution.shares)?;
                 Ok(ExplicitDistribution {
                     writer: resolve_required(rt, &distribution.writer, "distribution writer")?,
-                    shares: resolve_shares(rt, distribution.shares)?,
+                    shares: streams::normalize_shares(shares)
+                        .map_err(|e| illegal_argument(e, "invalid initial shares"))?,
                     payable: Vec::new(),
                     claimed_period: Vec::new(),
                 })

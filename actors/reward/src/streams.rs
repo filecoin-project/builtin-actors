@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 
 use anyhow::{Result, ensure};
+use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::repr::*;
 use fvm_ipld_encoding::tuple::*;
@@ -329,6 +330,7 @@ pub fn allocate_reward(
 
     let mut miner = TokenAmount::zero();
     let mut service = Vec::with_capacity(streams.len());
+    let mut burn = TokenAmount::zero();
     let mut allocated = TokenAmount::zero();
     let denom = BigInt::from(DENOM);
     let mut weight_sum = 0_u128;
@@ -338,9 +340,16 @@ pub fn allocate_reward(
         records_valid &= validate_weight_record(&stream.weight).is_ok();
         let weight = compute_weight(&stream.weight, epoch);
         weight_sum = weight_sum.saturating_add(u128::from(weight));
-        let portion = TokenAmount::from_atto(block_reward.atto() * weight / &denom);
+        let mut portion = TokenAmount::from_atto(block_reward.atto() * weight / &denom);
         allocated += &portion;
-        if stream.distribution.is_some() {
+        if let Some(distribution) = &stream.distribution {
+            let share_total = stored_share_total(&distribution.shares)?;
+            ensure!(share_total <= DENOM, "stored shares sum to {share_total}, exceeds {DENOM}");
+            if share_total != DENOM {
+                let service_portion = TokenAmount::from_atto(portion.atto() * share_total / &denom);
+                burn += &portion - &service_portion;
+                portion = service_portion;
+            }
             service.push(StreamAccrual { id: stream.id, amount: portion });
         } else {
             miner += portion;
@@ -358,10 +367,17 @@ pub fn allocate_reward(
         });
     }
 
-    Ok(RewardAllocation { miner, service, burn: block_reward - allocated, schedule_valid })
+    burn += block_reward - allocated;
+    Ok(RewardAllocation { miner, service, burn, schedule_valid })
 }
 
-pub fn validate_shares(shares: &[RecipientShare]) -> Result<()> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ShareForm {
+    Wire,
+    Stored,
+}
+
+fn validate_share_rows(shares: &[RecipientShare], form: ShareForm) -> Result<u128> {
     ensure!(
         shares.len() <= MAX_RECIPIENTS,
         "recipient count {} exceeds maximum {MAX_RECIPIENTS}",
@@ -373,11 +389,46 @@ pub fn validate_shares(shares: &[RecipientShare]) -> Result<()> {
     for row in shares {
         validate_id_address(&row.recipient, "share recipient")?;
         ensure!(row.share != 0, "share for recipient {} is zero", row.recipient);
-        ensure!(recipients.insert(row.recipient), "duplicate share recipient {}", row.recipient);
+        if row.recipient == BURNT_FUNDS_ACTOR_ADDR {
+            ensure!(form == ShareForm::Wire, "burn sentinel persisted as a recipient");
+        } else {
+            ensure!(
+                recipients.insert(row.recipient),
+                "duplicate share recipient {}",
+                row.recipient
+            );
+        }
         total += u128::from(row.share);
     }
+    Ok(total)
+}
+
+/// Validates a wire map whose sentinel-inclusive shares must sum to `DENOM`.
+pub fn validate_shares(shares: &[RecipientShare]) -> Result<()> {
+    let total = validate_share_rows(shares, ShareForm::Wire)?;
     ensure!(total == u128::from(DENOM), "shares sum to {total}, expected {DENOM}");
     Ok(())
+}
+
+/// Validates a persisted map whose sentinel-free shares may sum below `DENOM`.
+fn validate_stored_shares(shares: &[RecipientShare]) -> Result<u64> {
+    let total = validate_share_rows(shares, ShareForm::Stored)?;
+    ensure!(total <= u128::from(DENOM), "stored shares sum to {total}, exceeds {DENOM}");
+    Ok(total as u64)
+}
+
+/// Validates wire shares, strips burn sentinels, and orders persisted recipients.
+pub(crate) fn normalize_shares(mut shares: Vec<RecipientShare>) -> Result<Vec<RecipientShare>> {
+    validate_shares(&shares)?;
+    shares.retain(|row| row.recipient != BURNT_FUNDS_ACTOR_ADDR);
+    shares.sort_by_key(|row| row.recipient);
+    Ok(shares)
+}
+
+fn stored_share_total(shares: &[RecipientShare]) -> Result<u64> {
+    shares.iter().try_fold(0_u64, |total, row| {
+        total.checked_add(row.share).ok_or_else(|| anyhow::anyhow!("stored shares overflow"))
+    })
 }
 
 /// Adds this award's explicit-stream portions to their matching inline accruals.
@@ -475,11 +526,9 @@ fn set_shares_inner(
     streams: &mut StreamsState,
     accruals: &mut [StreamAccrual],
     id: StreamId,
-    mut shares: Vec<RecipientShare>,
+    shares: Vec<RecipientShare>,
 ) -> Result<TokenAmount> {
-    validate_shares(&shares)?;
-    shares.sort_by_key(|row| row.recipient);
-
+    let shares = normalize_shares(shares)?;
     let stream = streams
         .streams
         .iter_mut()
@@ -544,10 +593,9 @@ fn settle_period(
     pool: &TokenAmount,
 ) -> Result<TokenAmount> {
     ensure!(!pool.is_negative(), "explicit-stream accrual is negative");
-    validate_shares(&distribution.shares)?;
-    validate_period_claims(distribution, pool)?;
+    let share_total = validate_period_claims(distribution, pool)?;
 
-    let denom = BigInt::from(DENOM);
+    let denom = BigInt::from(share_total);
     let mut allocated = TokenAmount::zero();
     for share in &distribution.shares {
         let earned = TokenAmount::from_atto(pool.atto() * share.share / &denom);
@@ -565,9 +613,8 @@ fn claim_live(
     wallets: &[Address],
 ) -> Result<ClaimResult> {
     ensure!(!pool.is_negative(), "explicit-stream accrual is negative");
-    validate_shares(&distribution.shares)?;
-    validate_period_claims(distribution, pool)?;
-    let denom = BigInt::from(DENOM);
+    let share_total = validate_period_claims(distribution, pool)?;
+    let denom = BigInt::from(share_total);
     let mut amounts = Vec::with_capacity(wallets.len());
 
     for wallet in wallets {
@@ -576,7 +623,11 @@ fn claim_live(
             .iter()
             .find(|row| row.recipient == *wallet)
             .map_or(0, |row| row.share);
-        let earned = TokenAmount::from_atto(pool.atto() * share / &denom);
+        let earned = if share_total == 0 {
+            TokenAmount::zero()
+        } else {
+            TokenAmount::from_atto(pool.atto() * share / &denom)
+        };
         let claimed = amount_for(&distribution.claimed_period, wallet);
         // validate_period_claims established this relation for every stored recipient.
         debug_assert!(claimed <= earned);
@@ -613,10 +664,12 @@ fn claim_payable(payable: &mut Vec<RecipientAmount>, wallets: &[Address]) -> Res
     Ok(amounts)
 }
 
-fn validate_period_claims(distribution: &ExplicitDistribution, pool: &TokenAmount) -> Result<()> {
+fn validate_period_claims(distribution: &ExplicitDistribution, pool: &TokenAmount) -> Result<u64> {
     validate_amount_rows(&distribution.payable, "payable")?;
     validate_amount_rows(&distribution.claimed_period, "claimed-period")?;
-    let denom = BigInt::from(DENOM);
+    let share_total = validate_stored_shares(&distribution.shares)?;
+    ensure!(share_total != 0 || pool.is_zero(), "zero-share distribution has non-zero accrual");
+    let denom = BigInt::from(share_total);
     for claimed in &distribution.claimed_period {
         let share =
             distribution
@@ -631,7 +684,7 @@ fn validate_period_claims(distribution: &ExplicitDistribution, pool: &TokenAmoun
             claimed.recipient
         );
     }
-    Ok(())
+    Ok(share_total)
 }
 
 fn validate_amount_rows(rows: &[RecipientAmount], label: &str) -> Result<()> {
@@ -1107,7 +1160,7 @@ fn validate_stream_configuration_without_weights(streams: &[Stream]) -> Result<(
                 distribution.shares.is_sorted_by(|a, b| a.recipient < b.recipient),
                 "share recipients are not ordered"
             );
-            validate_shares(&distribution.shares)?;
+            validate_stored_shares(&distribution.shares)?;
             validate_amount_rows(&distribution.payable, "payable")?;
             validate_amount_rows(&distribution.claimed_period, "claimed-period")?;
             let reserved_rows = recipient_union_len(&distribution.payable, &distribution.shares);
@@ -1285,7 +1338,7 @@ pub(crate) fn validate_award_state_structure(streams: &StreamsState) -> Result<(
 fn validate_distribution_init(distribution: &Option<DistributionInit>) -> Result<()> {
     if let Some(distribution) = distribution {
         validate_id_address(&distribution.writer, "distribution writer")?;
-        validate_shares(&distribution.shares)?;
+        validate_stored_shares(&distribution.shares)?;
     }
     Ok(())
 }
