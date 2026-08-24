@@ -1,5 +1,7 @@
 use fil_actors_integration_tests::tests::{
-    legacy_cc_sector_reaches_10x_by_snapping_test,
+    full_qa_snap_preserves_initial_pledge_test, legacy_cc_sector_reaches_10x_by_snapping_test,
+    legacy_cc_snap_increases_initial_pledge_test, legacy_cc_snap_scales_existing_daily_fee_test,
+    legacy_extension_decays_deal_weight_and_restates_verified_weight_test,
     legacy_sector_termination_removes_its_own_power_test, new_cc_sector_gets_10x_test,
     ni_sector_gets_10x_test, simple_qap_sector_extends_without_power_change_test,
     verified_deal_gets_10x_without_datacap_test, verifreg_minting_disabled_test,
@@ -43,6 +45,27 @@ fn legacy_cc_sector_reaches_10x_by_snapping() {
 }
 
 #[test]
+fn full_qa_snap_preserves_initial_pledge() {
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(store);
+    full_qa_snap_preserves_initial_pledge_test(&v);
+}
+
+#[test]
+fn legacy_cc_snap_increases_initial_pledge() {
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(store);
+    legacy_cc_snap_increases_initial_pledge_test(&v);
+}
+
+#[test]
+fn legacy_cc_snap_scales_existing_daily_fee() {
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(store);
+    legacy_cc_snap_scales_existing_daily_fee_test(&v);
+}
+
+#[test]
 fn legacy_sector_termination_removes_its_own_power() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
@@ -54,4 +77,11 @@ fn simple_qap_sector_extends_without_power_change() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     simple_qap_sector_extends_without_power_change_test(&v);
+}
+
+#[test]
+fn legacy_extension_decays_deal_weight_and_restates_verified_weight() {
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(store);
+    legacy_extension_decays_deal_weight_and_restates_verified_weight_test(&v);
 }

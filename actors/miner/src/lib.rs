@@ -3913,19 +3913,22 @@ fn update_existing_sector_info(
     new_sector_info.replaced_day_reward = None;
     new_sector_info.expected_storage_pledge = None;
 
-    new_sector_info.initial_pledge =
-        max(new_sector_info.initial_pledge, pledge_inputs.initial_pledge_for_power(new_qa_power));
+    // Most snaps raise no power, so pledge and existing fees remain unchanged.
+    let old_qa_power = qa_power_for_sector(sector_size, sector_info);
+    let power_changed = old_qa_power != *new_qa_power;
+    if power_changed {
+        new_sector_info.initial_pledge = max(
+            new_sector_info.initial_pledge,
+            pledge_inputs.initial_pledge_for_power(new_qa_power),
+        );
+    }
     if new_sector_info.daily_fee.is_zero() {
         // pre-FIP-0100 sector
         new_sector_info.daily_fee =
             daily_proof_fee(policy, &pledge_inputs.circulating_supply, new_qa_power);
-    } else {
-        let old_qa_power = qa_power_for_sector(sector_size, sector_info);
-        // Unchanged is the common case now; skip the clone.
-        if old_qa_power != *new_qa_power {
-            new_sector_info.daily_fee =
-                daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, new_qa_power);
-        }
+    } else if power_changed {
+        new_sector_info.daily_fee =
+            daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, new_qa_power);
     }
     new_sector_info
 }
