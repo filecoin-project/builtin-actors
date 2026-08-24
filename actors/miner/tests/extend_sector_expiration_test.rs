@@ -1,14 +1,15 @@
 use fil_actor_miner::{
-    ExpirationExtension2, ExtendSectorExpiration2Params, PoStPartition, SectorClaim,
+    Actor, ExpirationExtension2, ExtendSectorExpiration2Params, Method, PoStPartition, SectorClaim,
     SectorOnChainInfo, State, daily_proof_fee, power_for_sector,
     seal_proof_sector_maximum_lifetime,
 };
 use fil_actors_runtime::{
     EPOCHS_IN_DAY,
     runtime::{Runtime, RuntimePolicy},
-    test_utils::{MockRuntime, expect_abort_contains_message},
+    test_utils::{ACCOUNT_ACTOR_CODE_ID, MockRuntime, expect_abort_contains_message},
 };
 use fvm_ipld_bitfield::BitField;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -82,6 +83,46 @@ fn rejects_negative_extensions() {
         &format!("cannot reduce sector {} expiration", sector.sector_number),
         res,
     );
+    h.check_state(&rt);
+}
+
+/// The deadline index is validated before anything else because
+/// `replace_sector_records` indexes a per-deadline vector with it. Out of range must be
+/// rejected, not carried through to that index.
+#[test]
+fn rejects_out_of_range_deadline() {
+    let (mut h, rt) = setup();
+    let sector = commit_sector(&mut h, &rt);
+
+    let state: State = rt.get_state();
+    let (_, partition_index) = state.find_sector(rt.store(), sector.sector_number).unwrap();
+    let out_of_range = rt.policy().wpost_period_deadlines;
+
+    let params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: out_of_range,
+            partition: partition_index,
+            sectors: make_bitfield(&[sector.sector_number]),
+            new_expiration: sector.expiration + rt.policy().wpost_proving_period,
+            sectors_with_claims: vec![],
+        }],
+    };
+
+    // The range check precedes caller validation, so this bypasses the harness helper and
+    // its expectation of a validate-caller call.
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
+    let res = rt.call::<Actor>(
+        Method::ExtendSectorExpiration2 as u64,
+        IpldBlock::serialize_cbor(&params).unwrap(),
+    );
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        &format!("deadline {} not in range 0..{}", out_of_range, out_of_range),
+        res,
+    );
+    rt.reset();
+
+    assert_eq!(sector, h.get_sector(&rt, sector.sector_number));
     h.check_state(&rt);
 }
 
