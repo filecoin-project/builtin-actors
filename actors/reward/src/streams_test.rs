@@ -619,6 +619,141 @@ fn allocates_reward_in_stream_order_and_conserves_attos() {
 }
 
 #[test]
+fn burns_sentinel_share_without_accruing_or_tombstoning_it() {
+    let full_shares = shares(&[(101, pct(25)), (102, pct(75))]);
+    let mut streams = StreamsState {
+        streams: vec![
+            stream(1, pct(60), None),
+            stream(2, pct(20), Some(explicit(200, full_shares))),
+        ],
+        ..Default::default()
+    };
+    let mut accruals = vec![StreamAccrual { id: 2, amount: TokenAmount::zero() }];
+    let reward = TokenAmount::from_atto(100);
+
+    let common = allocate_reward(&streams.streams, 0, &reward).unwrap();
+    assert_eq!(TokenAmount::from_atto(60), common.miner);
+    assert_eq!(TokenAmount::from_atto(20), common.service[0].amount);
+    assert_eq!(TokenAmount::from_atto(20), common.burn);
+
+    set_shares(
+        &mut streams,
+        &mut accruals,
+        2,
+        shares(&[(99, pct(25)), (101, pct(25)), (99, pct(25)), (102, pct(25))]),
+    )
+    .unwrap();
+    let distribution = streams.streams[1].distribution.as_ref().unwrap();
+    assert_eq!(shares(&[(101, pct(25)), (102, pct(25))]), distribution.shares);
+
+    let partial = allocate_reward(&streams.streams, 0, &reward).unwrap();
+    assert_eq!(TokenAmount::from_atto(60), partial.miner);
+    assert_eq!(TokenAmount::from_atto(10), partial.service[0].amount);
+    assert_eq!(TokenAmount::from_atto(30), partial.burn);
+    assert_eq!(reward, &partial.miner + &partial.service[0].amount + &partial.burn);
+    accrue_service(&mut accruals, &partial.service).unwrap();
+
+    // f099 is included to prove the sentinel has no claimable balance. Recipient 102 is omitted
+    // so its entitlement is folded into payable below.
+    let claimed =
+        claim(&mut streams, &accruals, 2, &[Address::new_id(101), BURNT_FUNDS_ACTOR_ADDR]).unwrap();
+    assert_eq!(vec![TokenAmount::from_atto(5), TokenAmount::zero()], claimed);
+    let distribution = streams.streams[1].distribution.as_ref().unwrap();
+    assert_eq!(vec![Address::new_id(101)], {
+        distribution.claimed_period.iter().map(|row| row.recipient).collect::<Vec<_>>()
+    });
+
+    set_shares(&mut streams, &mut accruals, 2, shares(&[(99, DENOM)])).unwrap();
+    let distribution = streams.streams[1].distribution.as_ref().unwrap();
+    assert!(distribution.shares.is_empty());
+    assert!(distribution.claimed_period.is_empty());
+    assert_eq!(vec![Address::new_id(102)], {
+        distribution.payable.iter().map(|row| row.recipient).collect::<Vec<_>>()
+    });
+
+    let removed = allocate_reward(&streams.streams, 0, &reward).unwrap();
+    assert_eq!(TokenAmount::from_atto(60), removed.miner);
+    assert_eq!(TokenAmount::zero(), removed.service[0].amount);
+    assert_eq!(TokenAmount::from_atto(40), removed.burn);
+    assert_eq!(reward, &removed.miner + &removed.service[0].amount + &removed.burn);
+    accrue_service(&mut accruals, &removed.service).unwrap();
+
+    queue_remove_stream(&mut streams, 0, 1, 2).unwrap();
+    apply_due_writes(&mut streams, &mut accruals, 1).unwrap();
+    assert_eq!(vec![Address::new_id(102)], {
+        streams.tombstones[0].payable.iter().map(|row| row.recipient).collect::<Vec<_>>()
+    });
+    let claimed =
+        claim(&mut streams, &accruals, 2, &[BURNT_FUNDS_ACTOR_ADDR, Address::new_id(102)]).unwrap();
+    assert_eq!(vec![TokenAmount::zero(), TokenAmount::from_atto(5)], claimed);
+    assert!(streams.tombstones.is_empty());
+}
+
+#[test]
+fn indivisible_sentinel_portion_preserves_survivor_entitlements() {
+    let third = DENOM / 3;
+    let survivor_shares = shares(&[(101, third), (102, third)]);
+    let reward = TokenAmount::from_atto(2);
+
+    // Control: three ordinary recipients split the full two-atto service pool. Each recipient's
+    // third floors to zero when claimed.
+    let mut ordinary = StreamsState {
+        streams: vec![stream(
+            2,
+            DENOM,
+            Some(explicit(200, shares(&[(101, third), (102, third), (103, DENOM - 2 * third)]))),
+        )],
+        ..Default::default()
+    };
+    let ordinary_allocation = allocate_reward(&ordinary.streams, 0, &reward).unwrap();
+    let mut ordinary_accruals = ordinary_allocation.service.clone();
+    let ordinary_claims =
+        claim(&mut ordinary, &ordinary_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
+            .unwrap();
+    assert_eq!(vec![TokenAmount::zero(), TokenAmount::zero()], ordinary_claims);
+
+    // Sentinel case: the third recipient's share burns. Flooring the survivor pool yields one
+    // atto, so the two surviving claims remain zero. Flooring the burn instead would leave a
+    // two-atto pool and incorrectly pay each survivor one atto after denominator adjustment.
+    let mut sentinel = StreamsState {
+        streams: vec![stream(2, DENOM, Some(explicit(200, survivor_shares)))],
+        ..Default::default()
+    };
+    let sentinel_allocation = allocate_reward(&sentinel.streams, 0, &reward).unwrap();
+    assert_eq!(TokenAmount::from_atto(1), sentinel_allocation.service[0].amount);
+    assert_eq!(TokenAmount::from_atto(1), sentinel_allocation.burn);
+    assert_eq!(
+        ordinary_allocation.service[0].amount,
+        &sentinel_allocation.service[0].amount + &sentinel_allocation.burn
+    );
+
+    let mut sentinel_accruals = sentinel_allocation.service.clone();
+    let sentinel_claims =
+        claim(&mut sentinel, &sentinel_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
+            .unwrap();
+    assert_eq!(ordinary_claims, sentinel_claims);
+
+    accrue_service(
+        &mut ordinary_accruals,
+        &allocate_reward(&ordinary.streams, 0, &reward).unwrap().service,
+    )
+    .unwrap();
+    accrue_service(
+        &mut sentinel_accruals,
+        &allocate_reward(&sentinel.streams, 0, &reward).unwrap().service,
+    )
+    .unwrap();
+    let ordinary_claims =
+        claim(&mut ordinary, &ordinary_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
+            .unwrap();
+    let sentinel_claims =
+        claim(&mut sentinel, &sentinel_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
+            .unwrap();
+    assert_eq!(vec![TokenAmount::from_atto(1), TokenAmount::from_atto(1)], ordinary_claims);
+    assert_eq!(ordinary_claims, sentinel_claims);
+}
+
+#[test]
 fn invalid_weight_envelope_allocates_no_reward_portion() {
     let streams = vec![
         stream(1, pct(60), None),
@@ -676,6 +811,23 @@ fn rejects_invalid_share_maps() {
         })
         .collect();
     assert!(validate_shares(&too_many).is_err());
+}
+
+#[test]
+fn admits_and_strips_burn_sentinel_rows() {
+    let normalized =
+        normalize_shares(shares(&[(99, pct(20)), (101, pct(50)), (99, pct(30))])).unwrap();
+    assert_eq!(shares(&[(101, pct(50))]), normalized);
+
+    assert!(normalize_shares(shares(&[(99, 0), (101, DENOM)])).is_err());
+    assert!(normalize_shares(shares(&[(99, pct(20)), (101, pct(40)), (101, pct(40)),])).is_err());
+    assert!(normalize_shares(shares(&[(99, DENOM)])).unwrap().is_empty());
+
+    let mut over_limit = shares(&[(101, DENOM - MAX_RECIPIENTS as u64)]);
+    over_limit.extend(
+        (0..MAX_RECIPIENTS).map(|_| RecipientShare { recipient: BURNT_FUNDS_ACTOR_ADDR, share: 1 }),
+    );
+    assert!(normalize_shares(over_limit).is_err());
 }
 
 #[test]
