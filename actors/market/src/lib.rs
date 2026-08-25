@@ -1328,14 +1328,15 @@ pub fn validate_deals_for_sector(
             .with_context(|| format!("cannot activate deal {}", deal_id))?;
         // Saturating: a bogus size lands above the sector bound rather than wrapping.
         deal_space = deal_space.saturating_add(proposal.piece_size.0);
-        if deal_space > sector_size as u64 {
-            return Err(actor_error!(
-                illegal_argument,
-                "deals too large to fit in sector {} > {}",
-                deal_space,
-                sector_size
-            ));
-        }
+    }
+
+    if deal_space > sector_size as u64 {
+        return Err(actor_error!(
+            illegal_argument,
+            "deals too large to fit in sector {} > {}",
+            deal_space,
+            sector_size
+        ));
     }
 
     Ok(())

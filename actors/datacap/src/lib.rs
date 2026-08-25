@@ -74,6 +74,15 @@ pub enum Method {
 
 pub struct Actor;
 
+// Callers apply their own caller validation before calling this.
+fn datacap_deprecated<T>(reason: &str) -> Result<T, ActorError> {
+    Err(actor_error!(
+        forbidden,
+        "FIP-0118: datacap is deprecated, {} is no longer supported",
+        reason
+    ))
+}
+
 impl Actor {
     /// Constructor for DataCap Actor
     pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
@@ -140,10 +149,7 @@ impl Actor {
 
     pub fn mint(rt: &impl Runtime, _params: MintParams) -> Result<MintReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Err(actor_error!(
-            forbidden,
-            "FIP-0118: datacap is deprecated, minting is no longer supported"
-        ))
+        datacap_deprecated("minting")
     }
 
     /// Destroys data cap tokens for an address (a verified client).
@@ -152,10 +158,7 @@ impl Actor {
     /// "burn" to reflect that distinction.
     pub fn destroy(rt: &impl Runtime, _params: DestroyParams) -> Result<BurnReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Err(actor_error!(
-            forbidden,
-            "FIP-0118: datacap is deprecated, destroying datacap is no longer supported"
-        ))
+        datacap_deprecated("destroying datacap")
     }
 
     pub fn transfer(
@@ -163,10 +166,7 @@ impl Actor {
         _params: TransferParams,
     ) -> Result<TransferReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Err(actor_error!(
-            forbidden,
-            "FIP-0118: datacap is deprecated, transfer is no longer supported"
-        ))
+        datacap_deprecated("transfer")
     }
 
     pub fn transfer_from(
@@ -174,10 +174,7 @@ impl Actor {
         _params: TransferFromParams,
     ) -> Result<TransferFromReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Err(actor_error!(
-            forbidden,
-            "FIP-0118: datacap is deprecated, transfer is no longer supported"
-        ))
+        datacap_deprecated("transfer")
     }
 
     pub fn increase_allowance(
@@ -185,10 +182,7 @@ impl Actor {
         _params: IncreaseAllowanceParams,
     ) -> Result<IncreaseAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Err(actor_error!(
-            forbidden,
-            "FIP-0118: datacap is deprecated, increasing allowance is no longer supported"
-        ))
+        datacap_deprecated("increasing allowance")
     }
 
     pub fn decrease_allowance(
@@ -196,10 +190,7 @@ impl Actor {
         _params: DecreaseAllowanceParams,
     ) -> Result<DecreaseAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Err(actor_error!(
-            forbidden,
-            "FIP-0118: datacap is deprecated, decreasing allowance is no longer supported"
-        ))
+        datacap_deprecated("decreasing allowance")
     }
 
     pub fn revoke_allowance(
@@ -207,15 +198,12 @@ impl Actor {
         _params: RevokeAllowanceParams,
     ) -> Result<RevokeAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Err(actor_error!(
-            forbidden,
-            "FIP-0118: datacap is deprecated, revoking allowance is no longer supported"
-        ))
+        datacap_deprecated("revoking allowance")
     }
 
     pub fn burn(rt: &impl Runtime, _params: BurnParams) -> Result<BurnReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Err(actor_error!(forbidden, "FIP-0118: datacap is deprecated, burn is no longer supported"))
+        datacap_deprecated("burn")
     }
 
     pub fn burn_from(
@@ -223,7 +211,7 @@ impl Actor {
         _params: BurnFromParams,
     ) -> Result<BurnFromReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Err(actor_error!(forbidden, "FIP-0118: datacap is deprecated, burn is no longer supported"))
+        datacap_deprecated("burn")
     }
 }
 
