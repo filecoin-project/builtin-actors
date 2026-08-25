@@ -257,6 +257,23 @@ pub struct ExpirationExtension2 {
     pub new_expiration: ChainEpoch,
 }
 
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct UpgradeSectorQualityParams {
+    pub extensions: Vec<UpgradeSectorQuality>,
+}
+
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct UpgradeSectorQuality {
+    pub deadline: u64,
+    pub partition: u64,
+    /// Sectors to upgrade to full quality-adjusted power (FIP-0118).
+    pub sectors: BitField,
+    /// Unset means upgrade only: every selected sector keeps its own expiration.
+    /// Otherwise the absolute epoch to extend all selected sectors to; it must be
+    /// after the current epoch and at or beyond each sector's current expiration.
+    pub new_expiration: Option<ChainEpoch>,
+}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct TerminateSectorsParams {
     pub terminations: Vec<TerminationDeclaration>,
