@@ -499,7 +499,7 @@ fn set_sector_daily_fee(
     });
 }
 
-fn current_initial_pledge(v: &dyn VM, qa_power: &StoragePower) -> TokenAmount {
+pub fn current_initial_pledge(v: &dyn VM, qa_power: &StoragePower) -> TokenAmount {
     let power: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
     let reward: RewardState = get_state(v, &REWARD_ACTOR_ADDR).unwrap();
     initial_pledge_for_power(
