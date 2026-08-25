@@ -2157,8 +2157,9 @@ impl Actor {
                         new_expiration,
                         sector,
                         info.sector_size,
-                    ),
-                    None => Ok(sector.clone()),
+                    )
+                    .map(Some),
+                    None => Ok(Some(sector.clone())),
                 },
             )
         })?;
@@ -2179,7 +2180,9 @@ impl Actor {
     /// May only be called by the miner's owner, worker, or a control address. Each
     /// declaration addresses active sectors in one partition; a declaration without a
     /// new expiration upgrades its sectors in place, leaving their expirations, power
-    /// base epochs and weights untouched.
+    /// base epochs and weights untouched. A sector already at full power is not
+    /// eligible and is skipped rather than extended or re-pledged, so repeating a call
+    /// changes nothing.
     ///
     /// # Errors
     /// Aborts with `USR_INSUFFICIENT_FUNDS` unless the available balance covers the
@@ -2190,7 +2193,15 @@ impl Actor {
         rt: &impl Runtime,
         params: UpgradeSectorQualityParams,
     ) -> Result<(), ActorError> {
+        let state: State = rt.state()?;
+        let info = get_miner_info(rt.store(), &state)?;
+        rt.validate_immediate_caller_is(
+            info.control_addresses.iter().chain(&[info.worker, info.owner]),
+        )?;
         validate_upgrade_quality_extensions(rt, &params.extensions)?;
+
+        let policy = rt.policy();
+        let curr_epoch = rt.curr_epoch();
 
         // Pledge inputs come from other actors and must be fetched before the
         // transaction, where sends are blocked.
@@ -2201,31 +2212,24 @@ impl Actor {
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply: rt.total_fil_circ_supply(),
             epoch_reward: rew.this_epoch_reward_smoothed,
-            epochs_since_ramp_start: rt.curr_epoch() - pow.ramp_start_epoch,
+            epochs_since_ramp_start: curr_epoch - pow.ramp_start_epoch,
             ramp_duration_epochs: pow.ramp_duration_epochs,
         };
-        let curr_epoch = rt.curr_epoch();
+
+        // The upgraded power and its pledge depend only on the sector size, so they
+        // are the same for every sector in the batch.
+        let full_qa_power = qa_power_max(info.sector_size);
+        let full_power_pledge = pledge_inputs.initial_pledge_for_power(&full_qa_power);
 
         let (power_delta, pledge_delta, fee_to_burn) = rt.transaction(|state: &mut State, rt| {
-            let info = get_miner_info(rt.store(), state)?;
-            rt.validate_immediate_caller_is(
-                info.control_addresses.iter().chain(&[info.worker, info.owner]),
-            )?;
-
-            // The upgraded power and its pledge depend only on the sector size, so
-            // they are the same for every sector in the batch.
-            let full_qa_power = qa_power_max(info.sector_size);
-            let full_power_pledge = pledge_inputs.initial_pledge_for_power(&full_qa_power);
-            let policy = rt.policy();
-
-            let ve: Vec<ValidatedExpirationExtension> =
+            let declarations: Vec<ValidatedExpirationExtension> =
                 params.extensions.into_iter().map(|e| e.into()).collect();
             let (power_delta, pledge_delta) = replace_sector_records(
                 policy,
                 rt.store(),
                 state,
                 info.sector_size,
-                &ve,
+                &declarations,
                 |partition, decl, sector| {
                     // Only active sectors may upgrade; a faulty, unproven, terminated
                     // or foreign sector fails the whole message.
@@ -2239,6 +2243,12 @@ impl Actor {
                             key
                         ));
                     }
+                    // Already at full power, whether by flag or by its weights: not
+                    // eligible, and skipped rather than failed so that a repeated call
+                    // locks and moves nothing.
+                    if qa_power_for_sector(info.sector_size, sector) >= full_qa_power {
+                        return Ok(None);
+                    }
                     upgrade_sector_to_full_power(
                         policy,
                         curr_epoch,
@@ -2246,9 +2256,9 @@ impl Actor {
                         sector,
                         info.sector_size,
                         &pledge_inputs.circulating_supply,
-                        &full_qa_power,
                         &full_power_pledge,
                     )
+                    .map(Some)
                 },
             )?;
 
@@ -3416,12 +3426,14 @@ impl From<UpgradeSectorQuality> for ValidatedExpirationExtension {
 /// and its deadline's power and fee books to match, and returns the aggregate power and
 /// pledge deltas.
 ///
-/// `rewrite` produces each sector's replacement record. It receives the partition holding the
-/// sector, so a caller can reject sectors its operation does not accept. Declarations apply in
-/// order and later ones read back earlier ones, so a sector named twice is rewritten twice.
+/// `rewrite` produces each sector's replacement record, or `None` to leave the sector exactly
+/// as it is. It receives the partition holding the sector, so a caller can reject sectors its
+/// operation does not accept. Declarations apply in order and later ones read back earlier
+/// ones, so a sector named twice is rewritten twice.
 ///
 /// A declaration with a new expiration re-registers its partition in the deadline's expiration
-/// queue. Without one the sectors stay where they are already scheduled.
+/// queue, unless it rewrote no sector. Without one the sectors stay where they are already
+/// scheduled.
 fn replace_sector_records<BS: Blockstore>(
     policy: &Policy,
     store: &BS,
@@ -3432,7 +3444,7 @@ fn replace_sector_records<BS: Blockstore>(
         &Partition,
         &ValidatedExpirationExtension,
         &SectorOnChainInfo,
-    ) -> Result<SectorOnChainInfo, ActorError>,
+    ) -> Result<Option<SectorOnChainInfo>, ActorError>,
 ) -> Result<(PowerPair, TokenAmount), ActorError> {
     let mut deadlines =
         state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
@@ -3491,13 +3503,19 @@ fn replace_sector_records<BS: Blockstore>(
                 .cloned()
                 .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
-            let old_sectors = sectors
-                .load_sectors(&decl.sectors)
-                .map_err(|e| e.wrap("failed to load sectors"))?;
-            let new_sectors: Vec<SectorOnChainInfo> = old_sectors
-                .iter()
-                .map(|sector| rewrite(&partition, decl, sector))
-                .collect::<Result<_, _>>()?;
+            let mut old_sectors = Vec::new();
+            let mut new_sectors = Vec::new();
+            for sector in
+                sectors.load_sectors(&decl.sectors).map_err(|e| e.wrap("failed to load sectors"))?
+            {
+                if let Some(new_sector) = rewrite(&partition, decl, &sector)? {
+                    old_sectors.push(sector);
+                    new_sectors.push(new_sector);
+                }
+            }
+            if new_sectors.is_empty() {
+                continue;
+            }
 
             // Overwrite sector infos.
             sectors.store(new_sectors.clone()).map_err(|e| {
@@ -3696,10 +3714,10 @@ fn extend_sector_weights(
     Ok(new_sector)
 }
 
-/// Validates `UpgradeSectorQuality` declarations before any state changes:
-/// deadline indices in range, no empty sector selections, requested expirations
-/// inside the allowed window, and the batch under the addressed-partitions and
-/// addressed-sectors limits.
+/// Validates `UpgradeSectorQuality` declarations before any state changes: at
+/// least one declaration, deadline indices in range, no empty sector selections,
+/// and requested expirations inside the allowed window. There is no batch cap:
+/// gas bounds the batch, as it does for `ExtendSectorExpiration2`.
 fn validate_upgrade_quality_extensions(
     rt: &impl Runtime,
     extensions: &[UpgradeSectorQuality],
@@ -3707,10 +3725,9 @@ fn validate_upgrade_quality_extensions(
     let policy = rt.policy();
     let curr_epoch = rt.curr_epoch();
 
-    // Used only to validate the bitfields and count the batch. Declarations for
-    // the same partition must stay separate for execution, because each carries
-    // its own new expiration and this map would merge them.
-    let mut batch = DeadlineSectorMap::new();
+    if extensions.is_empty() {
+        return Err(actor_error!(illegal_argument, "no extension declarations"));
+    }
 
     for decl in extensions {
         // Checked first: the deadline index guards vector indexing later.
@@ -3754,21 +3771,7 @@ fn validate_upgrade_quality_extensions(
                 ));
             }
         }
-
-        batch.add(policy, decl.deadline, decl.partition, decl.sectors.clone()).map_err(|e| {
-            actor_error!(
-                illegal_argument,
-                "failed to process deadline {}, partition {}: {}",
-                decl.deadline,
-                decl.partition,
-                e
-            )
-        })?;
     }
-
-    batch.check(policy.addressed_partitions_max, policy.addressed_sectors_max).map_err(|e| {
-        actor_error!(illegal_argument, "cannot process requested parameters: {}", e)
-    })?;
 
     Ok(())
 }
@@ -3778,12 +3781,12 @@ fn validate_upgrade_quality_extensions(
 ///
 /// Without a new expiration the record keeps its expiration, power base epoch and
 /// weights, so the sector stays exactly where it is already scheduled; only the
-/// flags, pledge and daily fee change.
+/// flags, pledge and daily fee change. The deprecated day-reward and storage-pledge
+/// estimates are cleared either way, as extension and replica update do.
 ///
 /// # Errors
 /// Rejects sectors that have already expired, and expirations that would shorten
 /// the sector's life or fall outside the allowed window.
-#[allow(clippy::too_many_arguments)]
 fn upgrade_sector_to_full_power(
     policy: &Policy,
     curr_epoch: ChainEpoch,
@@ -3791,7 +3794,6 @@ fn upgrade_sector_to_full_power(
     sector: &SectorOnChainInfo,
     sector_size: SectorSize,
     circulating_supply: &TokenAmount,
-    full_qa_power: &StoragePower,
     full_power_pledge: &TokenAmount,
 ) -> Result<SectorOnChainInfo, ActorError> {
     // An upgrade-only sector keeps its own expiration but must pass the same
@@ -3809,19 +3811,25 @@ fn upgrade_sector_to_full_power(
     // maximum for FULL_QA_POWER sectors. Same pair as replica updates set.
     new_sector.flags |=
         SectorOnChainInfoFlags::SIMPLE_QA_POWER | SectorOnChainInfoFlags::FULL_QA_POWER;
+    let full_qa_power = qa_power_max(sector_size);
+
+    // Deprecated estimates, read nowhere; cleared whenever a sector is touched.
+    new_sector.expected_day_reward = None;
+    new_sector.expected_storage_pledge = None;
+    new_sector.replaced_day_reward = None;
 
     // Pledge for the upgraded power, never lowered below what is already held.
     new_sector.initial_pledge = max(new_sector.initial_pledge, full_power_pledge.clone());
 
     if new_sector.daily_fee.is_zero() {
         // Sector predates FIP-0100 fees; attach the fee at the upgraded rate.
-        new_sector.daily_fee = daily_proof_fee(policy, circulating_supply, full_qa_power);
+        new_sector.daily_fee = daily_proof_fee(policy, circulating_supply, &full_qa_power);
     } else {
         // Scale the fee by the power change, reading the old power from the
         // pre-upgrade record (the new one is already flagged and reports maximum).
         let old_qa_power = qa_power_for_sector(sector_size, sector);
         new_sector.daily_fee =
-            daily_proof_fee_adjust(&new_sector.daily_fee, &old_qa_power, full_qa_power);
+            daily_proof_fee_adjust(&new_sector.daily_fee, &old_qa_power, &full_qa_power);
     }
 
     Ok(new_sector)
