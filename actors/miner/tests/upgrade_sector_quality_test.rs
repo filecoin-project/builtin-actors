@@ -1,11 +1,13 @@
 use fil_actor_miner::{
-    Actor, ExpirationExtension2, ExtendSectorExpiration2Params, Method, PowerPair,
+    Actor, ExpirationExtension2, ExtendSectorExpiration2Params, Method, PoStPartition, PowerPair,
     SectorOnChainInfo, SectorOnChainInfoFlags, State, UpgradeSectorQuality,
-    UpgradeSectorQualityParams, daily_proof_fee, daily_proof_fee_adjust, qa_power_for_sector,
-    qa_power_max,
+    UpgradeSectorQualityParams, daily_proof_fee, daily_proof_fee_adjust,
+    pledge_penalty_for_continued_fault, pledge_penalty_for_termination, power_for_sectors,
+    qa_power_for_sector, qa_power_max,
 };
 use fil_actors_runtime::{
     EPOCHS_IN_DAY,
+    reward::FilterEstimate,
     runtime::{Runtime, RuntimePolicy},
     test_utils::{ACCOUNT_ACTOR_CODE_ID, MockRuntime, expect_abort, expect_abort_contains_message},
 };
@@ -16,10 +18,12 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
 use num_traits::Zero;
+use std::cmp::max;
 use std::collections::BTreeMap;
+use std::ops::Neg;
 
 mod util;
 use util::*;
@@ -63,6 +67,20 @@ fn make_legacy(
     numbers.iter().map(|&n| h.get_sector(rt, n)).collect()
 }
 
+/// Commits and proves `count` sectors, leaving their as-committed (full-power) records for
+/// tests that fabricate their own legacy shape.
+fn commit_proven_sectors(
+    h: &mut ActorHarness,
+    rt: &MockRuntime,
+    count: usize,
+) -> Vec<SectorOnChainInfo> {
+    h.construct_and_verify(rt);
+    let sectors =
+        h.commit_and_prove_sectors(rt, count, DEFAULT_SECTOR_EXPIRATION as u64, Vec::new(), true);
+    h.advance_and_submit_posts(rt, &sectors);
+    sectors
+}
+
 /// Commits and proves `count` sectors, then rewrites them as legacy sectors of the given shape.
 fn commit_legacy_sectors(
     h: &mut ActorHarness,
@@ -71,10 +89,7 @@ fn commit_legacy_sectors(
     flags: SectorOnChainInfoFlags,
     verified_space: u64,
 ) -> Vec<SectorOnChainInfo> {
-    h.construct_and_verify(rt);
-    let sectors =
-        h.commit_and_prove_sectors(rt, count, DEFAULT_SECTOR_EXPIRATION as u64, Vec::new(), true);
-    h.advance_and_submit_posts(rt, &sectors);
+    let sectors = commit_proven_sectors(h, rt, count);
     make_legacy(h, rt, &sectors, flags, verified_space)
 }
 
@@ -102,6 +117,22 @@ fn group_by_partition(
     by_partition
 }
 
+/// One upgrade-only declaration per (deadline, partition) home of the sectors.
+fn upgrade_only_declarations(
+    rt: &MockRuntime,
+    sectors: &[SectorOnChainInfo],
+) -> Vec<UpgradeSectorQuality> {
+    group_by_partition(rt, sectors)
+        .into_iter()
+        .map(|((deadline, partition), sectors)| UpgradeSectorQuality {
+            deadline,
+            partition,
+            sectors: make_bitfield(&sectors),
+            new_expiration: None,
+        })
+        .collect()
+}
+
 fn upgrade_params(
     rt: &MockRuntime,
     sector_number: SectorNumber,
@@ -118,7 +149,8 @@ fn upgrade_params(
     }
 }
 
-/// Power and pledge deltas expected from upgrading these sectors to full power.
+/// Power and pledge deltas expected from upgrading these sectors to full power: power rises to
+/// the maximum, pledge to `max(old, 10x requirement)`.
 fn expected_upgrade_deltas(
     h: &ActorHarness,
     rt: &MockRuntime,
@@ -129,7 +161,7 @@ fn expected_upgrade_deltas(
     let mut pledge_delta = TokenAmount::zero();
     for sector in sectors {
         qa_delta += qa_power_max(h.sector_size) - qa_power_for_sector(h.sector_size, sector);
-        pledge_delta += &pledge_10x - &sector.initial_pledge;
+        pledge_delta += max(&pledge_10x, &sector.initial_pledge) - &sector.initial_pledge;
     }
     (PowerPair::new(BigInt::zero(), qa_delta), pledge_delta)
 }
@@ -161,7 +193,7 @@ fn assert_full_power_record(
     );
     assert_eq!(qa_power_max(h.sector_size), qa_power_for_sector(h.sector_size, upgraded));
     let pledge_10x = h.initial_pledge_for_power(rt, &qa_power_max(h.sector_size));
-    assert_eq!(pledge_10x, upgraded.initial_pledge);
+    assert_eq!(max(&pledge_10x, &legacy.initial_pledge), &upgraded.initial_pledge);
     assert_eq!(upgraded_fee(h, rt, legacy), upgraded.daily_fee);
 }
 
@@ -246,7 +278,7 @@ fn upgrade_with_extension_in_one_declaration() {
 }
 
 #[test]
-fn second_upgrade_is_a_no_op() {
+fn repeated_upgrade_is_a_no_op() {
     let (mut h, rt) = setup();
     let legacy = commit_legacy_cc_sector(&mut h, &rt);
 
@@ -259,9 +291,57 @@ fn second_upgrade_is_a_no_op() {
         pledge_delta,
     )
     .unwrap();
-    let state_root_after_first = *rt.state.borrow();
+    let upgraded = h.get_sector(&rt, legacy.sector_number);
+    let state_root = *rt.state.borrow();
 
-    // The same call again moves no power, pledge or fee, and leaves state byte-identical.
+    // A sector at full power is skipped: neither an in-place repeat nor one asking for an
+    // extension moves power, pledge, fee or expiration, and state stays byte-identical.
+    for new_expiration in [None, Some(upgraded.expiration + 42 * EPOCHS_IN_DAY)] {
+        h.upgrade_sector_quality(
+            &rt,
+            upgrade_params(&rt, upgraded.sector_number, new_expiration),
+            PowerPair::zero(),
+            TokenAmount::zero(),
+        )
+        .unwrap();
+        assert_eq!(state_root, *rt.state.borrow());
+    }
+    h.check_state(&rt);
+}
+
+#[test]
+fn repeated_upgrade_locks_nothing_when_pledge_requirement_rises() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_cc_sector(&mut h, &rt);
+
+    // Depress the pledge requirement below the sector's recorded pledge for the first
+    // upgrade: zero supply removes the supply share, and a small reward keeps the base term
+    // under the per-byte pledge cap.
+    let normal_supply = rt.total_fil_circ_supply();
+    let normal_reward = h.epoch_reward_smooth.clone();
+    rt.set_circulating_supply(TokenAmount::zero());
+    h.epoch_reward_smooth =
+        FilterEstimate::new(TokenAmount::from_nano(10_000_000).atto().clone(), BigInt::zero());
+
+    let (power_delta, pledge_delta) =
+        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
+    assert!(pledge_delta.is_zero());
+    h.upgrade_sector_quality(
+        &rt,
+        upgrade_params(&rt, legacy.sector_number, None),
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+    let after_first = h.get_sector(&rt, legacy.sector_number);
+
+    // Conditions recover, so the full-power requirement now exceeds what the sector holds.
+    // Already at full power, a repeat must lock nothing.
+    rt.set_circulating_supply(normal_supply);
+    h.epoch_reward_smooth = normal_reward;
+    let raised_requirement = h.initial_pledge_for_power(&rt, &qa_power_max(h.sector_size));
+    assert!(raised_requirement > after_first.initial_pledge);
+
     h.upgrade_sector_quality(
         &rt,
         upgrade_params(&rt, legacy.sector_number, None),
@@ -269,7 +349,7 @@ fn second_upgrade_is_a_no_op() {
         TokenAmount::zero(),
     )
     .unwrap();
-    assert_eq!(state_root_after_first, *rt.state.borrow());
+    assert_eq!(after_first, h.get_sector(&rt, legacy.sector_number));
     h.check_state(&rt);
 }
 
@@ -302,6 +382,47 @@ fn upgrades_partially_verified_pre_fip0045_sector() {
     assert_full_power_record(&h, &rt, &legacy, &upgraded);
     assert_eq!(legacy.verified_deal_weight, upgraded.verified_deal_weight);
     assert_eq!(legacy.power_base_epoch, upgraded.power_base_epoch);
+    h.check_state(&rt);
+}
+
+#[test]
+fn upgrades_sector_with_unverified_data_keeping_weights() {
+    let (mut h, rt) = setup();
+    let sector = commit_proven_sectors(&mut h, &rt, 1).remove(0);
+
+    // A legacy sector half-full of unverified deal data. Deal weight has no power effect, so
+    // it counts 1x before the upgrade, like a CC sector.
+    let raw_power = StoragePower::from(h.sector_size as u64);
+    let pledge_1x = h.initial_pledge_for_power(&rt, &raw_power);
+    let fee_1x = daily_proof_fee(rt.policy(), &rt.total_fil_circ_supply(), &raw_power);
+    let half_space = BigInt::from(h.sector_size as u64 / 2);
+    h.rewrite_sectors(&rt, &[sector.sector_number], |s| {
+        s.flags = SectorOnChainInfoFlags::SIMPLE_QA_POWER;
+        s.deal_weight = &half_space * (s.expiration - s.power_base_epoch);
+        s.initial_pledge = pledge_1x.clone();
+        s.daily_fee = fee_1x.clone();
+    });
+    let legacy = h.get_sector(&rt, sector.sector_number);
+    assert_eq!(raw_power, qa_power_for_sector(h.sector_size, &legacy));
+    h.check_state(&rt);
+
+    // The upgrade is the same full 9x jump as for a CC sector, and the deal weight survives
+    // untouched.
+    let (power_delta, pledge_delta) =
+        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
+    assert_eq!(BigInt::from(h.sector_size as u64 * 9), power_delta.qa);
+    h.upgrade_sector_quality(
+        &rt,
+        upgrade_params(&rt, legacy.sector_number, None),
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+
+    let upgraded = h.get_sector(&rt, legacy.sector_number);
+    assert_full_power_record(&h, &rt, &legacy, &upgraded);
+    assert_eq!(legacy.deal_weight, upgraded.deal_weight);
+    assert!(upgraded.verified_deal_weight.is_zero());
     h.check_state(&rt);
 }
 
@@ -341,19 +462,17 @@ fn extension_restates_verified_weight_and_grants_full_power() {
 }
 
 #[test]
-fn fully_verified_sector_moves_no_power_or_pledge() {
+fn already_full_power_by_weights_is_skipped() {
     let (mut h, rt) = setup();
-    // Already 10x through its weights, so there is nothing to raise. Whether such a sector is
-    // flagged or skipped is not pinned here; either way it must move no power, pledge or fee.
+    // Already 10x through its weights alone, so there is nothing to raise: the sector is not
+    // eligible and is skipped — not even flagged — leaving state byte-identical.
     let full = h.sector_size as u64;
     let legacy =
         commit_legacy_sectors(&mut h, &rt, 1, SectorOnChainInfoFlags::SIMPLE_QA_POWER, full)
             .remove(0);
     assert_eq!(qa_power_max(h.sector_size), qa_power_for_sector(h.sector_size, &legacy));
-    let pledge_10x = h.initial_pledge_for_power(&rt, &qa_power_max(h.sector_size));
-    assert_eq!(pledge_10x, legacy.initial_pledge);
+    let state_root = *rt.state.borrow();
 
-    let state_before: State = rt.get_state();
     h.upgrade_sector_quality(
         &rt,
         upgrade_params(&rt, legacy.sector_number, None),
@@ -362,20 +481,105 @@ fn fully_verified_sector_moves_no_power_or_pledge() {
     )
     .unwrap();
 
-    let after = h.get_sector(&rt, legacy.sector_number);
-    assert_eq!(legacy.initial_pledge, after.initial_pledge);
-    assert_eq!(legacy.daily_fee, after.daily_fee);
-    assert_eq!(state_before.initial_pledge, rt.get_state::<State>().initial_pledge);
+    assert_eq!(legacy, h.get_sector(&rt, legacy.sector_number));
+    assert_eq!(state_root, *rt.state.borrow());
+    h.check_state(&rt);
+}
+
+#[test]
+fn keeps_higher_existing_pledge_without_topping_up() {
+    let (mut h, rt) = setup();
+    let sector = commit_proven_sectors(&mut h, &rt, 1).remove(0);
+
+    // The sector already holds more pledge than today's 10x requirement (e.g. it onboarded
+    // when pledge ran higher). The rule is max(old, new): nothing extra to lock, and the
+    // pledge is never lowered.
+    let raw_power = StoragePower::from(h.sector_size as u64);
+    let pledge_10x = h.initial_pledge_for_power(&rt, &qa_power_max(h.sector_size));
+    let high_pledge = &pledge_10x * 2;
+    let fee_1x = daily_proof_fee(rt.policy(), &rt.total_fil_circ_supply(), &raw_power);
+    h.rewrite_sectors(&rt, &[sector.sector_number], |s| {
+        s.flags = SectorOnChainInfoFlags::SIMPLE_QA_POWER;
+        s.initial_pledge = high_pledge.clone();
+        s.daily_fee = fee_1x.clone();
+    });
+    let legacy = h.get_sector(&rt, sector.sector_number);
+    h.check_state(&rt);
+
+    let state_before: State = rt.get_state();
+    let (power_delta, pledge_delta) =
+        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
+    assert!(pledge_delta.is_zero());
+    h.upgrade_sector_quality(
+        &rt,
+        upgrade_params(&rt, legacy.sector_number, None),
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+
+    // Power and fee still move to the 10x level; the pledge stays put.
+    let upgraded = h.get_sector(&rt, legacy.sector_number);
+    assert_full_power_record(&h, &rt, &legacy, &upgraded);
+    assert_eq!(high_pledge, upgraded.initial_pledge);
+    let state_after: State = rt.get_state();
+    assert_eq!(state_before.initial_pledge, state_after.initial_pledge);
+    h.check_state(&rt);
+}
+
+#[test]
+fn clears_deprecated_reward_estimates_on_upgrade() {
+    let (mut h, rt) = setup();
+    let sectors = commit_legacy_sectors(&mut h, &rt, 2, SectorOnChainInfoFlags::SIMPLE_QA_POWER, 0);
+    let numbers = [sectors[0].sector_number, sectors[1].sector_number];
+    let (deadline, partition) = sector_location(&rt, numbers[0]);
+    assert_eq!((deadline, partition), sector_location(&rt, numbers[1]));
+
+    // Real pre-FIP-0100 records still carry the deprecated estimates.
+    h.rewrite_sectors(&rt, &numbers, |s| {
+        s.expected_day_reward = Some(TokenAmount::from_whole(1));
+        s.expected_storage_pledge = Some(TokenAmount::from_whole(2));
+        s.replaced_day_reward = Some(TokenAmount::from_whole(3));
+    });
+    let legacy: Vec<_> = numbers.iter().map(|&n| h.get_sector(&rt, n)).collect();
+
+    // One sector upgrades in place, the other also extends: both paths clear the estimates.
+    let extensions = vec![
+        UpgradeSectorQuality {
+            deadline,
+            partition,
+            sectors: make_bitfield(&[numbers[0]]),
+            new_expiration: None,
+        },
+        UpgradeSectorQuality {
+            deadline,
+            partition,
+            sectors: make_bitfield(&[numbers[1]]),
+            new_expiration: Some(legacy[1].expiration + 42 * EPOCHS_IN_DAY),
+        },
+    ];
+    let (power_delta, pledge_delta) = expected_upgrade_deltas(&h, &rt, &legacy);
+    h.upgrade_sector_quality(
+        &rt,
+        UpgradeSectorQualityParams { extensions },
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+
+    for &number in &numbers {
+        let upgraded = h.get_sector(&rt, number);
+        assert_eq!(None, upgraded.expected_day_reward);
+        assert_eq!(None, upgraded.expected_storage_pledge);
+        assert_eq!(None, upgraded.replaced_day_reward);
+    }
     h.check_state(&rt);
 }
 
 #[test]
 fn one_declaration_upgrades_sectors_with_different_expirations() {
     let (mut h, rt) = setup();
-    h.construct_and_verify(&rt);
-    let sectors =
-        h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION as u64, Vec::new(), true);
-    h.advance_and_submit_posts(&rt, &sectors);
+    let sectors = commit_proven_sectors(&mut h, &rt, 2);
     let (deadline, partition) = sector_location(&rt, sectors[0].sector_number);
     assert_eq!((deadline, partition), sector_location(&rt, sectors[1].sector_number));
 
@@ -418,26 +622,97 @@ fn one_declaration_upgrades_sectors_with_different_expirations() {
 }
 
 #[test]
-fn upgrades_across_deadlines_with_mixed_declarations() {
+fn extension_skips_sectors_already_at_full_power() {
     let (mut h, rt) = setup();
-    let legacy = commit_legacy_sectors(&mut h, &rt, 3, SectorOnChainInfoFlags::SIMPLE_QA_POWER, 0);
-    let by_partition = group_by_partition(&rt, &legacy);
-    assert!(by_partition.len() >= 2, "test needs sectors in more than one partition");
+    let sectors = commit_proven_sectors(&mut h, &rt, 2);
+    let (deadline, partition) = sector_location(&rt, sectors[0].sector_number);
+    assert_eq!((deadline, partition), sector_location(&rt, sectors[1].sector_number));
 
-    // The first partition upgrades in place; every other one also extends.
-    let new_expiration = legacy[0].expiration + 42 * EPOCHS_IN_DAY;
-    let in_place = by_partition.values().next().unwrap().clone();
-    let extensions: Vec<_> = by_partition
-        .iter()
-        .map(|(&(deadline, partition), sectors)| UpgradeSectorQuality {
+    // One sector is made legacy; its partition-mate keeps its as-committed full power.
+    let legacy =
+        make_legacy(&h, &rt, &sectors[..1], SectorOnChainInfoFlags::SIMPLE_QA_POWER, 0).remove(0);
+    let full = h.get_sector(&rt, sectors[1].sector_number);
+    assert!(full.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER));
+
+    // One declaration extends both. Only the legacy sector is upgraded and extended; the
+    // full-power one is not eligible, so it keeps its expiration (ExtendSectorExpiration2
+    // is the way to extend it).
+    let new_expiration = legacy.expiration + 42 * EPOCHS_IN_DAY;
+    let params = UpgradeSectorQualityParams {
+        extensions: vec![UpgradeSectorQuality {
             deadline,
             partition,
-            sectors: make_bitfield(sectors),
-            new_expiration: if *sectors == in_place { None } else { Some(new_expiration) },
-        })
-        .collect();
+            sectors: make_bitfield(&[legacy.sector_number, full.sector_number]),
+            new_expiration: Some(new_expiration),
+        }],
+    };
+    let (power_delta, pledge_delta) =
+        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
+    h.upgrade_sector_quality(&rt, params, power_delta, pledge_delta).unwrap();
 
-    let (power_delta, pledge_delta) = expected_upgrade_deltas(&h, &rt, &legacy);
+    let upgraded = h.get_sector(&rt, legacy.sector_number);
+    assert_full_power_record(&h, &rt, &legacy, &upgraded);
+    assert_eq!(new_expiration, upgraded.expiration);
+    assert_eq!(full, h.get_sector(&rt, full.sector_number));
+    h.check_state(&rt);
+}
+
+#[test]
+fn mixed_batch_upgrades_extends_and_requeues_across_epochs() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_sectors(&mut h, &rt, 4, SectorOnChainInfoFlags::SIMPLE_QA_POWER, 0);
+
+    // The batch needs one partition holding at least two sectors and one other partition.
+    let by_partition = group_by_partition(&rt, &legacy);
+    let (&(deadline, partition), pair) = by_partition
+        .iter()
+        .find(|(_, sectors)| sectors.len() >= 2)
+        .expect("need a partition with two sectors");
+    let (&(other_deadline, other_partition), other) = by_partition
+        .iter()
+        .find(|&(&key, _)| key != (deadline, partition))
+        .expect("need a second partition");
+    let by_number: BTreeMap<u64, &SectorOnChainInfo> =
+        legacy.iter().map(|s| (s.sector_number, s)).collect();
+
+    // Two different epochs inside one partition, the first epoch declared twice (the repeat
+    // finds its sector already at full power and skips it), an in-place upgrade in the other
+    // partition, and that partition's second sector left out of the batch entirely.
+    let base = max(by_number[&pair[0]].expiration, by_number[&pair[1]].expiration);
+    let epoch_one = base + 30 * EPOCHS_IN_DAY;
+    let epoch_two = base + 60 * EPOCHS_IN_DAY;
+    let extensions = vec![
+        UpgradeSectorQuality {
+            deadline,
+            partition,
+            sectors: make_bitfield(&[pair[0]]),
+            new_expiration: Some(epoch_one),
+        },
+        UpgradeSectorQuality {
+            deadline,
+            partition,
+            sectors: make_bitfield(&[pair[1]]),
+            new_expiration: Some(epoch_two),
+        },
+        UpgradeSectorQuality {
+            deadline,
+            partition,
+            sectors: make_bitfield(&[pair[0]]),
+            new_expiration: Some(epoch_one),
+        },
+        UpgradeSectorQuality {
+            deadline: other_deadline,
+            partition: other_partition,
+            sectors: make_bitfield(&[other[0]]),
+            new_expiration: None,
+        },
+    ];
+
+    let (power_delta, pledge_delta) = expected_upgrade_deltas(
+        &h,
+        &rt,
+        &[by_number[&pair[0]].clone(), by_number[&pair[1]].clone(), by_number[&other[0]].clone()],
+    );
     h.upgrade_sector_quality(
         &rt,
         UpgradeSectorQualityParams { extensions },
@@ -446,15 +721,22 @@ fn upgrades_across_deadlines_with_mixed_declarations() {
     )
     .unwrap();
 
-    for sector in &legacy {
-        let upgraded = h.get_sector(&rt, sector.sector_number);
-        assert_full_power_record(&h, &rt, sector, &upgraded);
-        let expected_expiration = if in_place.contains(&sector.sector_number) {
-            sector.expiration
-        } else {
-            new_expiration
-        };
-        assert_eq!(expected_expiration, upgraded.expiration);
+    // Every declared sector is upgraded; the extended ones landed on their own epochs, the
+    // in-place one kept its schedule, and the undeclared one is untouched. check_state then
+    // rebuilds each partition's expiration sets from the records (power, pledge, fee, epoch)
+    // and requires every set's epoch to be registered in the deadline's queue: the requeue
+    // bookkeeping for both new epochs.
+    let first = h.get_sector(&rt, pair[0]);
+    let second = h.get_sector(&rt, pair[1]);
+    let in_place = h.get_sector(&rt, other[0]);
+    assert_full_power_record(&h, &rt, by_number[&pair[0]], &first);
+    assert_full_power_record(&h, &rt, by_number[&pair[1]], &second);
+    assert_full_power_record(&h, &rt, by_number[&other[0]], &in_place);
+    assert_eq!(epoch_one, first.expiration);
+    assert_eq!(epoch_two, second.expiration);
+    assert_eq!(by_number[&other[0]].expiration, in_place.expiration);
+    for &bystander in &other[1..] {
+        assert_eq!(*by_number[&bystander], h.get_sector(&rt, bystander));
     }
     h.check_state(&rt);
 }
@@ -486,7 +768,7 @@ fn duplicate_sector_across_declarations_upgrades_once() {
 }
 
 #[test]
-fn next_proving_period_charges_the_upgraded_fee() {
+fn deadline_cron_charges_the_upgraded_fee() {
     let (mut h, rt) = setup();
     let legacy = commit_legacy_cc_sector(&mut h, &rt);
 
@@ -502,9 +784,175 @@ fn next_proving_period_charges_the_upgraded_fee() {
     let upgraded = h.get_sector(&rt, legacy.sector_number);
     assert!(upgraded.daily_fee > legacy.daily_fee);
 
-    // The harness derives the fee burn it expects from the record, so the deadline's fee books
-    // must agree with it for the next period's PoSt and cron to pass.
+    // The deadline's fee book now carries the upgraded fee. Driving the next proving period
+    // (PoSt at the sector's deadline, cron at every deadline) makes the actor charge that book
+    // at the sector's deadline cron; the harness expects the burn to f099, and any vesting-funds
+    // draw that pays it, computed from the record, to the atto.
+    let (deadline_index, _) = sector_location(&rt, legacy.sector_number);
+    assert_eq!(upgraded.daily_fee, h.get_deadline(&rt, deadline_index).daily_fee);
     h.advance_and_submit_posts(&rt, std::slice::from_ref(&upgraded));
+    h.check_state(&rt);
+}
+
+#[test]
+fn deadline_cron_releases_upgraded_power_and_pledge_at_expiration() {
+    // Bespoke setup with a one-period minimum lifetime, so the sector's whole life fits in a
+    // few proving periods of cron driving.
+    let mut h = ActorHarness::new(100);
+    h.set_proof_type(RegisteredSealProof::StackedDRG512MiBV1);
+    let mut rt = h.new_runtime();
+    rt.policy.min_sector_expiration = rt.policy.wpost_proving_period;
+    rt.balance.replace(BIG_BALANCE.clone());
+    rt.set_epoch(1);
+
+    h.construct_and_verify(&rt);
+    let sector = h.commit_and_prove_sectors(&rt, 1, 3, Vec::new(), true).remove(0);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&sector));
+    let legacy = make_legacy(
+        &h,
+        &rt,
+        std::slice::from_ref(&sector),
+        SectorOnChainInfoFlags::SIMPLE_QA_POWER,
+        0,
+    )
+    .remove(0);
+
+    let (power_delta, pledge_delta) =
+        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
+    h.upgrade_sector_quality(
+        &rt,
+        upgrade_params(&rt, legacy.sector_number, None),
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+    let upgraded = h.get_sector(&rt, legacy.sector_number);
+    let (deadline_index, partition_index) = sector_location(&rt, upgraded.sector_number);
+
+    // Keep the sector proven until the period holding its expiration.
+    while *rt.epoch.borrow() + rt.policy.wpost_proving_period < upgraded.expiration {
+        h.advance_and_submit_posts(&rt, std::slice::from_ref(&upgraded));
+    }
+
+    // Prove the final window, then let its deadline cron pop the expiration: it must release
+    // exactly the upgraded power and the topped-up pledge.
+    let final_window = h.advance_to_deadline(&rt, deadline_index);
+    h.submit_window_post(
+        &rt,
+        &final_window,
+        vec![PoStPartition { index: partition_index, skipped: BitField::new() }],
+        vec![upgraded.clone()],
+        PoStConfig::with_expected_power_delta(&PowerPair::zero()),
+    );
+    let power_10x = power_for_sectors(h.sector_size, std::slice::from_ref(&upgraded));
+    assert_eq!(qa_power_max(h.sector_size), power_10x.qa);
+    h.advance_deadline(
+        &rt,
+        CronConfig {
+            no_enrollment: true,
+            power_delta: Some(power_10x.neg()),
+            pledge_delta: upgraded.initial_pledge.clone().neg(),
+            ..CronConfig::empty()
+        },
+    );
+
+    // The sector is out of the proving set (its record lingers until cleanup) and the miner
+    // holds no pledge any more.
+    let (_, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+    assert!(partition.terminated.get(upgraded.sector_number));
+    assert!(partition.live_power.is_zero());
+    let state: State = rt.get_state();
+    assert!(state.initial_pledge.is_zero());
+    h.check_state(&rt);
+}
+
+#[test]
+fn terminates_upgraded_sector_at_upgraded_pledge_and_power() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_cc_sector(&mut h, &rt);
+
+    let (power_delta, pledge_delta) =
+        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
+    h.upgrade_sector_quality(
+        &rt,
+        upgrade_params(&rt, legacy.sector_number, None),
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+    let upgraded = h.get_sector(&rt, legacy.sector_number);
+
+    // Locked rewards ensure the fee is unlockable, as in the terminate tests.
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+
+    // The termination fee's fault-fee floor runs on the upgraded (10x) power, and the released
+    // pledge is the topped-up one.
+    let sector_power = qa_power_for_sector(h.sector_size, &upgraded);
+    assert_eq!(qa_power_max(h.sector_size), sector_power);
+    let fault_fee = pledge_penalty_for_continued_fault(
+        &h.epoch_reward_smooth,
+        &h.epoch_qa_power_smooth,
+        &sector_power,
+    );
+    let expected_fee = pledge_penalty_for_termination(
+        &upgraded.initial_pledge,
+        *rt.epoch.borrow() - upgraded.activation,
+        &fault_fee,
+    );
+    let (power_removed, pledge_removed) =
+        h.terminate_sectors(&rt, &make_bitfield(&[upgraded.sector_number]), expected_fee.clone());
+    assert_eq!(
+        power_for_sectors(h.sector_size, std::slice::from_ref(&upgraded)).neg(),
+        power_removed
+    );
+    assert_eq!(-(expected_fee + &upgraded.initial_pledge), pledge_removed);
+
+    let state: State = rt.get_state();
+    assert!(state.initial_pledge.is_zero());
+    h.check_state(&rt);
+}
+
+#[test]
+fn extend2_after_upgrade_keeps_full_power_and_pledge() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_cc_sector(&mut h, &rt);
+
+    let (power_delta, pledge_delta) =
+        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
+    h.upgrade_sector_quality(
+        &rt,
+        upgrade_params(&rt, legacy.sector_number, None),
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+    let upgraded = h.get_sector(&rt, legacy.sector_number);
+
+    // A later plain extension keeps the 10x contract: flag, pledge and fee ride along; only
+    // the expiration and power base move.
+    let (deadline, partition) = sector_location(&rt, upgraded.sector_number);
+    let new_expiration = upgraded.expiration + 42 * EPOCHS_IN_DAY;
+    h.extend_sectors2(
+        &rt,
+        ExtendSectorExpiration2Params {
+            extensions: vec![ExpirationExtension2 {
+                deadline,
+                partition,
+                sectors: make_bitfield(&[upgraded.sector_number]),
+                sectors_with_claims: vec![],
+                new_expiration,
+            }],
+        },
+    )
+    .unwrap();
+
+    let extended = h.get_sector(&rt, upgraded.sector_number);
+    assert_eq!(new_expiration, extended.expiration);
+    assert_eq!(*rt.epoch.borrow(), extended.power_base_epoch);
+    assert_eq!(upgraded.flags, extended.flags);
+    assert_eq!(upgraded.initial_pledge, extended.initial_pledge);
+    assert_eq!(upgraded.daily_fee, extended.daily_fee);
+    assert_eq!(qa_power_max(h.sector_size), qa_power_for_sector(h.sector_size, &extended));
     h.check_state(&rt);
 }
 
@@ -530,6 +978,77 @@ fn withdraw_after_upgrade_leaves_the_new_pledge_locked() {
     h.withdraw_funds(&rt, h.owner, &rt.get_balance(), &free, &TokenAmount::zero()).unwrap();
     let pledge_10x = h.initial_pledge_for_power(&rt, &qa_power_max(h.sector_size));
     assert_eq!(pledge_10x, rt.get_state::<State>().initial_pledge);
+    h.check_state(&rt);
+}
+
+#[test]
+fn attaches_full_rate_fee_to_pre_fip0100_sector() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_cc_sector(&mut h, &rt);
+    h.rewrite_sectors(&rt, &[legacy.sector_number], |sector| {
+        sector.daily_fee = TokenAmount::zero()
+    });
+    let legacy = h.get_sector(&rt, legacy.sector_number);
+
+    let (power_delta, pledge_delta) =
+        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
+    h.upgrade_sector_quality(
+        &rt,
+        upgrade_params(&rt, legacy.sector_number, None),
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+
+    let expected_fee =
+        daily_proof_fee(rt.policy(), &rt.total_fil_circ_supply(), &qa_power_max(h.sector_size));
+    assert!(expected_fee.is_positive());
+    let upgraded = h.get_sector(&rt, legacy.sector_number);
+    assert_eq!(expected_fee, upgraded.daily_fee);
+    assert_full_power_record(&h, &rt, &legacy, &upgraded);
+    h.check_state(&rt);
+}
+
+#[test]
+fn extend_sector_expiration2_does_not_upgrade() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_cc_sector(&mut h, &rt);
+    let (deadline, partition) = sector_location(&rt, legacy.sector_number);
+
+    let new_expiration = legacy.expiration + 42 * EPOCHS_IN_DAY;
+    let params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline,
+            partition,
+            sectors: make_bitfield(&[legacy.sector_number]),
+            sectors_with_claims: vec![],
+            new_expiration,
+        }],
+    };
+    h.extend_sectors2(&rt, params).unwrap();
+
+    // The plain extension contract holds: no flag, no pledge or fee change.
+    let extended = h.get_sector(&rt, legacy.sector_number);
+    assert!(!extended.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER));
+    assert_eq!(new_expiration, extended.expiration);
+    assert_eq!(legacy.initial_pledge, extended.initial_pledge);
+    assert_eq!(legacy.daily_fee, extended.daily_fee);
+    h.check_state(&rt);
+}
+
+#[test]
+fn rejects_empty_declaration_list() {
+    let (h, rt) = setup();
+    h.construct_and_verify(&rt);
+
+    let res = h.upgrade_sector_quality(
+        &rt,
+        UpgradeSectorQualityParams { extensions: vec![] },
+        PowerPair::zero(),
+        TokenAmount::zero(),
+    );
+    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no extension declarations", res);
+    rt.reset();
     h.check_state(&rt);
 }
 
@@ -672,14 +1191,21 @@ fn rejects_unknown_deadline_partition_and_sector() {
 }
 
 #[test]
-fn rejects_faulty_sector() {
+fn faulty_declaration_aborts_the_whole_batch() {
     let (mut h, rt) = setup();
-    let legacy = commit_legacy_cc_sector(&mut h, &rt);
-    h.declare_faults(&rt, std::slice::from_ref(&legacy));
+    let legacy = commit_legacy_sectors(&mut h, &rt, 3, SectorOnChainInfoFlags::SIMPLE_QA_POWER, 0);
+    let faulty = legacy[2].clone();
+    h.declare_faults(&rt, std::slice::from_ref(&faulty));
+
+    // Good declarations first, the faulty sector's declaration last: the good partitions are
+    // processed before the abort, and must still roll back.
+    let mut declarations = upgrade_only_declarations(&rt, &legacy);
+    declarations.sort_by_key(|d| d.sectors.get(faulty.sector_number));
+    assert!(declarations.len() >= 2, "need the faulty sector in its own declaration");
 
     let res = h.upgrade_sector_quality(
         &rt,
-        upgrade_params(&rt, legacy.sector_number, None),
+        UpgradeSectorQualityParams { extensions: declarations },
         PowerPair::zero(),
         TokenAmount::zero(),
     );
@@ -689,6 +1215,13 @@ fn rejects_faulty_sector() {
         res,
     );
     rt.reset();
+
+    // No sector was upgraded, including the ones in the good declarations.
+    for sector in &legacy {
+        let after = h.get_sector(&rt, sector.sector_number);
+        assert!(!after.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER));
+        assert_eq!(sector.initial_pledge, after.initial_pledge);
+    }
     h.check_state(&rt);
 }
 
@@ -741,6 +1274,15 @@ fn rejects_sector_from_another_partition() {
         res,
     );
     rt.reset();
+
+    // The same sector upgrades under its own partition, so the rejection was about the
+    // declared location, not the sector's state.
+    let elsewhere_record = legacy.iter().find(|s| s.sector_number == elsewhere).unwrap();
+    let (power_delta, pledge_delta) =
+        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(elsewhere_record));
+    h.upgrade_sector_quality(&rt, upgrade_params(&rt, elsewhere, None), power_delta, pledge_delta)
+        .unwrap();
+    assert_full_power_record(&h, &rt, elsewhere_record, &h.get_sector(&rt, elsewhere));
     h.check_state(&rt);
 }
 
@@ -882,112 +1424,55 @@ fn repays_fee_debt_and_locks_pledge() {
 }
 
 #[test]
-fn attaches_full_rate_fee_to_pre_fip0100_sector() {
-    let (mut h, rt) = setup();
-    let legacy = commit_legacy_cc_sector(&mut h, &rt);
-    h.rewrite_sectors(&rt, &[legacy.sector_number], |sector| {
-        sector.daily_fee = TokenAmount::zero()
-    });
-    let legacy = h.get_sector(&rt, legacy.sector_number);
-
-    let (power_delta, pledge_delta) =
-        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
-    h.upgrade_sector_quality(
-        &rt,
-        upgrade_params(&rt, legacy.sector_number, None),
-        power_delta,
-        pledge_delta,
-    )
-    .unwrap();
-
-    let expected_fee =
-        daily_proof_fee(rt.policy(), &rt.total_fil_circ_supply(), &qa_power_max(h.sector_size));
-    assert!(expected_fee.is_positive());
-    let upgraded = h.get_sector(&rt, legacy.sector_number);
-    assert_eq!(expected_fee, upgraded.daily_fee);
-    assert_full_power_record(&h, &rt, &legacy, &upgraded);
-    h.check_state(&rt);
-}
-
-#[test]
-fn extend_sector_expiration2_does_not_upgrade() {
-    let (mut h, rt) = setup();
-    let legacy = commit_legacy_cc_sector(&mut h, &rt);
-    let (deadline, partition) = sector_location(&rt, legacy.sector_number);
-
-    let new_expiration = legacy.expiration + 42 * EPOCHS_IN_DAY;
-    let params = ExtendSectorExpiration2Params {
-        extensions: vec![ExpirationExtension2 {
-            deadline,
-            partition,
-            sectors: make_bitfield(&[legacy.sector_number]),
-            sectors_with_claims: vec![],
-            new_expiration,
-        }],
-    };
-    h.extend_sectors2(&rt, params).unwrap();
-
-    // The plain extension contract holds: no flag, no pledge or fee change.
-    let extended = h.get_sector(&rt, legacy.sector_number);
-    assert!(!extended.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER));
-    assert_eq!(new_expiration, extended.expiration);
-    assert_eq!(legacy.initial_pledge, extended.initial_pledge);
-    assert_eq!(legacy.daily_fee, extended.daily_fee);
-    h.check_state(&rt);
-}
-
-#[test]
-fn rejects_batches_beyond_addressing_limits() {
-    let (h, rt) = setup();
-    h.construct_and_verify(&rt);
-
-    // One partition too many.
-    let extensions: Vec<_> = (0..=rt.policy().addressed_partitions_max)
-        .map(|i| UpgradeSectorQuality {
-            deadline: 0,
-            partition: i,
-            sectors: make_bitfield(&[i]),
-            new_expiration: None,
-        })
-        .collect();
-    let res = h.upgrade_sector_quality(
-        &rt,
-        UpgradeSectorQualityParams { extensions },
-        PowerPair::zero(),
-        TokenAmount::zero(),
-    );
-    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "too many partitions", res);
-    rt.reset();
-
-    // One sector too many.
-    let params = UpgradeSectorQualityParams {
-        extensions: vec![UpgradeSectorQuality {
-            deadline: 0,
-            partition: 0,
-            sectors: BitField::try_from_bits(0..=rt.policy().addressed_sectors_max).unwrap(),
-            new_expiration: None,
-        }],
-    };
-    let res = h.upgrade_sector_quality(&rt, params, PowerPair::zero(), TokenAmount::zero());
-    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "too many sectors", res);
-    rt.reset();
-}
-
-#[test]
 fn rejects_unauthorized_caller() {
     let (mut h, rt) = setup();
     let legacy = commit_legacy_cc_sector(&mut h, &rt);
     let params = upgrade_params(&rt, legacy.sector_number, None);
 
+    // The caller is checked before anything else, so no network queries are made.
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(1234));
     rt.expect_validate_caller_addr(h.caller_addrs());
-    // Pledge inputs are fetched before the transaction validates the caller.
-    h.expect_query_network_info(&rt);
-
     let res = rt.call::<Actor>(
         Method::UpgradeSectorQuality as u64,
         IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort(ExitCode::USR_FORBIDDEN, res);
+    h.check_state(&rt);
+}
+
+#[test]
+fn rejects_terminated_sector() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_cc_sector(&mut h, &rt);
+
+    // Locked rewards ensure the termination fee is unlockable, as in the terminate tests.
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    let sector_power = qa_power_for_sector(h.sector_size, &legacy);
+    let fault_fee = pledge_penalty_for_continued_fault(
+        &h.epoch_reward_smooth,
+        &h.epoch_qa_power_smooth,
+        &sector_power,
+    );
+    let termination_fee = pledge_penalty_for_termination(
+        &legacy.initial_pledge,
+        *rt.epoch.borrow() - legacy.activation,
+        &fault_fee,
+    );
+    h.terminate_sectors(&rt, &make_bitfield(&[legacy.sector_number]), termination_fee);
+
+    // A terminated sector stays in its partition's books until its record is cleaned up, but
+    // it is no longer active.
+    let res = h.upgrade_sector_quality(
+        &rt,
+        upgrade_params(&rt, legacy.sector_number, None),
+        PowerPair::zero(),
+        TokenAmount::zero(),
+    );
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "can only upgrade active sectors",
+        res,
+    );
+    rt.reset();
     h.check_state(&rt);
 }
