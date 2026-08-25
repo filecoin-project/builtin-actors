@@ -140,6 +140,7 @@ pub enum Method {
     ProveCommitSectors3 = 34,
     ProveReplicaUpdates3 = 35,
     ProveCommitSectorsNI = 36,
+    UpgradeSectorQuality = 37,
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
@@ -2172,6 +2173,108 @@ impl Actor {
         Ok(())
     }
 
+    /// Upgrades sectors to full quality-adjusted power (FIP-0118), optionally also
+    /// extending their expiration, and locks the pledge top-up the new power requires.
+    ///
+    /// May only be called by the miner's owner, worker, or a control address. Each
+    /// declaration addresses active sectors in one partition; a declaration without a
+    /// new expiration upgrades its sectors in place, leaving their expirations, power
+    /// base epochs and weights untouched.
+    ///
+    /// # Errors
+    /// Aborts with `USR_INSUFFICIENT_FUNDS` unless the available balance covers the
+    /// whole batch's pledge increase and any outstanding fee debt, which is repaid in
+    /// the same call. Any invalid declaration or non-active sector fails the whole
+    /// message; no partial upgrade is applied.
+    fn upgradeSectorQuality(
+        rt: &impl Runtime,
+        params: UpgradeSectorQualityParams,
+    ) -> Result<(), ActorError> {
+        validate_upgrade_quality_extensions(rt, &params.extensions)?;
+
+        // Pledge inputs come from other actors and must be fetched before the
+        // transaction, where sends are blocked.
+        let rew = request_current_epoch_block_reward(rt)?;
+        let pow = request_current_total_power(rt)?;
+        let pledge_inputs = NetworkPledgeInputs {
+            network_qap: pow.quality_adj_power_smoothed,
+            network_baseline: rew.this_epoch_baseline_power,
+            circulating_supply: rt.total_fil_circ_supply(),
+            epoch_reward: rew.this_epoch_reward_smoothed,
+            epochs_since_ramp_start: rt.curr_epoch() - pow.ramp_start_epoch,
+            ramp_duration_epochs: pow.ramp_duration_epochs,
+        };
+        let curr_epoch = rt.curr_epoch();
+
+        let (power_delta, pledge_delta, fee_to_burn) = rt.transaction(|state: &mut State, rt| {
+            let info = get_miner_info(rt.store(), state)?;
+            rt.validate_immediate_caller_is(
+                info.control_addresses.iter().chain(&[info.worker, info.owner]),
+            )?;
+
+            // The upgraded power and its pledge depend only on the sector size, so
+            // they are the same for every sector in the batch.
+            let full_qa_power = qa_power_max(info.sector_size);
+            let full_power_pledge = pledge_inputs.initial_pledge_for_power(&full_qa_power);
+            let policy = rt.policy();
+
+            let ve: Vec<ValidatedExpirationExtension> =  params.extensions.into_iter().map(|e| e.into()).collect();
+            let (power_delta, pledge_delta) = replace_sector_records(
+               policy,
+               rt.store(),
+               state,
+               info.sector_size,
+               &ve,
+               |_partition, ve, sector_info| {
+                   upgrade_sector_to_full_power(
+                       policy,
+                       curr_epoch,
+                       ve.new_expiration,
+                       sector_info,
+                       info.sector_size,
+                       &pledge_inputs.circulating_supply,
+                       &full_qa_power,
+                       &full_power_pledge,
+                   )
+               }
+            )?;
+
+            // Lock the pledge top-up, checking funds before adding it so a shortfall
+            // reports the true available balance. Fee debt must be repaid in full in
+            // the same call.
+            let current_balance = rt.current_balance();
+            if pledge_delta.is_positive() {
+                let available_balance =
+                    state.get_available_balance(&current_balance).map_err(|e| {
+                        actor_error!(illegal_state, "failed to calculate available balance: {}", e)
+                    })?;
+                if available_balance < pledge_delta {
+                    return Err(actor_error!(
+                        insufficient_funds,
+                        "insufficient funds for aggregate initial pledge requirement {}, available: {}",
+                        pledge_delta,
+                        available_balance
+                    ));
+                }
+            }
+
+            state
+                .add_initial_pledge(&pledge_delta)
+                .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
+
+            let fee_to_burn = repay_debts_or_abort(rt, state)?;
+
+            state.check_balance_invariants(&current_balance).map_err(balance_invariants_broken)?;
+            Ok((power_delta, pledge_delta, fee_to_burn))
+        })?;
+
+        burn_funds(rt, fee_to_burn)?;
+        // Unlike plain extension, the upgrade routinely adds power and pledge.
+        request_update_power(rt, power_delta)?;
+        notify_pledge_changed(rt, &pledge_delta)?;
+        Ok(())
+    }
+
     /// Marks some sectors as terminated at the present epoch, earlier than their
     /// scheduled termination, and adds these sectors to the early termination queue.
     /// This method then processes up to AddressedSectorsMax sectors and
@@ -3287,6 +3390,26 @@ impl From<ExpirationExtension2> for ValidatedExpirationExtension {
     }
 }
 
+impl From<UpgradeSectorQuality> for ValidatedExpirationExtension {
+    fn from(uq: UpgradeSectorQuality) -> Self {
+        // Destructure all fields at once
+        let UpgradeSectorQuality {
+            deadline,
+            partition,
+            sectors,
+            new_expiration,
+        } = uq;
+
+        Self {
+            deadline,
+            partition,
+            sectors,
+            new_expiration,
+        }
+    }
+}
+
+
 /// Rewrites the sectors named by each declaration, moving each partition's expiration queue
 /// and its deadline's power and fee books to match, and returns the aggregate power and
 /// pledge deltas.
@@ -3567,6 +3690,137 @@ fn extend_sector_weights(
     new_sector.expected_day_reward = None;
     new_sector.expected_storage_pledge = None;
     new_sector.replaced_day_reward = None;
+
+    Ok(new_sector)
+}
+
+/// Validates `UpgradeSectorQuality` declarations before any state changes:
+/// deadline indices in range, no empty sector selections, requested expirations
+/// inside the allowed window, and the batch under the addressed-partitions and
+/// addressed-sectors limits.
+fn validate_upgrade_quality_extensions(
+    rt: &impl Runtime,
+    extensions: &[UpgradeSectorQuality],
+) -> Result<(), ActorError> {
+    let policy = rt.policy();
+    let curr_epoch = rt.curr_epoch();
+
+    // Used only to validate the bitfields and count the batch. Declarations for
+    // the same partition must stay separate for execution, because each carries
+    // its own new expiration and this map would merge them.
+    let mut batch = DeadlineSectorMap::new();
+
+    for decl in extensions {
+        // Checked first: the deadline index guards vector indexing later.
+        if decl.deadline >= policy.wpost_period_deadlines {
+            return Err(actor_error!(
+                illegal_argument,
+                "deadline {} not in range 0..{}",
+                decl.deadline,
+                policy.wpost_period_deadlines
+            ));
+        }
+
+        if decl.sectors.is_empty() {
+            return Err(actor_error!(
+                illegal_argument,
+                "no sectors selected in deadline {} partition {}",
+                decl.deadline,
+                decl.partition
+            ));
+        }
+
+        // A requested extension must land after the current epoch and inside the
+        // maximum extension window. Checks against each sector's own expiration,
+        // activation and lifetime run per sector later.
+        if let Some(new_expiration) = decl.new_expiration {
+            if new_expiration <= curr_epoch {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "new expiration {} must be after current epoch {}",
+                    new_expiration,
+                    curr_epoch
+                ));
+            }
+            if new_expiration > curr_epoch + policy.max_sector_expiration_extension {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "new expiration {} cannot be more than {} past current epoch {}",
+                    new_expiration,
+                    policy.max_sector_expiration_extension,
+                    curr_epoch
+                ));
+            }
+        }
+
+        batch.add(policy, decl.deadline, decl.partition, decl.sectors.clone()).map_err(|e| {
+            actor_error!(
+                illegal_argument,
+                "failed to process deadline {}, partition {}: {}",
+                decl.deadline,
+                decl.partition,
+                e
+            )
+        })?;
+    }
+
+    batch.check(policy.addressed_partitions_max, policy.addressed_sectors_max).map_err(|e| {
+        actor_error!(illegal_argument, "cannot process requested parameters: {}", e)
+    })?;
+
+    Ok(())
+}
+
+/// Builds the record for one sector upgraded to full quality-adjusted power
+/// (FIP-0118) by `UpgradeSectorQuality`, optionally extending it.
+///
+/// Without a new expiration the record keeps its expiration, power base epoch and
+/// weights, so the sector stays exactly where it is already scheduled; only the
+/// flags, pledge and daily fee change.
+///
+/// # Errors
+/// Rejects sectors that have already expired, and expirations that would shorten
+/// the sector's life or fall outside the allowed window.
+#[allow(clippy::too_many_arguments)]
+fn upgrade_sector_to_full_power(
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
+    new_expiration: Option<ChainEpoch>,
+    sector: &SectorOnChainInfo,
+    sector_size: SectorSize,
+    circulating_supply: &TokenAmount,
+    full_qa_power: &StoragePower,
+    full_power_pledge: &TokenAmount,
+) -> Result<SectorOnChainInfo, ActorError> {
+    // An upgrade-only sector keeps its own expiration but must pass the same
+    // validation, so expired-but-not-yet-removed sectors are rejected here too.
+    let effective_expiration = new_expiration.unwrap_or(sector.expiration);
+    validate_extended_expiration(policy, curr_epoch, effective_expiration, sector)?;
+
+    let mut new_sector = match new_expiration {
+        None => sector.clone(),
+        // Same weight and power-base-epoch math as ExtendSectorExpiration2.
+        Some(new_expiration) => extend_sector_weights(new_expiration, curr_epoch, sector)?,
+    };
+
+    // The flags are the entire power change: qa_power_for_sector returns the
+    // maximum for FULL_QA_POWER sectors. Same pair as replica updates set.
+    new_sector.flags |=
+        SectorOnChainInfoFlags::SIMPLE_QA_POWER | SectorOnChainInfoFlags::FULL_QA_POWER;
+
+    // Pledge for the upgraded power, never lowered below what is already held.
+    new_sector.initial_pledge = max(new_sector.initial_pledge, full_power_pledge.clone());
+
+    if new_sector.daily_fee.is_zero() {
+        // Sector predates FIP-0100 fees; attach the fee at the upgraded rate.
+        new_sector.daily_fee = daily_proof_fee(policy, circulating_supply, full_qa_power);
+    } else {
+        // Scale the fee by the power change, reading the old power from the
+        // pre-upgrade record (the new one is already flagged and reports maximum).
+        let old_qa_power = qa_power_for_sector(sector_size, sector);
+        new_sector.daily_fee =
+            daily_proof_fee_adjust(&new_sector.daily_fee, &old_qa_power, full_qa_power);
+    }
 
     Ok(new_sector)
 }
@@ -5490,6 +5744,7 @@ impl ActorCode for Actor {
         ProveCommitSectors3 => prove_commit_sectors3,
         ProveReplicaUpdates3 => prove_replica_updates3,
         ProveCommitSectorsNI => prove_commit_sectors_ni,
+        UpgradeSectorQuality => upgradeSectorQuality,
         MaxTerminationFeeExported => max_termination_fee,
         InitialPledgeExported => initial_pledge,
         GenerateSectorLocationExported => generate_sector_location,
