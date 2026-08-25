@@ -2186,7 +2186,7 @@ impl Actor {
     /// whole batch's pledge increase and any outstanding fee debt, which is repaid in
     /// the same call. Any invalid declaration or non-active sector fails the whole
     /// message; no partial upgrade is applied.
-    fn upgradeSectorQuality(
+    fn upgrade_sector_quality(
         rt: &impl Runtime,
         params: UpgradeSectorQualityParams,
     ) -> Result<(), ActorError> {
@@ -2218,25 +2218,38 @@ impl Actor {
             let full_power_pledge = pledge_inputs.initial_pledge_for_power(&full_qa_power);
             let policy = rt.policy();
 
-            let ve: Vec<ValidatedExpirationExtension> =  params.extensions.into_iter().map(|e| e.into()).collect();
+            let ve: Vec<ValidatedExpirationExtension> =
+                params.extensions.into_iter().map(|e| e.into()).collect();
             let (power_delta, pledge_delta) = replace_sector_records(
-               policy,
-               rt.store(),
-               state,
-               info.sector_size,
-               &ve,
-               |_partition, ve, sector_info| {
-                   upgrade_sector_to_full_power(
-                       policy,
-                       curr_epoch,
-                       ve.new_expiration,
-                       sector_info,
-                       info.sector_size,
-                       &pledge_inputs.circulating_supply,
-                       &full_qa_power,
-                       &full_power_pledge,
-                   )
-               }
+                policy,
+                rt.store(),
+                state,
+                info.sector_size,
+                &ve,
+                |partition, decl, sector| {
+                    // Only active sectors may upgrade; a faulty, unproven, terminated
+                    // or foreign sector fails the whole message.
+                    if !partition.active_sectors().get(sector.sector_number) {
+                        let key =
+                            PartitionKey { deadline: decl.deadline, partition: decl.partition };
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "can only upgrade active sectors: sector {} is not active in {:?}",
+                            sector.sector_number,
+                            key
+                        ));
+                    }
+                    upgrade_sector_to_full_power(
+                        policy,
+                        curr_epoch,
+                        decl.new_expiration,
+                        sector,
+                        info.sector_size,
+                        &pledge_inputs.circulating_supply,
+                        &full_qa_power,
+                        &full_power_pledge,
+                    )
+                },
             )?;
 
             // Lock the pledge top-up, checking funds before adding it so a shortfall
@@ -3393,22 +3406,11 @@ impl From<ExpirationExtension2> for ValidatedExpirationExtension {
 impl From<UpgradeSectorQuality> for ValidatedExpirationExtension {
     fn from(uq: UpgradeSectorQuality) -> Self {
         // Destructure all fields at once
-        let UpgradeSectorQuality {
-            deadline,
-            partition,
-            sectors,
-            new_expiration,
-        } = uq;
+        let UpgradeSectorQuality { deadline, partition, sectors, new_expiration } = uq;
 
-        Self {
-            deadline,
-            partition,
-            sectors,
-            new_expiration,
-        }
+        Self { deadline, partition, sectors, new_expiration }
     }
 }
-
 
 /// Rewrites the sectors named by each declaration, moving each partition's expiration queue
 /// and its deadline's power and fee books to match, and returns the aggregate power and
@@ -5744,7 +5746,7 @@ impl ActorCode for Actor {
         ProveCommitSectors3 => prove_commit_sectors3,
         ProveReplicaUpdates3 => prove_replica_updates3,
         ProveCommitSectorsNI => prove_commit_sectors_ni,
-        UpgradeSectorQuality => upgradeSectorQuality,
+        UpgradeSectorQuality => upgrade_sector_quality,
         MaxTerminationFeeExported => max_termination_fee,
         InitialPledgeExported => initial_pledge,
         GenerateSectorLocationExported => generate_sector_location,
