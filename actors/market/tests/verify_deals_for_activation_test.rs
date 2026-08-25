@@ -8,7 +8,10 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
 
-use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams};
+use fil_actor_market::{
+    Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams,
+    validate_deals_for_sector,
+};
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{
@@ -303,6 +306,25 @@ fn fail_when_deal_end_epoch_is_greater_than_sector_expiration() {
 
     rt.verify();
     check_state(&rt);
+}
+
+#[test]
+fn validates_all_deals_before_checking_sector_capacity() {
+    let valid = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, START_EPOCH, END_EPOCH);
+    let expired = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, CURR_EPOCH - 1, END_EPOCH);
+    let proposals = vec![(0, valid.clone()), (1, valid), (2, expired)];
+    let sector_size = RegisteredSealProof::StackedDRG2KiBV1P1.sector_size().unwrap();
+
+    let error = validate_deals_for_sector(
+        &proposals,
+        &PROVIDER_ADDR,
+        SECTOR_EXPIRY,
+        CURR_EPOCH,
+        sector_size,
+    )
+    .unwrap_err();
+
+    assert_eq!(fil_actor_market::EX_DEAL_EXPIRED, error.exit_code());
 }
 
 #[test]
