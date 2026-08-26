@@ -96,6 +96,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // Proposals
     let mut proposal_cids = BTreeSet::<Cid>::new();
+    let mut proposal_cids_by_id = BTreeMap::<DealID, Cid>::new();
     let mut max_deal_id = -1;
     let mut proposal_stats = BTreeMap::<DealID, DealSummary>::new();
     let mut expected_deal_ops = BTreeSet::<DealID>::new();
@@ -112,6 +113,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 
                 // keep some state
                 proposal_cids.insert(proposal_cid);
+                proposal_cids_by_id.insert(deal_id, proposal_cid);
                 max_deal_id = max_deal_id.max(deal_id as i64);
 
                 proposal_stats.insert(
@@ -263,6 +265,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     }
 
     // pending proposals
+    let mut pending_proposal_cids = BTreeSet::<Cid>::new();
     let mut pending_proposal_count = 0;
     match PendingProposalsSet::load(
         store,
@@ -278,6 +281,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                     proposal_cids.contains(&proposal_cid),
                     format!("pending proposal with cid {proposal_cid} not found within proposals"),
                 );
+                pending_proposal_cids.insert(proposal_cid);
 
                 pending_proposal_count += 1;
                 Ok(())
@@ -286,6 +290,20 @@ pub fn check_state_invariants<BS: Blockstore>(
         }
         Err(e) => acc.add(format!("error loading pending proposals: {e}")),
     };
+
+    for (deal_id, stats) in &proposal_stats {
+        if stats.sector_start_epoch == EPOCH_UNDEFINED && current_epoch < stats.start_epoch {
+            let proposal_cid =
+                proposal_cids_by_id.get(deal_id).expect("every proposal has a computed CID");
+            acc.require(
+                pending_proposal_cids.contains(proposal_cid),
+                format!(
+                    "unactivated proposal {deal_id} before start epoch {} is not pending",
+                    stats.start_epoch
+                ),
+            );
+        }
+    }
 
     // escrow table and locked table
     let mut lock_table_count = 0;
