@@ -152,6 +152,7 @@ pub fn check_state(rt: &MockRuntime) {
         rt.store(),
         &rt.get_balance(),
         *rt.epoch.borrow(),
+        rt.policy.deal_updates_interval,
     );
     acc.assert_empty();
 }
@@ -164,6 +165,7 @@ pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) 
         rt.store(),
         &rt.get_balance(),
         *rt.epoch.borrow(),
+        rt.policy.deal_updates_interval,
     );
     acc.assert_expected(expected_patterns);
 }
@@ -1163,6 +1165,14 @@ pub fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
     next_update_epoch(deal_id, Policy::default().deal_updates_interval, start_epoch)
 }
 
+/// The cron visit a simulated legacy deal is queued for. Cron drops any deal at the
+/// visit scheduled for it at publish, so a "legacy" (pre FIP-0074) deal, which is
+/// one cron knows to reschedule for continued cron handling, must already be one
+/// interval past that.
+pub fn legacy_process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
+    process_epoch(start_epoch, deal_id) + Policy::default().deal_updates_interval
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn publish_and_activate_deal(
     rt: &MockRuntime,
@@ -1541,10 +1551,9 @@ pub fn assert_account_zero(rt: &MockRuntime, addr: Address) {
     assert!(account.locked.is_zero());
 }
 
-// market cron tick uses last_updated_epoch == EPOCH_UNDEFINED to determine if a deal is new
-// it will not process such deals
-// however, for testing we need to simulate deals that are already in the system that should be
-// continued to be processed by cron
+// Cron drops every deal at the visit scheduled for it at publish, so a legacy deal (one cron
+// still services) is already past that visit. It's updated once, pending proposal gone,
+// and queued for the following interval. See legacy_process_epoch.
 fn simulate_legacy_deal(
     rt: &fil_actors_runtime::test_utils::MockRuntime,
     deal_id: u64,
@@ -1560,6 +1569,14 @@ fn simulate_legacy_deal(
     // the first cron_tick would have removed the proposal from the pending queue
     let proposal = state.find_proposal(rt.store(), deal_id).unwrap().unwrap();
     state.remove_pending_deal(rt.store(), deal_cid(rt, &proposal).unwrap()).unwrap();
+
+    // and rescheduled the deal one interval on
+    let interval = rt.policy.deal_updates_interval;
+    let first_visit = next_update_epoch(deal_id, interval, proposal.start_epoch);
+    let mut deal_ops = state.load_deal_ops(rt.store()).unwrap();
+    deal_ops.remove(&first_visit, deal_id).unwrap();
+    deal_ops.put(&(first_visit + interval), deal_id).unwrap();
+    state.deal_ops_by_epoch = deal_ops.flush().unwrap();
 
     rt.replace_state(&state);
 }

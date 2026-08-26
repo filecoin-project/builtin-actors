@@ -269,8 +269,8 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
         SECTOR_EXPIRY,
     );
 
-    // move the current epoch to the process epoch + 5 so payment is made
-    let process_start = process_epoch(START_EPOCH, deal_id);
+    // move the current epoch to the legacy deal's visit + 5 so payment is made
+    let process_start = legacy_process_epoch(START_EPOCH, deal_id);
     let current = rt.set_epoch(process_start + 5);
 
     // assert payment
@@ -337,8 +337,8 @@ fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_wil
         SECTOR_EXPIRY,
     );
 
-    // move the current epoch to processEpoch + 5 so payment is made and assert payment
-    let process_start = process_epoch(START_EPOCH, deal_id);
+    // move the current epoch to the legacy deal's visit + 5 so payment is made and assert payment
+    let process_start = legacy_process_epoch(START_EPOCH, deal_id);
     let current = process_start + 5;
     rt.set_epoch(current);
     let (pay, slashed) =
