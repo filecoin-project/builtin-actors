@@ -21,8 +21,8 @@ use crate::expects::Expect;
 use crate::tests::{create_sector, current_initial_pledge};
 use crate::util::{
     advance_by_deadline_to_index, advance_to_proving_deadline, assert_invariants, create_accounts,
-    create_miner, miner_extend_sector_expiration2, miner_power,
-    override_compute_unsealed_sector_cid, sector_info, submit_windowed_post,
+    create_miner, miner_power, override_compute_unsealed_sector_cid, sector_info,
+    submit_windowed_post,
 };
 
 /// Rewrites a freshly onboarded (10x) sector as a pre-FIP-0118 legacy CC sector:
@@ -99,8 +99,8 @@ fn make_legacy_cc_sector(v: &dyn VM, maddr: &Address, sector_number: SectorNumbe
 }
 
 /// FIP-0118: `UpgradeSectorQuality` upgrades a legacy CC sector to 10x QA power, locking the
-/// pledge top-up. The upgraded sector is then skipped by a repeat call, and a plain extension
-/// locks nothing more.
+/// pledge top-up. A repeat call upgrades nothing more: in place it is a no-op, with a new
+/// expiration it only extends.
 #[vm_test]
 pub fn upgrade_sector_quality_upgrades_legacy_sector_test(v: &dyn VM) {
     override_compute_unsealed_sector_cid(v);
@@ -188,57 +188,45 @@ pub fn upgrade_sector_quality_upgrades_legacy_sector_test(v: &dyn VM) {
     .matches(v.take_invocations().last().unwrap());
     assert_eq!(full_qa_power, miner_power(v, &maddr).qa);
 
-    // Already at full power, the sector is not eligible: a repeat call — even one asking for
-    // an extension — skips it, changing nothing and notifying nobody.
+    // Already at full power, the sector is not upgraded again: an in-place repeat changes
+    // nothing, and one asking for an extension only extends, locking nothing and notifying
+    // nobody.
     let new_expiration = v.epoch() + policy.max_sector_expiration_extension;
-    apply_ok(
-        v,
-        &worker,
-        &maddr,
-        &TokenAmount::zero(),
-        MinerMethod::UpgradeSectorQuality as u64,
-        Some(UpgradeSectorQualityParams {
-            extensions: vec![UpgradeSectorQuality {
-                deadline,
-                partition,
-                sectors,
-                new_expiration: Some(new_expiration),
-            }],
-        }),
-    );
-    assert_eq!(upgraded, sector_info(v, &maddr, sector_number));
-    ExpectInvocation {
-        from: worker_id,
-        to: maddr,
-        method: MinerMethod::UpgradeSectorQuality as u64,
-        subinvocs: Some(vec![
-            Expect::reward_this_epoch(miner_id),
-            Expect::power_current_total(miner_id),
-        ]),
-        events: Some(vec![]),
-        ..Default::default()
+    for repeat in [None, Some(new_expiration)] {
+        apply_ok(
+            v,
+            &worker,
+            &maddr,
+            &TokenAmount::zero(),
+            MinerMethod::UpgradeSectorQuality as u64,
+            Some(UpgradeSectorQualityParams {
+                extensions: vec![UpgradeSectorQuality {
+                    deadline,
+                    partition,
+                    sectors: sectors.clone(),
+                    new_expiration: repeat,
+                }],
+            }),
+        );
+        ExpectInvocation {
+            from: worker_id,
+            to: maddr,
+            method: MinerMethod::UpgradeSectorQuality as u64,
+            subinvocs: Some(vec![
+                Expect::reward_this_epoch(miner_id),
+                Expect::power_current_total(miner_id),
+            ]),
+            events: Some(vec![]),
+            ..Default::default()
+        }
+        .matches(v.take_invocations().last().unwrap());
+        let sector = sector_info(v, &maddr, sector_number);
+        assert_eq!(repeat.unwrap_or(upgraded.expiration), sector.expiration);
+        assert_eq!(upgraded.flags, sector.flags);
+        assert_eq!(upgraded.initial_pledge, sector.initial_pledge);
+        assert_eq!(upgraded.daily_fee, sector.daily_fee);
     }
-    .matches(v.take_invocations().last().unwrap());
-
-    // A plain extension moves the expiration and locks nothing more: flag, pledge and fee ride
-    // along, and no power or pledge notification is sent.
-    miner_extend_sector_expiration2(
-        v,
-        &worker,
-        &maddr,
-        deadline,
-        partition,
-        vec![sector_number],
-        vec![],
-        new_expiration,
-        PowerPair::zero(),
-    );
-    let extended = sector_info(v, &maddr, sector_number);
-    assert_eq!(new_expiration, extended.expiration);
-    assert_eq!(v.epoch(), extended.power_base_epoch);
-    assert_eq!(upgraded.flags, extended.flags);
-    assert_eq!(upgraded.initial_pledge, extended.initial_pledge);
-    assert_eq!(upgraded.daily_fee, extended.daily_fee);
+    assert_eq!(v.epoch(), sector_info(v, &maddr, sector_number).power_base_epoch);
 
     // The sector keeps proving at its upgraded power.
     let (deadline_info, partition_index) = advance_to_proving_deadline(v, &maddr, sector_number);

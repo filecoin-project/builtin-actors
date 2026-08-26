@@ -207,6 +207,24 @@ fn upgrade_one(
     h.get_sector(rt, legacy.sector_number)
 }
 
+/// Calls `UpgradeSectorQuality` on a sector already at full power, which may move its
+/// expiration but never its power or pledge, and returns its record.
+fn call_at_full_power(
+    h: &ActorHarness,
+    rt: &MockRuntime,
+    sector: &SectorOnChainInfo,
+    new_expiration: Option<ChainEpoch>,
+) -> SectorOnChainInfo {
+    h.upgrade_sector_quality(
+        rt,
+        upgrade_params(rt, sector.sector_number, new_expiration),
+        PowerPair::zero(),
+        TokenAmount::zero(),
+    )
+    .unwrap();
+    h.get_sector(rt, sector.sector_number)
+}
+
 /// Calls `UpgradeSectorQuality` expecting it to abort with `code` and `message`.
 fn expect_upgrade_abort(
     h: &ActorHarness,
@@ -287,12 +305,10 @@ fn repeated_upgrade_is_a_no_op() {
     let upgraded = upgrade_one(&h, &rt, &legacy, None);
     let state_root = *rt.state.borrow();
 
-    // A sector at full power is skipped: neither an in-place repeat nor one asking for an
-    // extension moves power, pledge, fee or expiration, and state stays byte-identical.
-    for new_expiration in [None, Some(upgraded.expiration + 42 * EPOCHS_IN_DAY)] {
-        upgrade_one(&h, &rt, &upgraded, new_expiration);
-        assert_eq!(state_root, *rt.state.borrow());
-    }
+    // A sector at full power has nothing to upgrade: an in-place repeat moves no power,
+    // pledge or fee, and state stays byte-identical.
+    assert_eq!(upgraded, call_at_full_power(&h, &rt, &upgraded, None));
+    assert_eq!(state_root, *rt.state.borrow());
     h.check_state(&rt);
 }
 
@@ -313,19 +329,21 @@ fn repeated_upgrade_locks_nothing_when_pledge_requirement_rises() {
     assert_eq!(legacy.initial_pledge, after_first.initial_pledge);
 
     // Conditions recover, so the full-power requirement now exceeds what the sector holds.
-    // Already at full power, a repeat must lock nothing.
+    // Already at full power, a repeat locks nothing: in place it changes nothing, with a
+    // new expiration it only extends.
     rt.set_circulating_supply(normal_supply);
     h.epoch_reward_smooth = normal_reward;
     let raised_requirement = h.initial_pledge_for_power(&rt, &qa_power_max(h.sector_size));
     assert!(raised_requirement > after_first.initial_pledge);
-    h.upgrade_sector_quality(
-        &rt,
-        upgrade_params(&rt, legacy.sector_number, None),
-        PowerPair::zero(),
-        TokenAmount::zero(),
-    )
-    .unwrap();
-    assert_eq!(after_first, h.get_sector(&rt, legacy.sector_number));
+    let new_expiration = after_first.expiration + 42 * EPOCHS_IN_DAY;
+    for repeat in [None, Some(new_expiration)] {
+        let sector = call_at_full_power(&h, &rt, &after_first, repeat);
+        assert_eq!(repeat.unwrap_or(after_first.expiration), sector.expiration);
+        assert_eq!(after_first.flags, sector.flags);
+        assert_eq!(after_first.initial_pledge, sector.initial_pledge);
+        assert_eq!(after_first.daily_fee, sector.daily_fee);
+    }
+    assert_eq!(after_first.initial_pledge, rt.get_state::<State>().initial_pledge);
     h.check_state(&rt);
 }
 
@@ -398,19 +416,30 @@ fn extension_restates_verified_weight_and_grants_full_power() {
 }
 
 #[test]
-fn already_full_power_by_weights_is_skipped() {
+fn already_full_power_by_weights_is_not_upgraded() {
     let (mut h, rt) = setup();
-    // Already 10x through its weights alone, so there is nothing to raise: the sector is not
-    // eligible and is skipped — not even flagged — leaving state byte-identical.
+    // Already 10x through its weights alone, so there is nothing to raise.
     let full = h.sector_size as u64;
     let legacy =
         commit_legacy_sectors(&mut h, &rt, 1, SectorOnChainInfoFlags::SIMPLE_QA_POWER, full)
             .remove(0);
     assert_eq!(qa_power_max(h.sector_size), qa_power_for_sector(h.sector_size, &legacy));
-    let state_root = *rt.state.borrow();
 
-    assert_eq!(legacy, upgrade_one(&h, &rt, &legacy, None));
+    // In place, the sector is skipped — not even flagged — leaving state byte-identical.
+    let state_root = *rt.state.borrow();
+    assert_eq!(legacy, call_at_full_power(&h, &rt, &legacy, None));
     assert_eq!(state_root, *rt.state.borrow());
+
+    // With a new expiration it is extended as ExtendSectorExpiration2 would: still
+    // unflagged, its verified weight restated so it stays at 10x, pledge and fee untouched.
+    let new_expiration = legacy.expiration + 42 * EPOCHS_IN_DAY;
+    let extended = call_at_full_power(&h, &rt, &legacy, Some(new_expiration));
+    assert_eq!(legacy.flags, extended.flags);
+    assert_eq!(new_expiration, extended.expiration);
+    assert_eq!(*rt.epoch.borrow(), extended.power_base_epoch);
+    assert_eq!(qa_power_max(h.sector_size), qa_power_for_sector(h.sector_size, &extended));
+    assert_eq!(legacy.initial_pledge, extended.initial_pledge);
+    assert_eq!(legacy.daily_fee, extended.daily_fee);
     h.check_state(&rt);
 }
 
@@ -525,7 +554,7 @@ fn one_declaration_upgrades_sectors_with_different_expirations() {
 }
 
 #[test]
-fn extension_skips_sectors_already_at_full_power() {
+fn extension_extends_but_does_not_upgrade_full_power_sectors() {
     let (mut h, rt) = setup();
     let sectors = commit_proven_sectors(&mut h, &rt, 2);
     let (deadline, partition) = sector_location(&rt, sectors[0].sector_number);
@@ -537,9 +566,9 @@ fn extension_skips_sectors_already_at_full_power() {
     let full = h.get_sector(&rt, sectors[1].sector_number);
     assert!(full.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER));
 
-    // One declaration extends both. Only the legacy sector is upgraded and extended; the
-    // full-power one is not eligible and keeps its expiration (ExtendSectorExpiration2 is the
-    // way to extend it).
+    // One declaration extends both. The legacy sector is upgraded and extended; the
+    // full-power one is only extended, as ExtendSectorExpiration2 would, so the batch locks
+    // just the legacy sector's top-up.
     let new_expiration = legacy.expiration + 42 * EPOCHS_IN_DAY;
     let both = [legacy.sector_number, full.sector_number];
     let (power_delta, pledge_delta) =
@@ -557,7 +586,12 @@ fn extension_skips_sectors_already_at_full_power() {
     let upgraded = h.get_sector(&rt, legacy.sector_number);
     assert_full_power_record(&h, &rt, &legacy, &upgraded);
     assert_eq!(new_expiration, upgraded.expiration);
-    assert_eq!(full, h.get_sector(&rt, full.sector_number));
+    let extended = h.get_sector(&rt, full.sector_number);
+    assert_eq!(new_expiration, extended.expiration);
+    assert_eq!(*rt.epoch.borrow(), extended.power_base_epoch);
+    assert_eq!(full.flags, extended.flags);
+    assert_eq!(full.initial_pledge, extended.initial_pledge);
+    assert_eq!(full.daily_fee, extended.daily_fee);
     h.check_state(&rt);
 }
 
@@ -619,33 +653,37 @@ fn mixed_batch_upgrades_extends_and_requeues_across_epochs() {
 }
 
 #[test]
-fn later_declaration_for_an_upgraded_sector_is_skipped() {
+fn later_declaration_extends_an_upgraded_sector_again() {
     let (mut h, rt) = setup();
     let legacy = commit_legacy_cc_sector(&mut h, &rt);
     let (deadline, partition) = sector_location(&rt, legacy.sector_number);
-
-    // Declarations apply in order: the first upgrades and extends the sector, the second finds
-    // it already at full power and leaves it alone, so the first expiration stands and the
-    // sector is charged once.
     let first = legacy.expiration + 30 * EPOCHS_IN_DAY;
     let second = legacy.expiration + 60 * EPOCHS_IN_DAY;
-    let extensions = vec![
-        declaration(deadline, partition, &[legacy.sector_number], Some(first)),
-        declaration(deadline, partition, &[legacy.sector_number], Some(second)),
-    ];
+    let declare_twice = |expirations: [ChainEpoch; 2]| UpgradeSectorQualityParams {
+        extensions: expirations
+            .iter()
+            .map(|&e| declaration(deadline, partition, &[legacy.sector_number], Some(e)))
+            .collect(),
+    };
+
+    // Declarations apply in order: the first upgrades and extends the sector, the second
+    // finds it at full power and extends it again, which cannot shorten it...
+    expect_upgrade_abort(
+        &h,
+        &rt,
+        declare_twice([second, first]),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        &format!("cannot reduce sector {} expiration", legacy.sector_number),
+    );
+
+    // ...so the last expiration stands, and the sector is charged its top-up once.
     let (power_delta, pledge_delta) =
         expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
-    h.upgrade_sector_quality(
-        &rt,
-        UpgradeSectorQualityParams { extensions },
-        power_delta,
-        pledge_delta,
-    )
-    .unwrap();
-
+    h.upgrade_sector_quality(&rt, declare_twice([first, second]), power_delta, pledge_delta)
+        .unwrap();
     let upgraded = h.get_sector(&rt, legacy.sector_number);
     assert_full_power_record(&h, &rt, &legacy, &upgraded);
-    assert_eq!(first, upgraded.expiration);
+    assert_eq!(second, upgraded.expiration);
     h.check_state(&rt);
 }
 
@@ -777,6 +815,50 @@ fn extend2_after_upgrade_keeps_full_power_and_pledge() {
 }
 
 #[test]
+fn extension_of_full_power_sector_matches_extend_sector_expiration2() {
+    let (mut h, rt) = setup();
+    // Two identical half-verified legacy sectors, upgraded in place, so both carry a
+    // verified weight to restate.
+    let half = h.sector_size as u64 / 2;
+    let legacy =
+        commit_legacy_sectors(&mut h, &rt, 2, SectorOnChainInfoFlags::SIMPLE_QA_POWER, half);
+    let (power_delta, pledge_delta) = expected_upgrade_deltas(&h, &rt, &legacy);
+    h.upgrade_sector_quality(
+        &rt,
+        UpgradeSectorQualityParams { extensions: upgrade_only_declarations(&rt, &legacy) },
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+
+    // Extend one through UpgradeSectorQuality and the other through ExtendSectorExpiration2.
+    let new_expiration = legacy[0].expiration + 42 * EPOCHS_IN_DAY;
+    let upgraded = h.get_sector(&rt, legacy[0].sector_number);
+    let by_upgrade = call_at_full_power(&h, &rt, &upgraded, Some(new_expiration));
+    let (deadline, partition) = sector_location(&rt, legacy[1].sector_number);
+    h.extend_sectors2(
+        &rt,
+        ExtendSectorExpiration2Params {
+            extensions: vec![ExpirationExtension2 {
+                deadline,
+                partition,
+                sectors: make_bitfield(&[legacy[1].sector_number]),
+                sectors_with_claims: vec![],
+                new_expiration,
+            }],
+        },
+    )
+    .unwrap();
+
+    // The records agree in everything but the sector's identity.
+    let mut by_extend2 = h.get_sector(&rt, legacy[1].sector_number);
+    by_extend2.sector_number = by_upgrade.sector_number;
+    by_extend2.sealed_cid = by_upgrade.sealed_cid;
+    assert_eq!(by_extend2, by_upgrade);
+    h.check_state(&rt);
+}
+
+#[test]
 fn withdraw_after_upgrade_leaves_the_new_pledge_locked() {
     let (mut h, rt) = setup();
     let legacy = commit_legacy_cc_sector(&mut h, &rt);
@@ -899,6 +981,16 @@ fn rejects_out_of_range_expirations() {
             &message,
         );
     }
+
+    // The per-sector check also guards the extension of a sector already at full power.
+    let upgraded = upgrade_one(&h, &rt, &legacy, None);
+    expect_upgrade_abort(
+        &h,
+        &rt,
+        upgrade_params(&rt, upgraded.sector_number, Some(upgraded.expiration - 1)),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        &format!("cannot reduce sector {} expiration", legacy.sector_number),
+    );
     h.check_state(&rt);
 }
 
@@ -1055,6 +1147,18 @@ fn rejects_expired_sector_awaiting_cron() {
     rt.set_epoch(legacy.expiration);
     let upgraded = upgrade_one(&h, &rt, &legacy, None);
     assert_full_power_record(&h, &rt, &legacy, &upgraded);
+
+    // Expired at full power, an extension is refused as ExtendSectorExpiration2 refuses it,
+    // while an in-place repeat has nothing to do and nothing to reject.
+    rt.set_epoch(legacy.expiration + 1);
+    expect_upgrade_abort(
+        &h,
+        &rt,
+        upgrade_params(&rt, upgraded.sector_number, Some(upgraded.expiration + EPOCHS_IN_DAY)),
+        ExitCode::USR_FORBIDDEN,
+        "cannot extend expiration for expired sector",
+    );
+    assert_eq!(upgraded, call_at_full_power(&h, &rt, &upgraded, None));
     h.check_state(&rt);
 }
 

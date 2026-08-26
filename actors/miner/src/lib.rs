@@ -2180,9 +2180,10 @@ impl Actor {
     /// May only be called by the miner's owner, worker, or a control address. Each
     /// declaration addresses active sectors in one partition; a declaration without a
     /// new expiration upgrades its sectors in place, leaving their expirations, power
-    /// base epochs and weights untouched. A sector already at full power is not
-    /// eligible and is skipped rather than extended or re-pledged, so repeating a call, or
-    /// naming the sector again in a later declaration of the same call, changes nothing.
+    /// base epochs and weights untouched. A sector already at full power is not upgraded
+    /// and its pledge is not raised: with a new expiration it is extended exactly as
+    /// `ExtendSectorExpiration2` would, without one it is skipped, so repeating a call
+    /// locks nothing.
     ///
     /// # Errors
     /// Aborts with `USR_INSUFFICIENT_FUNDS` unless the available balance covers the
@@ -2242,22 +2243,33 @@ impl Actor {
                             key
                         ));
                     }
-                    // Already at full power, whether by flag or by its weights: not
-                    // eligible, and skipped rather than failed so that a repeated call
-                    // locks and moves nothing.
-                    if qa_power_for_sector(info.sector_size, sector) >= full_qa_power {
-                        return Ok(None);
+                    // Already at full power, by flag or by weights, there is nothing to
+                    // upgrade or re-pledge: the sector is only extended if asked, else
+                    // skipped rather than failed.
+                    let at_full_power =
+                        qa_power_for_sector(info.sector_size, sector) >= full_qa_power;
+                    match (at_full_power, decl.new_expiration) {
+                        (true, None) => Ok(None),
+                        (true, Some(new_expiration)) => extend_sector_committment(
+                            policy,
+                            curr_epoch,
+                            &pledge_inputs.circulating_supply,
+                            new_expiration,
+                            sector,
+                            info.sector_size,
+                        )
+                        .map(Some),
+                        (false, _) => upgrade_sector_to_full_power(
+                            policy,
+                            curr_epoch,
+                            decl.new_expiration,
+                            sector,
+                            info.sector_size,
+                            &pledge_inputs.circulating_supply,
+                            &full_power_pledge,
+                        )
+                        .map(Some),
                     }
-                    upgrade_sector_to_full_power(
-                        policy,
-                        curr_epoch,
-                        decl.new_expiration,
-                        sector,
-                        info.sector_size,
-                        &pledge_inputs.circulating_supply,
-                        &full_power_pledge,
-                    )
-                    .map(Some)
                 },
             )?;
 
@@ -2285,14 +2297,15 @@ impl Actor {
                 .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
 
             let fee_to_burn = repay_debts_or_abort(rt, state)?;
-
-            state.check_balance_invariants(&current_balance).map_err(balance_invariants_broken)?;
             Ok((power_delta, pledge_delta, fee_to_burn))
         })?;
 
         burn_funds(rt, fee_to_burn)?;
         request_update_power(rt, power_delta)?;
         notify_pledge_changed(rt, &pledge_delta)?;
+
+        let state: State = rt.state()?;
+        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
         Ok(())
     }
 
@@ -3772,8 +3785,8 @@ fn validate_upgrade_quality_extensions(
 
 /// Builds the record for one sector upgraded to full quality-adjusted power
 /// (FIP-0118) by `UpgradeSectorQuality`, optionally extending it. Expects a sector
-/// below full power (the caller skips any other), so the pledge, set to the larger of
-/// the recorded pledge and `full_power_pledge`, is raised at most once.
+/// below full power (the caller only extends or skips any other), so the pledge, set
+/// to the larger of the recorded pledge and `full_power_pledge`, is raised at most once.
 ///
 /// Without a new expiration the record keeps its expiration, power base epoch and
 /// weights, so the sector stays exactly where it is already scheduled; only the
