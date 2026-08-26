@@ -54,7 +54,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     );
 
     // slash deal1
-    let slash_epoch = process_epoch(start_epoch, deal_id2) + ChainEpoch::from(100);
+    let slash_epoch = legacy_process_epoch(start_epoch, deal_id2) + ChainEpoch::from(100);
     rt.set_epoch(slash_epoch);
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_1], &[deal_id1]);
     cron_tick(&rt);
@@ -254,24 +254,26 @@ fn cron_reschedules_many_updates() {
     }
 
     let st: State = rt.get_state();
-    // Confirm two deals are scheduled for each epoch from start_epoch.
-    let first_updates = st.get_deals_for_epoch(rt.store(), start_epoch).unwrap();
-    for epoch in start_epoch..(start_epoch + update_interval) {
+    // Legacy deals are queued one interval past their first visits.
+    // Confirm two deals are scheduled for each epoch from first_epoch.
+    let first_epoch = start_epoch + update_interval;
+    let first_updates = st.get_deals_for_epoch(rt.store(), first_epoch).unwrap();
+    for epoch in first_epoch..(first_epoch + update_interval) {
         assert_eq!(2, st.get_deals_for_epoch(rt.store(), epoch).unwrap().len());
     }
 
-    rt.set_epoch(start_epoch);
+    rt.set_epoch(first_epoch);
     cron_tick(&rt);
 
     let st: State = rt.get_state();
-    // Two deals removed from start_epoch
-    assert_eq!(0, st.get_deals_for_epoch(rt.store(), start_epoch).unwrap().len());
+    // Two deals removed from first_epoch
+    assert_eq!(0, st.get_deals_for_epoch(rt.store(), first_epoch).unwrap().len());
 
     // Same two deals scheduled one interval later
-    let rescheduled = st.get_deals_for_epoch(rt.store(), start_epoch + update_interval).unwrap();
+    let rescheduled = st.get_deals_for_epoch(rt.store(), first_epoch + update_interval).unwrap();
     assert_eq!(first_updates, rescheduled);
 
-    for epoch in (start_epoch + 1)..(start_epoch + update_interval) {
+    for epoch in (first_epoch + 1)..(first_epoch + update_interval) {
         rt.set_epoch(epoch);
         cron_tick(&rt);
         let st: State = rt.get_state();
@@ -345,9 +347,9 @@ fn locked_fund_tracking_states() {
 
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
-    // make payment for p1 and p2, p3 times out as it has not been activated
-    let curr = rt.set_epoch(process_epoch(start_epoch, deal_id3));
-    let last_payment_epoch = curr;
+    // p3 times out at its first visit as it has not been activated; the legacy deals 1 & 2
+    // are not due until an interval after theirs
+    rt.set_epoch(process_epoch(start_epoch, deal_id3));
     rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
@@ -357,20 +359,27 @@ fn locked_fund_tracking_states() {
         ExitCode::OK,
     );
     cron_tick(&rt);
-    let duration = curr - start_epoch;
-    let payment: TokenAmount = 2 * &d1.storage_price_per_epoch * duration;
-    let mut csf = (csf - payment) - d3.total_storage_fee();
+    let mut csf = csf - d3.total_storage_fee();
     let mut plc = plc - d3.provider_collateral;
     let mut clc = clc - d3.client_collateral;
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
     // Advance to just before the process epochs for deal 1 & 2, nothing changes before that.
-    let curr = rt.set_epoch(process_epoch(curr, deal_id1) - 1);
+    let curr = rt.set_epoch(legacy_process_epoch(start_epoch, deal_id1) - 1);
+    cron_tick(&rt);
+    assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
+
+    // make payment for p1 and p2
+    let curr = rt.set_epoch(process_epoch(curr, deal_id2));
+    let last_payment_epoch = curr;
+    let duration = curr - start_epoch;
+    let payment: TokenAmount = 2 * &d1.storage_price_per_epoch * duration;
+    csf -= payment;
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
     // one more round of payment for deal1 and deal2
-    let curr = rt.set_epoch(process_epoch(curr, deal_id2));
+    let curr = rt.set_epoch(process_epoch(curr + 1, deal_id2));
     let duration = curr - last_payment_epoch;
     let payment = 2 * d1.storage_price_per_epoch * duration;
     csf -= payment;

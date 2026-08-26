@@ -74,22 +74,23 @@ fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     // updated in the 0th epoch of every interval, and the start epoch being the same.
     assert_eq!(0, deal_id);
 
-    // move the current epoch to startEpoch + 5 so payment is made
+    // move the current epoch to the legacy deal's visit + 5 so payment is made
     // this skip of 5 epochs is unrealistic, but later demonstrates that the re-scheduled
     // epoch distribution is robust to this.
-    let current = start_epoch + 5;
+    let visit = legacy_process_epoch(start_epoch, deal_id);
+    let current = visit + 5;
     rt.set_epoch(current);
     // assert payment
     assert!(!deal_proposal.storage_price_per_epoch.is_zero());
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
-    assert_eq!(5 * &deal_proposal.storage_price_per_epoch, pay);
+    assert_eq!((current - start_epoch) * &deal_proposal.storage_price_per_epoch, pay);
     assert!(slashed.is_zero());
 
     // Setting the current epoch to anything less than next schedule wont make any payment.
-    // Note the re-processing is scheduled for start+interval, not current+interval
+    // Note the re-processing is scheduled for visit+interval, not current+interval
     // (which differs because we skipped some epochs).
-    let current = start_epoch + Policy::default().deal_updates_interval - 1;
+    let current = visit + Policy::default().deal_updates_interval - 1;
     rt.set_epoch(current);
     cron_tick_no_change(&rt, CLIENT_ADDR, PROVIDER_ADDR);
 

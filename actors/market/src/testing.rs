@@ -25,7 +25,7 @@ use fil_actors_runtime::{ActorError, AsActorError, MessageAccumulator};
 use crate::{
     DEAL_OPS_BY_EPOCH_CONFIG, DealArray, DealMetaArray, DealOpsByEpoch, DealProposal,
     PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, PendingProposalsSet, ProviderSectorsMap,
-    SECTOR_DEALS_CONFIG, SectorDealsMap, State, balance_table::BalanceTable,
+    SECTOR_DEALS_CONFIG, SectorDealsMap, State, balance_table::BalanceTable, next_update_epoch,
 };
 
 #[derive(Clone)]
@@ -72,6 +72,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     store: &BS,
     balance: &TokenAmount,
     current_epoch: ChainEpoch,
+    deal_updates_interval: i64,
 ) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
 
@@ -99,17 +100,12 @@ pub fn check_state_invariants<BS: Blockstore>(
     let mut proposal_cids_by_id = BTreeMap::<DealID, Cid>::new();
     let mut max_deal_id = -1;
     let mut proposal_stats = BTreeMap::<DealID, DealSummary>::new();
-    let mut expected_deal_ops = BTreeSet::<DealID>::new();
     let mut total_proposal_collateral = TokenAmount::zero();
 
     match DealArray::load(&state.proposals, store) {
         Ok(proposals) => {
             let ret = proposals.for_each(|deal_id, proposal| {
                 let proposal_cid = deal_cid(proposal)?;
-
-                if proposal.start_epoch >= current_epoch {
-                    expected_deal_ops.insert(deal_id);
-                }
 
                 // keep some state
                 proposal_cids.insert(proposal_cid);
@@ -355,6 +351,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // deals ops by epoch
     let (mut deal_op_epoch_count, mut deal_op_count) = (0, 0);
+    let mut deal_ops_by_id = BTreeMap::<DealID, Vec<ChainEpoch>>::new();
     match DealOpsByEpoch::load(
         store,
         &state.deal_ops_by_epoch,
@@ -365,7 +362,7 @@ pub fn check_state_invariants<BS: Blockstore>(
             let ret = deal_ops.for_each(|epoch: ChainEpoch, _| {
                 deal_op_epoch_count += 1;
                 deal_ops.for_each_in(&epoch, |deal_id: DealID| {
-                    expected_deal_ops.remove(&deal_id);
+                    deal_ops_by_id.entry(deal_id).or_default().push(epoch);
                     deal_op_count += 1;
                     Ok(())
                 })
@@ -375,10 +372,20 @@ pub fn check_state_invariants<BS: Blockstore>(
         Err(e) => acc.add(format!("error loading deal ops: {e}")),
     };
 
-    acc.require(
-        expected_deal_ops.is_empty(),
-        format!("missing deal ops for proposals: {expected_deal_ops:?}"),
-    );
+    for (deal_id, stats) in &proposal_stats {
+        let first_visit = next_update_epoch(*deal_id, deal_updates_interval, stats.start_epoch);
+        let scheduled_epochs = deal_ops_by_id.get(deal_id).map(Vec::as_slice).unwrap_or_default();
+        // Legacy deals have passed first_visit; never-updated deals before it remain queued there.
+        if state.last_cron < first_visit && stats.last_update_epoch == EPOCH_UNDEFINED {
+            acc.require(
+                scheduled_epochs == [first_visit],
+                format!(
+                    "never-visited deal {deal_id} must have exactly one deal op at epoch \
+                     {first_visit}, found {scheduled_epochs:?}"
+                ),
+            );
+        }
+    }
 
     (
         StateSummary {
