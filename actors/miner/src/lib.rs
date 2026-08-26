@@ -2149,7 +2149,7 @@ impl Actor {
                 state,
                 info.sector_size,
                 &inner.extensions,
-                |_partition, decl, sector| match decl.new_expiration {
+                |decl, sector| match decl.new_expiration {
                     Some(new_expiration) => extend_sector_committment(
                         policy,
                         curr_epoch,
@@ -2230,19 +2230,7 @@ impl Actor {
                 state,
                 info.sector_size,
                 &declarations,
-                |partition, decl, sector| {
-                    // Only active sectors may upgrade; a faulty, unproven, terminated
-                    // or foreign sector fails the whole message.
-                    if !partition.is_active(sector.sector_number) {
-                        let key =
-                            PartitionKey { deadline: decl.deadline, partition: decl.partition };
-                        return Err(actor_error!(
-                            illegal_argument,
-                            "can only upgrade active sectors: sector {} is not active in {:?}",
-                            sector.sector_number,
-                            key
-                        ));
-                    }
+                |decl, sector| {
                     // Already at full power, by flag or by weights, there is nothing to
                     // upgrade or re-pledge: the sector is only extended if asked, else
                     // skipped rather than failed.
@@ -3436,8 +3424,8 @@ impl From<UpgradeSectorQuality> for ValidatedExpirationExtension {
 /// pledge deltas.
 ///
 /// `rewrite` produces each sector's replacement record, or `None` to leave the sector exactly
-/// as it is. It receives the partition holding the sector, so a caller can reject sectors its
-/// operation does not accept. Declarations are not merged but applied in order, each seeing the
+/// as it is. Every named sector must be active, else the call fails with
+/// `USR_ILLEGAL_ARGUMENT`. Declarations are not merged but applied in order, each seeing the
 /// records the previous ones produced, so a sector named twice is offered to `rewrite` twice
 /// (and rewritten again only if `rewrite` says so).
 ///
@@ -3451,7 +3439,6 @@ fn replace_sector_records<BS: Blockstore>(
     sector_size: SectorSize,
     declarations: &[ValidatedExpirationExtension],
     rewrite: impl Fn(
-        &Partition,
         &ValidatedExpirationExtension,
         &SectorOnChainInfo,
     ) -> Result<Option<SectorOnChainInfo>, ActorError>,
@@ -3518,7 +3505,16 @@ fn replace_sector_records<BS: Blockstore>(
             for sector in
                 sectors.load_sectors(&decl.sectors).map_err(|e| e.wrap("failed to load sectors"))?
             {
-                if let Some(new_sector) = rewrite(&partition, decl, &sector)? {
+                // Reject a faulty, unproven, terminated or foreign sector.
+                if !partition.is_active(sector.sector_number) {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "sector {} is not active in {:?}",
+                        sector.sector_number,
+                        key
+                    ));
+                }
+                if let Some(new_sector) = rewrite(decl, &sector)? {
                     old_sectors.push(sector);
                     new_sectors.push(new_sector);
                 }

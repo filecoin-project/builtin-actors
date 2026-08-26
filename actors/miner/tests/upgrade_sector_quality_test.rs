@@ -1054,7 +1054,7 @@ fn faulty_declaration_aborts_the_whole_batch() {
         &rt,
         UpgradeSectorQualityParams { extensions: declarations },
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        "can only upgrade active sectors",
+        "is not active in",
     );
     h.check_state(&rt);
 }
@@ -1071,7 +1071,7 @@ fn rejects_unproven_sector() {
         &rt,
         upgrade_params(&rt, sector.sector_number, None),
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        "can only upgrade active sectors",
+        "is not active in",
     );
     h.check_state(&rt);
 }
@@ -1093,7 +1093,7 @@ fn rejects_sector_from_another_partition() {
             extensions: vec![declaration(deadline, partition, &[elsewhere], None)],
         },
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        "can only upgrade active sectors",
+        "is not active in",
     );
 
     // The same sector upgrades under its own partition, so the rejection was about the
@@ -1123,7 +1123,7 @@ fn rejects_terminated_sector() {
         &rt,
         upgrade_params(&rt, legacy.sector_number, None),
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        "can only upgrade active sectors",
+        "is not active in",
     );
     h.check_state(&rt);
 }

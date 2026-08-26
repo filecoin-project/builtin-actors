@@ -1,6 +1,6 @@
 use fil_actor_miner::{
     Actor, ExpirationExtension2, ExtendSectorExpiration2Params, Method, PoStPartition, SectorClaim,
-    SectorOnChainInfo, State, daily_proof_fee, power_for_sector,
+    SectorOnChainInfo, State, daily_proof_fee, pledge_penalty_for_termination, power_for_sector,
     seal_proof_sector_maximum_lifetime,
 };
 use fil_actors_runtime::{
@@ -58,6 +58,7 @@ fn commit_sector(h: &mut ActorHarness, rt: &MockRuntime) -> SectorOnChainInfo {
 fn rejects_negative_extensions() {
     let (mut h, rt) = setup();
     let sector = commit_sector(&mut h, &rt);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&sector));
 
     // attempt to shorten epoch
     let new_expiration = sector.expiration - rt.policy().wpost_proving_period;
@@ -130,6 +131,7 @@ fn rejects_out_of_range_deadline() {
 fn rejects_extension_too_far_in_future() {
     let (mut h, rt) = setup();
     let sector = commit_sector(&mut h, &rt);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&sector));
 
     // extend by even proving period after max
     rt.set_epoch(sector.expiration);
@@ -211,6 +213,77 @@ fn rejects_extension_past_max_for_seal_proof() {
     let res = h.extend_sectors2(&rt, params);
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "total sector lifetime", res);
     h.check_state(&rt);
+}
+
+fn expect_not_active(h: &ActorHarness, rt: &MockRuntime, params: ExtendSectorExpiration2Params) {
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "is not active in",
+        h.extend_sectors2(rt, params),
+    );
+    rt.reset();
+}
+
+/// Only active sectors can be extended: an unproven, foreign, faulty or terminated sector aborts
+/// the call as the caller's error, before the expiration queue is touched.
+#[test]
+fn rejects_sectors_that_are_not_active() {
+    let (mut h, rt) = setup();
+    h.construct_and_verify(&rt);
+    // Three sectors: two share a partition, the third lands in another.
+    let sectors =
+        h.commit_and_prove_sectors(&rt, 3, DEFAULT_SECTOR_EXPIRATION as u64, Vec::new(), true);
+    let location = |sector: &SectorOnChainInfo| {
+        rt.get_state::<State>().find_sector(rt.store(), sector.sector_number).unwrap()
+    };
+    let (deadline, partition) = location(&sectors[0]);
+    assert_eq!((deadline, partition), location(&sectors[1]));
+    let (other_deadline, other_partition) = location(&sectors[2]);
+    assert_ne!((deadline, partition), (other_deadline, other_partition));
+    let new_expiration = sectors[0].expiration + 42 * EPOCHS_IN_DAY;
+    let declare = |deadline, partition, sector: &SectorOnChainInfo| ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline,
+            partition,
+            sectors: make_bitfield(&[sector.sector_number]),
+            sectors_with_claims: vec![],
+            new_expiration,
+        }],
+    };
+
+    // Committed but not yet proven in a WindowPoSt.
+    expect_not_active(&h, &rt, declare(deadline, partition, &sectors[0]));
+    h.advance_and_submit_posts(&rt, &sectors);
+
+    // Held by a partition other than the declared one.
+    expect_not_active(&h, &rt, declare(deadline, partition, &sectors[2]));
+
+    // Faulty.
+    h.declare_faults(&rt, std::slice::from_ref(&sectors[0]));
+    expect_not_active(&h, &rt, declare(deadline, partition, &sectors[0]));
+
+    // Terminated, its record still in place until cleanup. Locked rewards make the fee
+    // unlockable, as in the terminate tests.
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    let fault_fee = h.continued_fault_penalty(std::slice::from_ref(&sectors[1]));
+    let termination_fee = pledge_penalty_for_termination(
+        &sectors[1].initial_pledge,
+        *rt.epoch.borrow() - sectors[1].activation,
+        &fault_fee,
+    );
+    h.terminate_sectors(&rt, &make_bitfield(&[sectors[1].sector_number]), termination_fee);
+    expect_not_active(&h, &rt, declare(deadline, partition, &sectors[1]));
+
+    // The sector rejected as foreign extends normally under its own partition.
+    h.extend_sectors2(&rt, declare(other_deadline, other_partition, &sectors[2])).unwrap();
+    check_for_expiration(
+        &mut h,
+        &rt,
+        new_expiration,
+        sectors[2].sector_number,
+        other_deadline,
+        other_partition,
+    );
 }
 
 #[test]
