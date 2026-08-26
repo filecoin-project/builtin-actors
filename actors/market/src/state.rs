@@ -653,16 +653,15 @@ impl State {
     where
         BS: Blockstore,
     {
+        if curr_epoch < deal_proposal.start_epoch {
+            return Ok(LoadDealState::TooEarly);
+        } // else if ==, continue because cron may call at the start epoch and would abort on TooEarly.
+
         let deal_state = self.find_deal_state(store, deal_id)?;
 
         match deal_state {
             Some(deal_state) => Ok(LoadDealState::Loaded(deal_state)),
             None => {
-                // deal_id called too early
-                if curr_epoch < deal_proposal.start_epoch {
-                    return Ok(LoadDealState::TooEarly);
-                }
-
                 // if not activated, the proposal has timed out
                 let slashed = self.process_deal_init_timed_out(store, deal_proposal)?;
 
@@ -729,11 +728,6 @@ impl State {
         // TODO: remove this and calculations below that assume deals can be slashed
         let ever_slashed = state.slash_epoch != EPOCH_UNDEFINED;
 
-        if !ever_updated {
-            // pending deal might have been removed by manual settlement or cron so we don't care if it's missing
-            self.remove_pending_deal(store, *deal_cid)?;
-        }
-
         // if the deal was ever updated, make sure it didn't happen in the future
         if ever_updated && state.last_updated_epoch > epoch {
             return Err(actor_error!(
@@ -743,9 +737,12 @@ impl State {
             ));
         }
 
-        // this is a safe no-op but can happen if a storage provider calls settle_deal_payments too early
-        if deal.start_epoch > epoch {
-            return Ok((TokenAmount::zero(), TokenAmount::zero(), false, false));
+        // Keep pending through the start epoch and remove it on the first later update.
+        let pending_cleanup_due = epoch > deal.start_epoch
+            && (!ever_updated || state.last_updated_epoch <= deal.start_epoch);
+        if pending_cleanup_due {
+            // Pending may already have been removed by manual settlement or cron.
+            self.remove_pending_deal(store, *deal_cid)?;
         }
 
         let payment_end_epoch = if ever_slashed {
