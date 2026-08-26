@@ -48,5 +48,5 @@ mod prove_commit_niporep_test;
 pub use prove_commit_niporep_test::*;
 mod replica_update3_test;
 pub use replica_update3_test::*;
-pub mod fip1249_test;
-pub use fip1249_test::*;
+pub mod fip0118_test;
+pub use fip0118_test::*;

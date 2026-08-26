@@ -7,7 +7,9 @@ use fil_actor_miner::{
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
+use fil_actors_runtime::runtime::policy::policy_constants::{
+    MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, PRE_COMMIT_CHALLENGE_DELAY,
+};
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -21,7 +23,7 @@ use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof};
 use num_traits::Zero;
 
 use export_macro::vm_test;
-// FIP-1249: AllocationID no longer used
+// FIP-0118: AllocationID no longer used
 use vm_api::VM;
 use vm_api::util::{DynBlockstore, apply_ok, get_state};
 
@@ -39,8 +41,7 @@ const SEAL_PROOF: RegisteredSealProof = RegisteredSealProof::StackedDRG32GiBV1P1
 #[vm_test]
 pub fn pre_commit_requires_commd_test(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
-    let sector_duration: ChainEpoch =
-        deal_duration + Policy::default().market_default_allocation_term_buffer;
+    let sector_duration: ChainEpoch = deal_duration + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let (owner, client) = (addrs[0], addrs[1]);
@@ -110,8 +111,7 @@ pub fn pre_commit_requires_commd_test(v: &dyn VM) {
 #[vm_test(1)]
 pub fn batch_onboarding_deals_test(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
-    let sector_duration: ChainEpoch =
-        deal_duration + Policy::default().market_default_allocation_term_buffer;
+    let sector_duration: ChainEpoch = deal_duration + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let (owner, _verifier, client) = (addrs[0], addrs[1], addrs[2]);
@@ -126,7 +126,7 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
         &TokenAmount::from_whole(1000),
     );
 
-    // FIP-1249: verifreg minting deprecated, no need to set up verifier/verified client
+    // FIP-0118: verifreg minting deprecated, no need to set up verifier/verified client
 
     // Fund storage market accounts.
     market_add_balance(v, &owner, &miner, &TokenAmount::from_whole(1000));
@@ -136,7 +136,7 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
     let deals = publish_deals(v, client, miner, worker, deal_duration, BATCH_SIZE);
     assert_eq!(BATCH_SIZE, deals.len());
 
-    // FIP-1249: Market no longer stores datacap allocations.
+    // FIP-0118: Market no longer stores datacap allocations.
 
     // Associate deals with sectors, but don't include deal IDs in the pre-commit itself.
     let sector_precommit_data: Vec<PrecommitMetadata> = deals
@@ -158,7 +158,7 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
     );
     let first_sector_no = precommits[0].info.sector_number;
 
-    // FIP-1249: No allocation IDs needed since market doesn't create allocations.
+    // FIP-0118: No allocation IDs needed since market doesn't create allocations.
     // Prove-commit as a single aggregate.
     v.set_epoch(v.epoch() + PRE_COMMIT_CHALLENGE_DELAY + 1);
     prove_commit_aggregate(v, &worker, deals, vec![], &miner, &client, precommits);
@@ -233,7 +233,7 @@ pub fn prove_commit_aggregate(
             pieces: vec![PieceActivationManifest {
                 cid: deal_proposal.piece_cid,
                 size: deal_proposal.piece_size,
-                // FIP-1249: verified_allocation_key is ignored by miner
+                // FIP-0118: verified_allocation_key is ignored by miner
                 verified_allocation_key: None,
                 notify: vec![DataActivationNotification {
                     address: STORAGE_MARKET_ACTOR_ADDR,

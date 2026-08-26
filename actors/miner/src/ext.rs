@@ -126,5 +126,5 @@ pub mod reward {
     pub const THIS_EPOCH_REWARD_METHOD: u64 = 3;
 }
 
-// FIP-1249: verifreg ext module removed. The miner actor no longer interacts
+// FIP-0118: verifreg ext module removed. The miner actor no longer interacts
 // with the verified registry for allocation claims or claim validation.

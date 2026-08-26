@@ -1284,7 +1284,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     advance_by_deadline_to_index(v, &maddr, dlinfo.index + 1);
     let update_epoch = v.epoch();
 
-    // FIP-1249: verifreg minting deprecated, no need to set up verifier/verified client
+    // FIP-0118: verifreg minting deprecated, no need to set up verifier/verified client
     let full_piece_size = PaddedPieceSize(sector_size as u64);
     let half_piece_size = PaddedPieceSize(sector_size as u64 / 2);
 
@@ -1298,7 +1298,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     batcher.stage_with_label(client, maddr, "s3p1".to_string());
     let deal_ids_s3 = batcher.publish_ok(worker).ids;
 
-    // Publish a half-size deal (FIP-1249: verified flag ignored)
+    // Publish a half-size deal (FIP-0118: verified flag ignored)
     let opts = DealOptions {
         deal_start,
         piece_size: half_piece_size,
@@ -1334,7 +1334,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
             }],
             new_sealed_cid: make_sealed_cid(b"s1"),
         },
-        // Sector 2: two pieces, no verified claims (FIP-1249)
+        // Sector 2: two pieces, no verified claims (FIP-0118)
         SectorUpdateManifest {
             sector: first_sector_number + 2,
             deadline,
@@ -1371,7 +1371,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
             }],
             new_sealed_cid: make_sealed_cid(b"s3"),
         },
-        // Sector 4: a half-sized deal (FIP-1249: no verified allocation)
+        // Sector 4: a half-sized deal (FIP-0118: no verified allocation)
         SectorUpdateManifest {
             sector: first_sector_number + 4,
             deadline,
@@ -1389,7 +1389,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         },
     ];
 
-    // FIP-1249: No claim events since miner doesn't call verifreg
+    // FIP-0118: No claim events since miner doesn't call verifreg
 
     // Replica update
     let update_proof = seal_proof.registered_update_proof().unwrap();
@@ -1443,7 +1443,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         })
         .collect();
 
-    // FIP-1249: No verifreg calls, no power/pledge change (sectors already have FULL_QA_POWER)
+    // FIP-0118: No verifreg calls, no power/pledge change (sectors already have FULL_QA_POWER)
     ExpectInvocation {
         from: worker_id,
         to: maddr,
@@ -1513,7 +1513,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     assert_eq!(BigInt::zero(), sectors[0].verified_deal_weight);
     assert_eq!(full_sector_weight, sectors[1].deal_weight);
     assert_eq!(BigInt::zero(), sectors[1].verified_deal_weight);
-    // FIP-1249: Without verified_allocation_key, deal weight goes to deal_weight
+    // FIP-0118: Without verified_allocation_key, deal weight goes to deal_weight
     assert_eq!(full_sector_weight, sectors[2].deal_weight);
     assert_eq!(BigInt::zero(), sectors[2].verified_deal_weight);
     assert_eq!(full_sector_weight, sectors[3].deal_weight);
@@ -1521,7 +1521,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     assert_eq!(full_sector_weight / 2, sectors[4].deal_weight);
     assert_eq!(BigInt::zero(), sectors[4].verified_deal_weight);
 
-    // FIP-1249: No claims to verify
+    // FIP-0118: No claims to verify
 
     let deals = market_list_deals(v);
     assert_eq!(deals.len(), 2);

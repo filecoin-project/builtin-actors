@@ -19,8 +19,12 @@ mod util {
     use fil_actors_runtime::test_utils::MockRuntime;
     use fvm_shared::sector::StoragePower;
 
-    pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
-        rt.policy.minimum_verified_allocation_size.clone() + 42
+    // Arbitrary allowance value: AddVerifier/AddVerifiedClient are deprecated and always
+    // return forbidden regardless of params, so the exact value is unimportant.
+    const ARBITRARY_ALLOWANCE: i64 = 1 << 20;
+
+    pub fn verifier_allowance(_rt: &MockRuntime) -> StoragePower {
+        StoragePower::from(ARBITRARY_ALLOWANCE) + 42
     }
 
     pub fn client_allowance(rt: &MockRuntime) -> StoragePower {
@@ -91,12 +95,12 @@ mod verifiers {
 
     use crate::*;
 
-    // FIP-1249: AddVerifier is now deprecated and always returns USR_FORBIDDEN.
+    // FIP-0118: AddVerifier is now deprecated and always returns USR_FORBIDDEN.
     // These tests verify the method is properly disabled.
 
     #[test]
     fn add_verifier_requires_root_caller() {
-        // FIP-1249: AddVerifier always returns forbidden regardless of caller
+        // FIP-0118: AddVerifier always returns forbidden regardless of caller
         let (h, rt) = new_harness();
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, Address::new_id(501));
         rt.expect_validate_caller_any();
@@ -114,11 +118,11 @@ mod verifiers {
 
     #[test]
     fn add_verifier_enforces_min_size() {
-        // FIP-1249: AddVerifier always returns forbidden, even for invalid params
+        // FIP-0118: AddVerifier always returns forbidden, even for invalid params
         let (h, rt) = new_harness();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
         rt.expect_validate_caller_any();
-        let allowance = rt.policy.minimum_verified_allocation_size.clone() - 1;
+        let allowance = client_allowance(&rt);
         let params = AddVerifierParams { address: *VERIFIER, allowance };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
@@ -132,7 +136,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_rejects_root() {
-        // FIP-1249: AddVerifier always returns forbidden
+        // FIP-0118: AddVerifier always returns forbidden
         let (h, rt) = new_harness();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
         rt.expect_validate_caller_any();
@@ -150,7 +154,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_rejects_client() {
-        // FIP-1249: AddVerifier always returns forbidden
+        // FIP-0118: AddVerifier always returns forbidden
         let (h, rt) = new_harness();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
         rt.expect_validate_caller_any();
@@ -168,7 +172,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_rejects_unresolved_address() {
-        // FIP-1249: AddVerifier always returns forbidden
+        // FIP-0118: AddVerifier always returns forbidden
         let (h, rt) = new_harness();
         let verifier_key_address = Address::new_secp256k1(&[3u8; 65]).unwrap();
         let allowance = verifier_allowance(&rt);
@@ -187,7 +191,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_id_address() {
-        // FIP-1249: AddVerifier is deprecated, always returns forbidden
+        // FIP-0118: AddVerifier is deprecated, always returns forbidden
         let (h, rt) = new_harness();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
         rt.expect_validate_caller_any();
@@ -205,7 +209,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_resolves_address() {
-        // FIP-1249: AddVerifier is deprecated, always returns forbidden
+        // FIP-0118: AddVerifier is deprecated, always returns forbidden
         let (h, rt) = new_harness();
         let pubkey_addr = Address::new_secp256k1(&[0u8; 65]).unwrap();
         rt.id_addresses.borrow_mut().insert(pubkey_addr, *VERIFIER);
@@ -223,15 +227,18 @@ mod verifiers {
         h.check_state(&rt);
     }
 
+    // FIP-0118: RemoveVerifier is now deprecated and always returns USR_FORBIDDEN.
+    // These tests verify the method is properly disabled, regardless of caller or state.
+
     #[test]
-    fn remove_requires_root() {
+    fn remove_verifier_disabled_for_non_root_caller() {
         let (h, rt) = new_harness();
         let allowance = verifier_allowance(&rt);
-        // FIP-1249: use direct state insertion instead of deprecated add_verifier
+        // FIP-0118: use direct state insertion instead of deprecated add_verifier
         h.add_verifier_directly(&rt, &VERIFIER, &allowance);
 
         let caller = Address::new_id(501);
-        rt.expect_validate_caller_addr(vec![h.root]);
+        rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
         assert_ne!(h.root, caller);
         expect_abort(
@@ -245,33 +252,59 @@ mod verifiers {
     }
 
     #[test]
-    fn remove_requires_verifier_exists() {
+    fn remove_verifier_disabled_even_if_verifier_does_not_exist() {
         let (h, rt) = new_harness();
-        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.remove_verifier(&rt, &VERIFIER));
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.root);
+        rt.expect_validate_caller_any();
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<VerifregActor>(
+                Method::RemoveVerifier as MethodNum,
+                IpldBlock::serialize_cbor(VERIFIER.deref()).unwrap(),
+            ),
+        );
         h.check_state(&rt);
-        rt.reset();
     }
 
     #[test]
-    fn remove_verifier() {
+    fn remove_verifier_disabled_for_root_caller() {
         let (h, rt) = new_harness();
         let allowance = verifier_allowance(&rt);
-        // FIP-1249: use direct state insertion instead of deprecated add_verifier
+        // FIP-0118: use direct state insertion instead of deprecated add_verifier
         h.add_verifier_directly(&rt, &VERIFIER, &allowance);
-        h.remove_verifier(&rt, &VERIFIER).unwrap();
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.root);
+        rt.expect_validate_caller_any();
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<VerifregActor>(
+                Method::RemoveVerifier as MethodNum,
+                IpldBlock::serialize_cbor(VERIFIER.deref()).unwrap(),
+            ),
+        );
         h.check_state(&rt);
+        // The verifier is untouched, since removal is disabled.
+        h.assert_verifier_allowance(&rt, &VERIFIER, &allowance);
     }
 
     #[test]
-    fn remove_verifier_id_address() {
+    fn remove_verifier_disabled_id_address() {
         let (h, rt) = new_harness();
         let allowance = verifier_allowance(&rt);
         let verifier_pubkey = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
         rt.id_addresses.borrow_mut().insert(verifier_pubkey, *VERIFIER);
-        // FIP-1249: use direct state insertion instead of deprecated add_verifier
+        // FIP-0118: use direct state insertion instead of deprecated add_verifier
         h.add_verifier_directly(&rt, &VERIFIER, &allowance);
-        // Remove using ID address.
-        h.remove_verifier(&rt, &VERIFIER).unwrap();
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.root);
+        rt.expect_validate_caller_any();
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<VerifregActor>(
+                Method::RemoveVerifier as MethodNum,
+                IpldBlock::serialize_cbor(&verifier_pubkey).unwrap(),
+            ),
+        );
         h.check_state(&rt);
     }
 }
@@ -288,12 +321,12 @@ mod clients {
 
     use crate::*;
 
-    // FIP-1249: AddVerifiedClient is now deprecated and always returns USR_FORBIDDEN.
+    // FIP-0118: AddVerifiedClient is now deprecated and always returns USR_FORBIDDEN.
     // All tests that previously exercised AddVerifiedClient behavior now verify it's properly disabled.
 
     #[test]
     fn many_verifiers_and_clients() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -311,7 +344,7 @@ mod clients {
 
     #[test]
     fn verifier_allowance_exhausted() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -329,7 +362,7 @@ mod clients {
 
     #[test]
     fn resolves_client_address() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -347,9 +380,9 @@ mod clients {
 
     #[test]
     fn minimum_allowance_ok() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
-        let allowance = rt.policy.minimum_verified_allocation_size.clone();
+        let allowance = verifier_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
         rt.expect_validate_caller_any();
         let params = AddVerifiedClientParams { address: *CLIENT, allowance };
@@ -365,7 +398,7 @@ mod clients {
 
     #[test]
     fn rejects_unresolved_address() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -383,9 +416,9 @@ mod clients {
 
     #[test]
     fn rejects_allowance_below_minimum() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
-        let allowance = rt.policy.minimum_verified_allocation_size.clone() - 1;
+        let allowance = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
         rt.expect_validate_caller_any();
         let params = AddVerifiedClientParams { address: *CLIENT, allowance };
@@ -401,7 +434,7 @@ mod clients {
 
     #[test]
     fn rejects_non_verifier_caller() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         let caller = Address::new_id(209);
@@ -420,7 +453,7 @@ mod clients {
 
     #[test]
     fn add_verified_client_restricted_correctly() {
-        // FIP-1249: Both exported and unexported AddVerifiedClient methods return forbidden
+        // FIP-0118: Both exported and unexported AddVerifiedClient methods return forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         let params = AddVerifiedClientParams { address: *CLIENT, allowance: allowance_client };
@@ -439,7 +472,7 @@ mod clients {
         );
         rt.reset();
 
-        // exported method num also returns forbidden due to FIP-1249
+        // exported method num also returns forbidden due to FIP-0118
         rt.set_caller(*EVM_ACTOR_CODE_ID, *VERIFIER);
         rt.expect_validate_caller_any();
         expect_abort(
@@ -455,7 +488,7 @@ mod clients {
 
     #[test]
     fn rejects_allowance_greater_than_verifier_cap() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_verifier = verifier_allowance(&rt);
         let allowance = &allowance_verifier + 1;
@@ -474,7 +507,7 @@ mod clients {
 
     #[test]
     fn rejects_root_as_client() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -492,7 +525,7 @@ mod clients {
 
     #[test]
     fn rejects_verifier_as_client() {
-        // FIP-1249: AddVerifiedClient is deprecated, verify it returns forbidden
+        // FIP-0118: AddVerifiedClient is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         let allowance_client = client_allowance(&rt);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *VERIFIER);
@@ -513,11 +546,10 @@ mod allocs_claims {
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{ActorID, MethodNum};
-    use num_traits::Zero;
 
     use fil_actor_verifreg::{
-        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, GetClaimsParams, Method,
-        State,
+        Actor, AllocationID, ClaimTerm, ExtendClaimTermsParams, GetClaimsParams, Method,
+        RemoveExpiredAllocationsParams, State,
     };
     use fil_actors_runtime::FailCode;
     use fil_actors_runtime::runtime::policy_constants::{
@@ -531,126 +563,48 @@ mod allocs_claims {
     use crate::*;
 
     const CLIENT1: ActorID = 101;
-    const CLIENT2: ActorID = 102;
     const PROVIDER1: ActorID = 301;
     const PROVIDER2: ActorID = 302;
     const ALLOC_SIZE: u64 = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
 
     #[test]
-    fn expire_allocs() {
+    fn expire_allocs_disabled() {
+        // FIP-0118: the network upgrade migration clears all pending allocations, so
+        // there is nothing left to ever expire; RemoveExpiredAllocations always returns
+        // forbidden regardless of params.
         let (h, rt) = new_harness();
 
-        let mut alloc1 = make_alloc("1", CLIENT1, PROVIDER1, ALLOC_SIZE);
-        alloc1.expiration = 100;
-        let mut alloc2 = make_alloc("2", CLIENT1, PROVIDER1, ALLOC_SIZE * 2);
-        alloc2.expiration = 200;
-        let total_size = alloc1.size.0 + alloc2.size.0;
-
-        let id1 = h.create_alloc(&rt, &alloc1).unwrap();
-        let id2 = h.create_alloc(&rt, &alloc2).unwrap();
-        let state_with_allocs: State = rt.get_state();
-
-        let expect_1 = vec![(id1, alloc1.clone())];
-        let expect_2 = vec![(id2, alloc2.clone())];
-        let expect_both = vec![(id1, alloc1.clone()), (id2, alloc2.clone())];
-
-        // Can't remove allocations that aren't expired
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], vec![]).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN], ret.results.codes());
-        assert_eq!(DataCap::zero(), ret.datacap_recovered);
-
-        // Can't remove with wrong client ID
-        rt.set_epoch(200);
-        let ret = h.remove_expired_allocations(&rt, CLIENT2, vec![id1, id2], vec![]).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::USR_NOT_FOUND], ret.results.codes());
-        assert_eq!(DataCap::zero(), ret.datacap_recovered);
-
-        // Remove the first alloc, which expired.
-        rt.set_epoch(100);
-        let ret =
-            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_1.clone()).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::OK, ExitCode::USR_FORBIDDEN], ret.results.codes());
-        assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
-
-        // Remove the second alloc (the first is no longer found).
-        rt.set_epoch(200);
-        let ret =
-            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_2.clone()).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(alloc2.size.0), ret.datacap_recovered);
-
-        // Reset state and show we can remove two at once.
-        rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_both).unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(total_size), ret.datacap_recovered);
-
-        // Reset state and show that only what was asked for is removed.
-        rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1], expect_1.clone()).unwrap();
-        assert_eq!(vec![1], ret.considered);
-        assert_eq!(vec![ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
-
-        // Reset state and show that specifying none removes only expired allocations
-        rt.set_epoch(0);
-        rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], vec![]).unwrap();
-        assert_eq!(Vec::<AllocationID>::new(), ret.considered);
-        assert_eq!(Vec::<ExitCode>::new(), ret.results.codes());
-        assert_eq!(DataCap::zero(), ret.datacap_recovered);
-        assert!(h.load_alloc(&rt, CLIENT1, id1).is_some());
-        assert!(h.load_alloc(&rt, CLIENT1, id2).is_some());
-
-        rt.set_epoch(100);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], expect_1).unwrap();
-        assert_eq!(vec![1], ret.considered);
-        assert_eq!(vec![ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
-        assert!(h.load_alloc(&rt, CLIENT1, id1).is_none()); // removed
-        assert!(h.load_alloc(&rt, CLIENT1, id2).is_some());
-
-        rt.set_epoch(200);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], expect_2).unwrap();
-        assert_eq!(vec![2], ret.considered);
-        assert_eq!(vec![ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(alloc2.size.0), ret.datacap_recovered);
-        assert!(h.load_alloc(&rt, CLIENT1, id1).is_none()); // removed
-        assert!(h.load_alloc(&rt, CLIENT1, id2).is_none()); // removed
-
-        // Reset state and show that specifying none removes *all* expired allocations
-        rt.replace_state(&state_with_allocs);
-        let ret = h
-            .remove_expired_allocations(&rt, CLIENT1, vec![], vec![(id1, alloc1), (id2, alloc2)])
-            .unwrap();
-        assert_eq!(vec![1, 2], ret.considered);
-        assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
-        assert_eq!(DataCap::from(total_size), ret.datacap_recovered);
-        assert!(h.load_alloc(&rt, CLIENT1, id1).is_none()); // removed
-        assert!(h.load_alloc(&rt, CLIENT1, id2).is_none()); // removed
+        let params = RemoveExpiredAllocationsParams { client: CLIENT1, allocation_ids: vec![] };
+        rt.expect_validate_caller_any();
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<Actor>(
+                Method::RemoveExpiredAllocations as MethodNum,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            ),
+        );
         h.check_state(&rt);
     }
 
     #[test]
     fn claim_allocs() {
-        // FIP-1249: ClaimAllocations is deprecated and always returns forbidden.
+        // FIP-0118: allocations are cleared by the network upgrade migration and QAP no
+        // longer depends on claims, so ClaimAllocations always succeeds for a miner
+        // caller, whether or not the referenced allocation ever existed.
         let (h, rt) = new_harness();
 
         let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
         let alloc1 = make_alloc("1", CLIENT1, PROVIDER1, size);
-
         let id1 = h.create_alloc(&rt, &alloc1).unwrap();
+        let missing_id = id1 + 100; // Never created (as if cleared by the migration).
 
         let sector = 1000;
         let expiry = MINIMUM_VERIFIED_ALLOCATION_TERM;
 
-        // ClaimAllocations now returns forbidden
-        let reqs = vec![make_claim_reqs(sector, expiry, &[(id1, &alloc1)])];
+        let reqs = vec![
+            make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
+            make_claim_reqs(sector + 1, expiry, &[(missing_id, &alloc1)]),
+        ];
         rt.expect_validate_caller_type(vec![fil_actors_runtime::runtime::builtins::Type::Miner]);
         rt.set_caller(
             *fil_actors_runtime::test_utils::MINER_ACTOR_CODE_ID,
@@ -658,12 +612,26 @@ mod allocs_claims {
         );
         let params =
             fil_actor_verifreg::ClaimAllocationsParams { sectors: reqs, all_or_nothing: false };
-        expect_abort(
-            ExitCode::USR_FORBIDDEN,
-            rt.call::<Actor>(
+        let ret: fil_actor_verifreg::ClaimAllocationsReturn = rt
+            .call::<Actor>(
                 Method::ClaimAllocations as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
+            )
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.sector_results.codes());
+        assert_eq!(
+            vec![
+                fil_actor_verifreg::SectorClaimSummary {
+                    claimed_space: fvm_shared::bigint::BigInt::from(alloc1.size.0)
+                },
+                fil_actor_verifreg::SectorClaimSummary {
+                    claimed_space: fvm_shared::bigint::BigInt::from(alloc1.size.0)
+                },
+            ],
+            ret.sector_claims
         );
         h.check_state(&rt);
     }
@@ -712,7 +680,7 @@ mod allocs_claims {
 
     #[test]
     fn extend_claims_basic() {
-        // FIP-1249: ExtendClaimTerms is deprecated and always returns forbidden.
+        // FIP-0118: ExtendClaimTerms is deprecated and always returns forbidden.
         let (h, rt) = new_harness();
         let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
         let max_term = min_term + 1000;
@@ -735,7 +703,7 @@ mod allocs_claims {
 
     #[test]
     fn extend_claims_edge_cases() {
-        // FIP-1249: ExtendClaimTerms is deprecated and always returns forbidden.
+        // FIP-0118: ExtendClaimTerms is deprecated and always returns forbidden.
         let (h, rt) = new_harness();
         let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
         let max_term = min_term + 1000;
@@ -837,7 +805,7 @@ mod allocs_claims {
     fn claims_restricted_correctly() {
         let (h, rt) = new_harness();
 
-        // FIP-1249: ExtendClaimTerms is deprecated. Both exported and unexported return forbidden.
+        // FIP-0118: ExtendClaimTerms is deprecated. Both exported and unexported return forbidden.
         let params = ExtendClaimTermsParams { terms: vec![] };
 
         // set caller to not-builtin
@@ -854,7 +822,7 @@ mod allocs_claims {
         );
         rt.reset();
 
-        // exported method num also returns forbidden due to FIP-1249
+        // exported method num also returns forbidden due to FIP-0118
         rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(CLIENT1));
         rt.expect_validate_caller_any();
         expect_abort(
@@ -915,13 +883,13 @@ mod datacap {
     const PROVIDER2: ActorID = 302;
     const SIZE: u64 = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
 
-    // FIP-1249: UniversalReceiverHook is deprecated and always returns forbidden.
+    // FIP-0118: UniversalReceiverHook is deprecated and always returns forbidden.
     // Tests that previously exercised allocation creation and claim extension via tokens
     // now verify the method is properly disabled.
 
     #[test]
     fn receive_tokens_make_allocs() {
-        // FIP-1249: UniversalReceiverHook is deprecated, verify it returns forbidden
+        // FIP-0118: UniversalReceiverHook is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         add_miner(&rt, PROVIDER1);
         add_miner(&rt, PROVIDER2);
@@ -947,7 +915,7 @@ mod datacap {
 
     #[test]
     fn receive_tokens_extend_claims() {
-        // FIP-1249: UniversalReceiverHook is deprecated, verify it returns forbidden
+        // FIP-0118: UniversalReceiverHook is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
 
         let reqs = vec![make_extension_req(PROVIDER1, 1, 1000)];
@@ -971,7 +939,7 @@ mod datacap {
 
     #[test]
     fn receive_tokens_make_alloc_and_extend_claims() {
-        // FIP-1249: UniversalReceiverHook is deprecated, verify it returns forbidden
+        // FIP-0118: UniversalReceiverHook is deprecated, verify it returns forbidden
         let (h, rt) = new_harness();
         add_miner(&rt, PROVIDER1);
         add_miner(&rt, PROVIDER2);
@@ -1030,7 +998,7 @@ mod datacap {
 
     #[test]
     fn receive_requires_to_self() {
-        // FIP-1249: UniversalReceiverHook is deprecated.
+        // FIP-0118: UniversalReceiverHook is deprecated.
         // Even with a wrong "to" address, the method returns forbidden after caller validation.
         let (h, rt) = new_harness();
         add_miner(&rt, PROVIDER1);
@@ -1062,7 +1030,7 @@ mod datacap {
 
     #[test]
     fn receive_alloc_requires_miner_actor() {
-        // FIP-1249: UniversalReceiverHook is deprecated, returns forbidden regardless of provider type
+        // FIP-0118: UniversalReceiverHook is deprecated, returns forbidden regardless of provider type
         let (h, rt) = new_harness();
         let provider1 = Address::new_id(PROVIDER1);
         rt.set_address_actor_type(provider1, *ACCOUNT_ACTOR_CODE_ID);
@@ -1088,7 +1056,7 @@ mod datacap {
 
     #[test]
     fn receive_invalid_alloc_reqs() {
-        // FIP-1249: UniversalReceiverHook is deprecated, returns forbidden for all requests
+        // FIP-0118: UniversalReceiverHook is deprecated, returns forbidden for all requests
         let (h, rt) = new_harness();
         add_miner(&rt, PROVIDER1);
 
@@ -1113,7 +1081,7 @@ mod datacap {
 
     #[test]
     fn receive_invalid_extension_reqs() {
-        // FIP-1249: UniversalReceiverHook is deprecated, returns forbidden for all requests
+        // FIP-0118: UniversalReceiverHook is deprecated, returns forbidden for all requests
         let (h, rt) = new_harness();
 
         let reqs = vec![make_extension_req(PROVIDER1, 1, 1000)];

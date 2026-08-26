@@ -296,7 +296,7 @@ fn reject_mismatched_commd() {
 
 #[test]
 fn reject_required_claim_failure() {
-    // FIP-1249: claim allocations have been removed. The claim_failure config is now a no-op.
+    // FIP-0118: claim allocations have been removed. The claim_failure config is now a no-op.
     // Both sectors succeed since there's no claim validation.
     let (h, rt, activations) = setup_precommits(&[(0, 0, 0), (CLIENT_ID, 1, 0)]);
     let cfg = ProveCommitSectors3Config::default();

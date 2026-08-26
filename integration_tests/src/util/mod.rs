@@ -1,6 +1,5 @@
 use cid::Cid;
 use fil_actor_market::{DealProposal, DealState, State as MarketState, load_provider_sector_deals};
-use fil_actor_miner::AllocationID;
 use fil_actor_miner::{
     CompactCommD, Deadline, DeadlineInfo, GetBeneficiaryReturn, Method as MinerMethod, MinerInfo,
     PieceChange, PowerPair, SectorOnChainInfo, State as MinerState, initial_pledge_for_power,
@@ -9,7 +8,6 @@ use fil_actor_miner::{
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
-use fil_actors_runtime::ActorError;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::CREATE_MINER_DEPOSIT_POWER;
 use fil_actors_runtime::test_utils::make_piece_cid;
@@ -175,25 +173,6 @@ pub fn get_beneficiary(v: &dyn VM, from: &Address, m_addr: &Address) -> GetBenef
     )
     .deserialize()
     .unwrap()
-}
-
-pub fn market_pending_deal_allocations_raw(
-    v: &dyn VM,
-    deals: &[DealID],
-) -> Result<Vec<AllocationID>, ActorError> {
-    let mut st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let bs = &DynBlockstore::wrap(v.blockstore());
-    st.get_pending_deal_allocation_ids(bs, deals)
-}
-
-pub fn market_pending_deal_allocations(v: &dyn VM, deals: &[DealID]) -> Vec<AllocationID> {
-    market_pending_deal_allocations_raw(v, deals).unwrap()
-}
-
-pub fn market_maybe_pending_deal_allocations(v: &dyn VM, deals: &[DealID]) -> Vec<AllocationID> {
-    let mut st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let bs = &DynBlockstore::wrap(v.blockstore());
-    st.get_pending_deal_allocation_ids(bs, deals).unwrap()
 }
 
 pub fn market_list_deals(v: &dyn VM) -> HashMap<DealID, (DealProposal, Option<DealState>)> {

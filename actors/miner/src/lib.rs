@@ -141,7 +141,6 @@ pub enum Method {
     ProveCommitSectors3 = 34,
     ProveReplicaUpdates3 = 35,
     ProveCommitSectorsNI = 36,
-    UpgradeSectorQuality = 37,
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
@@ -164,7 +163,6 @@ pub enum Method {
     GenerateSectorLocationExported = frc42_dispatch::method_hash!("GenerateSectorLocation"),
     ValidateSectorStatusExported = frc42_dispatch::method_hash!("ValidateSectorStatus"),
     GetNominalSectorExpirationExported = frc42_dispatch::method_hash!("GetNominalSectorExpiration"),
-    UpgradeSectorQualityExported = frc42_dispatch::method_hash!("UpgradeSectorQuality"),
 }
 
 pub const SECTOR_CONTENT_CHANGED: MethodNum = frc42_dispatch::method_hash!("SectorContentChanged");
@@ -939,8 +937,7 @@ impl Actor {
             .collect();
 
         // Activate data for proven updates.
-        let (data_batch, data_activations) =
-            activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
+        let (data_batch, data_activations) = activate_sectors_pieces(rt, data_activation_inputs)?;
         if data_batch.success_count == 0 {
             return Err(actor_error!(illegal_argument, "all data activations failed"));
         }
@@ -955,7 +952,6 @@ impl Actor {
             let activated_data = ReplicaUpdateActivatedData {
                 seal_cid: update.new_sealed_cid,
                 unverified_space: data_activation.unverified_space.clone(),
-                verified_space: data_activation.verified_space.clone(),
             };
             state_updates_by_dline.entry(update.deadline).or_default().push(
                 ReplicaUpdateStateInputs {
@@ -1627,8 +1623,7 @@ impl Actor {
             .collect();
 
         // Activate data for proven sectors.
-        let (data_batch, data_activations) =
-            activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
+        let (data_batch, data_activations) = activate_sectors_pieces(rt, data_activation_inputs)?;
         if data_batch.success_count == 0 {
             return Err(actor_error!(illegal_argument, "all data activations failed"));
         }
@@ -1818,7 +1813,7 @@ impl Actor {
             &params.aggregate_proof,
         )?;
 
-        // FIP-1249: all new sectors get 10x QA power regardless of content.
+        // FIP-0118: all new sectors get 10x QA power regardless of content.
         let qa_sector_power = qa_power_max(info.sector_size);
 
         let rew = request_current_epoch_block_reward(rt)?;
@@ -1833,15 +1828,7 @@ impl Actor {
             ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
 
-        let sector_initial_pledge = initial_pledge_for_power(
-            &qa_sector_power,
-            &pledge_inputs.network_baseline,
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &pledge_inputs.circulating_supply,
-            pledge_inputs.epochs_since_ramp_start,
-            pledge_inputs.ramp_duration_epochs,
-        );
+        let sector_initial_pledge = pledge_inputs.initial_pledge_for_power(&qa_sector_power);
 
         let circulating_supply = rt.total_fil_circ_supply();
         // Same fee for all sectors: same size, all raw
@@ -3408,306 +3395,6 @@ impl Actor {
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
         Ok(())
     }
-
-    /// Upgrades existing sectors to full 10x QAP by setting the FULL_QA_POWER flag.
-    /// Only active sectors (not faulty, not unproven, not terminated) that do not already
-    /// have the FULL_QA_POWER flag can be upgraded.
-    fn upgrade_sector_quality(
-        rt: &impl Runtime,
-        params: UpgradeSectorQualityParams,
-    ) -> Result<BatchReturn, ActorError> {
-        // 1. Auth: caller must be owner/worker/control address.
-        let state: State = rt.state()?;
-        let info = get_miner_info(rt.store(), &state)?;
-        rt.validate_immediate_caller_is(
-            info.control_addresses.iter().chain(&[info.worker, info.owner]),
-        )?;
-
-        let sector_size = info.sector_size;
-        let sector_numbers: Vec<u64> = params.sectors.iter().collect();
-        let sector_count = sector_numbers.len();
-
-        if sector_count == 0 {
-            return Ok(BatchReturn::empty());
-        }
-
-        // 2. Load sector infos and validate each sector.
-        let mut batch = BatchReturnGen::new(sector_count);
-        // Sectors that passed validation: (index_in_input, sector_info)
-        let mut valid_sectors: Vec<SectorOnChainInfo> = Vec::with_capacity(sector_count);
-        {
-            let sectors = Sectors::load(rt.store(), &state.sectors).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
-            })?;
-
-            for &sector_number in &sector_numbers {
-                // Try to load the sector.
-                match sectors.get(sector_number) {
-                    Ok(Some(sector_info)) => {
-                        // Must NOT already have FULL_QA_POWER flag.
-                        if sector_info.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER) {
-                            info!(
-                                "sector {} already has FULL_QA_POWER flag, skipping",
-                                sector_number
-                            );
-                            batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
-                            continue;
-                        }
-                        batch.add_success();
-                        valid_sectors.push(sector_info);
-                    }
-                    Ok(None) => {
-                        info!("sector {} not found, skipping", sector_number);
-                        batch.add_fail(ExitCode::USR_NOT_FOUND);
-                        continue;
-                    }
-                    Err(e) => {
-                        info!("failed to load sector {}: {}, skipping", sector_number, e);
-                        batch.add_fail(ExitCode::USR_ILLEGAL_STATE);
-                        continue;
-                    }
-                }
-            }
-        }
-
-        if valid_sectors.is_empty() {
-            return Ok(batch.generate());
-        }
-
-        // 3. Find deadline/partition for each valid sector.
-        //    Group by (deadline_idx, partition_idx).
-        let mut updates_by_deadline: BTreeMap<u64, Vec<(u64, SectorOnChainInfo)>> = BTreeMap::new();
-        {
-            for sector_info in valid_sectors {
-                let (dl_idx, part_idx) = state
-                    .find_sector(rt.store(), sector_info.sector_number)
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    format!(
-                        "failed to find sector {} deadline/partition",
-                        sector_info.sector_number
-                    )
-                })?;
-                updates_by_deadline.entry(dl_idx).or_default().push((part_idx, sector_info));
-            }
-        }
-
-        // 4. Fetch pledge inputs.
-        let rew = request_current_epoch_block_reward(rt)?;
-        let pow = request_current_total_power(rt)?;
-        let circulating_supply = rt.total_fil_circ_supply();
-        let pledge_inputs = NetworkPledgeInputs {
-            network_qap: pow.quality_adj_power_smoothed,
-            network_baseline: rew.this_epoch_baseline_power,
-            circulating_supply,
-            epoch_reward: rew.this_epoch_reward_smoothed,
-            epochs_since_ramp_start: rt.curr_epoch() - pow.ramp_start_epoch,
-            ramp_duration_epochs: pow.ramp_duration_epochs,
-        };
-
-        // 5. State transaction: update sectors, partitions, deadlines.
-        let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
-            let mut deadlines = state.load_deadlines(rt.store())?;
-            let mut sectors = Sectors::load(rt.store(), &state.sectors).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
-            })?;
-
-            let mut power_delta = PowerPair::zero();
-            let mut pledge_delta = TokenAmount::zero();
-
-            for (&dl_idx, partition_updates) in &updates_by_deadline {
-                let mut deadline = deadlines.load_deadline(rt.store(), dl_idx)?;
-
-                let mut partitions = deadline
-                    .partitions_amt(rt.store())
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!("failed to load partitions for deadline {}", dl_idx)
-                    })?;
-
-                let quant = state.quant_spec_for_deadline(rt.policy(), dl_idx);
-
-                let mut deadline_power_delta = PowerPair::zero();
-                let mut deadline_pledge_delta = TokenAmount::zero();
-                let mut deadline_daily_fee_delta = TokenAmount::zero();
-
-                // Group updates by partition for efficient processing.
-                let mut by_partition: BTreeMap<u64, Vec<&SectorOnChainInfo>> = BTreeMap::new();
-                for (part_idx, sector_info) in partition_updates {
-                    by_partition.entry(*part_idx).or_default().push(sector_info);
-                }
-
-                for (part_idx, sector_batch) in &by_partition {
-                    let mut partition = partitions
-                        .get(*part_idx)
-                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                            format!(
-                                "failed to load deadline {} partition {}",
-                                dl_idx, part_idx
-                            )
-                        })?
-                        .cloned()
-                        .ok_or_else(|| {
-                            actor_error!(
-                                not_found,
-                                "no such deadline {} partition {}",
-                                dl_idx,
-                                part_idx
-                            )
-                        })?;
-
-                    let new_qa_power = qa_power_max(sector_size);
-
-                    let old_sector_infos: Vec<SectorOnChainInfo> =
-                        sector_batch.iter().map(|s| (*s).clone()).collect();
-                    let new_sector_infos: Vec<SectorOnChainInfo> = sector_batch
-                        .iter()
-                        .map(|sector_info| {
-                            let mut new_sector = (*sector_info).clone();
-                            new_sector.flags |= SectorOnChainInfoFlags::FULL_QA_POWER;
-
-                            // Pledge: use max(old, new) to ensure pledge only increases.
-                            new_sector.initial_pledge = max(
-                                new_sector.initial_pledge.clone(),
-                                initial_pledge_for_power(
-                                    &new_qa_power,
-                                    &pledge_inputs.network_baseline,
-                                    &pledge_inputs.epoch_reward,
-                                    &pledge_inputs.network_qap,
-                                    &pledge_inputs.circulating_supply,
-                                    pledge_inputs.epochs_since_ramp_start,
-                                    pledge_inputs.ramp_duration_epochs,
-                                ),
-                            );
-
-                            // Adjust daily fee.
-                            if sector_info.daily_fee.is_zero() {
-                                // pre-FIP-0100 sector
-                                new_sector.daily_fee = daily_proof_fee(
-                                    rt.policy(),
-                                    &pledge_inputs.circulating_supply,
-                                    &new_qa_power,
-                                );
-                            } else {
-                                let old_qa_power =
-                                    qa_power_for_sector(sector_size, sector_info);
-                                if old_qa_power != new_qa_power {
-                                    new_sector.daily_fee = daily_proof_fee_adjust(
-                                        &sector_info.daily_fee,
-                                        &old_qa_power,
-                                        &new_qa_power,
-                                    );
-                                }
-                            }
-
-                            new_sector
-                        })
-                        .collect();
-
-                    let (
-                        partition_power_delta,
-                        partition_pledge_delta,
-                        partition_daily_fee_delta,
-                    ) = partition
-                        .replace_sectors(
-                            rt.store(),
-                            &old_sector_infos,
-                            &new_sector_infos,
-                            sector_size,
-                            quant,
-                        )
-                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                            format!(
-                                "failed to replace sectors at deadline {} partition {}",
-                                dl_idx, part_idx
-                            )
-                        })?;
-
-                    deadline_power_delta += &partition_power_delta;
-                    deadline_pledge_delta += &partition_pledge_delta;
-                    deadline_daily_fee_delta += &partition_daily_fee_delta;
-
-                    partitions.set(*part_idx, partition).with_context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        || {
-                            format!(
-                                "failed to save deadline {} partition {}",
-                                dl_idx, part_idx
-                            )
-                        },
-                    )?;
-
-                    // Save updated sector infos to the sector AMT.
-                    sectors.store(new_sector_infos).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to update sector infos",
-                        )
-                    })?;
-                }
-
-                deadline.live_power += &deadline_power_delta;
-                deadline.daily_fee += &deadline_daily_fee_delta;
-
-                power_delta += &deadline_power_delta;
-                pledge_delta += &deadline_pledge_delta;
-
-                deadline.partitions =
-                    partitions.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!("failed to save partitions for deadline {}", dl_idx)
-                    })?;
-
-                deadlines
-                    .update_deadline(rt.policy(), rt.store(), dl_idx, &deadline)
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!("failed to save deadline {}", dl_idx)
-                    })?;
-            }
-
-            // Save sectors and deadlines.
-            state.sectors = sectors.amt.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save sectors")
-            })?;
-            state.save_deadlines(rt.store(), deadlines).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
-            })?;
-
-            // Check balance covers pledge increase.
-            if pledge_delta.is_positive() {
-                let current_balance = rt.current_balance();
-                let unlocked_balance =
-                    state.get_unlocked_balance(&current_balance).map_err(|e| {
-                        actor_error!(
-                            illegal_state,
-                            "failed to calculate unlocked balance: {}",
-                            e
-                        )
-                    })?;
-                if unlocked_balance < pledge_delta {
-                    return Err(actor_error!(
-                        insufficient_funds,
-                        "insufficient funds for aggregate initial pledge requirement {}, available: {}",
-                        pledge_delta,
-                        unlocked_balance
-                    ));
-                }
-            }
-
-            state
-                .add_initial_pledge(&pledge_delta)
-                .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
-
-            state
-                .check_balance_invariants(&rt.current_balance())
-                .map_err(balance_invariants_broken)?;
-
-            Ok((power_delta, pledge_delta))
-        })?;
-
-        // 6. Notify power actor of power and pledge changes.
-        request_update_power(rt, power_delta)?;
-        notify_pledge_changed(rt, &pledge_delta)?;
-
-        Ok(batch.generate())
-    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -3764,7 +3451,7 @@ impl From<ExpirationExtension2> for ValidatedExpirationExtension {
     }
 }
 
-// FIP-1249: claim validation with the verifreg actor has been removed.
+// FIP-0118: claim validation with the verifreg actor has been removed.
 // sectors_with_claims in declarations is ignored; extensions proceed with
 // proportional deal weight reduction for legacy sectors.
 fn validate_extension_declarations(
@@ -3797,7 +3484,7 @@ fn extend_sector_committment(
 ) -> Result<SectorOnChainInfo, ActorError> {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector_info)?;
 
-    // FIP-1249: claim validation has been removed. Both paths now use proportional
+    // FIP-0118: claim validation has been removed. Both paths now use proportional
     // deal weight reduction. FULL_QA_POWER sectors get 10x regardless.
     let mut new_sector_info = if sector_info.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER)
     {
@@ -3814,12 +3501,10 @@ fn extend_sector_committment(
             new_sector_info.daily_fee = daily_proof_fee(policy, circulating_supply, &new_qa_power);
         } // else grace period
     } else {
+        // daily_proof_fee_adjust is a no-op when the power hasn't changed.
         let old_qa_power = qa_power_for_sector(sector_size, sector_info);
-        if old_qa_power != new_qa_power {
-            // adjust the daily_fee by the same proportion as the power changed
-            new_sector_info.daily_fee =
-                daily_proof_fee_adjust(&sector_info.daily_fee, &old_qa_power, &new_qa_power)
-        }
+        new_sector_info.daily_fee =
+            daily_proof_fee_adjust(&sector_info.daily_fee, &old_qa_power, &new_qa_power);
     }
     Ok(new_sector_info)
 }
@@ -3864,7 +3549,7 @@ fn validate_extended_expiration(
     Ok(())
 }
 
-// FIP-1249: claim validation has been removed. Verified deal weight is reduced
+// FIP-0118: claim validation has been removed. Verified deal weight is reduced
 // proportionally for remaining sector lifetime, same as deal_weight.
 // For FULL_QA_POWER sectors, stored weights are informational only (QAP comes from the flag).
 fn extend_simple_qap_sector(
@@ -4083,6 +3768,9 @@ where
     let mut power_delta = PowerPair::zero();
     let mut pledge_delta = TokenAmount::zero();
 
+    // FIP-0118: all sectors get maximum QA power (10x); same for every update in this batch.
+    let new_qa_power = qa_power_max(sector_size);
+
     rt.transaction(|state: &mut State, rt| {
         let mut deadlines = state.load_deadlines(rt.store())?;
         let mut new_sectors = Vec::with_capacity(expected_count);
@@ -4110,6 +3798,7 @@ where
                     &update.activated_data,
                     &pledge_inputs,
                     sector_size,
+                    &new_qa_power,
                     rt.curr_epoch(),
                 );
 
@@ -4237,12 +3926,15 @@ fn update_existing_sector_info(
     activated_data: &ReplicaUpdateActivatedData,
     pledge_inputs: &NetworkPledgeInputs,
     sector_size: SectorSize,
+    // FIP-0118: all sectors get maximum QA power (10x). Computed once by the caller since it's
+    // the same for every sector in a batch of replica updates.
+    new_qa_power: &StoragePower,
     curr_epoch: ChainEpoch,
 ) -> SectorOnChainInfo {
     let mut new_sector_info = sector_info.clone();
 
     new_sector_info.flags.set(SectorOnChainInfoFlags::SIMPLE_QA_POWER, true);
-    // FIP-1249: replica updates always get full QA power.
+    // FIP-0118: replica updates always get full QA power.
     new_sector_info.flags.set(SectorOnChainInfoFlags::FULL_QA_POWER, true);
     new_sector_info.sealed_cid = activated_data.seal_cid;
     new_sector_info.sector_key_cid = match new_sector_info.sector_key_cid {
@@ -4255,39 +3947,25 @@ fn update_existing_sector_info(
     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
 
     new_sector_info.deal_weight = activated_data.unverified_space.clone() * duration;
-    new_sector_info.verified_deal_weight = activated_data.verified_space.clone() * duration;
-
-    // FIP-1249: all sectors get maximum QA power (10x).
-    let new_qa_power = qa_power_max(sector_size);
+    // FIP-0118: verified_space is always zero; QAP comes from FULL_QA_POWER instead.
+    new_sector_info.verified_deal_weight = DealWeight::zero();
 
     new_sector_info.expected_day_reward = None;
     new_sector_info.replaced_day_reward = None;
     new_sector_info.expected_storage_pledge = None;
 
-    new_sector_info.initial_pledge = max(
-        new_sector_info.initial_pledge,
-        initial_pledge_for_power(
-            &new_qa_power,
-            &pledge_inputs.network_baseline,
-            &pledge_inputs.epoch_reward,
-            &pledge_inputs.network_qap,
-            &pledge_inputs.circulating_supply,
-            pledge_inputs.epochs_since_ramp_start,
-            pledge_inputs.ramp_duration_epochs,
-        ),
-    );
+    new_sector_info.initial_pledge =
+        max(new_sector_info.initial_pledge, pledge_inputs.initial_pledge_for_power(new_qa_power));
     if new_sector_info.daily_fee.is_zero() {
         // pre-FIP-0100 sector
         new_sector_info.daily_fee =
-            daily_proof_fee(policy, &pledge_inputs.circulating_supply, &new_qa_power);
+            daily_proof_fee(policy, &pledge_inputs.circulating_supply, new_qa_power);
     } else {
         // Use qa_power_for_sector which handles both FULL_QA_POWER and legacy sectors.
+        // daily_proof_fee_adjust is a no-op when the power hasn't changed.
         let old_qa_power = qa_power_for_sector(sector_size, sector_info);
-        if old_qa_power != new_qa_power {
-            // adjust the daily_fee by the same proportion as the power changed
-            new_sector_info.daily_fee =
-                daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, &new_qa_power)
-        }
+        new_sector_info.daily_fee =
+            daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, new_qa_power);
     }
     new_sector_info
 }
@@ -5215,7 +4893,7 @@ fn notify_pledge_changed(rt: &impl Runtime, pledge_delta: &TokenAmount) -> Resul
     Ok(())
 }
 
-// FIP-1249: get_claims function removed. The miner actor no longer validates
+// FIP-0118: get_claims function removed. The miner actor no longer validates
 // verifreg claims during extension or activation.
 
 /// Assigns proving period offset randomly in the range [0, WPoStProvingPeriod) by hashing
@@ -5460,6 +5138,12 @@ fn activate_new_sector_infos(
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
+        // FIP-0118: all new sectors get 10x QA power regardless of content or duration, so
+        // power/fee/pledge are identical for every sector in this batch; compute them once.
+        let power = qa_power_max(info.sector_size);
+        let daily_fee = daily_proof_fee(policy, &pledge_inputs.circulating_supply, &power);
+        let initial_pledge = pledge_inputs.initial_pledge_for_power(&power);
+
         for (pci, deal_spaces) in precommits.iter().zip(data_activations) {
             // compute initial pledge
             let duration = pci.info.expiration - activation_epoch;
@@ -5475,21 +5159,8 @@ fn activate_new_sector_infos(
             }
 
             let deal_weight = &deal_spaces.unverified_space * duration;
-            let verified_deal_weight = &deal_spaces.verified_space * duration;
-
-            // FIP-1249: all new sectors get 10x QA power regardless of content.
-            let power = qa_power_max(info.sector_size);
-            let daily_fee = daily_proof_fee(rt.policy(), &pledge_inputs.circulating_supply, &power);
-
-            let initial_pledge = initial_pledge_for_power(
-                &power,
-                &pledge_inputs.network_baseline,
-                &pledge_inputs.epoch_reward,
-                &pledge_inputs.network_qap,
-                &pledge_inputs.circulating_supply,
-                pledge_inputs.epochs_since_ramp_start,
-                pledge_inputs.ramp_duration_epochs,
-            );
+            // FIP-0118: verified_space is always zero; QAP comes from FULL_QA_POWER instead.
+            let verified_deal_weight = BigInt::zero();
 
             deposit_to_unlock += pci.pre_commit_deposit.clone();
             total_pledge += &initial_pledge;
@@ -5503,7 +5174,7 @@ fn activate_new_sector_infos(
                 activation: activation_epoch,
                 deal_weight,
                 verified_deal_weight,
-                initial_pledge,
+                initial_pledge: initial_pledge.clone(),
                 expected_day_reward: None,
                 expected_storage_pledge: None,
                 power_base_epoch: activation_epoch,
@@ -5511,7 +5182,7 @@ fn activate_new_sector_infos(
                 sector_key_cid: None,
                 flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER
                     | SectorOnChainInfoFlags::FULL_QA_POWER,
-                daily_fee,
+                daily_fee: daily_fee.clone(),
             };
 
             new_sector_numbers.push(new_sector_info.sector_number);
@@ -5631,7 +5302,6 @@ impl From<&UpdateAndSectorInfo<'_>> for DealsActivationInput {
 #[derive(Clone)]
 struct DataActivationOutput {
     pub unverified_space: BigInt,
-    pub verified_space: BigInt,
     pub pieces: Vec<(Cid, u64)>,
 }
 
@@ -5654,11 +5324,10 @@ struct ReplicaUpdateStateInputs<'a> {
 struct ReplicaUpdateActivatedData {
     seal_cid: Cid,
     unverified_space: BigInt,
-    verified_space: BigInt,
 }
 
 // Activates data pieces in sectors.
-// FIP-1249: verified allocation claims are no longer made; all sectors get 10x QA power
+// FIP-0118: verified allocation claims are no longer made; all sectors get 10x QA power
 // via the FULL_QA_POWER flag regardless of content. The verified_allocation_key field
 // on piece manifests is preserved for API backward compat but ignored.
 // Pieces are grouped by sector and succeed or fail in sector groups.
@@ -5667,7 +5336,6 @@ struct ReplicaUpdateActivatedData {
 fn activate_sectors_pieces(
     rt: &impl Runtime,
     activation_inputs: Vec<SectorPiecesActivationInput>,
-    _all_or_nothing: bool,
 ) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
     let mut activation_outputs = Vec::with_capacity(activation_inputs.len());
 
@@ -5693,18 +5361,14 @@ fn activate_sectors_pieces(
             }
         }
 
-        // FIP-1249: all piece space is treated as unverified_space; QAP comes from the flag.
+        // FIP-0118: all piece space is treated as unverified_space; QAP comes from the flag.
         let mut unverified_space = BigInt::zero();
-        let mut pieces = Vec::new();
+        let mut pieces = Vec::with_capacity(activation_info.piece_manifests.len());
         for piece in &activation_info.piece_manifests {
             unverified_space += piece.size.0;
             pieces.push((piece.cid, piece.size.0));
         }
-        activation_outputs.push(DataActivationOutput {
-            unverified_space,
-            verified_space: BigInt::zero(),
-            pieces,
-        });
+        activation_outputs.push(DataActivationOutput { unverified_space, pieces });
     }
 
     let batch_return = BatchReturn::ok(activation_inputs.len() as u32);
@@ -5712,7 +5376,7 @@ fn activate_sectors_pieces(
 }
 
 /// Activates deals in sectors.
-/// FIP-1249: verified allocation claims are no longer made; all sectors get 10x QA power
+/// FIP-0118: verified allocation claims are no longer made; all sectors get 10x QA power
 /// via the FULL_QA_POWER flag regardless of deal content. allocation_id from market is ignored.
 /// Deals and claims are grouped by sectors.
 /// Successfully activated sectors have their DealSpaces returned.
@@ -5761,23 +5425,19 @@ fn activate_sectors_deals(
         return Err(actor_error!(illegal_argument, "all deals failed to activate"));
     }
 
-    // FIP-1249: no verifreg claim step. All deal space is treated as unverified;
+    // FIP-0118: no verifreg claim step. All deal space is treated as unverified;
     // QAP comes from the FULL_QA_POWER flag.
     let activation_outputs = batch_activation_res
         .activations
         .iter()
         .map(|sector_deals| {
-            let mut sector_pieces = Vec::new();
+            let mut sector_pieces = Vec::with_capacity(sector_deals.activated.len());
             let mut unverified_deal_space = BigInt::zero();
             for info in &sector_deals.activated {
                 sector_pieces.push((info.data, info.size.0));
                 unverified_deal_space += info.size.0;
             }
-            DataActivationOutput {
-                unverified_space: unverified_deal_space,
-                verified_space: BigInt::zero(),
-                pieces: sector_pieces,
-            }
+            DataActivationOutput { unverified_space: unverified_deal_space, pieces: sector_pieces }
         })
         .collect();
 
@@ -5812,6 +5472,20 @@ struct NetworkPledgeInputs {
     pub epoch_reward: FilterEstimate,
     pub epochs_since_ramp_start: i64,
     pub ramp_duration_epochs: u64,
+}
+
+impl NetworkPledgeInputs {
+    fn initial_pledge_for_power(&self, qa_power: &StoragePower) -> TokenAmount {
+        initial_pledge_for_power(
+            qa_power,
+            &self.network_baseline,
+            &self.epoch_reward,
+            &self.network_qap,
+            &self.circulating_supply,
+            self.epochs_since_ramp_start,
+            self.ramp_duration_epochs,
+        )
+    }
 }
 
 // Note: probably better to push this one level down into state
@@ -5870,7 +5544,6 @@ impl ActorCode for Actor {
         GenerateSectorLocationExported => generate_sector_location,
         ValidateSectorStatusExported => validate_sector_status,
         GetNominalSectorExpirationExported => get_nominal_sector_expiration,
-        UpgradeSectorQuality|UpgradeSectorQualityExported => upgrade_sector_quality,
     }
 }
 

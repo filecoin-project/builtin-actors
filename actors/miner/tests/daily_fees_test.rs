@@ -32,7 +32,7 @@ const PERIOD_OFFSET: ChainEpoch = 100;
 fn fee_paid_at_deadline() {
     let (mut h, rt) = setup();
     // set circulating supply to a value that will yield a predictable fee.
-    // FIP-1249: CC sectors now get 10x QA power, so the fee is ~10x the original
+    // FIP-0118: CC sectors now get 10x QA power, so the fee is ~10x the original
     // 5.56e-15 * CS metric. 38736520000000 for a CS of 696.7M FIL at 10x QAP.
     let reference_cs = TokenAmount::from_whole(696_700_000);
     let reference_fee = TokenAmount::from_atto(38_736_520_000_000_u64);
@@ -45,7 +45,7 @@ fn fee_paid_at_deadline() {
         // sanity check that we get within a reasonable distance from the reference amount using our
         // per-byte multiplier (we expect to round under the reference amount)
         let fee_ref_diff = reference_fee.atto() - daily_fee.atto();
-        // FIP-1249: with 10x QA power, rounding errors are ~10x larger, so use 1/10th nanoFIL
+        // FIP-0118: with 10x QA power, rounding errors are ~10x larger, so use 1/10th nanoFIL
         let fee_ref_diff_tolerance = TokenAmount::from_nano(1).div_floor(10);
         assert!(
             fee_ref_diff.is_positive() && fee_ref_diff.abs() <= *fee_ref_diff_tolerance.atto(),
@@ -376,7 +376,7 @@ fn fees_proportional_to_qap() {
         &BigInt::from(h.sector_size as u64 * 10),
     );
 
-    // FIP-1249: all new sectors get FULL_QA_POWER (10x), so all have the same fee
+    // FIP-0118: all new sectors get FULL_QA_POWER (10x), so all have the same fee
     // no deals
     assert_eq!(full_verified_fee, sectors[0].daily_fee);
     // deal, unverified

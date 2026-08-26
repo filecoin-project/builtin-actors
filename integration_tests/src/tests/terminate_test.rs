@@ -56,7 +56,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     );
     let miner_id = miner_id_addr.id().unwrap();
 
-    // FIP-1249: verifreg minting deprecated, no need to set up verifier/verified client
+    // FIP-0118: verifreg minting deprecated, no need to set up verifier/verified client
 
     // add market collateral
     let collateral = TokenAmount::from_whole(3);

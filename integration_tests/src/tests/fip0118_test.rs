@@ -33,7 +33,7 @@ use crate::util::{
     submit_windowed_post,
 };
 
-/// FIP-1249: A new CC sector committed via ProveCommitSectors3 gets 10x QA power.
+/// FIP-0118: A new CC sector committed via ProveCommitSectors3 gets 10x QA power.
 #[vm_test]
 pub fn new_cc_sector_gets_10x_test(v: &dyn VM) {
     override_compute_unsealed_sector_cid(v);
@@ -118,7 +118,7 @@ pub fn new_cc_sector_gets_10x_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default(), None);
 }
 
-/// FIP-1249: A sector committed via ProveCommitSectorsNI gets 10x QA power.
+/// FIP-0118: A sector committed via ProveCommitSectorsNI gets 10x QA power.
 #[vm_test]
 pub fn ni_sector_gets_10x_test(v: &dyn VM) {
     override_compute_unsealed_sector_cid(v);
@@ -206,7 +206,7 @@ pub fn ni_sector_gets_10x_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default(), None);
 }
 
-/// FIP-1249: AddVerifier and AddVerifiedClient on verifreg actor are deprecated.
+/// FIP-0118: AddVerifier and AddVerifiedClient on verifreg actor are deprecated.
 #[vm_test]
 pub fn verifreg_minting_disabled_test(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
@@ -255,7 +255,7 @@ pub fn verifreg_minting_disabled_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default(), None);
 }
 
-/// FIP-1249: Publishing a verified deal does NOT transfer datacap tokens.
+/// FIP-0118: Publishing a verified deal does NOT transfer datacap tokens.
 /// The sector still gets 10x QA power (same as CC sectors).
 #[vm_test]
 pub fn verified_deal_no_datacap_ops_test(v: &dyn VM) {
@@ -290,7 +290,7 @@ pub fn verified_deal_no_datacap_ops_test(v: &dyn VM) {
         &worker,
         &client,
         &maddr,
-        "fip1249-verified-deal".to_string(),
+        "fip0118-verified-deal".to_string(),
         PaddedPieceSize(32u64 << 30),
         true, // verified_deal = true
         deal_start,
@@ -343,7 +343,7 @@ pub fn verified_deal_no_datacap_ops_test(v: &dyn VM) {
     // Advance to proving deadline and submit PoSt
     let (deadline_info, partition_index) = advance_to_proving_deadline(v, &maddr, sector_number);
 
-    // FIP-1249: All new sectors get 10x QA power regardless of deal content
+    // FIP-0118: All new sectors get 10x QA power regardless of deal content
     let expected_power = fil_actor_miner::PowerPair {
         raw: StoragePower::from(sector_size),
         qa: StoragePower::from(10 * sector_size),
@@ -363,7 +363,7 @@ pub fn verified_deal_no_datacap_ops_test(v: &dyn VM) {
     assert_eq!(
         power.qa,
         BigInt::from(10 * sector_size),
-        "QA power should be 10x raw power (same as CC with FIP-1249)"
+        "QA power should be 10x raw power (same as CC with FIP-0118)"
     );
 
     assert_invariants(v, &Policy::default(), None);

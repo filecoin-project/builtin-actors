@@ -52,7 +52,7 @@ fn generate_sector_location_terminated_not_compacted() {
 
     let mut sectors = BitField::new();
     sectors.set(sector_number);
-    // FIP-1249: 10x QA power -> 10x termination fee
+    // FIP-0118: 10x QA power -> 10x termination fee
     let expected_fee = TokenAmount::from_atto(32389526367187500000u128); // 32.3895263671875FIL
     let (_, _) = h.terminate_sectors(&rt, &sectors, expected_fee);
 
@@ -160,7 +160,7 @@ fn validate_detects_swapped_sector_number() {
     // Terminate sector 2 to create different status
     let mut terminate_bf = BitField::new();
     terminate_bf.set(sector2);
-    // FIP-1249: 10x QA power -> 10x termination fee
+    // FIP-0118: 10x QA power -> 10x termination fee
     let expected_fee = TokenAmount::from_atto(32389526367187500000u128);
     let (_, _) = h.terminate_sectors(&rt, &terminate_bf, expected_fee);
 
@@ -305,7 +305,7 @@ fn validate_dead_sector_as_live_or_faulty_returns_false() {
 
     let mut sectors = BitField::new();
     sectors.set(sector_number);
-    // FIP-1249: 10x QA power -> 10x termination fee
+    // FIP-0118: 10x QA power -> 10x termination fee
     let expected_fee = TokenAmount::from_atto(32389526367187500000u128); // 32.3895263671875FIL
     let (_, _) = h.terminate_sectors(&rt, &sectors, expected_fee);
 
@@ -428,7 +428,7 @@ fn get_nominal_sector_expiration_after_early_termination() {
 
     let mut sectors = BitField::new();
     sectors.set(sector_number);
-    // FIP-1249: 10x QA power -> 10x termination fee
+    // FIP-0118: 10x QA power -> 10x termination fee
     let expected_fee = TokenAmount::from_atto(32389526367187500000u128); // 32.3895263671875FIL
     let (_, _) = h.terminate_sectors(&rt, &sectors, expected_fee);
 

@@ -15,6 +15,7 @@ use fil_actor_power::State as PowerState;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::runtime::policy_constants::{
     DEAL_UPDATES_INTERVAL, MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
+    MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
 use fil_actors_runtime::{EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use vm_api::VM;
@@ -30,8 +31,8 @@ use crate::util::{
     submit_windowed_post,
 };
 
-/// FIP-1249: Tests a scenario involving a deal from the built-in market.
-/// With FIP-1249, verified deals no longer create allocations or claims.
+/// FIP-0118: Tests a scenario involving a deal from the built-in market.
+/// With FIP-0118, verified deals no longer create allocations or claims.
 /// All sectors get 10x QA power regardless of verified status.
 #[vm_test]
 pub fn verified_claim_scenario_test(v: &dyn VM) {
@@ -51,7 +52,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     );
     v.set_epoch(200);
 
-    // FIP-1249: No need to set up verifier/verified client (minting deprecated)
+    // FIP-0118: No need to set up verifier/verified client (minting deprecated)
 
     // Add market collateral for client and miner
     market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
@@ -111,7 +112,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     // Advance to proving period and submit post
     let (deadline_info, partition_index) = advance_to_proving_deadline(v, &miner_id, sector_number);
 
-    // FIP-1249: All sectors get 10x QA power
+    // FIP-0118: All sectors get 10x QA power
     let expected_power =
         PowerPair { raw: StoragePower::from(deal_size), qa: StoragePower::from(10 * deal_size) };
     submit_windowed_post(
@@ -146,7 +147,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         deal_start + deal_term_min + 10,
     );
 
-    // FIP-1249: No claim extensions needed. Extensions work without claim validation.
+    // FIP-0118: No claim extensions needed. Extensions work without claim validation.
     let (didx, pidx) = sector_deadline(v, &miner_id, sector_number);
     let extended_expiration_1 = deal_start + 360 * EPOCHS_IN_DAY;
     miner_extend_sector_expiration2(
@@ -220,7 +221,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     );
 }
 
-/// FIP-1249: Market no longer creates allocations for verified deals.
+/// FIP-0118: Market no longer creates allocations for verified deals.
 /// This test verifies that deals expire correctly without allocation tracking.
 #[vm_test]
 pub fn expired_allocations_test(v: &dyn VM) {
@@ -238,7 +239,7 @@ pub fn expired_allocations_test(v: &dyn VM) {
     );
     v.set_epoch(200);
 
-    // FIP-1249: No verifreg setup needed
+    // FIP-0118: No verifreg setup needed
 
     // Add market collateral for client and miner
     market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
@@ -281,7 +282,7 @@ pub fn expired_allocations_test(v: &dyn VM) {
     );
 }
 
-/// FIP-1249: Market no longer creates allocations, so claim failures don't occur.
+/// FIP-0118: Market no longer creates allocations, so claim failures don't occur.
 /// This test verifies that deals can be committed successfully without claim validation.
 #[vm_test]
 pub fn deal_passes_claim_fails_test(v: &dyn VM) {
@@ -299,14 +300,14 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
     );
     v.set_epoch(200);
 
-    // FIP-1249: No verifreg setup needed
+    // FIP-0118: No verifreg setup needed
 
     // Add market collateral for client and miner
     market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
     market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // Publish verified deals
-    let deal_start = v.epoch() + Policy::default().maximum_verified_allocation_expiration + 1;
+    let deal_start = v.epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION + 1;
     let sector_start = deal_start;
     let deal_term_min = 180 * EPOCHS_IN_DAY;
     let deal_size = (32u64 << 30) / 2;
@@ -366,7 +367,7 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
         sector_start + sector_term,
     );
 
-    // FIP-1249: Without claim validation, both sectors succeed
+    // FIP-0118: Without claim validation, both sectors succeed
     advance_by_deadline_to_epoch(v, &miner_id, sector_start);
     let prove_commit_params = ProveCommitSectors3Params {
         sector_activations: vec![

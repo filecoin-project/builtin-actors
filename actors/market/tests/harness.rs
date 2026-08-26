@@ -743,7 +743,7 @@ pub fn publish_deals(
         );
     }
 
-    // No datacap operations - FIP-1249 removed datacap flow from market actor
+    // No datacap operations - FIP-0118 removed datacap flow from market actor
 
     let mut deal_id = next_deal_id;
     for deal in publish_deals {

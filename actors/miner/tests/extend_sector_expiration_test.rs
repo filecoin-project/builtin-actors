@@ -333,7 +333,7 @@ fn updates_expiration_and_daily_fee(nv: u32) {
         (TokenAmount::zero(), TokenAmount::zero()) // grace period
     };
 
-    // FIP-1249: both sectors have FULL_QA_POWER, so both get full verified fee
+    // FIP-0118: both sectors have FULL_QA_POWER, so both get full verified fee
     assert_eq!(full_verified_fee, new_sectors[0].daily_fee);
     assert_eq!(full_verified_fee, new_sectors[1].daily_fee);
 
@@ -571,7 +571,7 @@ fn update_expiration2_multiple_claims() {
 
 #[test]
 fn update_expiration2_failure_cases() {
-    // FIP-1249: claim validation has been removed from extension. sectors_with_claims
+    // FIP-0118: claim validation has been removed from extension. sectors_with_claims
     // references are now ignored (sector numbers are just merged into the sectors bitfield).
     // Extensions that previously failed due to claim validation now succeed.
     let (mut h, rt) = setup();
@@ -615,7 +615,7 @@ fn update_expiration2_failure_cases() {
 
 #[test]
 fn extend_expiration2_drop_claims() {
-    // FIP-1249: claim validation and dropping has been removed from extensions.
+    // FIP-0118: claim validation and dropping has been removed from extensions.
     // sectors_with_claims references are ignored; all sectors get FULL_QA_POWER (10x).
     // verified_deal_weight is always 0 for new sectors.
     let (mut h, rt) = setup();
@@ -628,7 +628,7 @@ fn extend_expiration2_drop_claims() {
     let (deadline_index, partition_index) =
         state.find_sector(rt.store(), old_sector.sector_number).unwrap();
 
-    // FIP-1249: verified_deal_weight is 0 for all new sectors
+    // FIP-0118: verified_deal_weight is 0 for all new sectors
     assert!(old_sector.verified_deal_weight.is_zero());
 
     {
@@ -653,7 +653,7 @@ fn extend_expiration2_drop_claims() {
     let new_expiration = old_sector.expiration + extension;
     let second_expiration = new_expiration + 42 * EPOCHS_IN_DAY;
 
-    // Extension with claim references succeeds (claims are ignored by FIP-1249)
+    // Extension with claim references succeeds (claims are ignored by FIP-0118)
     let params = ExtendSectorExpiration2Params {
         extensions: vec![ExpirationExtension2 {
             deadline: deadline_index,
@@ -679,7 +679,7 @@ fn extend_expiration2_drop_claims() {
 
     let new_sector = h.get_sector(&rt, old_sector.sector_number);
 
-    // FIP-1249: FULL_QA_POWER sectors keep same fee (no claim-based adjustments)
+    // FIP-0118: FULL_QA_POWER sectors keep same fee (no claim-based adjustments)
     // Fee doesn't change since QA power doesn't change (already at 10x)
     assert_eq!(old_sector.daily_fee, new_sector.daily_fee);
 
@@ -719,7 +719,7 @@ fn extend_expiration2_drop_claims() {
 
 #[test]
 fn update_expiration2_drop_claims_failure_cases() {
-    // FIP-1249: claim validation and the end_of_life_claim_drop_period constraint have been
+    // FIP-0118: claim validation and the end_of_life_claim_drop_period constraint have been
     // removed from extensions. Extensions with drop_claims now succeed regardless of timing.
     let (mut h, rt) = setup();
     let verified_deals = vec![

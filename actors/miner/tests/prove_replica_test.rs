@@ -85,7 +85,7 @@ fn update_batch() {
             if has_verified { piece_size } else { 0 },
         );
 
-        // FIP-1249: all sectors already have FULL_QA_POWER (10x), so fee doesn't change
+        // FIP-0118: all sectors already have FULL_QA_POWER (10x), so fee doesn't change
         // during replica update regardless of verified/unverified data.
         assert_eq!(
             before.daily_fee, after.daily_fee,
@@ -207,7 +207,7 @@ fn update_fee() {
             if has_verified { piece_size } else { 0 },
         );
 
-        // FIP-1249: all sectors have FULL_QA_POWER (10x), so all get the full verified fee
+        // FIP-0118: all sectors have FULL_QA_POWER (10x), so all get the full verified fee
         assert_eq!(
             full_verified_fee, after.daily_fee,
             "daily fees differ for sector {}",
@@ -464,7 +464,7 @@ fn invalid_proof_dropped() {
 
 #[test]
 fn invalid_claim_dropped() {
-    // FIP-1249: claim allocations have been removed. The claim_failure config is now a no-op.
+    // FIP-0118: claim allocations have been removed. The claim_failure config is now a no-op.
     // Both sector updates succeed since there's no claim validation.
     let (h, rt, sectors) = setup_empty_sectors(2);
     let snos = sectors.iter().map(|s| s.sector_number).collect::<Vec<_>>();
@@ -481,7 +481,7 @@ fn invalid_claim_dropped() {
         h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg).unwrap();
     assert_update_result(&[ExitCode::OK, ExitCode::OK], &result);
 
-    // FIP-1249: all data is unverified
+    // FIP-0118: all data is unverified
     verify_weights(&rt, &h, snos[0], 0, piece_size);
     verify_weights(&rt, &h, snos[1], 0, piece_size);
     h.check_state(&rt);

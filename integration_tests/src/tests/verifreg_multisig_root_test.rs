@@ -45,7 +45,7 @@ fn create_msig(v: &dyn VM, signers: &[Address], threshold: u64) -> Address {
     msig_ctor_ret.id_address
 }
 
-/// FIP-1249: AddVerifier is now deprecated and returns USR_FORBIDDEN.
+/// FIP-0118: AddVerifier is now deprecated and returns USR_FORBIDDEN.
 /// This test verifies that even with a valid multisig root key, AddVerifier fails.
 #[vm_test]
 pub fn test_multisig_as_verifreg_root_addverifier(v: &dyn VM) {
@@ -107,7 +107,7 @@ pub fn test_multisig_as_verifreg_root_addverifier(v: &dyn VM) {
         Some(approve_params),
     );
 
-    // FIP-1249: Verify that the verifier was NOT added (AddVerifier returns USR_FORBIDDEN)
+    // FIP-0118: Verify that the verifier was NOT added (AddVerifier returns USR_FORBIDDEN)
     let final_verifreg_st: VerifrregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
     let verifier_cap = final_verifreg_st.get_verifier_cap(&store, &verifier_to_add).unwrap();
@@ -119,7 +119,7 @@ pub fn test_multisig_as_verifreg_root_addverifier(v: &dyn VM) {
     assert_invariants(v, &Policy::default(), None);
 }
 
-/// FIP-1249: AddVerifier is now deprecated. Even with a threshold-3 multisig root,
+/// FIP-0118: AddVerifier is now deprecated. Even with a threshold-3 multisig root,
 /// AddVerifier fails because the method returns USR_FORBIDDEN.
 #[vm_test]
 pub fn test_multisig_as_verifreg_root_addverifier_fails_without_threshold(v: &dyn VM) {
@@ -196,7 +196,7 @@ pub fn test_multisig_as_verifreg_root_addverifier_fails_without_threshold(v: &dy
         Some(approve_params),
     );
 
-    // FIP-1249: Verify that the verifier was NOT added even after threshold met
+    // FIP-0118: Verify that the verifier was NOT added even after threshold met
     // (AddVerifier returns USR_FORBIDDEN)
     let final_verifreg_st: VerifrregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let final_verifier_cap = final_verifreg_st.get_verifier_cap(&store, &verifier_to_add).unwrap();
