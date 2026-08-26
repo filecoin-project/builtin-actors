@@ -919,9 +919,16 @@ impl State {
         Ok((TokenAmount::zero(), elapsed_payment, false, false))
     }
 
+    /// Takes already-loaded balance tables rather than loading (and re-flushing) them from
+    /// `self.escrow_table`/`self.locked_table` internally. Callers processing many deals in one
+    /// transaction (e.g. sector termination) should load the tables once, call this once per
+    /// deal, and flush the tables once at the end -- each independent load/flush of a balance
+    /// table is a real HAMT round trip, and there's no need to pay for one per deal when most
+    /// of them touch the same one or two addresses.
     pub fn process_slashed_deal<BS>(
         &mut self,
-        store: &BS,
+        escrow_table: &mut BalanceTable<BS>,
+        locked_table: &mut BalanceTable<BS>,
         proposal: &DealProposal,
         state: &DealState,
     ) -> Result<TokenAmount, ActorError>
@@ -934,19 +941,30 @@ impl State {
         let num_epochs_elapsed = max(0, payment_end_epoch - payment_start_epoch);
         let total_payment = &proposal.storage_price_per_epoch * num_epochs_elapsed;
         if total_payment.is_positive() {
-            self.transfer_balance(store, &proposal.client, &proposal.provider, &total_payment)?;
+            self.transfer_balance_in_tables(
+                escrow_table,
+                locked_table,
+                &proposal.client,
+                &proposal.provider,
+                &total_payment,
+            )?;
         }
 
         // unlock client collateral and locked storage fee
         let payment_remaining = deal_get_payment_remaining(proposal, state.slash_epoch)?;
 
         // Unlock remaining storage fee
-        self.unlock_balance(store, &proposal.client, &payment_remaining, Reason::ClientStorageFee)
-            .context("unlocking client storage fee")?;
+        self.unlock_balance_in_table(
+            locked_table,
+            &proposal.client,
+            &payment_remaining,
+            Reason::ClientStorageFee,
+        )
+        .context("unlocking client storage fee")?;
 
         // Unlock client collateral
-        self.unlock_balance(
-            store,
+        self.unlock_balance_in_table(
+            locked_table,
             &proposal.client,
             &proposal.client_collateral,
             Reason::ClientCollateral,
@@ -955,8 +973,14 @@ impl State {
 
         // slash provider collateral
         let slashed = proposal.provider_collateral.clone();
-        self.slash_balance(store, &proposal.provider, &slashed, Reason::ProviderCollateral)
-            .context("slashing balance")?;
+        self.slash_balance_in_tables(
+            escrow_table,
+            locked_table,
+            &proposal.provider,
+            &slashed,
+            Reason::ProviderCollateral,
+        )
+        .context("slashing balance")?;
 
         Ok(slashed)
     }
@@ -1097,9 +1121,11 @@ impl State {
         Ok(())
     }
 
-    fn unlock_balance<BS>(
+    /// Takes an already-loaded locked-balance table instead of loading (and re-flushing) it
+    /// from `self.locked_table` internally. See `process_slashed_deal` for why this matters.
+    fn unlock_balance_in_table<BS>(
         &mut self,
-        store: &BS,
+        locked_table: &mut BalanceTable<BS>,
         addr: &Address,
         amount: &TokenAmount,
         lock_reason: Reason,
@@ -1111,7 +1137,6 @@ impl State {
             return Err(actor_error!(illegal_state, "unlock negative amount: {}", amount));
         }
 
-        let mut locked_table = BalanceTable::from_root(store, &self.locked_table, "locked table")?;
         locked_table.must_subtract(addr, amount).context("unlocking balance")?;
 
         match lock_reason {
@@ -1126,7 +1151,51 @@ impl State {
             }
         };
 
+        Ok(())
+    }
+
+    fn unlock_balance<BS>(
+        &mut self,
+        store: &BS,
+        addr: &Address,
+        amount: &TokenAmount,
+        lock_reason: Reason,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        let mut locked_table = BalanceTable::from_root(store, &self.locked_table, "locked table")?;
+        self.unlock_balance_in_table(&mut locked_table, addr, amount, lock_reason)?;
         self.locked_table = locked_table.root()?;
+        Ok(())
+    }
+
+    /// move funds from locked in client to available in provider.
+    /// Takes already-loaded balance tables instead of loading (and re-flushing) them from
+    /// `self.escrow_table`/`self.locked_table` internally. See `process_slashed_deal` for why
+    /// this matters.
+    fn transfer_balance_in_tables<BS>(
+        &mut self,
+        escrow_table: &mut BalanceTable<BS>,
+        locked_table: &mut BalanceTable<BS>,
+        from_addr: &Address,
+        to_addr: &Address,
+        amount: &TokenAmount,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        if amount.is_negative() {
+            return Err(actor_error!(illegal_state, "transfer negative amount: {}", amount));
+        }
+
+        // Subtract from locked and escrow tables
+        escrow_table.must_subtract(from_addr, amount)?;
+        self.unlock_balance_in_table(locked_table, from_addr, amount, Reason::ClientStorageFee)
+            .context("unlocking client balance")?;
+
+        // Add subtracted amount to the recipient
+        escrow_table.add(to_addr, amount)?;
         Ok(())
     }
 
@@ -1141,21 +1210,41 @@ impl State {
     where
         BS: Blockstore,
     {
+        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
+        let mut locked_table = BalanceTable::from_root(store, &self.locked_table, "locked table")?;
+        self.transfer_balance_in_tables(
+            &mut escrow_table,
+            &mut locked_table,
+            from_addr,
+            to_addr,
+            amount,
+        )?;
+        self.escrow_table = escrow_table.root()?;
+        self.locked_table = locked_table.root()?;
+        Ok(())
+    }
+
+    /// Takes already-loaded balance tables instead of loading (and re-flushing) them from
+    /// `self.escrow_table`/`self.locked_table` internally. See `process_slashed_deal` for why
+    /// this matters.
+    fn slash_balance_in_tables<BS>(
+        &mut self,
+        escrow_table: &mut BalanceTable<BS>,
+        locked_table: &mut BalanceTable<BS>,
+        addr: &Address,
+        amount: &TokenAmount,
+        lock_reason: Reason,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
         if amount.is_negative() {
-            return Err(actor_error!(illegal_state, "transfer negative amount: {}", amount));
+            return Err(actor_error!(illegal_state, "negative amount to slash: {}", amount));
         }
 
-        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
-
         // Subtract from locked and escrow tables
-        escrow_table.must_subtract(from_addr, amount)?;
-        self.unlock_balance(store, from_addr, amount, Reason::ClientStorageFee)
-            .context("unlocking client balance")?;
-
-        // Add subtracted amount to the recipient
-        escrow_table.add(to_addr, amount)?;
-        self.escrow_table = escrow_table.root()?;
-        Ok(())
+        escrow_table.must_subtract(addr, amount)?;
+        self.unlock_balance_in_table(locked_table, addr, amount, lock_reason)
     }
 
     fn slash_balance<BS>(
@@ -1168,16 +1257,18 @@ impl State {
     where
         BS: Blockstore,
     {
-        if amount.is_negative() {
-            return Err(actor_error!(illegal_state, "negative amount to slash: {}", amount));
-        }
-
         let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
-
-        // Subtract from locked and escrow tables
-        escrow_table.must_subtract(addr, amount)?;
+        let mut locked_table = BalanceTable::from_root(store, &self.locked_table, "locked table")?;
+        self.slash_balance_in_tables(
+            &mut escrow_table,
+            &mut locked_table,
+            addr,
+            amount,
+            lock_reason,
+        )?;
         self.escrow_table = escrow_table.root()?;
-        self.unlock_balance(store, addr, amount, lock_reason)
+        self.locked_table = locked_table.root()?;
+        Ok(())
     }
 }
 
