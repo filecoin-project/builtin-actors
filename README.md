@@ -72,6 +72,7 @@ type ManifestPayload struct {
   evm &ActorBytecode
   eam &ActorBytecode
   ethaccount &ActorBytecode
+  sealer &ActorBytecode
 } representation listpairs
 
 # RAW block
