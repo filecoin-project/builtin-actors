@@ -67,8 +67,9 @@ use fil_actor_miner::{
     SectorContentChangedParams, SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo,
     SectorPreCommitOnChainInfo, SectorReturn, SectorStatusCode, SectorUpdateManifest, Sectors,
     State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
-    ValidateSectorStatusParams, ValidateSectorStatusReturn, VerifiedAllocationKey, WindowedPoSt,
-    WithdrawBalanceParams, WithdrawBalanceReturn, consensus_fault_penalty, ext,
+    UpgradeSectorQualityParams, ValidateSectorStatusParams, ValidateSectorStatusReturn,
+    VerifiedAllocationKey, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
+    consensus_fault_penalty, ext,
     ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
     ext::power::UPDATE_CLAIMED_POWER_METHOD,
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
@@ -2587,6 +2588,86 @@ impl ActorHarness {
 
         rt.verify();
         Ok(ret)
+    }
+
+    /// Calls `UpgradeSectorQuality` as the worker, expecting the pledge-input
+    /// queries, a burn of any outstanding fee debt, and the given power and
+    /// pledge deltas (no sends for zero deltas).
+    pub fn upgrade_sector_quality(
+        &self,
+        rt: &MockRuntime,
+        params: UpgradeSectorQualityParams,
+        expected_power_delta: PowerPair,
+        expected_pledge_delta: TokenAmount,
+    ) -> Result<Option<IpldBlock>, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        self.expect_query_network_info(rt);
+        expect_burn(rt, self.get_state(rt).fee_debt);
+        expect_update_power(rt, expected_power_delta);
+        expect_update_pledge(rt, &expected_pledge_delta);
+
+        let ret = rt.call::<Actor>(
+            Method::UpgradeSectorQuality as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+
+        rt.verify();
+        Ok(ret)
+    }
+
+    /// Rewrites the given sectors' on-chain records with `edit`, moving the
+    /// partition expiration queue, deadline power and fee books, and the miner's
+    /// pledge total along with the change. Simulates cohorts no onboarding path
+    /// can produce anymore, e.g. pre-FIP-0118 sectors without `FULL_QA_POWER`.
+    pub fn rewrite_sectors(
+        &self,
+        rt: &MockRuntime,
+        sector_numbers: &[SectorNumber],
+        edit: impl Fn(&mut SectorOnChainInfo),
+    ) {
+        let mut state: State = rt.get_state();
+        let store = rt.store();
+
+        let mut sectors = Sectors::load(store, &state.sectors).unwrap();
+        let mut deadlines = state.load_deadlines(store).unwrap();
+
+        let mut pledge_delta = TokenAmount::zero();
+        for &sector_number in sector_numbers {
+            let (dl_idx, p_idx) = state.find_sector(store, sector_number).unwrap();
+            let mut deadline = deadlines.load_deadline(store, dl_idx).unwrap();
+            let mut partitions = deadline.partitions_amt(store).unwrap();
+            let mut partition = partitions.get(p_idx).unwrap().cloned().unwrap();
+
+            let old_sector = sectors.must_get(sector_number).unwrap();
+            let mut new_sector = old_sector.clone();
+            edit(&mut new_sector);
+
+            let quant = state.quant_spec_for_deadline(&rt.policy, dl_idx);
+            let (power_delta, partition_pledge_delta, fee_delta) = partition
+                .replace_sectors(
+                    store,
+                    std::slice::from_ref(&old_sector),
+                    std::slice::from_ref(&new_sector),
+                    self.sector_size,
+                    quant,
+                )
+                .unwrap();
+            deadline.live_power += &power_delta;
+            deadline.daily_fee += &fee_delta;
+            pledge_delta += partition_pledge_delta;
+
+            sectors.store(vec![new_sector]).unwrap();
+            partitions.set(p_idx, partition).unwrap();
+            deadline.partitions = partitions.flush().unwrap();
+            deadlines.update_deadline(&rt.policy, store, dl_idx, &deadline).unwrap();
+        }
+
+        state.sectors = sectors.amt.flush().unwrap();
+        state.save_deadlines(store, deadlines).unwrap();
+        state.add_initial_pledge(&pledge_delta).unwrap();
+        rt.replace_state(&state);
     }
 
     pub fn compact_partitions(

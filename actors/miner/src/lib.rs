@@ -140,6 +140,7 @@ pub enum Method {
     ProveCommitSectors3 = 34,
     ProveReplicaUpdates3 = 35,
     ProveCommitSectorsNI = 36,
+    UpgradeSectorQuality = 37,
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
@@ -2148,7 +2149,7 @@ impl Actor {
                 state,
                 info.sector_size,
                 &inner.extensions,
-                |_partition, decl, sector| match decl.new_expiration {
+                |decl, sector| match decl.new_expiration {
                     Some(new_expiration) => extend_sector_committment(
                         policy,
                         curr_epoch,
@@ -2156,8 +2157,9 @@ impl Actor {
                         new_expiration,
                         sector,
                         info.sector_size,
-                    ),
-                    None => Ok(sector.clone()),
+                    )
+                    .map(Some),
+                    None => Ok(Some(sector.clone())),
                 },
             )
         })?;
@@ -2169,6 +2171,129 @@ impl Actor {
 
         // Extension does not recalculate pledge, so this is expected to be zero.
         notify_pledge_changed(rt, &pledge_delta)?;
+        Ok(())
+    }
+
+    /// Upgrades sectors to full quality-adjusted power (FIP-0118), optionally also
+    /// extending their expiration, and locks the pledge top-up the new power requires.
+    ///
+    /// May only be called by the miner's owner, worker, or a control address. Each
+    /// declaration addresses active sectors in one partition; a declaration without a
+    /// new expiration upgrades its sectors in place, leaving their expirations, power
+    /// base epochs and weights untouched. A sector already at full power is not upgraded
+    /// and its pledge is not raised: with a new expiration it is extended exactly as
+    /// `ExtendSectorExpiration2` would, without one it is skipped, so repeating a call
+    /// locks nothing.
+    ///
+    /// # Errors
+    /// Aborts with `USR_INSUFFICIENT_FUNDS` unless the available balance covers the
+    /// whole batch's pledge increase and any outstanding fee debt, which is repaid in
+    /// the same call. Any invalid declaration or non-active sector fails the whole
+    /// message; no partial upgrade is applied.
+    fn upgrade_sector_quality(
+        rt: &impl Runtime,
+        params: UpgradeSectorQualityParams,
+    ) -> Result<(), ActorError> {
+        let state: State = rt.state()?;
+        let info = get_miner_info(rt.store(), &state)?;
+        rt.validate_immediate_caller_is(
+            info.control_addresses.iter().chain(&[info.worker, info.owner]),
+        )?;
+        let policy = rt.policy();
+        let curr_epoch = rt.curr_epoch();
+        validate_upgrade_quality_extensions(policy, curr_epoch, &params.extensions)?;
+
+        // Pledge inputs come from other actors and must be fetched before the
+        // transaction, where sends are blocked.
+        let rew = request_current_epoch_block_reward(rt)?;
+        let pow = request_current_total_power(rt)?;
+        let pledge_inputs = NetworkPledgeInputs {
+            network_qap: pow.quality_adj_power_smoothed,
+            network_baseline: rew.this_epoch_baseline_power,
+            circulating_supply: rt.total_fil_circ_supply(),
+            epoch_reward: rew.this_epoch_reward_smoothed,
+            epochs_since_ramp_start: curr_epoch - pow.ramp_start_epoch,
+            ramp_duration_epochs: pow.ramp_duration_epochs,
+        };
+
+        // The upgraded power and its pledge depend only on the sector size, so they
+        // are the same for every sector in the batch.
+        let full_qa_power = qa_power_max(info.sector_size);
+        let full_power_pledge = pledge_inputs.initial_pledge_for_power(&full_qa_power);
+
+        let (power_delta, pledge_delta, fee_to_burn) = rt.transaction(|state: &mut State, rt| {
+            let declarations: Vec<ValidatedExpirationExtension> =
+                params.extensions.into_iter().map(|e| e.into()).collect();
+            let (power_delta, pledge_delta) = replace_sector_records(
+                policy,
+                rt.store(),
+                state,
+                info.sector_size,
+                &declarations,
+                |decl, sector| {
+                    // Already at full power, by flag or by weights, there is nothing to
+                    // upgrade or re-pledge: the sector is only extended if asked, else
+                    // skipped rather than failed.
+                    let at_full_power =
+                        qa_power_for_sector(info.sector_size, sector) >= full_qa_power;
+                    match (at_full_power, decl.new_expiration) {
+                        (true, None) => Ok(None),
+                        (true, Some(new_expiration)) => extend_sector_committment(
+                            policy,
+                            curr_epoch,
+                            &pledge_inputs.circulating_supply,
+                            new_expiration,
+                            sector,
+                            info.sector_size,
+                        )
+                        .map(Some),
+                        (false, _) => upgrade_sector_to_full_power(
+                            policy,
+                            curr_epoch,
+                            decl.new_expiration,
+                            sector,
+                            info.sector_size,
+                            &pledge_inputs.circulating_supply,
+                            &full_power_pledge,
+                        )
+                        .map(Some),
+                    }
+                },
+            )?;
+
+            // Lock the pledge top-up, checking funds before adding it so a shortfall
+            // reports the true available balance. Fee debt must be repaid in full in
+            // the same call.
+            let current_balance = rt.current_balance();
+            if pledge_delta.is_positive() {
+                let available_balance =
+                    state.get_available_balance(&current_balance).map_err(|e| {
+                        actor_error!(illegal_state, "failed to calculate available balance: {}", e)
+                    })?;
+                if available_balance < pledge_delta {
+                    return Err(actor_error!(
+                        insufficient_funds,
+                        "insufficient funds for aggregate initial pledge requirement {}, available: {}",
+                        pledge_delta,
+                        available_balance
+                    ));
+                }
+            }
+
+            state
+                .add_initial_pledge(&pledge_delta)
+                .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
+
+            let fee_to_burn = repay_debts_or_abort(rt, state)?;
+            Ok((power_delta, pledge_delta, fee_to_burn))
+        })?;
+
+        burn_funds(rt, fee_to_burn)?;
+        request_update_power(rt, power_delta)?;
+        notify_pledge_changed(rt, &pledge_delta)?;
+
+        let state: State = rt.state()?;
+        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
         Ok(())
     }
 
@@ -3287,16 +3412,26 @@ impl From<ExpirationExtension2> for ValidatedExpirationExtension {
     }
 }
 
+impl From<UpgradeSectorQuality> for ValidatedExpirationExtension {
+    fn from(uq: UpgradeSectorQuality) -> Self {
+        let UpgradeSectorQuality { deadline, partition, sectors, new_expiration } = uq;
+        Self { deadline, partition, sectors, new_expiration }
+    }
+}
+
 /// Rewrites the sectors named by each declaration, moving each partition's expiration queue
 /// and its deadline's power and fee books to match, and returns the aggregate power and
 /// pledge deltas.
 ///
-/// `rewrite` produces each sector's replacement record. It receives the partition holding the
-/// sector, so a caller can reject sectors its operation does not accept. Declarations apply in
-/// order and later ones read back earlier ones, so a sector named twice is rewritten twice.
+/// `rewrite` produces each sector's replacement record, or `None` to leave the sector exactly
+/// as it is. Every named sector must be active, else the call fails with
+/// `USR_ILLEGAL_ARGUMENT`. Declarations are not merged but applied in order, each seeing the
+/// records the previous ones produced, so a sector named twice is offered to `rewrite` twice
+/// (and rewritten again only if `rewrite` says so).
 ///
 /// A declaration with a new expiration re-registers its partition in the deadline's expiration
-/// queue. Without one the sectors stay where they are already scheduled.
+/// queue, unless it rewrote no sector. Without one the sectors stay where they are already
+/// scheduled.
 fn replace_sector_records<BS: Blockstore>(
     policy: &Policy,
     store: &BS,
@@ -3304,10 +3439,9 @@ fn replace_sector_records<BS: Blockstore>(
     sector_size: SectorSize,
     declarations: &[ValidatedExpirationExtension],
     rewrite: impl Fn(
-        &Partition,
         &ValidatedExpirationExtension,
         &SectorOnChainInfo,
-    ) -> Result<SectorOnChainInfo, ActorError>,
+    ) -> Result<Option<SectorOnChainInfo>, ActorError>,
 ) -> Result<(PowerPair, TokenAmount), ActorError> {
     let mut deadlines =
         state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
@@ -3366,21 +3500,28 @@ fn replace_sector_records<BS: Blockstore>(
                 .cloned()
                 .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
-            let old_sectors = sectors
-                .load_sectors(&decl.sectors)
-                .map_err(|e| e.wrap("failed to load sectors"))?;
-            let new_sectors: Vec<SectorOnChainInfo> = old_sectors
-                .iter()
-                .map(|sector| rewrite(&partition, decl, sector))
-                .collect::<Result<_, _>>()?;
-
-            // Overwrite sector infos.
-            sectors.store(new_sectors.clone()).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to update sectors {:?}", decl.sectors),
-                )
-            })?;
+            let mut old_sectors = Vec::new();
+            let mut new_sectors = Vec::new();
+            for sector in
+                sectors.load_sectors(&decl.sectors).map_err(|e| e.wrap("failed to load sectors"))?
+            {
+                // Reject a faulty, unproven, terminated or foreign sector.
+                if !partition.is_active(sector.sector_number) {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "sector {} is not active in {:?}",
+                        sector.sector_number,
+                        key
+                    ));
+                }
+                if let Some(new_sector) = rewrite(decl, &sector)? {
+                    old_sectors.push(sector);
+                    new_sectors.push(new_sector);
+                }
+            }
+            if new_sectors.is_empty() {
+                continue;
+            }
 
             // Remove old sectors from partition and assign new sectors.
             let (partition_power_delta, partition_pledge_delta, partition_daily_fee_delta) =
@@ -3392,6 +3533,14 @@ fn replace_sector_records<BS: Blockstore>(
                             format!("failed to replace sector expirations at {:?}", key),
                         )
                     })?;
+
+            // Overwrite sector infos.
+            sectors.store(new_sectors).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to update sectors {:?}", decl.sectors),
+                )
+            })?;
 
             deadline_power_delta += &partition_power_delta;
             deadline_pledge_delta += &partition_pledge_delta;
@@ -3567,6 +3716,123 @@ fn extend_sector_weights(
     new_sector.expected_day_reward = None;
     new_sector.expected_storage_pledge = None;
     new_sector.replaced_day_reward = None;
+
+    Ok(new_sector)
+}
+
+/// Validates `UpgradeSectorQuality` declarations before any state changes: at
+/// least one declaration, deadline indices in range, no empty sector selections,
+/// and requested expirations inside the allowed window. There is no batch cap:
+/// gas bounds the batch, as it does for `ExtendSectorExpiration2`.
+fn validate_upgrade_quality_extensions(
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
+    extensions: &[UpgradeSectorQuality],
+) -> Result<(), ActorError> {
+    if extensions.is_empty() {
+        return Err(actor_error!(illegal_argument, "no extension declarations"));
+    }
+
+    for decl in extensions {
+        // Must precede replace_sector_records, which indexes by deadline.
+        if decl.deadline >= policy.wpost_period_deadlines {
+            return Err(actor_error!(
+                illegal_argument,
+                "deadline {} not in range 0..{}",
+                decl.deadline,
+                policy.wpost_period_deadlines
+            ));
+        }
+
+        if decl.sectors.is_empty() {
+            return Err(actor_error!(
+                illegal_argument,
+                "no sectors selected in deadline {} partition {}",
+                decl.deadline,
+                decl.partition
+            ));
+        }
+
+        // Bounds that need no sector are rejected here, before the network queries;
+        // each sector's own expiration, activation and lifetime are checked later.
+        if let Some(new_expiration) = decl.new_expiration {
+            if new_expiration <= curr_epoch {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "new expiration {} must be after current epoch {}",
+                    new_expiration,
+                    curr_epoch
+                ));
+            }
+            if new_expiration > curr_epoch + policy.max_sector_expiration_extension {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "new expiration {} cannot be more than {} past current epoch {}",
+                    new_expiration,
+                    policy.max_sector_expiration_extension,
+                    curr_epoch
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Builds the record for one sector upgraded to full quality-adjusted power
+/// (FIP-0118) by `UpgradeSectorQuality`, optionally extending it. Expects a sector
+/// below full power (the caller only extends or skips any other), so the pledge, set
+/// to the larger of the recorded pledge and `full_power_pledge`, is raised at most once.
+///
+/// Without a new expiration the record keeps its expiration, power base epoch and
+/// weights, so the sector stays exactly where it is already scheduled; only the
+/// flags, pledge and daily fee change. The deprecated day-reward and storage-pledge
+/// estimates are cleared either way, as extension and replica update do.
+///
+/// # Errors
+/// Rejects sectors that have already expired, and expirations that would shorten
+/// the sector's life or fall outside the allowed window.
+fn upgrade_sector_to_full_power(
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
+    new_expiration: Option<ChainEpoch>,
+    sector: &SectorOnChainInfo,
+    sector_size: SectorSize,
+    circulating_supply: &TokenAmount,
+    full_power_pledge: &TokenAmount,
+) -> Result<SectorOnChainInfo, ActorError> {
+    // An upgrade-only sector keeps its own expiration but must pass the same
+    // validation, so expired-but-not-yet-removed sectors are rejected here too.
+    let effective_expiration = new_expiration.unwrap_or(sector.expiration);
+    validate_extended_expiration(policy, curr_epoch, effective_expiration, sector)?;
+
+    let mut new_sector = match new_expiration {
+        None => sector.clone(),
+        Some(new_expiration) => extend_sector_weights(new_expiration, curr_epoch, sector)?,
+    };
+
+    // The flags are the entire power change: qa_power_for_sector returns the
+    // maximum for FULL_QA_POWER sectors.
+    new_sector.flags |=
+        SectorOnChainInfoFlags::SIMPLE_QA_POWER | SectorOnChainInfoFlags::FULL_QA_POWER;
+    let full_qa_power = qa_power_max(sector_size);
+
+    // extend_sector_weights already clears these; the upgrade-only branch needs it too.
+    new_sector.expected_day_reward = None;
+    new_sector.expected_storage_pledge = None;
+    new_sector.replaced_day_reward = None;
+
+    new_sector.initial_pledge = max(new_sector.initial_pledge, full_power_pledge.clone());
+
+    if new_sector.daily_fee.is_zero() {
+        // Sector predates FIP-0100 fees; attach the fee at the upgraded rate.
+        new_sector.daily_fee = daily_proof_fee(policy, circulating_supply, &full_qa_power);
+    } else {
+        // The old power must come from the pre-upgrade record; new_sector is flagged.
+        let old_qa_power = qa_power_for_sector(sector_size, sector);
+        new_sector.daily_fee =
+            daily_proof_fee_adjust(&new_sector.daily_fee, &old_qa_power, &full_qa_power);
+    }
 
     Ok(new_sector)
 }
@@ -5490,6 +5756,7 @@ impl ActorCode for Actor {
         ProveCommitSectors3 => prove_commit_sectors3,
         ProveReplicaUpdates3 => prove_replica_updates3,
         ProveCommitSectorsNI => prove_commit_sectors_ni,
+        UpgradeSectorQuality => upgrade_sector_quality,
         MaxTerminationFeeExported => max_termination_fee,
         InitialPledgeExported => initial_pledge,
         GenerateSectorLocationExported => generate_sector_location,
