@@ -20,6 +20,7 @@ mod publish_deals_test;
 mod replica_update3_test;
 mod terminate_test;
 mod test_vm_test;
+mod upgrade_sector_quality_test;
 mod verified_claim_test;
 mod verifreg_multisig_root_test;
 mod verifreg_remove_datacap_test;
