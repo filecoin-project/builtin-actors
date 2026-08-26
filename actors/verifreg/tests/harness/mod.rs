@@ -184,6 +184,15 @@ impl Harness {
         Ok(())
     }
 
+    /// Directly inserts a verifier into state without calling the (now-deprecated) AddVerifier method.
+    /// Used for test setup after FIP-1249 disabled AddVerifier.
+    pub fn add_verifier_directly(&self, rt: &MockRuntime, verifier: &Address, allowance: &DataCap) {
+        let verifier_id_addr = rt.get_id_address(verifier).unwrap_or(*verifier);
+        let mut st: State = rt.get_state();
+        st.put_verifier(rt.store(), &verifier_id_addr, allowance).unwrap();
+        rt.replace_state(&st);
+    }
+
     pub fn assert_verifier_allowance(
         &self,
         rt: &MockRuntime,

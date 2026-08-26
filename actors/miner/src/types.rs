@@ -24,8 +24,11 @@ use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::{BatchReturn, DealWeight};
 
 use crate::commd::CompactCommD;
-use crate::ext::verifreg::AllocationID;
-use crate::ext::verifreg::ClaimID;
+// FIP-1249: these types were previously imported from ext::verifreg, now defined locally
+// since the verifreg ext module has been removed. They remain for backward compat of
+// PieceActivationManifest and SectorClaim structs.
+pub type AllocationID = u64;
+pub type ClaimID = u64;
 
 use super::beneficiary::*;
 
@@ -454,6 +457,9 @@ bitflags::bitflags! {
     pub struct SectorOnChainInfoFlags: u32 {
         /// QA power mechanism introduced in FIP-0045
         const SIMPLE_QA_POWER = 0x1;
+        /// Sector always receives maximum QA power (10x), regardless of deal content.
+        /// Introduced by FIP-1249 (deprecate FIL+).
+        const FULL_QA_POWER = 0x2;
     }
 }
 
@@ -718,4 +724,9 @@ pub struct ValidateSectorStatusParams {
 #[serde(transparent)]
 pub struct GetNominalSectorExpirationReturn {
     pub expiration: ChainEpoch,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct UpgradeSectorQualityParams {
+    pub sectors: BitField,
 }

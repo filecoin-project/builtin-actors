@@ -84,11 +84,11 @@ fn removes_sectors_with_correct_accounting() {
             new_expiration,
         }],
     };
-    h.extend_sectors2(&rt, params, HashMap::new()).unwrap();
+    h.extend_sectors2(&rt, params).unwrap();
 
     // update the third sector with no pieces, should not affect the termination fee
     let updates = make_update_manifest(&rt.get_state(), rt.store(), sectors[2].sector_number, &[]); // No pieces
-    let (result, _, _) = h
+    let (result, _) = h
         .prove_replica_updates3_batch(
             &rt,
             &[updates],
@@ -168,7 +168,9 @@ fn removes_sector_with_without_deals() {
     let snos: Vec<SectorNumber> = sectors.iter().map(|s| s.sector_number).collect();
     assert!(sectors[0].deal_weight.is_zero());
     assert!(sectors[1].deal_weight.is_positive());
-    assert!(sectors[2].verified_deal_weight.is_positive());
+    // FIP-1249: all deal space is unverified; verified_deal_weight is always 0
+    assert!(sectors[2].deal_weight.is_positive());
+    assert!(sectors[2].verified_deal_weight.is_zero());
 
     h.advance_and_submit_posts(&rt, &sectors);
     // Add locked funds to ensure correct fee calculation is used.

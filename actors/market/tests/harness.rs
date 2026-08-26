@@ -1,12 +1,11 @@
 #![allow(dead_code)]
 
-use std::cmp::{max, min};
-use std::collections::BTreeMap;
+use std::cmp::max;
 use std::{cell::RefCell, collections::HashMap, collections::HashSet};
 
 use cid::Cid;
 use fil_actors_runtime::reward::{FilterEstimate, ThisEpochRewardReturn};
-use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
+
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{RawBytes, to_vec};
@@ -27,29 +26,27 @@ use fil_actor_market::ext::account::{AUTHENTICATE_MESSAGE_METHOD, AuthenticateMe
 use fil_actor_market::ext::miner::{
     PieceChange, SectorChanges, SectorContentChangedParams, SectorContentChangedReturn,
 };
-use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
+
 use fil_actor_market::{
     Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
     GetBalanceReturn, Label, MARKET_NOTIFY_DEAL_METHOD, MarketNotifyDealParams, Method,
-    NO_ALLOCATION_ID, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
-    PublishStorageDealsReturn, SectorDeals, State, VerifyDealsForActivationParams,
-    VerifyDealsForActivationReturn, WithdrawBalanceParams, WithdrawBalanceReturn, ext,
-    ext::miner::GetControlAddressesReturnParams, next_update_epoch,
-    testing::check_state_invariants,
+    OnMinerSectorsTerminateParams, PublishStorageDealsParams, PublishStorageDealsReturn,
+    SectorDeals, State, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    WithdrawBalanceParams, WithdrawBalanceReturn, ext, ext::miner::GetControlAddressesReturnParams,
+    next_update_epoch, testing::check_state_invariants,
 };
 use fil_actor_market::{
-    BatchActivateDealsParams, BatchActivateDealsResult, DealOpsByEpoch, PENDING_ALLOCATIONS_CONFIG,
-    PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, PendingDealAllocationsMap,
-    PendingProposalsSet, ProviderSectorsMap, SECTOR_DEALS_CONFIG, SectorDealsMap,
-    SettleDealPaymentsParams, SettleDealPaymentsReturn, deal_cid, deal_get_payment_remaining,
+    BatchActivateDealsParams, BatchActivateDealsResult, DealOpsByEpoch, PENDING_PROPOSALS_CONFIG,
+    PROVIDER_SECTORS_CONFIG, PendingProposalsSet, ProviderSectorsMap, SECTOR_DEALS_CONFIG,
+    SectorDealsMap, SettleDealPaymentsParams, SettleDealPaymentsReturn, deal_cid,
+    deal_get_payment_remaining,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, BatchReturn, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
-    EventBuilder, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EventBuilder, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     network::EPOCHS_IN_DAY,
     runtime::{Policy, Runtime, builtins::Type},
     test_utils::*,
@@ -530,18 +527,6 @@ pub fn find_deal_proposal(rt: &MockRuntime, deal_id: DealID) -> Option<DealPropo
     d.cloned()
 }
 
-pub fn get_pending_deal_allocation(rt: &MockRuntime, deal_id: DealID) -> AllocationID {
-    let st: State = rt.get_state();
-    let pending_allocations = PendingDealAllocationsMap::load(
-        &rt.store,
-        &st.pending_deal_allocation_ids,
-        PENDING_ALLOCATIONS_CONFIG,
-        "pending deal allocations",
-    )
-    .unwrap();
-    *pending_allocations.get(&deal_id).unwrap().unwrap_or(&NO_ALLOCATION_ID)
-}
-
 pub fn get_deal_state(rt: &MockRuntime, deal_id: DealID) -> DealState {
     let st: State = rt.get_state();
     let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
@@ -711,8 +696,6 @@ pub fn publish_deals(
     rt: &MockRuntime,
     addrs: &MinerAddresses,
     publish_deals: &[DealProposal],
-    clients_datacap_balance: TokenAmount,
-    next_allocation_id: AllocationID,
 ) -> Vec<DealID> {
     let st: State = rt.get_state();
     let next_deal_id = st.next_id;
@@ -734,16 +717,6 @@ pub fn publish_deals(
 
     let mut params: PublishStorageDealsParams = PublishStorageDealsParams { deals: vec![] };
 
-    // Accumulate proposals by client, so we can set expectations for the per-client calls
-    //  per-deal calls. This matches flow in the market actor.
-    // Note the shortcut of not normalising the client/provider addresses in the proposal.
-    struct ClientVerifiedDeals {
-        deals: Vec<DealProposal>,
-        datacap_consumed: TokenAmount,
-    }
-    let mut client_verified_deals: BTreeMap<ActorID, ClientVerifiedDeals> = BTreeMap::new();
-    let mut alloc_id = next_allocation_id;
-    let mut valid_deals = vec![];
     for deal in publish_deals {
         // create a client proposal with a valid signature
         let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
@@ -770,100 +743,18 @@ pub fn publish_deals(
         );
     }
 
-    for deal in publish_deals {
-        if deal.verified_deal {
-            // Expect query for the client's datacap balance, just once per client.
-            let client_id = deal.client.id().unwrap();
-            if !client_verified_deals.contains_key(&client_id) {
-                rt.expect_send_simple(
-                    DATACAP_TOKEN_ACTOR_ADDR,
-                    ext::datacap::BALANCE_OF_METHOD,
-                    IpldBlock::serialize_cbor(&deal.client).unwrap(),
-                    TokenAmount::zero(),
-                    IpldBlock::serialize_cbor(&clients_datacap_balance).unwrap(),
-                    ExitCode::OK,
-                );
-            }
-
-            let cvd = client_verified_deals.entry(client_id).or_insert(ClientVerifiedDeals {
-                deals: vec![],
-                datacap_consumed: TokenAmount::zero(),
-            });
-            let piece_datacap = TokenAmount::from_whole(deal.piece_size.0);
-            if piece_datacap > &clients_datacap_balance - &cvd.datacap_consumed {
-                continue; // Drop deal
-            }
-            cvd.deals.push(deal.clone());
-            cvd.datacap_consumed += piece_datacap;
-        }
-        valid_deals.push(deal);
-    }
-
-    let curr_epoch = *rt.epoch.borrow();
-    let policy = Policy::default();
-    for (client, cvd) in client_verified_deals {
-        if cvd.deals.is_empty() {
-            continue;
-        }
-        // Expect transfer of data cap to the verified registry, with spec for the allocation.
-        let mut allocations = vec![];
-        for deal in cvd.deals {
-            let term_min = deal.end_epoch - deal.start_epoch;
-            let term_max = min(
-                term_min + policy.market_default_allocation_term_buffer,
-                policy.maximum_verified_allocation_term,
-            );
-            let expiration =
-                min(deal.start_epoch, curr_epoch + policy.maximum_verified_allocation_expiration);
-            allocations.push(AllocationRequest {
-                provider: deal.provider.id().unwrap(),
-                data: deal.piece_cid,
-                size: deal.piece_size,
-                term_min,
-                term_max,
-                expiration,
-            });
-        }
-
-        let alloc_req = ext::verifreg::AllocationRequests { allocations, extensions: vec![] };
-        let params = TransferFromParams {
-            from: Address::new_id(client),
-            to: VERIFIED_REGISTRY_ACTOR_ADDR,
-            amount: cvd.datacap_consumed.clone(),
-            operator_data: serialize(&alloc_req, "allocation requests").unwrap(),
-        };
-        let alloc_ids = AllocationsResponse {
-            allocation_results: BatchReturn::ok(alloc_req.allocations.len() as u32),
-            extension_results: BatchReturn::empty(),
-            new_allocations: (alloc_id..alloc_id + alloc_req.allocations.len() as u64).collect(),
-        };
-        rt.expect_send_simple(
-            DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::TRANSFER_FROM_METHOD,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-            TokenAmount::zero(),
-            IpldBlock::serialize_cbor(&TransferFromReturn {
-                from_balance: TokenAmount::zero(),
-                to_balance: cvd.datacap_consumed,
-                allowance: TokenAmount::zero(),
-                recipient_data: serialize(&alloc_ids, "allocation response").unwrap(),
-            })
-            .unwrap(),
-            ExitCode::OK,
-        );
-        alloc_id += alloc_req.allocations.len() as AllocationID;
-    }
+    // No datacap operations - FIP-1249 removed datacap flow from market actor
 
     let mut deal_id = next_deal_id;
-    for deal in valid_deals {
+    for deal in publish_deals {
         let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
-        let params =
+        let notify_params =
             IpldBlock::serialize_cbor(&MarketNotifyDealParams { proposal: buf.to_vec(), deal_id })
                 .unwrap();
         rt.expect_send_simple(
             deal.client,
             MARKET_NOTIFY_DEAL_METHOD,
-            params,
+            notify_params,
             TokenAmount::zero(),
             None,
             ExitCode::OK,
@@ -890,15 +781,10 @@ pub fn publish_deals(
     rt.verify();
 
     // assert state after publishing the deals
-    alloc_id = next_allocation_id;
     for (i, deal_id) in ret.ids.iter().enumerate() {
         let expected = &publish_deals[i];
         let p = get_deal_proposal(rt, *deal_id);
         assert_eq!(expected, &p);
-        if p.verified_deal {
-            assert_eq!(get_pending_deal_allocation(rt, *deal_id), alloc_id);
-            alloc_id += 1;
-        }
     }
 
     ret.ids
@@ -1338,13 +1224,7 @@ pub fn publish_and_activate_deal(
 ) -> (DealID, DealProposal) {
     let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(
-        rt,
-        addrs,
-        std::slice::from_ref(&deal),
-        TokenAmount::zero(),
-        NO_ALLOCATION_ID,
-    ); // unverified deal
+    let deal_ids = publish_deals(rt, addrs, std::slice::from_ref(&deal));
     activate_deals(rt, sector_expiry, addrs.provider, current_epoch, sector_number, &deal_ids);
     (deal_ids[0], deal)
 }
@@ -1383,13 +1263,7 @@ pub fn generate_and_publish_deal(
 ) -> (DealID, DealProposal) {
     let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(
-        rt,
-        addrs,
-        std::slice::from_ref(&deal),
-        TokenAmount::zero(),
-        NO_ALLOCATION_ID,
-    ); // unverified deal
+    let deal_ids = publish_deals(rt, addrs, std::slice::from_ref(&deal));
     (deal_ids[0], deal)
 }
 
@@ -1399,18 +1273,11 @@ pub fn generate_and_publish_verified_deal(
     addrs: &MinerAddresses,
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
-    next_allocation_id: AllocationID,
 ) -> DealID {
     let mut deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     deal.verified_deal = true;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(
-        rt,
-        addrs,
-        &[deal.clone()],
-        TokenAmount::from_whole(deal.piece_size.0),
-        next_allocation_id,
-    );
+    let deal_ids = publish_deals(rt, addrs, &[deal.clone()]);
     deal_ids[0]
 }
 
@@ -1448,7 +1315,7 @@ pub fn generate_and_publish_deal_for_piece(
 
     // publish
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(rt, addrs, &[deal], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
+    let deal_ids = publish_deals(rt, addrs, &[deal]);
     deal_ids[0]
 }
 

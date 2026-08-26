@@ -15,7 +15,7 @@ use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, SectorSize, S
 use fvm_shared::version::NetworkVersion;
 use lazy_static::lazy_static;
 
-use super::types::SectorOnChainInfo;
+use super::types::{SectorOnChainInfo, SectorOnChainInfoFlags};
 use super::{BASE_REWARD_FOR_DISPUTED_WINDOW_POST, PowerPair};
 
 /// Precision used for making QA power calculations
@@ -154,7 +154,11 @@ pub fn qa_power_for_weight(
 }
 
 /// Returns the quality-adjusted power for a sector.
+/// Sectors with the FULL_QA_POWER flag always receive maximum QA power (10x).
 pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> StoragePower {
+    if sector.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER) {
+        return qa_power_max(size);
+    }
     let duration = sector.expiration - sector.power_base_epoch;
     qa_power_for_weight(size, duration, &sector.verified_deal_weight)
 }

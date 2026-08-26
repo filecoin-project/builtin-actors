@@ -18,7 +18,7 @@ use fil_actor_datacap::BalanceParams;
 use fil_actor_market::{
     OnMinerSectorsTerminateParams, SectorDeals, VerifyDealsForActivationParams,
 };
-use fil_actor_miner::ext::verifreg::ClaimID;
+use fil_actor_miner::ClaimID;
 use fil_actor_miner::{IsControllingAddressParam, PowerPair};
 use fil_actor_miner::{PieceChange, SectorChanges, SectorContentChangedParams};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};

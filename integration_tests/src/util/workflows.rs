@@ -3,11 +3,8 @@ use std::cmp::min;
 
 use fil_actor_market::SettleDealPaymentsParams;
 use fil_actor_market::SettleDealPaymentsReturn;
-use frc46_token::receiver::FRC46_TOKEN_TYPE;
-use frc46_token::receiver::FRC46TokenReceived;
 use frc46_token::token::types::TransferParams;
-use frc46_token::token::types::{TransferFromParams, TransferReturn};
-use fvm_actor_utils::receiver::UniversalReceiverParams;
+use frc46_token::token::types::TransferReturn;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::BytesDe;
@@ -32,7 +29,6 @@ use num_traits::Zero;
 
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
-use fil_actor_market::ext::verifreg::AllocationsResponse;
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, MARKET_NOTIFY_DEAL_METHOD, Method as MarketMethod,
     PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State as MarketState,
@@ -43,12 +39,13 @@ use fil_actor_miner::{
     Method as MinerMethod, PieceActivationManifest, PoStPartition, PowerPair,
     PreCommitSectorBatchParams2, ProveCommitSectors3Params, RecoveryDeclaration,
     SectorActivationManifest, SectorClaim, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    State as MinerState, SubmitWindowedPoStParams, VerifiedAllocationKey, WithdrawBalanceParams,
-    WithdrawBalanceReturn, max_prove_commit_duration,
+    State as MinerState, SubmitWindowedPoStParams, WithdrawBalanceParams, WithdrawBalanceReturn,
+    max_prove_commit_duration,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
+use fil_actor_verifreg::AllocationsResponse;
 use fil_actor_verifreg::ClaimExtensionRequest;
 use fil_actor_verifreg::ext::datacap::MintParams;
 use fil_actor_verifreg::{
@@ -70,9 +67,6 @@ use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::runtime::policy_constants::{
-    MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
-};
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
@@ -86,7 +80,7 @@ use crate::expects::Expect;
 use crate::*;
 
 use super::create_miner_deposit_for_test;
-use super::market_pending_deal_allocations_raw;
+
 use super::miner_dline_info;
 use super::sector_deadline;
 
@@ -528,16 +522,9 @@ pub fn miner_extend_sector_expiration2(
         Some(extension_params),
     );
 
-    let mut claim_ids = vec![];
-    for sector_claim in sectors_with_claims {
-        claim_ids = sector_claim.maintain_claims.clone();
-        claim_ids.extend(sector_claim.drop_claims);
-    }
+    // FIP-1249: Miner no longer calls verifreg for claim validation during extensions.
 
     let mut subinvocs = vec![];
-    if !claim_ids.is_empty() {
-        subinvocs.push(Expect::verifreg_get_claims(miner_id, miner_id, claim_ids))
-    }
     if !power_delta.is_zero() {
         subinvocs.push(Expect::power_update_claim(miner_id, power_delta));
     }
@@ -1254,87 +1241,8 @@ pub fn market_publish_deal(
             signature.bytes,
         ),
     ];
-    if verified_deal {
-        let deal_term = proposal.end_epoch - proposal.start_epoch;
-        let token_amount = TokenAmount::from_whole(proposal.piece_size.0 as i64);
-        let alloc_expiration =
-            min(proposal.start_epoch, v.epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
-
-        expect_publish_invocs.push(ExpectInvocation {
-            from: STORAGE_MARKET_ACTOR_ID,
-            to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::BalanceExported as u64,
-            params: Some(IpldBlock::serialize_cbor(&deal_client).unwrap()),
-            ..Default::default()
-        });
-        let alloc_reqs = AllocationRequests {
-            allocations: vec![AllocationRequest {
-                provider: miner_id.id().unwrap(),
-                data: proposal.piece_cid,
-                size: proposal.piece_size,
-                term_min: deal_term,
-                term_max: deal_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
-                expiration: alloc_expiration,
-            }],
-            extensions: vec![],
-        };
-
-        let v_st: fil_actor_verifreg::State = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-        let alloc_id = v_st.next_allocation_id - 1;
-        let alloc_req = alloc_reqs.allocations[0].clone();
-        let alloc_event = Expect::build_verifreg_allocation_event(
-            "allocation",
-            alloc_id,
-            deal_client.id().unwrap(),
-            miner_id.id().unwrap(),
-            &proposal.piece_cid,
-            proposal.piece_size.0,
-            alloc_req.term_min,
-            alloc_req.term_max,
-            alloc_req.expiration,
-        );
-
-        expect_publish_invocs.push(ExpectInvocation {
-            from: STORAGE_MARKET_ACTOR_ID,
-            to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::TransferFromExported as u64,
-            params: Some(
-                IpldBlock::serialize_cbor(&TransferFromParams {
-                    from: *deal_client,
-                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                    amount: token_amount.clone(),
-                    operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-                })
-                .unwrap(),
-            ),
-            subinvocs: Some(vec![ExpectInvocation {
-                from: DATACAP_TOKEN_ACTOR_ID,
-                to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                method: VerifregMethod::UniversalReceiverHook as u64,
-                params: Some(
-                    IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                        type_: FRC46_TOKEN_TYPE,
-                        payload: serialize(
-                            &FRC46TokenReceived {
-                                from: deal_client.id().unwrap(),
-                                to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                                operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
-                                amount: token_amount,
-                                operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-                                token_data: Default::default(),
-                            },
-                            "token received params",
-                        )
-                        .unwrap(),
-                    })
-                    .unwrap(),
-                ),
-                events: Some(vec![alloc_event]),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        })
-    }
+    // FIP-1249: Market no longer does datacap ops for verified deals.
+    // The verified_deal flag is kept for backward compat but is functionally ignored.
     expect_publish_invocs.push(ExpectInvocation {
         from: STORAGE_MARKET_ACTOR_ID,
         to: *deal_client,
@@ -1413,18 +1321,13 @@ pub fn make_piece_manifests_from_deal_ids(
     let mut piece_manifests = vec![];
     for deal_id in deal_ids {
         let deal = get_deal(v, deal_id);
-        let alloc_key = match market_pending_deal_allocations_raw(v, &[deal_id]) {
-            Ok(alloc_ids) => Some(VerifiedAllocationKey {
-                id: *alloc_ids.first().unwrap(),
-                client: deal.client.id().unwrap(),
-            }),
-            Err(_) => None,
-        };
+        // FIP-1249: Market no longer stores pending deal allocations.
+        // verified_allocation_key is kept for API backward compat but is ignored by miner.
 
         piece_manifests.push(PieceActivationManifest {
             cid: deal.piece_cid,
             size: deal.piece_size,
-            verified_allocation_key: alloc_key,
+            verified_allocation_key: None,
             notify: vec![DataActivationNotification {
                 address: STORAGE_MARKET_ACTOR_ADDR,
                 payload: serialize(&deal_id, "dealid").unwrap(),

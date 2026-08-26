@@ -98,8 +98,10 @@ pub fn datacap_transfer_test(v: &dyn VM) {
         }
     };
 
-    // bad operator data caught in verifreg receiver hook and propagated
-    // 1. piece size too small
+    // FIP-1249: UniversalReceiverHook now returns USR_FORBIDDEN for new allocations.
+    // All transfers to verifreg will fail with USR_FORBIDDEN.
+
+    // 1. piece size too small - now fails with USR_FORBIDDEN (receiver hook disabled)
     let mut bad_alloc = alloc.clone();
     bad_alloc.size = PaddedPieceSize(MINIMUM_VERIFIED_ALLOCATION_SIZE as u64 - 1);
     let mut params_piece_too_small = clone_params(&transfer_from_params);
@@ -115,10 +117,10 @@ pub fn datacap_transfer_test(v: &dyn VM) {
         &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
         Some(params_piece_too_small),
-        ExitCode::USR_ILLEGAL_ARGUMENT,
+        ExitCode::USR_FORBIDDEN,
     );
 
-    // 2. mismatch more datacap than piece needs
+    // 2. mismatch more datacap than piece needs - also USR_FORBIDDEN
     let mut params_mismatched_datacap = clone_params(&transfer_from_params);
     params_mismatched_datacap.amount =
         TokenAmount::from_whole(MINIMUM_VERIFIED_ALLOCATION_SIZE + 1);
@@ -129,26 +131,18 @@ pub fn datacap_transfer_test(v: &dyn VM) {
         &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
         Some(params_mismatched_datacap),
-        ExitCode::USR_ILLEGAL_ARGUMENT,
+        ExitCode::USR_FORBIDDEN,
     );
 
-    // 3. invalid term
-    let mut bad_alloc = alloc;
-    bad_alloc.term_max = policy.maximum_verified_allocation_term + 1;
-    let mut params_bad_term = clone_params(&transfer_from_params);
-    params_bad_term.operator_data = serialize(
-        &AllocationRequests { allocations: vec![bad_alloc], extensions: vec![] },
-        "operator data",
-    )
-    .unwrap();
+    // 3. valid allocation request also fails with USR_FORBIDDEN (receiver hook disabled)
     apply_code(
         v,
         &operator,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
-        Some(params_bad_term),
-        ExitCode::USR_ILLEGAL_ARGUMENT,
+        Some(clone_params(&transfer_from_params)),
+        ExitCode::USR_FORBIDDEN,
     );
 
     // cannot transfer from operator to non-verifreg
@@ -161,7 +155,7 @@ pub fn datacap_transfer_test(v: &dyn VM) {
         &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
         Some(clone_params(&params_bad_receiver)),
-        ExitCode::USR_FORBIDDEN, // ExitCode(19) because non-operator has insufficient allowance
+        ExitCode::USR_FORBIDDEN, // non-operator has insufficient allowance
     );
 
     // cannot transfer with non-operator caller
@@ -171,28 +165,8 @@ pub fn datacap_transfer_test(v: &dyn VM) {
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
-        Some(clone_params(&transfer_from_params)),
-        ExitCode::USR_INSUFFICIENT_FUNDS, // ExitCode(19) because non-operator has insufficient allowance
-    );
-
-    apply_ok(
-        v,
-        &operator,
-        &DATACAP_TOKEN_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        DataCapMethod::TransferFromExported as u64,
-        Some(clone_params(&transfer_from_params)),
-    );
-
-    // Datacap already spent, not enough left
-    apply_code(
-        v,
-        &operator,
-        &DATACAP_TOKEN_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        DataCapMethod::TransferFromExported as u64,
         Some(transfer_from_params),
-        ExitCode::USR_INSUFFICIENT_FUNDS,
+        ExitCode::USR_INSUFFICIENT_FUNDS, // non-operator has insufficient allowance
     );
 }
 

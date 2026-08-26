@@ -7,10 +7,9 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::RegisteredAggregateProof::SnarkPackV2;
 use fvm_shared::sector::SectorNumber;
 
-use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
-    ERR_NOTIFICATION_RECEIVER_ABORTED, ERR_NOTIFICATION_REJECTED, ProveReplicaUpdates3Params,
-    SectorUpdateManifest, State,
+    AllocationID, ERR_NOTIFICATION_RECEIVER_ABORTED, ERR_NOTIFICATION_REJECTED,
+    ProveReplicaUpdates3Params, SectorUpdateManifest, State,
 };
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Runtime;
@@ -151,13 +150,14 @@ fn reject_required_proof_failure() {
 
 #[test]
 fn reject_required_claim_failure() {
+    // FIP-1249: claim allocations have been removed. The claim_failure config is now a no-op.
+    // Both sector updates succeed since there's no claim validation.
     let (h, rt, sector_updates) = setup(2, CLIENT_ID, 1, 0);
-    let cfg = ProveReplicaUpdatesConfig { claim_failure: vec![0], ..Default::default() };
-    expect_abort_contains_message(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        "error claiming allocations",
-        h.prove_replica_updates3_batch(&rt, &sector_updates, true, false, cfg),
-    );
+    let cfg = ProveReplicaUpdatesConfig::default();
+    let (result, _) =
+        h.prove_replica_updates3_batch(&rt, &sector_updates, true, false, cfg).unwrap();
+    assert_eq!(sector_updates.len(), result.activation_results.size());
+    assert_eq!(sector_updates.len() as u32, result.activation_results.success_count);
     h.check_state(&rt);
 }
 

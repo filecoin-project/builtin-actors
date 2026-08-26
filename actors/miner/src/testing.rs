@@ -86,6 +86,9 @@ pub fn check_state_invariants<BS: Blockstore>(
                             legacy_qap: !sector
                                 .flags
                                 .contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER),
+                            full_qa_power: sector
+                                .flags
+                                .contains(SectorOnChainInfoFlags::FULL_QA_POWER),
                         },
                     );
                 }
@@ -151,6 +154,7 @@ pub struct DataSummary {
     pub deal_weight: DealWeight,
     pub verified_deal_weight: DealWeight,
     pub legacy_qap: bool,
+    pub full_qa_power: bool,
 }
 
 pub struct StateSummary {
