@@ -124,8 +124,13 @@ pub fn check_state_invariants<BS: Blockstore>(
             }
             Some(Type::Market) => {
                 let state = get_state!(store, actor, MarketState);
-                let (summary, msgs) =
-                    market::check_state_invariants(&state, store, &actor.balance, prior_epoch + 1);
+                let (summary, msgs) = market::check_state_invariants(
+                    &state,
+                    store,
+                    &actor.balance,
+                    prior_epoch + 1,
+                    policy.deal_updates_interval,
+                );
                 acc.with_prefix("market: ").add_all(&msgs);
                 market_summary = Some(summary);
             }

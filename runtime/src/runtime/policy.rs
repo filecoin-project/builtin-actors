@@ -141,7 +141,8 @@ pub struct Policy {
     //
     //  --- market policy ---
     //
-    /// The number of blocks between payouts for deals
+    /// The number of blocks between payouts for deals.
+    /// Changing this requires migrating every existing market deal-ops queue entry.
     pub deal_updates_interval: i64,
 
     /// Numerator of the percentage of normalized cirulating

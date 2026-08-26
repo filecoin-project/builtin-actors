@@ -702,14 +702,24 @@ impl Actor {
                         st.remove_pending_deal(rt.store(), dcid)?;
                     }
 
-                    if state.last_updated_epoch == EPOCH_UNDEFINED {
+                    // A deal should get just one cron visit, scheduled at publish. Anything queued
+                    // later was rescheduled by cron itself, which only applies to legacy deals
+                    // which get continued cron handling (See FIP-0074).
+                    let first_visit = next_update_epoch(
+                        deal_id,
+                        rt.policy().deal_updates_interval,
+                        deal_proposal.start_epoch,
+                    );
+                    if i == first_visit {
                         if curr_epoch > deal_proposal.start_epoch {
-                            st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
-                                actor_error!(
+                            let removed = st.remove_pending_deal(rt.store(), dcid)?;
+                            // A settlement may have removed it already.
+                            if removed.is_none() && state.last_updated_epoch == EPOCH_UNDEFINED {
+                                return Err(actor_error!(
                                     illegal_state,
                                     "failed to delete pending proposal: does not exist"
-                                )
-                            })?;
+                                ));
+                            }
                         }
 
                         // newly activated deals are not scheduled for cron processing. they are handled explicitly by
