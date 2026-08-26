@@ -822,7 +822,8 @@ pub fn settle_deal_payments_no_change(
 ) {
     let st: State = rt.get_state();
     let epoch_cid = st.deal_ops_by_epoch;
-
+    let states_cid = st.states;
+    let pending_cid = st.pending_proposals;
     // fetch current client  escrow balances
     let client_acct = get_balance(rt, &client_addr);
     let provider_acct = get_balance(rt, &provider_addr);
@@ -833,6 +834,8 @@ pub fn settle_deal_payments_no_change(
     let new_client_acct = get_balance(rt, &client_addr);
     let new_provider_acct = get_balance(rt, &provider_addr);
     assert_eq!(epoch_cid, st.deal_ops_by_epoch);
+    assert_eq!(pending_cid, st.pending_proposals);
+    assert_eq!(states_cid, st.states);
     assert_eq!(client_acct, new_client_acct);
     assert_eq!(provider_acct, new_provider_acct);
 }
@@ -1020,6 +1023,26 @@ pub fn assert_deals_not_marked_terminated(rt: &MockRuntime, deal_ids: &[DealID])
         let s = get_deal_state(rt, deal_id);
         assert_eq!(s.slash_epoch, EPOCH_UNDEFINED);
     }
+}
+
+pub fn assert_deal_pending(rt: &MockRuntime, proposal: &DealProposal, expected: bool) {
+    let st: State = rt.get_state();
+    let pending_deals = PendingProposalsSet::load(
+        rt.store(),
+        &st.pending_proposals,
+        PENDING_PROPOSALS_CONFIG,
+        "pending proposals",
+    )
+    .unwrap();
+    let proposal_cid = deal_cid(rt, proposal).unwrap();
+    assert_eq!(expected, pending_deals.has(&proposal_cid).unwrap());
+}
+
+pub fn remove_deal_pending(rt: &MockRuntime, proposal: &DealProposal) {
+    let mut st: State = rt.get_state();
+    let proposal_cid = deal_cid(rt, proposal).unwrap();
+    assert!(st.remove_pending_deal(rt.store(), proposal_cid).unwrap().is_some());
+    rt.replace_state(&st);
 }
 
 pub fn assert_deal_deleted(
