@@ -117,14 +117,7 @@ fn ignore_sector_that_does_not_exist() {
         start_epoch,
         end_epoch,
     );
-    activate_deals_legacy(
-        &rt,
-        sector_expiry,
-        PROVIDER_ADDR,
-        current_epoch,
-        sector_number,
-        &[deal1],
-    );
+    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal1]);
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number + 1], &[]);
 
     let s = get_deal_state(&rt, deal1);

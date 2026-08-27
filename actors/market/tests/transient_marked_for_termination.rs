@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 use fil_actor_market::{
     Actor as MarketActor, DealQueryParams, DealSettlementSummary, EX_DEAL_EXPIRED, Method, State,
+    next_update_epoch,
 };
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY,
@@ -24,7 +25,8 @@ const END_EPOCH: ChainEpoch = SYNCHRONOUS_TERMINATION_SWITCHOVER_EPOCH + 200 * E
 
 #[test]
 fn deal_scheduled_for_termination_cannot_be_settled_manually() {
-    let rt = setup();
+    let mut rt = setup();
+    rt.policy.deal_updates_interval = 150;
     let sector_number = 7;
 
     let (deal_id_1, deal_1_prop) = publish_and_activate_deal_legacy(
@@ -107,8 +109,9 @@ fn deal_scheduled_for_termination_cannot_be_settled_manually() {
     // attempt to settle payment for both deals again - partially succeeds because not found deals are ignored
     rt.set_epoch(scheduled_epoch + 1);
     let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id_1, slashed_deal], &[], &[]);
+    let first_visit = next_update_epoch(deal_id_1, rt.policy.deal_updates_interval, START_EPOCH);
     let expected_payment =
-        deal_1_prop.storage_price_per_epoch * (scheduled_epoch + 1 - START_EPOCH);
+        &deal_1_prop.storage_price_per_epoch * (scheduled_epoch + 1 - first_visit);
     assert_eq!(ret.results.codes(), vec![ExitCode::OK, EX_DEAL_EXPIRED]);
     assert_eq!(
         ret.settlements[0],

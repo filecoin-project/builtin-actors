@@ -28,23 +28,21 @@ fn deal_is_correctly_processed_if_first_cron_after_expiry() {
         END_EPOCH,
     );
 
-    // move the current epoch to startEpoch
-    let current = START_EPOCH;
-    rt.set_epoch(current);
-    let (pay, slashed) =
-        cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
-    assert!(pay.is_zero());
-    assert!(slashed.is_zero());
-    // assert deal exists
-    let _found = get_deal_proposal(&rt, deal_id);
+    // A cron tick between the simulated first visit and the queued legacy visit moves no funds.
+    rt.set_epoch(process_epoch(START_EPOCH, deal_id) + 1);
+    let client = get_balance(&rt, &CLIENT_ADDR);
+    let provider = get_balance(&rt, &PROVIDER_ADDR);
+    cron_tick(&rt);
+    assert_eq!(client, get_balance(&rt, &CLIENT_ADDR));
+    assert_eq!(provider, get_balance(&rt, &PROVIDER_ADDR));
+    get_deal_proposal(&rt, deal_id);
 
-    // move the epoch to endEpoch+5(anything greater than endEpoch)
-    // total payment = (end - start)
+    // Process after expiry; payment starts at the simulated first visit.
     let current = END_EPOCH + 5;
     rt.set_epoch(current);
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
-    let duration = END_EPOCH - START_EPOCH;
+    let duration = END_EPOCH - process_epoch(START_EPOCH, deal_id);
     assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
     assert!(slashed.is_zero());
 
@@ -152,7 +150,8 @@ fn payment_for_a_deal_if_deal_is_already_expired_before_a_cron_tick() {
 
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
-    assert_eq!((end - start) * &deal_proposal.storage_price_per_epoch, pay);
+    let duration = end - process_epoch(start, deal_id);
+    assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
     assert!(slashed.is_zero());
 
     assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number, true);
@@ -166,16 +165,18 @@ fn payment_for_a_deal_if_deal_is_already_expired_before_a_cron_tick() {
 fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_after_payment_and_deal_should_be_deleted()
  {
     let sector_number = 7;
+    let start_epoch = Policy::default().deal_updates_interval;
+    let end_epoch = start_epoch + DURATION_EPOCHS;
     let rt = setup();
     let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         sector_number,
-        START_EPOCH,
-        END_EPOCH,
+        start_epoch,
+        end_epoch,
         0,
-        END_EPOCH,
+        end_epoch,
     );
 
     let c_escrow = get_balance(&rt, &CLIENT_ADDR).balance;
@@ -189,11 +190,12 @@ fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_a
         CLIENT_ADDR.id().unwrap(),
         PROVIDER_ADDR.id().unwrap(),
     );
-    rt.set_epoch(END_EPOCH + 1000);
+    rt.set_epoch(end_epoch + 1000);
     cron_tick(&rt);
 
     // assert balances
-    let payment = deal_proposal.total_storage_fee();
+    let payment =
+        (end_epoch - process_epoch(start_epoch, deal_id)) * &deal_proposal.storage_price_per_epoch;
 
     let client_acct = get_balance(&rt, &CLIENT_ADDR);
     assert_eq!(c_escrow - &payment, client_acct.balance);
@@ -211,20 +213,22 @@ fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_a
 #[test]
 fn all_payments_are_made_for_a_deal_client_withdraws_collateral_and_client_account_is_removed() {
     let sector_number = 7;
+    let start_epoch = Policy::default().deal_updates_interval;
+    let end_epoch = start_epoch + DURATION_EPOCHS;
     let rt = setup();
     let (_deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         sector_number,
-        START_EPOCH,
-        END_EPOCH,
+        start_epoch,
+        end_epoch,
         0,
-        END_EPOCH,
+        end_epoch,
     );
 
     // move the current epoch so that deal is expired
-    rt.set_epoch(END_EPOCH + 100);
+    rt.set_epoch(end_epoch + 100);
     expect_emitted(
         &rt,
         "deal-completed",
