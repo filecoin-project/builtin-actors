@@ -368,7 +368,7 @@ pub fn activate_deals_legacy(
 ) {
     activate_deals(rt, sector_expiry, provider, current_epoch, sector_number, deal_ids);
     for deal_id in deal_ids {
-        simulate_legacy_deal(rt, *deal_id, current_epoch);
+        simulate_legacy_deal(rt, *deal_id);
     }
 }
 
@@ -572,17 +572,22 @@ pub fn cron_tick_and_assert_balances(
         payment_start = s.last_updated_epoch;
     }
     let duration = payment_end - payment_start;
-    let payment = duration * d.storage_price_per_epoch;
+    let payment = duration * &d.storage_price_per_epoch;
 
     // expected updated amounts
     let updated_client_escrow = c_acct.balance - &payment;
     let updated_provider_escrow = (p_acct.balance + &payment) - &amount_slashed;
     let mut updated_client_locked = c_acct.locked - &payment;
     let mut updated_provider_locked = p_acct.locked;
-    // if the deal has expired or been slashed, locked amount will be zero for provider .
     let is_deal_expired = payment_end == d.end_epoch;
-    if is_deal_expired || s.slash_epoch != EPOCH_UNDEFINED {
-        updated_client_locked = TokenAmount::zero();
+    // Completion unlocks collateral; slashing also unlocks future storage fees.
+    if is_deal_expired {
+        updated_client_locked -= &d.client_collateral;
+        updated_provider_locked = TokenAmount::zero();
+    } else if s.slash_epoch != EPOCH_UNDEFINED {
+        let payment_remaining = (d.end_epoch - std::cmp::max(s.slash_epoch, d.start_epoch))
+            * &d.storage_price_per_epoch;
+        updated_client_locked -= &d.client_collateral + payment_remaining;
         updated_provider_locked = TokenAmount::zero();
     }
 
@@ -1212,7 +1217,7 @@ pub fn publish_and_activate_deal_legacy(
         current_epoch,
         sector_expiry,
     );
-    simulate_legacy_deal(rt, deal_id, start_epoch);
+    simulate_legacy_deal(rt, deal_id);
     (deal_id, proposal)
 }
 
@@ -1554,28 +1559,23 @@ pub fn assert_account_zero(rt: &MockRuntime, addr: Address) {
 // Cron drops every deal at the visit scheduled for it at publish, so a legacy deal (one cron
 // still services) is already past that visit. It's updated once, pending proposal gone,
 // and queued for the following interval. See legacy_process_epoch.
-fn simulate_legacy_deal(
-    rt: &fil_actors_runtime::test_utils::MockRuntime,
-    deal_id: u64,
-    start_epoch: i64,
-) {
+fn simulate_legacy_deal(rt: &fil_actors_runtime::test_utils::MockRuntime, deal_id: u64) {
     let mut state = rt.get_state::<State>();
-    let mut deal_state = state.remove_deal_state(rt.store(), deal_id).unwrap().unwrap();
-
-    // set last_updated_epoch to the beginning of the deal (if cron had run here, it would have been a no-op)
-    deal_state.last_updated_epoch = start_epoch;
-    state.put_deal_states(rt.store(), &[(deal_id, deal_state)]).unwrap();
-
-    // the first cron_tick would have removed the proposal from the pending queue
     let proposal = state.find_proposal(rt.store(), deal_id).unwrap().unwrap();
-    state.remove_pending_deal(rt.store(), deal_cid(rt, &proposal).unwrap()).unwrap();
-
-    // and rescheduled the deal one interval on
     let interval = rt.policy.deal_updates_interval;
     let first_visit = next_update_epoch(deal_id, interval, proposal.start_epoch);
+
+    // Cron has processed the first visit without moving funds.
+    let mut deal_state = state.remove_deal_state(rt.store(), deal_id).unwrap().unwrap();
+    deal_state.last_updated_epoch = first_visit;
+    state.put_deal_states(rt.store(), &[(deal_id, deal_state)]).unwrap();
+
+    state.remove_pending_deal(rt.store(), deal_cid(rt, &proposal).unwrap()).unwrap();
+
+    let next_visit = next_update_epoch(deal_id, interval, first_visit + 1);
     let mut deal_ops = state.load_deal_ops(rt.store()).unwrap();
     deal_ops.remove(&first_visit, deal_id).unwrap();
-    deal_ops.put(&(first_visit + interval), deal_id).unwrap();
+    deal_ops.put(&next_visit, deal_id).unwrap();
     state.deal_ops_by_epoch = deal_ops.flush().unwrap();
 
     rt.replace_state(&state);
