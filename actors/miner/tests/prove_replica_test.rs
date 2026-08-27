@@ -481,7 +481,7 @@ fn invalid_claim_dropped() {
         h.prove_replica_updates3_batch(&rt, &sector_updates, false, false, cfg).unwrap();
     assert_update_result(&[ExitCode::OK, ExitCode::OK], &result);
 
-    // FIP-0118: all data is unverified
+    // Piece spacetime lands in verified_deal_weight; deal_weight stays zero.
     verify_weights(&rt, &h, snos[0], 0, piece_size);
     verify_weights(&rt, &h, snos[1], 0, piece_size);
     h.check_state(&rt);

@@ -1,7 +1,7 @@
 use fil_actor_miner::{
     Actor, ExpirationExtension2, ExtendSectorExpiration2Params, Method, PoStPartition, SectorClaim,
-    SectorOnChainInfo, State, daily_proof_fee, pledge_penalty_for_termination, power_for_sector,
-    seal_proof_sector_maximum_lifetime,
+    SectorOnChainInfo, SectorOnChainInfoFlags, State, daily_proof_fee,
+    pledge_penalty_for_termination, power_for_sector, seal_proof_sector_maximum_lifetime,
 };
 use fil_actors_runtime::{
     EPOCHS_IN_DAY,
@@ -84,6 +84,48 @@ fn rejects_negative_extensions() {
         &format!("cannot reduce sector {} expiration", sector.sector_number),
         res,
     );
+    h.check_state(&rt);
+}
+
+// At its expiration epoch a sector is still live, so an unchanged expiration passes the
+// expired and reduction checks. An unflagged sector would then reach quality_for_weight with
+// zero spacetime.
+#[test]
+fn rejects_extension_with_no_remaining_duration() {
+    let (mut h, rt) = setup();
+    let sector = commit_sector(&mut h, &rt);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&sector));
+    h.rewrite_sectors(&rt, &[sector.sector_number], |sector| {
+        sector.flags = SectorOnChainInfoFlags::empty()
+    });
+    rt.set_epoch(sector.expiration);
+
+    let state: State = rt.get_state();
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.store(), sector.sector_number).unwrap();
+    let params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[sector.sector_number]),
+            new_expiration: sector.expiration,
+            sectors_with_claims: vec![],
+        }],
+    };
+
+    // Called directly: the harness precomputes the power delta over the same zero duration.
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
+    rt.expect_validate_caller_addr(h.caller_addrs());
+    let res = rt.call::<Actor>(
+        Method::ExtendSectorExpiration2 as u64,
+        IpldBlock::serialize_cbor(&params).unwrap(),
+    );
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        &format!("cannot extend sector {} to {}", sector.sector_number, sector.expiration),
+        res,
+    );
+    rt.verify();
     h.check_state(&rt);
 }
 

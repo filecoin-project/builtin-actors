@@ -3693,6 +3693,17 @@ fn extend_sector_weights(
     curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
 ) -> Result<SectorOnChainInfo, ActorError> {
+    // The new duration is the divisor for quality, so it must be positive.
+    if new_expiration <= curr_epoch {
+        return Err(actor_error!(
+            illegal_argument,
+            "cannot extend sector {} to {} with no duration remaining at {}",
+            sector.sector_number,
+            new_expiration,
+            curr_epoch
+        ));
+    }
+
     let mut new_sector = sector.clone();
 
     new_sector.expiration = new_expiration;
