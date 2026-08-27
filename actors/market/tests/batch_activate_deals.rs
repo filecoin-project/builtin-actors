@@ -7,6 +7,7 @@ use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, expect_abort};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::RegisteredSealProof;
 
 mod harness;
@@ -179,6 +180,67 @@ fn sectors_fail_and_succeed_independently_during_batch_activation() {
     let s = states.get(id_2).unwrap();
     assert!(s.is_none());
 
+    check_state(&rt);
+}
+
+// The miner zips `activations` against `successes()`, so each successful sector must receive
+// its own pieces, in input order, across a failed sector between them.
+#[test]
+fn activations_align_with_successful_sectors() {
+    let rt = setup();
+    let mut small = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH, false);
+    small.piece_size = PaddedPieceSize(2048);
+    let failing =
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 1, false);
+    let mut large =
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 2, false);
+    large.piece_size = PaddedPieceSize(4096);
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &[small, failing, large]);
+    let (small_id, failing_id, large_id) = (deal_ids[0], deal_ids[1], deal_ids[2]);
+    // Already activated, so its sector fails between the two that succeed.
+    activate_deals(&rt, END_EPOCH + 1, PROVIDER_ADDR, 0, 9, &[failing_id]);
+
+    let sector_type = RegisteredSealProof::StackedDRG8MiBV1;
+    let sectors = vec![
+        SectorDeals {
+            sector_number: 1,
+            deal_ids: vec![small_id],
+            sector_type,
+            sector_expiry: END_EPOCH,
+        },
+        SectorDeals {
+            sector_number: 2,
+            deal_ids: vec![failing_id],
+            sector_type,
+            sector_expiry: END_EPOCH + 1,
+        },
+        SectorDeals {
+            sector_number: 3,
+            deal_ids: vec![large_id],
+            sector_type,
+            sector_expiry: END_EPOCH + 2,
+        },
+    ];
+    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors.clone(), &[small_id, large_id])
+        .unwrap();
+    let res: BatchActivateDealsResult = res.unwrap().deserialize().unwrap();
+
+    assert_eq!(
+        vec![ExitCode::OK, ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK],
+        res.activation_results.codes()
+    );
+    let successes = res.activation_results.successes(&sectors);
+    assert_eq!(successes.len(), res.activations.len());
+    let expected = [(1, 2048), (3, 4096)];
+    for ((sector, pieces), (number, size)) in successes.iter().zip(&res.activations).zip(expected) {
+        assert_eq!(number, sector.sector_number);
+        assert_eq!(
+            vec![PaddedPieceSize(size)],
+            pieces.iter().map(|piece| piece.size).collect::<Vec<_>>()
+        );
+    }
     check_state(&rt);
 }
 
