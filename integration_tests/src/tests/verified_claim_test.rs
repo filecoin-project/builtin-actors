@@ -13,10 +13,7 @@ use fil_actor_miner::{
 };
 use fil_actor_power::State as PowerState;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::runtime::policy_constants::{
-    DEAL_UPDATES_INTERVAL, MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
-    MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
-};
+use fil_actors_runtime::runtime::policy_constants::DEAL_UPDATES_INTERVAL;
 use fil_actors_runtime::{EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use vm_api::VM;
 use vm_api::util::{DynBlockstore, apply_ok, get_state};
@@ -31,11 +28,10 @@ use crate::util::{
     submit_windowed_post,
 };
 
-/// FIP-0118: Tests a scenario involving a deal from the built-in market.
-/// With FIP-0118, verified deals no longer create allocations or claims.
-/// All sectors get 10x QA power regardless of verified status.
+/// A verified deal creates no allocation or claim: the sector proves at full power, extends
+/// twice with nothing to validate, and settles.
 #[vm_test]
-pub fn verified_claim_scenario_test(v: &dyn VM) {
+pub fn verified_deal_sector_lifecycle_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, _verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -77,7 +73,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     .ids;
 
     // Precommit and prove the sector
-    let sector_term = deal_term_min + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
+    let sector_term = deal_term_min + 90 * EPOCHS_IN_DAY;
     let _precommit = miner_precommit_one_sector_v2(
         v,
         &worker,
@@ -221,10 +217,9 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     );
 }
 
-/// FIP-0118: Market no longer creates allocations for verified deals.
-/// This test verifies that deals expire correctly without allocation tracking.
+/// A verified deal that never activates is dropped by market cron with no allocation to clean up.
 #[vm_test]
-pub fn expired_allocations_test(v: &dyn VM) {
+pub fn unactivated_verified_deal_expires_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, _verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -282,10 +277,9 @@ pub fn expired_allocations_test(v: &dyn VM) {
     );
 }
 
-/// FIP-0118: Market no longer creates allocations, so claim failures don't occur.
-/// This test verifies that deals can be committed successfully without claim validation.
+/// Two sectors each carrying a verified deal commit with no claim to validate.
 #[vm_test]
-pub fn deal_passes_claim_fails_test(v: &dyn VM) {
+pub fn verified_deals_commit_without_claims_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, _verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -307,7 +301,7 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
     market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // Publish verified deals
-    let deal_start = v.epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION + 1;
+    let deal_start = v.epoch() + 60 * EPOCHS_IN_DAY + 1;
     let sector_start = deal_start;
     let deal_term_min = 180 * EPOCHS_IN_DAY;
     let deal_size = (32u64 << 30) / 2;
@@ -338,7 +332,7 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
     .ids[0];
 
     // Precommit and prove two sectors
-    let sector_term = deal_term_min + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
+    let sector_term = deal_term_min + 90 * EPOCHS_IN_DAY;
     advance_by_deadline_to_epoch(
         v,
         &miner_id,

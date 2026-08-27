@@ -1,5 +1,5 @@
 use export_macro::vm_test;
-use fil_actor_multisig::ProposeParams;
+use fil_actor_multisig::{ProposeParams, ProposeReturn};
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actor_verifreg::State as VerifregState;
 use fil_actor_verifreg::{DataCap, RemoveDataCapParams, RemoveDataCapRequest};
@@ -16,15 +16,14 @@ use vm_api::util::{DynBlockstore, apply_code, apply_ok, get_state};
 use crate::TEST_VERIFREG_ROOT_ADDR;
 use crate::util::{assert_invariants, create_accounts};
 
-/// FIP-0118: AddVerifier is now deprecated and returns USR_FORBIDDEN.
-/// This test verifies that the deprecated path correctly fails.
+/// FIP-0118: AddVerifier is frozen even for the root multisig. Propose applies the inner call
+/// (threshold 1) and reports its exit code rather than aborting.
 #[vm_test]
-pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
-    let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
-    let (verifier1, _verifier2, _verified_client) = (addrs[0], addrs[1], addrs[2]);
+pub fn add_verifier_via_root_multisig_is_forbidden_test(v: &dyn VM) {
+    let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
+    let verifier1 = addrs[0];
     let verifier_allowance = StoragePower::from(2 * 1048576u64);
 
-    // FIP-0118: AddVerifier is deprecated and should return USR_FORBIDDEN
     let add_verifier_params =
         fil_actor_verifreg::VerifierParams { address: verifier1, allowance: verifier_allowance };
     let proposal = ProposeParams {
@@ -38,22 +37,22 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
         .unwrap(),
     };
 
-    apply_ok(
+    let ret: ProposeReturn = apply_ok(
         v,
         &crate::TEST_VERIFREG_ROOT_SIGNER_ADDR,
         &crate::TEST_VERIFREG_ROOT_ADDR,
         &TokenAmount::zero(),
         fil_actor_multisig::Method::Propose as u64,
         Some(proposal),
-    );
+    )
+    .deserialize()
+    .unwrap();
+    assert!(ret.applied);
+    assert_eq!(ExitCode::USR_FORBIDDEN, ret.code);
 
-    // The inner call to AddVerifier should have failed with USR_FORBIDDEN.
-    // The multisig Propose itself succeeds but the inner call returns an error.
-    // Verify by checking that the verifier was NOT added.
     let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
-    let cap = v_st.get_verifier_cap(&store, &verifier1).unwrap();
-    assert!(cap.is_none(), "Verifier should not have been added (AddVerifier is deprecated)");
+    assert!(v_st.get_verifier_cap(&store, &verifier1).unwrap().is_none());
 
     assert_invariants(v, &Policy::default(), None)
 }
