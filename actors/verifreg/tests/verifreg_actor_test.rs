@@ -95,135 +95,23 @@ mod verifiers {
 
     use crate::*;
 
-    // FIP-0118: AddVerifier is now deprecated and always returns USR_FORBIDDEN.
-    // These tests verify the method is properly disabled.
-
+    // FIP-0118 froze AddVerifier: every caller, root included, gets USR_FORBIDDEN before any
+    // parameter is read.
     #[test]
-    fn add_verifier_requires_root_caller() {
-        // FIP-0118: AddVerifier always returns forbidden regardless of caller
+    fn add_verifier_is_forbidden_for_every_caller() {
         let (h, rt) = new_harness();
-        rt.set_caller(*VERIFREG_ACTOR_CODE_ID, Address::new_id(501));
-        rt.expect_validate_caller_any();
-        let params =
-            AddVerifierParams { address: Address::new_id(201), allowance: verifier_allowance(&rt) };
-        expect_abort(
-            ExitCode::USR_FORBIDDEN,
-            rt.call::<VerifregActor>(
-                Method::AddVerifier as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
-        );
-        h.check_state(&rt);
-    }
-
-    #[test]
-    fn add_verifier_enforces_min_size() {
-        // FIP-0118: AddVerifier always returns forbidden, even for invalid params
-        let (h, rt) = new_harness();
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
-        rt.expect_validate_caller_any();
-        let allowance = client_allowance(&rt);
-        let params = AddVerifierParams { address: *VERIFIER, allowance };
-        expect_abort(
-            ExitCode::USR_FORBIDDEN,
-            rt.call::<VerifregActor>(
-                Method::AddVerifier as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
-        );
-        h.check_state(&rt);
-    }
-
-    #[test]
-    fn add_verifier_rejects_root() {
-        // FIP-0118: AddVerifier always returns forbidden
-        let (h, rt) = new_harness();
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
-        rt.expect_validate_caller_any();
-        let allowance = verifier_allowance(&rt);
-        let params = AddVerifierParams { address: ROOT_ADDR, allowance };
-        expect_abort(
-            ExitCode::USR_FORBIDDEN,
-            rt.call::<VerifregActor>(
-                Method::AddVerifier as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
-        );
-        h.check_state(&rt);
-    }
-
-    #[test]
-    fn add_verifier_rejects_client() {
-        // FIP-0118: AddVerifier always returns forbidden
-        let (h, rt) = new_harness();
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
-        rt.expect_validate_caller_any();
-        let allowance = verifier_allowance(&rt);
-        let params = AddVerifierParams { address: *VERIFIER, allowance };
-        expect_abort(
-            ExitCode::USR_FORBIDDEN,
-            rt.call::<VerifregActor>(
-                Method::AddVerifier as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
-        );
-        h.check_state(&rt);
-    }
-
-    #[test]
-    fn add_verifier_rejects_unresolved_address() {
-        // FIP-0118: AddVerifier always returns forbidden
-        let (h, rt) = new_harness();
-        let verifier_key_address = Address::new_secp256k1(&[3u8; 65]).unwrap();
-        let allowance = verifier_allowance(&rt);
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
-        rt.expect_validate_caller_any();
-        let params = AddVerifierParams { address: verifier_key_address, allowance };
-        expect_abort(
-            ExitCode::USR_FORBIDDEN,
-            rt.call::<VerifregActor>(
-                Method::AddVerifier as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
-        );
-        h.check_state(&rt);
-    }
-
-    #[test]
-    fn add_verifier_id_address() {
-        // FIP-0118: AddVerifier is deprecated, always returns forbidden
-        let (h, rt) = new_harness();
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
-        rt.expect_validate_caller_any();
-        let allowance = verifier_allowance(&rt);
-        let params = AddVerifierParams { address: *VERIFIER, allowance };
-        expect_abort(
-            ExitCode::USR_FORBIDDEN,
-            rt.call::<VerifregActor>(
-                Method::AddVerifier as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
-        );
-        h.check_state(&rt);
-    }
-
-    #[test]
-    fn add_verifier_resolves_address() {
-        // FIP-0118: AddVerifier is deprecated, always returns forbidden
-        let (h, rt) = new_harness();
-        let pubkey_addr = Address::new_secp256k1(&[0u8; 65]).unwrap();
-        rt.id_addresses.borrow_mut().insert(pubkey_addr, *VERIFIER);
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ROOT_ADDR);
-        rt.expect_validate_caller_any();
-        let allowance = verifier_allowance(&rt);
-        let params = AddVerifierParams { address: pubkey_addr, allowance };
-        expect_abort(
-            ExitCode::USR_FORBIDDEN,
-            rt.call::<VerifregActor>(
-                Method::AddVerifier as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
-        );
+        let params = AddVerifierParams { address: *VERIFIER, allowance: verifier_allowance(&rt) };
+        for caller in [ROOT_ADDR, Address::new_id(501)] {
+            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
+            rt.expect_validate_caller_any();
+            expect_abort(
+                ExitCode::USR_FORBIDDEN,
+                rt.call::<VerifregActor>(
+                    Method::AddVerifier as MethodNum,
+                    IpldBlock::serialize_cbor(&params).unwrap(),
+                ),
+            );
+        }
         h.check_state(&rt);
     }
 

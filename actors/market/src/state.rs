@@ -929,24 +929,6 @@ impl State {
         ret
     }
 
-    // Return true when the funds in escrow for the input address can cover an additional lockup of amountToLock
-    pub fn balance_covered<BS>(
-        &self,
-        store: &BS,
-        addr: Address,
-        amount_to_lock: &TokenAmount,
-    ) -> Result<bool, ActorError>
-    where
-        BS: Blockstore,
-    {
-        let escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
-        let locked_table = BalanceTable::from_root(store, &self.locked_table, "locked table")?;
-
-        let escrow_balance = escrow_table.get(&addr)?;
-        let prev_locked = locked_table.get(&addr)?;
-        Ok((prev_locked + amount_to_lock) <= escrow_balance)
-    }
-
     fn maybe_lock_balance<BS>(
         &mut self,
         store: &BS,

@@ -23,7 +23,6 @@ pub use self::types::*;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
-pub mod expiration;
 pub mod ext;
 pub mod state;
 pub mod testing;
