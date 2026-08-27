@@ -58,9 +58,15 @@ mod construction_tests {
         assert!(state.accrued.is_empty());
         assert_eq!(0, state.swa_timelock_epochs);
 
+        // The whole reward reaches the miner through one implicit stream at full weight.
         let streams: StreamsState =
             rt.store.get_cbor(&state.streams_root).unwrap().expect("missing streams state");
-        assert_eq!(StreamsState::default(), streams);
+        let consensus = Stream {
+            id: 1,
+            weight: WeightRecord { v_start: DENOM, slope: 0, t_start: 0, floor: DENOM, cap: DENOM },
+            distribution: None,
+        };
+        assert_eq!(StreamsState { streams: vec![consensus], ..Default::default() }, streams);
     }
 
     #[test]
@@ -430,7 +436,6 @@ mod test_award_block_reward {
     #[test]
     fn pays_reward_and_tracks_penalty() {
         let rt = construct_and_verify(&StoragePower::default());
-        install_consensus_stream(&rt);
         rt.set_balance(TokenAmount::from_whole(1_000_000_000));
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let penalty: TokenAmount = TokenAmount::from_atto(100);
@@ -466,7 +471,6 @@ mod test_award_block_reward {
     #[test]
     fn pays_out_current_balance_when_reward_exceeds_total_balance() {
         let rt = construct_and_verify(&StoragePower::from(1));
-        install_consensus_stream(&rt);
 
         // Total reward is a huge number, upon writing ~1e18, so 300 should be way less
         let small_reward = TokenAmount::from_atto(300);
@@ -503,7 +507,6 @@ mod test_award_block_reward {
     #[test]
     fn total_mined_tracks_correctly() {
         let rt = construct_and_verify(&StoragePower::from(1));
-        install_consensus_stream(&rt);
         let mut state: State = rt.get_state();
 
         assert_eq!(TokenAmount::zero(), state.total_minted_reward);
@@ -535,7 +538,6 @@ mod test_award_block_reward {
     #[test]
     fn funds_are_sent_to_burnt_funds_actor_if_sending_locked_funds_to_miner_fails() {
         let rt = construct_and_verify(&StoragePower::from(1));
-        install_consensus_stream(&rt);
         let mut state: State = rt.get_state();
 
         assert_eq!(TokenAmount::zero(), state.total_minted_reward);
@@ -629,20 +631,6 @@ fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
     assert!(ret.is_none());
     rt.verify();
     rt
-}
-
-fn install_consensus_stream(rt: &MockRuntime) {
-    let mut state: State = rt.get_state();
-    let streams = StreamsState {
-        streams: vec![Stream {
-            id: 1,
-            weight: WeightRecord { v_start: DENOM, slope: 0, t_start: 0, floor: DENOM, cap: DENOM },
-            distribution: None,
-        }],
-        ..Default::default()
-    };
-    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-    rt.replace_state(&state);
 }
 
 fn award_block_reward(

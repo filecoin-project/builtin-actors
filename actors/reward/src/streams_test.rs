@@ -943,6 +943,45 @@ fn caps_payable_rows_at_128_rejects_129_atomically_and_recovers_through_claims()
     assert!(streams.streams[0].distribution.as_ref().unwrap().payable.is_empty());
 }
 
+// Wire maps arrive in any order and normalize_shares sorts them; a persisted map that is not
+// ascending by recipient can only have been written by something other than f02.
+#[test]
+fn structural_validation_rejects_unordered_stored_shares() {
+    let ordered = explicit(300, shares(&[(101, pct(50)), (102, pct(50))]));
+    let streams = StreamsState {
+        streams: vec![stream(2, pct(20), Some(ordered.clone()))],
+        ..Default::default()
+    };
+    validate_award_state_structure(&streams).unwrap();
+
+    let mut unordered = ordered;
+    unordered.shares.swap(0, 1);
+    let streams =
+        StreamsState { streams: vec![stream(2, pct(20), Some(unordered))], ..Default::default() };
+    let error = validate_award_state_structure(&streams).unwrap_err();
+    assert_eq!("stored share recipients are not ordered", error.to_string());
+
+    // The same rule gates the initial map carried by a pending registration.
+    let streams = StreamsState {
+        pending_writes: vec![PendingWrite {
+            id: Some(3),
+            op: PendingWriteOp::RegisterStream,
+            payload: RawBytes::serialize(&RegisterStreamPayload {
+                weight: constant_weight(pct(10)),
+                distribution: Some(DistributionInit {
+                    writer: Address::new_id(300),
+                    shares: shares(&[(102, pct(50)), (101, pct(50))]),
+                }),
+            })
+            .unwrap(),
+            effective_epoch: 1,
+        }],
+        ..Default::default()
+    };
+    let error = validate_award_state_structure(&streams).unwrap_err();
+    assert!(error.to_string().contains("stored share recipients are not ordered"), "{error}");
+}
+
 #[test]
 fn structural_validation_rejects_payable_reservation_over_cap() {
     let mut distribution = explicit(300, full_share_map(100));
@@ -1765,6 +1804,69 @@ fn new_admission_can_revive_a_previously_stranded_call() {
     assert!(result.dropped.is_empty());
     assert_eq!(pct(50), streams.streams[0].weight.v_start);
     assert_eq!(pct(50), streams.streams[1].weight.v_start);
+}
+
+// Application validates a write from its own effective epoch, exactly as admission projected
+// it, so a null round at that epoch cannot revive a stranded write and drop one admitted on
+// its projected removal.
+#[test]
+fn null_round_at_effective_epoch_cannot_revive_a_stranded_call() {
+    let (mut streams, mut accruals) = base_state();
+    // Stream 1 ramps from 60% at epoch 10 to 40% at epoch 12.
+    streams.streams[0].weight = WeightRecord {
+        v_start: pct(60),
+        slope: -(pct(10) as i64),
+        t_start: 10,
+        floor: pct(40),
+        cap: pct(60),
+    };
+    queue_remove_stream(&mut streams, 3, 7, 1).unwrap();
+    // Valid at 10 only because the removal precedes it; valid on its own from 11.
+    queue_weight_records(
+        &mut streams,
+        3,
+        7,
+        PendingWriteOp::SetWeightRecords,
+        &[WeightRecordUpdate { id: 2, weight: constant_weight(pct(45)) }],
+    )
+    .unwrap();
+    assert!(cancel_pending(&mut streams, Some(1), PendingWriteOp::RemoveStream).unwrap().is_some());
+    // Admitted at 12 on the projection that the stranded weight write drops: 40 + 20 + 20.
+    queue_register_stream(
+        &mut streams,
+        9,
+        3,
+        stream(3, pct(20), Some(explicit(203, shares(&[(103, DENOM)])))),
+        12,
+    )
+    .unwrap();
+
+    let drop_then_register =
+        |streams: &mut StreamsState, accruals: &mut Vec<StreamAccrual>, first_award: ChainEpoch| {
+            let result = apply_due_writes(streams, accruals, first_award).unwrap();
+            assert!(result.applied.is_empty());
+            assert_eq!(
+                vec![PendingWriteOp::SetWeightRecords],
+                result.dropped.iter().map(|write| write.op).collect::<Vec<_>>()
+            );
+            let result = apply_due_writes(streams, accruals, 12).unwrap();
+            assert!(result.dropped.is_empty());
+            assert_eq!(
+                vec![PendingWriteOp::RegisterStream],
+                result.applied.iter().map(|write| write.op).collect::<Vec<_>>()
+            );
+            assert_eq!(
+                vec![1, 2, 3],
+                streams.streams.iter().map(|stream| stream.id).collect::<Vec<_>>()
+            );
+            assert_eq!(pct(20), streams.streams[1].weight.v_start);
+        };
+    let (mut null_round_streams, mut null_round_accruals) = (streams.clone(), accruals.clone());
+    // Award at 10, the stranded write's effective epoch.
+    drop_then_register(&mut streams, &mut accruals, 10);
+    // Null round at 10; the first award after it reaches the same schedule.
+    drop_then_register(&mut null_round_streams, &mut null_round_accruals, 11);
+    assert_eq!(streams, null_round_streams);
 }
 
 #[test]

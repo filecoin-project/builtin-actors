@@ -383,6 +383,12 @@ fn validate_share_rows(shares: &[RecipientShare], form: ShareForm) -> Result<u12
         "recipient count {} exceeds maximum {MAX_RECIPIENTS}",
         shares.len()
     );
+    if form == ShareForm::Stored {
+        ensure!(
+            shares.is_sorted_by(|a, b| a.recipient < b.recipient),
+            "stored share recipients are not ordered"
+        );
+    }
 
     let mut recipients = BTreeSet::new();
     let mut total = 0_u128;
@@ -901,8 +907,9 @@ pub fn apply_due_writes_and_cancel(
     Ok(CancelResult { apply_result: projected.apply_result, removed })
 }
 
-/// Applies every write due through `epoch`. From invalid weight state, only writes that restore
-/// a valid schedule apply; the rest are dropped atomically.
+/// Applies every write due through `epoch`, each validated from its own effective epoch exactly
+/// as admission projected it. From invalid weight state, only writes that restore a valid
+/// schedule apply; the rest are dropped atomically.
 pub fn apply_due_writes(
     streams: &mut StreamsState,
     accruals: &mut Vec<StreamAccrual>,
@@ -929,7 +936,7 @@ pub fn apply_due_writes(
     for write in due {
         let mut projected = next_streams.clone();
         let stranded = apply_pending_transition(&mut projected, None, &write)
-            .and_then(|_| validate_transition_state(&projected, epoch))
+            .and_then(|_| validate_transition_state(&projected, write.effective_epoch))
             .is_err();
         if stranded {
             dropped.push(write);
@@ -943,7 +950,7 @@ pub fn apply_due_writes(
             Some(&mut candidate_accruals),
             &write,
         )?;
-        validate_transition_state(&candidate_streams, epoch)?;
+        validate_transition_state(&candidate_streams, write.effective_epoch)?;
         next_streams = candidate_streams;
         next_accruals = candidate_accruals;
         applied.push(write);
@@ -1108,8 +1115,8 @@ fn validate_projected_queue_inner(
 
     for write in &streams.pending_writes {
         let slot = pending_slot(write.id, write.op);
-        // Admission starts at the entry's effective epoch; application starts at the current
-        // epoch. Admission is intentionally stricter, and both choices are deterministic.
+        // Validated from the entry's effective epoch, as at application, so a null round at
+        // that epoch cannot change which writes apply.
         let mut candidate = projected.clone();
         let result = apply_pending_transition(&mut candidate, None, write)
             .and_then(|_| validate_transition_state(&candidate, write.effective_epoch));
@@ -1156,10 +1163,6 @@ fn validate_stream_configuration_without_weights(streams: &[Stream]) -> Result<(
     for stream in streams {
         if let Some(distribution) = &stream.distribution {
             validate_id_address(&distribution.writer, "distribution writer")?;
-            ensure!(
-                distribution.shares.is_sorted_by(|a, b| a.recipient < b.recipient),
-                "share recipients are not ordered"
-            );
             validate_stored_shares(&distribution.shares)?;
             validate_amount_rows(&distribution.payable, "payable")?;
             validate_amount_rows(&distribution.claimed_period, "claimed-period")?;

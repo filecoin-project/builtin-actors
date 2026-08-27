@@ -22,7 +22,7 @@ use fil_actors_runtime::builtin::reward::smooth::{
 pub type Spacetime = BigInt;
 
 use super::logic::*;
-use super::streams::{StreamAccrual, StreamsState};
+use super::streams::{DENOM, Stream, StreamAccrual, StreamsState, WeightRecord};
 
 lazy_static! {
     /// 36.266260308195979333 FIL
@@ -119,7 +119,23 @@ impl State {
         store: &BS,
         curr_realized_power: StoragePower,
     ) -> anyhow::Result<Self> {
-        let streams_root = store.put_cbor(&StreamsState::default(), Code::Blake2b256)?;
+        // One implicit consensus stream at full weight: the whole reward reaches the miner
+        // until a migration or the SWA installs a schedule.
+        let streams = StreamsState {
+            streams: vec![Stream {
+                id: 1,
+                weight: WeightRecord {
+                    v_start: DENOM,
+                    slope: 0,
+                    t_start: 0,
+                    floor: DENOM,
+                    cap: DENOM,
+                },
+                distribution: None,
+            }],
+            ..Default::default()
+        };
+        let streams_root = store.put_cbor(&streams, Code::Blake2b256)?;
         let mut st = Self {
             effective_baseline_power: BASELINE_INITIAL_VALUE.clone(),
             this_epoch_baseline_power: INIT_BASELINE_POWER.clone(),
