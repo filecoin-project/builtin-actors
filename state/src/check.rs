@@ -351,12 +351,12 @@ fn check_verifreg_against_miners(
         let miner_summary = miner_summaries.get(maddr).unwrap();
         let sector = miner_summary.live_data_sectors.get(sector).unwrap();
         let duration = sector.sector_expiration - sector.power_base_epoch;
-        let expected_weight = claim_space * duration;
+        // Claim rows outlive claims dropped at extension, so they bound the weight from above.
+        let max_weight = claim_space * duration;
         acc.require(
-            sector.verified_deal_weight == expected_weight,
+            sector.verified_deal_weight <= max_weight,
             format!(
-                "sector verified weight {} does not match claimed space {} over duration {} \
-                 for miner {}",
+                "sector verified weight {} exceeds claimed space {} over duration {} for miner {}",
                 sector.verified_deal_weight, claim_space, duration, maddr
             ),
         )
@@ -367,104 +367,119 @@ fn check_verifreg_against_miners(
 mod tests {
     use super::*;
     use fil_actor_verifreg::Claim;
+    use fvm_shared::ActorID;
     use fvm_shared::piece::PaddedPieceSize;
     use fvm_shared::sector::RegisteredPoStProof;
 
-    // FIP-0118 dropped claim-term-max enforcement from ExtendSectorExpiration2 for every sector, so a legacy sector past its claim's term_max is now valid and must not be flagged.
-    #[test]
-    fn legacy_sector_extended_past_claim_term_max_is_valid() {
-        let provider_id = 1000;
-        let maddr = Address::new_id(provider_id);
-        let sector_number: SectorNumber = 7;
-        let claim_size: u64 = 1 << 30;
-        let term_start: ChainEpoch = 0;
-        let term_min: ChainEpoch = 0;
-        let term_max: ChainEpoch = 100;
-        // Extended well past term_max, permitted since FIP-0118 dropped the check.
-        let sector_expiration: ChainEpoch = 200;
-        // Extension moved the power base, which is what the stored weight is measured over.
-        let power_base_epoch: ChainEpoch = 50;
+    const PROVIDER_ID: ActorID = 1000;
+    const SECTOR_NUMBER: SectorNumber = 7;
+    const GIB: u64 = 1 << 30;
 
-        let claim = Claim {
-            provider: provider_id,
+    fn claim(size: u64, term_start: ChainEpoch, term_max: ChainEpoch) -> Claim {
+        Claim {
+            provider: PROVIDER_ID,
             client: 1001,
             data: Cid::default(),
-            size: PaddedPieceSize(claim_size),
-            term_min,
+            size: PaddedPieceSize(size),
+            term_min: 0,
             term_max,
             term_start,
-            sector: sector_number,
-        };
-        let mut claims = HashMap::new();
-        claims.insert(1u64, claim);
-        let verifreg_summary = verifreg::StateSummary {
+            sector: SECTOR_NUMBER,
+        }
+    }
+
+    fn verifreg_summary(claims: Vec<Claim>) -> verifreg::StateSummary {
+        verifreg::StateSummary {
             verifiers: HashMap::new(),
             allocations: HashMap::new(),
-            claims,
-        };
+            claims: claims.into_iter().enumerate().map(|(i, c)| (i as u64 + 1, c)).collect(),
+        }
+    }
 
-        // After an extension, the actor stores claimed space restated over the
-        // sector's current duration, which is measured from power_base_epoch.
-        let stored_weight = DealWeight::from(claim_size) * (sector_expiration - power_base_epoch);
-        let mut live_data_sectors = BTreeMap::new();
-        live_data_sectors.insert(
-            sector_number,
-            miner::DataSummary {
-                sector_start: term_start,
-                sector_expiration,
-                power_base_epoch,
-                deal_weight: DealWeight::zero(),
-                verified_deal_weight: stored_weight,
-                legacy_qap: false,
-                full_qa_power: false,
-            },
-        );
+    fn data_sector(
+        sector_start: ChainEpoch,
+        sector_expiration: ChainEpoch,
+        power_base_epoch: ChainEpoch,
+        verified_deal_weight: DealWeight,
+    ) -> miner::DataSummary {
+        miner::DataSummary {
+            sector_start,
+            sector_expiration,
+            power_base_epoch,
+            deal_weight: DealWeight::zero(),
+            verified_deal_weight,
+            legacy_qap: false,
+            full_qa_power: false,
+        }
+    }
+
+    fn check(
+        verifreg_summary: &verifreg::StateSummary,
+        sector: miner::DataSummary,
+    ) -> MessageAccumulator {
         let miner_summary = miner::StateSummary {
             live_power: PowerPair::zero(),
             active_power: PowerPair::zero(),
             faulty_power: PowerPair::zero(),
             window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
             deadline_cron_active: true,
-            live_data_sectors,
+            live_data_sectors: BTreeMap::from([(SECTOR_NUMBER, sector)]),
             daily_fee: TokenAmount::zero(),
         };
-        let mut miner_summaries = HashMap::new();
-        miner_summaries.insert(maddr, miner_summary);
-
+        let miner_summaries = HashMap::from([(Address::new_id(PROVIDER_ID), miner_summary)]);
         let acc = MessageAccumulator::default();
-        check_verifreg_against_miners(&acc, &verifreg_summary, &miner_summaries);
-        acc.assert_empty();
+        check_verifreg_against_miners(&acc, verifreg_summary, &miner_summaries);
+        acc
+    }
+
+    // FIP-0118 dropped claim-term-max enforcement from ExtendSectorExpiration2 for every sector, so a legacy sector past its claim's term_max is now valid and must not be flagged.
+    #[test]
+    fn legacy_sector_extended_past_claim_term_max_is_valid() {
+        let term_start: ChainEpoch = 0;
+        let term_max: ChainEpoch = 100;
+        // Extended well past term_max, permitted since FIP-0118 dropped the check.
+        let sector_expiration: ChainEpoch = 200;
+        // Extension moved the power base, which is what the stored weight is measured over.
+        let power_base_epoch: ChainEpoch = 50;
+        let verifreg_summary = verifreg_summary(vec![claim(GIB, term_start, term_max)]);
+
+        // After an extension, the actor stores claimed space restated over the
+        // sector's current duration, which is measured from power_base_epoch.
+        let stored_weight = DealWeight::from(GIB) * (sector_expiration - power_base_epoch);
+        check(
+            &verifreg_summary,
+            data_sector(term_start, sector_expiration, power_base_epoch, stored_weight),
+        )
+        .assert_empty();
 
         // Negative case: a weight measured from term_start must be rejected.
-        let stale_weight = DealWeight::from(claim_size) * (sector_expiration - term_start);
-        let mut stale_sectors = BTreeMap::new();
-        stale_sectors.insert(
-            sector_number,
-            miner::DataSummary {
-                sector_start: term_start,
-                sector_expiration,
-                power_base_epoch,
-                deal_weight: DealWeight::zero(),
-                verified_deal_weight: stale_weight,
-                legacy_qap: false,
-                full_qa_power: false,
-            },
+        let stale_weight = DealWeight::from(GIB) * (sector_expiration - term_start);
+        let acc = check(
+            &verifreg_summary,
+            data_sector(term_start, sector_expiration, power_base_epoch, stale_weight),
         );
-        let mut stale_summaries = HashMap::new();
-        stale_summaries.insert(
-            maddr,
-            miner::StateSummary {
-                live_power: PowerPair::zero(),
-                active_power: PowerPair::zero(),
-                faulty_power: PowerPair::zero(),
-                window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
-                deadline_cron_active: true,
-                live_data_sectors: stale_sectors,
-                daily_fee: TokenAmount::zero(),
-            },
-        );
-        let acc = MessageAccumulator::default();
-        check_verifreg_against_miners(&acc, &verifreg_summary, &stale_summaries);
         assert!(!acc.is_empty(), "checker must reject a weight measured from term_start");
+    }
+
+    // ExtendSectorExpiration2 with drop_claims excluded the dropped space from the sector's
+    // weight but left the claim row in verifreg, where it now stays forever.
+    #[test]
+    fn sector_that_dropped_a_claim_is_valid() {
+        let sector_expiration: ChainEpoch = 300;
+        let power_base_epoch: ChainEpoch = 90;
+        let verifreg_summary = verifreg_summary(vec![claim(GIB, 0, 200), claim(GIB, 0, 200)]);
+
+        // Weight restated from the one kept claim.
+        let kept_weight = DealWeight::from(GIB) * (sector_expiration - power_base_epoch);
+        check(&verifreg_summary, data_sector(0, sector_expiration, power_base_epoch, kept_weight))
+            .assert_empty();
+
+        // Negative case: more weight than every surviving claim row accounts for.
+        let excess_weight = DealWeight::from(3 * GIB) * (sector_expiration - power_base_epoch);
+        let acc = check(
+            &verifreg_summary,
+            data_sector(0, sector_expiration, power_base_epoch, excess_weight),
+        );
+        assert!(!acc.is_empty(), "checker must reject weight exceeding the claimed space");
     }
 }
