@@ -1,8 +1,7 @@
 //! TODO: remove tests for legacy behaviour by deleting this file:
 //! https://github.com/filecoin-project/builtin-actors/issues/1389
-//! For now these tests preserve the behaviour of deals that are already (and will continue to be) handled by cron
-//! The test fixtures replicate this behaviour by adding them explicitly to the deal_op queue upon activation and setting
-//! last_updated to the deal_start epoch.
+//! For now these tests preserve the behaviour of deals that are already (and will continue to be)
+//! handled by cron. The fixtures simulate a completed first cron visit and queue the next one.
 
 use fil_actor_market::{State, next_update_epoch};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -369,11 +368,13 @@ fn locked_fund_tracking_states() {
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
-    // make payment for p1 and p2
+    // make payment for p1 and p2 from their distinct simulated first visits
     let curr = rt.set_epoch(process_epoch(curr, deal_id2));
     let last_payment_epoch = curr;
-    let duration = curr - start_epoch;
-    let payment: TokenAmount = 2 * &d1.storage_price_per_epoch * duration;
+    let first_visit1 = process_epoch(start_epoch, deal_id1);
+    let first_visit2 = process_epoch(start_epoch, deal_id2);
+    let duration = (curr - first_visit1) + (curr - first_visit2);
+    let payment = &d1.storage_price_per_epoch * duration;
     csf -= payment;
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
@@ -381,7 +382,7 @@ fn locked_fund_tracking_states() {
     // one more round of payment for deal1 and deal2
     let curr = rt.set_epoch(process_epoch(curr + 1, deal_id2));
     let duration = curr - last_payment_epoch;
-    let payment = 2 * d1.storage_price_per_epoch * duration;
+    let payment = 2 * &d1.storage_price_per_epoch * duration;
     csf -= payment;
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
@@ -392,10 +393,10 @@ fn locked_fund_tracking_states() {
 
     // cron tick to slash deal1 and expire deal2
     rt.set_epoch(end_epoch);
-    csf = TokenAmount::zero();
+    csf =
+        &d1.storage_price_per_epoch * ((first_visit1 - start_epoch) + (first_visit2 - start_epoch));
     clc = TokenAmount::zero();
     plc = TokenAmount::zero();
-
     expect_emitted(&rt, "deal-completed", deal_id2, d2.client.id().unwrap(), p2.id().unwrap());
 
     cron_tick(&rt);
