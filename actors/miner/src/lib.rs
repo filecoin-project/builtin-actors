@@ -1069,7 +1069,16 @@ impl Actor {
                         )
                     })?;
 
-                // Load the partition info we need for the dispute.
+                // When handling a dispute we need two different views of the deadline, one
+                // from a snapshot taken when the deadline closed, and one from the current state.
+                // The snapshot supplies what the disputed proof was submitted against (the
+                // optimistic proof, the sector set and their sealed CIDs, and the claimed power
+                // being disputed). The current state supplies the live state that the dispute will
+                // change (the partition bookkeeping, and the sector records that give each newly
+                // faulty sector the power and fee it holds now).
+                // Compaction is excluded from the dispute window so both views agree on partition
+                // membership. Sectors extended, upgraded or snapped since the close are faulted
+                // from _live_ records below.
                 let mut dispute_info = dl_current
                     .load_partitions_for_dispute(rt.store(), partitions)
                     .map_err(|e| {
@@ -1079,11 +1088,11 @@ impl Actor {
                         )
                     })?;
 
-                // This includes power that is no longer active (e.g., due to sector terminations).
-                // It must only be used for penalty calculations, not power adjustments.
+                // Snapshot power, what the proof claimed, including sectors since terminated
+                // or changed. For penalty base only.
                 let penalised_power = dispute_info.disputed_power.clone();
 
-                // Load sectors for the dispute.
+                // Snapshot records, the proof inputs.
                 let sectors =
                     Sectors::load(rt.store(), &dl_current.sectors_snapshot).map_err(|e| {
                         e.downcast_default(
@@ -1107,17 +1116,20 @@ impl Actor {
                     info!("Successfully disputed post- window post was invalid");
                 }
 
-                // Ok, now we record faults. This always works because
-                // we don't allow compaction/moving sectors during the
-                // challenge window.
-                //
-                // However, some of these sectors may have been
-                // terminated. That's fine, we'll skip them.
+                // Live records: a fault removes the power and fee the sector holds now, which
+                // will differ from the snapshot for any sector snapped, upgraded or extended since.
+                // Sectors terminated since are skipped by record_faults.
+                let live_sectors = Sectors::load(rt.store(), &st.sectors).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to load live sectors array",
+                    )
+                })?;
                 let fault_expiration_epoch = target_deadline.last() + policy.fault_max_age;
                 let power_delta = dl_current
                     .record_faults(
                         rt.store(),
-                        &sectors,
+                        &live_sectors,
                         info.sector_size,
                         quant_spec_for_deadline(policy, &target_deadline),
                         fault_expiration_epoch,

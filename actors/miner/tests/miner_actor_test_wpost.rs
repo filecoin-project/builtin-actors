@@ -1,9 +1,10 @@
 #![allow(clippy::all)]
 
 use fil_actor_miner as miner;
-use fil_actors_runtime::runtime::DomainSeparationTag;
+use fil_actors_runtime::runtime::{DomainSeparationTag, Runtime, RuntimePolicy};
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_bitfield::BitField;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -1251,6 +1252,191 @@ fn can_dispute_test_after_proving_period_changes() {
     );
 
     h.dispute_window_post(&rt, &target_dlinfo, 0, &target_sectors, Some(post_dispute_result));
+}
+
+/// One sector holding an optimistically accepted PoSt in a closed deadline, as a pre-FIP-0118
+/// record at 1x: the vintage whose power can still change before the dispute lands.
+struct SnapshotSector {
+    legacy: miner::SectorOnChainInfo,
+    dlinfo: miner::DeadlineInfo,
+    dlidx: u64,
+    pidx: u64,
+}
+
+/// Commits and proves a sector, rewrites it at 1x, submits its optimistic PoSt and closes the
+/// deadline to take the snapshot.
+fn snapshot_legacy_sector(h: &mut ActorHarness, rt: &MockRuntime) -> SnapshotSector {
+    h.construct_and_verify(rt);
+    let sectors = h.commit_and_prove_sectors(rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let sector_number = sectors[0].sector_number;
+    h.advance_and_submit_posts(rt, &sectors);
+
+    let raw_power = BigInt::from(h.sector_size as u64);
+    h.rewrite_sectors(rt, &[sector_number], |sector| {
+        sector.flags = miner::SectorOnChainInfoFlags::SIMPLE_QA_POWER;
+        sector.initial_pledge = h.initial_pledge_for_power(rt, &raw_power);
+        sector.daily_fee =
+            miner::daily_proof_fee(rt.policy(), &rt.total_fil_circ_supply(), &raw_power);
+    });
+    h.check_state(rt);
+    let legacy = h.get_sector(rt, sector_number);
+    assert_eq!(raw_power, miner::power_for_sector(h.sector_size, &legacy).qa);
+
+    let state: miner::State = h.get_state(rt);
+    let (dlidx, pidx) = state.find_sector(rt.store(), sector_number).unwrap();
+    let dlinfo = h.advance_to_deadline(rt, dlidx);
+    h.submit_window_post(
+        rt,
+        &dlinfo,
+        vec![miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() }],
+        vec![legacy.clone()],
+        PoStConfig::empty(),
+    );
+    let burnt_funds = miner::daily_fee_for_sectors(std::slice::from_ref(&legacy));
+    h.advance_deadline(rt, CronConfig { burnt_funds, ..Default::default() });
+    h.check_state(rt);
+    SnapshotSector { legacy, dlinfo, dlidx, pidx }
+}
+
+/// Snaps the sector to full power and returns its new record.
+fn snap_to_full_power(
+    h: &ActorHarness,
+    rt: &MockRuntime,
+    sector_number: u64,
+) -> miner::SectorOnChainInfo {
+    let state: miner::State = h.get_state(rt);
+    let piece_size = h.sector_size as u64;
+    let update =
+        make_update_manifest(&state, rt.store(), sector_number, &[(piece_size, 1000, 1000, 0)]);
+    h.prove_replica_updates3_batch(rt, &[update], true, true, ProveReplicaUpdatesConfig::default())
+        .unwrap();
+    let upgraded = h.get_sector(rt, sector_number);
+    assert_eq!(
+        miner::qa_power_max(h.sector_size),
+        miner::qa_power_for_sector(h.sector_size, &upgraded)
+    );
+    h.check_state(rt);
+    upgraded
+}
+
+/// Disputes the snapshot's PoSt: the penalty prices the power the proof claimed, while the
+/// fault carries the power the sector holds now.
+fn dispute_at_current_power(
+    h: &ActorHarness,
+    rt: &MockRuntime,
+    snapshot: &SnapshotSector,
+    current: &miner::SectorOnChainInfo,
+    expected_power_delta: Option<miner::PowerPair>,
+) {
+    let claimed_power = miner::power_for_sector(h.sector_size, &snapshot.legacy);
+    let expected_fee = miner::pledge_penalty_for_invalid_windowpost(
+        &h.epoch_reward_smooth,
+        &h.epoch_qa_power_smooth,
+        &claimed_power.qa,
+    );
+    h.dispute_window_post(
+        rt,
+        &snapshot.dlinfo,
+        0,
+        std::slice::from_ref(&snapshot.legacy),
+        Some(PoStDisputeResult {
+            expected_power_delta,
+            expected_penalty: Some(expected_fee),
+            expected_reward: Some(miner::BASE_REWARD_FOR_DISPUTED_WINDOW_POST.clone()),
+            expected_pledge_delta: None,
+        }),
+    );
+
+    let current_power = miner::power_for_sector(h.sector_size, current);
+    let partition =
+        h.get_deadline(rt, snapshot.dlidx).load_partition(rt.store(), snapshot.pidx).unwrap();
+    assert_eq!(1, partition.faults.len());
+    assert_eq!(current_power.qa, partition.faulty_power.qa);
+    assert_eq!(partition.live_power.qa, partition.faulty_power.qa, "power left in active books");
+    h.check_state(rt);
+}
+
+fn dispute_harness() -> (ActorHarness, MockRuntime) {
+    let mut h = ActorHarness::new(ChainEpoch::from(100));
+    h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
+    let rt = h.new_runtime();
+    rt.epoch.replace(ChainEpoch::from(1));
+    rt.balance.replace(BIG_BALANCE.clone());
+    (h, rt)
+}
+
+/// A disputed PoSt faults its sectors at the power and fee they carry when the dispute lands.
+#[test]
+fn dispute_faults_a_sector_at_its_current_power() {
+    let (mut h, rt) = dispute_harness();
+    let snapshot = snapshot_legacy_sector(&mut h, &rt);
+    let upgraded = snap_to_full_power(&h, &rt, snapshot.legacy.sector_number);
+    let upgraded_power = miner::power_for_sector(h.sector_size, &upgraded);
+    dispute_at_current_power(&h, &rt, &snapshot, &upgraded, Some(-upgraded_power));
+}
+
+/// Same, with the power raised by UpgradeSectorQuality rather than a snap.
+#[test]
+fn dispute_faults_an_upgraded_sector_at_its_current_power() {
+    let (mut h, rt) = dispute_harness();
+    let snapshot = snapshot_legacy_sector(&mut h, &rt);
+    let sector_number = snapshot.legacy.sector_number;
+
+    let full_power = miner::qa_power_max(h.sector_size);
+    let power_delta = miner::PowerPair::new(
+        BigInt::zero(),
+        &full_power - miner::qa_power_for_sector(h.sector_size, &snapshot.legacy),
+    );
+    let pledge_delta =
+        h.initial_pledge_for_power(&rt, &full_power) - &snapshot.legacy.initial_pledge;
+    h.upgrade_sector_quality(
+        &rt,
+        miner::UpgradeSectorQualityParams {
+            extensions: vec![miner::UpgradeSectorQuality {
+                deadline: snapshot.dlidx,
+                partition: snapshot.pidx,
+                sectors: make_bitfield(&[sector_number]),
+                new_expiration: None,
+            }],
+        },
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+    let upgraded = h.get_sector(&rt, sector_number);
+    assert_eq!(full_power, miner::qa_power_for_sector(h.sector_size, &upgraded));
+    h.check_state(&rt);
+
+    let upgraded_power = miner::power_for_sector(h.sector_size, &upgraded);
+    dispute_at_current_power(&h, &rt, &snapshot, &upgraded, Some(-upgraded_power));
+}
+
+/// A recovery declared after the snapshot is retracted at the sector's current power, so the
+/// dispute leaves no recovering power behind.
+#[test]
+fn dispute_retracts_a_recovery_at_its_current_power() {
+    let (mut h, rt) = dispute_harness();
+    let snapshot = snapshot_legacy_sector(&mut h, &rt);
+    let sector_number = snapshot.legacy.sector_number;
+    let upgraded = snap_to_full_power(&h, &rt, sector_number);
+
+    h.declare_faults(&rt, std::slice::from_ref(&upgraded));
+    h.declare_recoveries(
+        &rt,
+        snapshot.dlidx,
+        snapshot.pidx,
+        make_bitfield(&[sector_number]),
+        TokenAmount::zero(),
+    )
+    .unwrap();
+    h.check_state(&rt);
+
+    // Already faulty, so the dispute moves no power.
+    dispute_at_current_power(&h, &rt, &snapshot, &upgraded, None);
+    let partition =
+        h.get_deadline(&rt, snapshot.dlidx).load_partition(rt.store(), snapshot.pidx).unwrap();
+    assert!(partition.recoveries.is_empty());
+    assert_eq!(miner::PowerPair::zero(), partition.recovering_power);
 }
 
 #[test]
