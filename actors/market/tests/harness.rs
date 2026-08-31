@@ -580,14 +580,9 @@ pub fn cron_tick_and_assert_balances(
     let mut updated_client_locked = c_acct.locked - &payment;
     let mut updated_provider_locked = p_acct.locked;
     let is_deal_expired = payment_end == d.end_epoch;
-    // Completion unlocks collateral; slashing also unlocks future storage fees.
-    if is_deal_expired {
-        updated_client_locked -= &d.client_collateral;
-        updated_provider_locked = TokenAmount::zero();
-    } else if s.slash_epoch != EPOCH_UNDEFINED {
-        let payment_remaining = (d.end_epoch - std::cmp::max(s.slash_epoch, d.start_epoch))
-            * &d.storage_price_per_epoch;
-        updated_client_locked -= &d.client_collateral + payment_remaining;
+    // if the deal has expired or been slashed, locked amount will be zero for provider .
+    if is_deal_expired || s.slash_epoch != EPOCH_UNDEFINED {
+        updated_client_locked = TokenAmount::zero();
         updated_provider_locked = TokenAmount::zero();
     }
 
@@ -1565,12 +1560,19 @@ fn simulate_legacy_deal(rt: &fil_actors_runtime::test_utils::MockRuntime, deal_i
     let interval = rt.policy.deal_updates_interval;
     let first_visit = next_update_epoch(deal_id, interval, proposal.start_epoch);
 
-    // Cron has processed the first visit without moving funds.
     let mut deal_state = state.remove_deal_state(rt.store(), deal_id).unwrap().unwrap();
+    let dcid = deal_cid(rt, &proposal).unwrap();
+    let expected_payment = (first_visit - proposal.start_epoch) * &proposal.storage_price_per_epoch;
+    let (slashed, payment, completed, remove_deal) =
+        state.process_deal_update(rt.store(), &deal_state, &proposal, &dcid, first_visit).unwrap();
+    assert!(slashed.is_zero());
+    assert_eq!(expected_payment, payment);
+    assert!(!completed);
+    assert!(!remove_deal);
+
     deal_state.last_updated_epoch = first_visit;
     state.put_deal_states(rt.store(), &[(deal_id, deal_state)]).unwrap();
-
-    state.remove_pending_deal(rt.store(), deal_cid(rt, &proposal).unwrap()).unwrap();
+    state.remove_pending_deal(rt.store(), dcid).unwrap();
 
     let next_visit = next_update_epoch(deal_id, interval, first_visit + 1);
     let mut deal_ops = state.load_deal_ops(rt.store()).unwrap();

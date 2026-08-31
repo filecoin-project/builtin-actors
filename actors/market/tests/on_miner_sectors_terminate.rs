@@ -33,9 +33,9 @@ fn terminate_multiple_deals_from_single_provider() {
         generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs1, start_epoch, end_epoch + 2);
 
     // IDs are both deal and sector IDs.
-    activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, id0, &[id0]);
-    activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, id1, &[id1]);
-    activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, id2, &[id2]);
+    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, id0, &[id0]);
+    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, id1, &[id1]);
+    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, id2, &[id2]);
 
     terminate_deals(&rt, PROVIDER_ADDR, &[id0], &[id0]);
     assert_deal_deleted(&rt, id0, &deal0, id0, true);
@@ -67,7 +67,7 @@ fn terminate_multiple_deals_from_multiple_providers() {
         generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs1, start_epoch, end_epoch + 1);
     let (id2, deal2) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs1, start_epoch, end_epoch + 2);
-    activate_deals_legacy(
+    activate_deals(
         &rt,
         sector_expiry,
         PROVIDER_ADDR,
@@ -80,7 +80,7 @@ fn terminate_multiple_deals_from_multiple_providers() {
     let (id3, deal3) = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs2, start_epoch, end_epoch);
     let (id4, deal4) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs2, start_epoch, end_epoch + 1);
-    activate_deals_legacy(&rt, sector_expiry, provider2, current_epoch, sector_number, &[id3, id4]);
+    activate_deals(&rt, sector_expiry, provider2, current_epoch, sector_number, &[id3, id4]);
 
     terminate_deals_and_assert_balances(
         &rt,

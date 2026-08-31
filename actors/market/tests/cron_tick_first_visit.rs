@@ -77,6 +77,24 @@ fn unsettled_deal_is_dropped_at_its_first_visit() {
     check_state(&rt);
 }
 #[test]
+fn missing_pending_at_first_visit_does_not_block_cron() {
+    let rt = setup();
+    let (deal_id, proposal) = publish_and_activate(&rt, START_EPOCH);
+    let first_visit = process_epoch(START_EPOCH, deal_id);
+    let mut state: State = rt.get_state();
+    state.remove_pending_deal(rt.store(), deal_cid(&rt, &proposal).unwrap()).unwrap();
+    rt.replace_state(&state);
+
+    rt.set_epoch(first_visit);
+    cron_tick_no_payment(&rt);
+
+    assert!(scheduled_epochs(&rt, deal_id).is_empty());
+    assert!(!pending(&rt, &proposal));
+    assert_eq!(EPOCH_UNDEFINED, get_deal_state(&rt, deal_id).last_updated_epoch);
+    check_state(&rt);
+}
+
+#[test]
 fn invariant_rejects_a_never_visited_deal_at_the_wrong_epoch() {
     let rt = setup();
     let (deal_id, _) = publish_and_activate(&rt, START_EPOCH);

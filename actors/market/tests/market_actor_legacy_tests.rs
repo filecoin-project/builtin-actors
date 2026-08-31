@@ -333,16 +333,21 @@ fn locked_fund_tracking_states() {
 
     let (deal_id3, d3) = generate_and_publish_deal(&rt, c3, &m3, start_epoch, end_epoch);
 
-    let csf = d1.total_storage_fee() + d2.total_storage_fee() + d3.total_storage_fee();
+    let mut csf = d1.total_storage_fee() + d2.total_storage_fee() + d3.total_storage_fee();
     let plc = &d1.provider_collateral + d2.provider_collateral + &d3.provider_collateral;
     let clc = d1.client_collateral + d2.client_collateral + &d3.client_collateral;
 
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
-    // activation doesn't change anything
+    // Simulating the first cron visits pays each deal from start to its first visit.
     let curr = rt.set_epoch(start_epoch - 1);
     activate_deals_legacy(&rt, sector_expiry, p1, curr, sector_number, &[deal_id1]);
     activate_deals_legacy(&rt, sector_expiry, p2, curr, sector_number, &[deal_id2]);
+    let first_visit1 = process_epoch(start_epoch, deal_id1);
+    let first_visit2 = process_epoch(start_epoch, deal_id2);
+    let simulated_payment =
+        &d1.storage_price_per_epoch * ((first_visit1 - start_epoch) + (first_visit2 - start_epoch));
+    csf -= simulated_payment;
 
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
@@ -371,8 +376,6 @@ fn locked_fund_tracking_states() {
     // make payment for p1 and p2 from their distinct simulated first visits
     let curr = rt.set_epoch(process_epoch(curr, deal_id2));
     let last_payment_epoch = curr;
-    let first_visit1 = process_epoch(start_epoch, deal_id1);
-    let first_visit2 = process_epoch(start_epoch, deal_id2);
     let duration = (curr - first_visit1) + (curr - first_visit2);
     let payment = &d1.storage_price_per_epoch * duration;
     csf -= payment;
@@ -393,8 +396,7 @@ fn locked_fund_tracking_states() {
 
     // cron tick to slash deal1 and expire deal2
     rt.set_epoch(end_epoch);
-    csf =
-        &d1.storage_price_per_epoch * ((first_visit1 - start_epoch) + (first_visit2 - start_epoch));
+    csf = TokenAmount::zero();
     clc = TokenAmount::zero();
     plc = TokenAmount::zero();
     expect_emitted(&rt, "deal-completed", deal_id2, d2.client.id().unwrap(), p2.id().unwrap());

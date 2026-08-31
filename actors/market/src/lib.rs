@@ -712,14 +712,7 @@ impl Actor {
                     );
                     if i == first_visit {
                         if curr_epoch > deal_proposal.start_epoch {
-                            let removed = st.remove_pending_deal(rt.store(), dcid)?;
-                            // A settlement may have removed it already.
-                            if removed.is_none() && state.last_updated_epoch == EPOCH_UNDEFINED {
-                                return Err(actor_error!(
-                                    illegal_state,
-                                    "failed to delete pending proposal: does not exist"
-                                ));
-                            }
+                            st.remove_pending_deal(rt.store(), dcid)?;
                         }
 
                         // newly activated deals are not scheduled for cron processing. they are handled explicitly by
