@@ -5,11 +5,9 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 
-use fil_actors_runtime::BatchReturn;
 use fil_actors_runtime::reward::FilterEstimate;
 
 pub mod account {
@@ -21,7 +19,6 @@ pub mod market {
     use fvm_ipld_bitfield::BitField;
 
     pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
-    pub const BATCH_ACTIVATE_DEALS_METHOD: u64 = 6;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
 
     pub const NO_ALLOCATION_ID: u64 = 0;
@@ -32,17 +29,6 @@ pub mod market {
         pub sector_type: RegisteredSealProof,
         pub sector_expiry: ChainEpoch,
         pub deal_ids: Vec<DealID>,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct BatchActivateDealsParams {
-        pub sectors: Vec<SectorDeals>,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct BatchActivateDealsResult {
-        pub activation_results: BatchReturn,
-        pub activations: Vec<Vec<PieceInfo>>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]

@@ -6,10 +6,11 @@ use fvm_shared::{
 };
 
 use fil_actor_miner::{
-    SectorOnChainInfoFlags, VestSpec, max_prove_commit_duration, pre_commit_deposit_for_power,
-    qa_power_for_sector, qa_power_max,
+    SectorOnChainInfoFlags, VestSpec, daily_proof_fee, max_prove_commit_duration,
+    pre_commit_deposit_for_power, qa_power_for_sector, qa_power_max,
 };
 use fil_actors_runtime::reward::FilterEstimate;
+use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::expect_abort;
 use util::*;
 
@@ -146,8 +147,8 @@ fn verify_proof_does_not_vest_funds() {
 }
 
 // Genesis presealed sectors are activated by the system actor through
-// InternalSectorSetupForPreseal rather than by any prove-commit method. That entry point is
-// reachable no other way, so it is exercised directly here.
+// InternalSectorSetupForPreseal since it's the only path that creates a sector
+// without a seal proof.
 #[test]
 fn preseal_setup_activates_sector() {
     let h = ActorHarness::new(PERIOD_OFFSET);
@@ -164,10 +165,8 @@ fn preseal_setup_activates_sector() {
     let expiration =
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
 
-    // Pre-commit carrying a deal, so the activation resolves pieces through the market.
-    let deal = test_activated_deal(h.sector_size as u64);
     let precommit_params =
-        h.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, vec![1]);
+        h.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, vec![]);
     let precommit =
         h.pre_commit_sector_and_get(&rt, precommit_params, PreCommitConfig::empty(), true);
     assert_eq!(
@@ -179,12 +178,16 @@ fn preseal_setup_activates_sector() {
         precommit.pre_commit_deposit
     );
 
+    // Name a second sector that was never pre-committed: the call activates the subset that
+    // exists rather than failing, and the pledge and events cover one sector only.
+    let missing_no = sector_no + 1;
     rt.set_epoch(prove_commit_epoch);
-    let mut cfg = ProveCommitConfig::empty();
-    cfg.add_activated_deals(sector_no, vec![deal]);
-    h.internal_sector_setup_for_preseal(&rt, cfg, vec![precommit.clone()]).unwrap();
+    h.internal_sector_setup_for_preseal(&rt, vec![sector_no, missing_no], vec![precommit.clone()])
+        .unwrap();
 
     let st = h.get_state(&rt);
+    assert!(st.get_sector(&rt.store, missing_no).unwrap().is_none());
+    assert!(st.get_precommitted_sector(&rt.store, missing_no).unwrap().is_none());
     let sector = st.get_sector(&rt.store, sector_no).unwrap().unwrap();
 
     // The precommit is consumed and its deposit becomes pledge.
@@ -192,12 +195,16 @@ fn preseal_setup_activates_sector() {
     assert!(st.pre_commit_deposits.is_zero());
     assert_eq!(st.initial_pledge, sector.initial_pledge);
 
-    // Piece spacetime lands in verified_deal_weight and the sector reaches 10x on the flag.
-    let duration = sector.expiration - sector.power_base_epoch;
+    // No pieces: both weights are zero and the sector reaches 10x on the flag alone, with the
+    // daily fee priced at full power.
     assert!(sector.deal_weight.is_zero());
-    assert_eq!(BigInt::from(h.sector_size as u64) * duration, sector.verified_deal_weight);
+    assert!(sector.verified_deal_weight.is_zero());
     assert!(sector.flags.contains(SectorOnChainInfoFlags::FULL_QA_POWER));
     assert_eq!(qa_power_max(h.sector_size), qa_power_for_sector(h.sector_size, &sector));
+    assert_eq!(
+        daily_proof_fee(&rt.policy, &rt.total_fil_circ_supply(), &qa_power_max(h.sector_size)),
+        sector.daily_fee
+    );
 
     // And it is assigned to a deadline.
     let (dl_idx, p_idx) = st.find_sector(&rt.store, sector_no).unwrap();

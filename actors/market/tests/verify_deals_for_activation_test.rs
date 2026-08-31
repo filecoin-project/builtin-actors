@@ -35,7 +35,7 @@ const MINER_ADDRESSES: MinerAddresses = MinerAddresses {
 #[test]
 fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
     let rt = setup();
-    let (deal_id, deal_proposal) =
+    let (deal_id, _) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
     let sector_number = 7;
 
@@ -50,16 +50,10 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
         }],
         |_| None,
     );
-    let a_response =
-        activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &[deal_id]);
-    let s_response = a_response.activations.first().unwrap();
+    // Activation checks the presented piece against the deal, so acceptance asserts the match.
+    activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &[deal_id]);
     assert_eq!(1, v_response.unsealed_cids.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.unsealed_cids[0]);
-    assert_eq!(1, s_response.len());
-    assert_eq!(
-        PieceInfo { size: deal_proposal.piece_size, cid: deal_proposal.piece_cid },
-        *s_response.first().unwrap()
-    );
 
     check_state(&rt);
 }
@@ -74,7 +68,6 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
         START_EPOCH,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
     let sector_number = 7;
     let response = verify_deals_for_activation(
         &rt,
@@ -88,15 +81,11 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
         |_| None,
     );
 
-    let a_response =
-        activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &[deal_id]);
-    let s_response = a_response.activations.first().unwrap();
+    // Activation checks the presented piece against the deal, so acceptance asserts the match.
+    activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &[deal_id]);
 
     assert_eq!(1, response.unsealed_cids.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), response.unsealed_cids[0]);
-    assert_eq!(1, s_response.len());
-    assert_eq!(deal_proposal.piece_size, s_response[0].size);
-    assert_eq!(deal_proposal.piece_cid, s_response[0].cid);
     check_state(&rt);
 }
 
@@ -141,26 +130,8 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
         },
     );
 
-    let a_response =
-        activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &deal_ids);
-    let s_response = a_response.activations.first().unwrap();
-    assert_eq!(4, s_response.len());
-    assert_eq!(
-        &PieceInfo { size: verified_deal_1.piece_size, cid: verified_deal_1.piece_cid },
-        &s_response[0],
-    );
-    assert_eq!(
-        &PieceInfo { size: verified_deal_2.piece_size, cid: verified_deal_2.piece_cid },
-        &s_response[1],
-    );
-    assert_eq!(
-        &PieceInfo { size: unverified_deal_1.piece_size, cid: unverified_deal_1.piece_cid },
-        &s_response[2],
-    );
-    assert_eq!(
-        &PieceInfo { size: unverified_deal_2.piece_size, cid: unverified_deal_2.piece_cid },
-        &s_response[3],
-    );
+    // Activation checks every presented piece against its deal, so acceptance asserts each match.
+    activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &deal_ids);
 
     check_state(&rt);
 }

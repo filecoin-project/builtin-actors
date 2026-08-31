@@ -14,7 +14,7 @@ use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
+use fvm_shared::sector::{SectorNumber, StoragePower};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{
     ActorID, METHOD_CONSTRUCTOR, METHOD_SEND, address::Address, econ::TokenAmount, error::ExitCode,
@@ -36,10 +36,9 @@ use fil_actor_market::{
     next_update_epoch, testing::check_state_invariants,
 };
 use fil_actor_market::{
-    BatchActivateDealsParams, BatchActivateDealsResult, DealOpsByEpoch, PENDING_PROPOSALS_CONFIG,
-    PROVIDER_SECTORS_CONFIG, PendingProposalsSet, ProviderSectorsMap, SECTOR_DEALS_CONFIG,
-    SectorDealsMap, SettleDealPaymentsParams, SettleDealPaymentsReturn, deal_cid,
-    deal_get_payment_remaining,
+    DealOpsByEpoch, PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, PendingProposalsSet,
+    ProviderSectorsMap, SECTOR_DEALS_CONFIG, SectorDealsMap, SettleDealPaymentsParams,
+    SettleDealPaymentsReturn, deal_cid, deal_get_payment_remaining,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -356,7 +355,8 @@ pub fn create_deal(
     deal
 }
 
-/// Activate a single sector of deals
+/// Activates a single sector of deals through SectorContentChanged and simulates each deal
+/// having been on chain since before FIP-0074 tracked activation epochs.
 pub fn activate_deals_legacy(
     rt: &MockRuntime,
     sector_expiry: ChainEpoch,
@@ -364,17 +364,15 @@ pub fn activate_deals_legacy(
     current_epoch: ChainEpoch,
     sector_number: SectorNumber,
     deal_ids: &[DealID],
-) -> BatchActivateDealsResult {
-    let ret = activate_deals(rt, sector_expiry, provider, current_epoch, sector_number, deal_ids);
-
+) {
+    activate_deals(rt, sector_expiry, provider, current_epoch, sector_number, deal_ids);
     for deal_id in deal_ids {
         simulate_legacy_deal(rt, *deal_id, current_epoch);
     }
-
-    ret
 }
 
-/// Activate a single sector of deals
+/// Activates a single sector of deals through SectorContentChanged, requiring every piece to
+/// be accepted and its deal state written.
 pub fn activate_deals(
     rt: &MockRuntime,
     sector_expiry: ChainEpoch,
@@ -382,8 +380,8 @@ pub fn activate_deals(
     current_epoch: ChainEpoch,
     sector_number: SectorNumber,
     deal_ids: &[DealID],
-) -> BatchActivateDealsResult {
-    activate_deals_for(
+) {
+    let ret = activate_deals_for(
         rt,
         sector_expiry,
         provider,
@@ -391,10 +389,16 @@ pub fn activate_deals(
         sector_number,
         deal_ids,
         deal_ids,
-    )
+    );
+    assert!(ret.sectors.iter().all(|sector| sector.added.iter().all(|piece| piece.accepted)));
+    for deal_id in deal_ids {
+        let state = get_deal_state(rt, *deal_id);
+        assert_eq!(current_epoch, state.sector_start_epoch);
+    }
 }
 
-/// Activate a single sector of deals
+/// Presents a single sector of deals through SectorContentChanged, expecting activation of
+/// exactly `expected_deal_activations`, and returns the per-piece results.
 pub fn activate_deals_for(
     rt: &MockRuntime,
     sector_expiry: ChainEpoch,
@@ -403,95 +407,28 @@ pub fn activate_deals_for(
     sector_number: SectorNumber,
     deal_ids: &[DealID],
     expected_deal_activations: &[DealID],
-) -> BatchActivateDealsResult {
+) -> SectorContentChangedReturn {
     rt.set_epoch(current_epoch);
-    let ret = batch_activate_deals_raw(
-        rt,
-        provider,
-        vec![SectorDeals {
-            sector_number,
-            deal_ids: deal_ids.into(),
-            sector_expiry,
-            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-        }],
-        expected_deal_activations,
-    )
-    .unwrap();
-
-    let ret: BatchActivateDealsResult =
-        ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
-
-    // batch size was 1
-    if ret.activation_results.all_ok() {
-        for deal in deal_ids {
-            let s = get_deal_state(rt, *deal);
-            assert_eq!(current_epoch, s.sector_start_epoch);
-        }
-    }
-
-    ret
-}
-
-/// Batch activate deals across multiple sectors
-/// For each sector, provide its expiry  list of unique, valid deal ids contained within
-pub fn batch_activate_deals(
-    rt: &MockRuntime,
-    provider: Address,
-    sectors: &[(SectorNumber, ChainEpoch, Vec<DealID>)],
-) -> BatchActivateDealsResult {
-    let sectors_deals: Vec<SectorDeals> = sectors
+    let added = deal_ids
         .iter()
-        .map(|(sector_number, sector_expiry, deal_ids)| SectorDeals {
-            sector_number: *sector_number,
-            deal_ids: deal_ids.clone(),
-            sector_expiry: *sector_expiry,
-            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-        })
+        .map(|deal_id| piece_info_from_deal(*deal_id, &get_deal_proposal(rt, *deal_id)))
         .collect();
-
-    let deal_ids =
-        sectors.iter().flat_map(|(_, _, deal_ids)| deal_ids).cloned().collect::<Vec<_>>();
-
-    let ret = batch_activate_deals_raw(rt, provider, sectors_deals, &deal_ids).unwrap();
-
-    let ret: BatchActivateDealsResult =
-        ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
-
-    // check all deals were activated correctly
-    assert!(ret.activation_results.all_ok());
-
-    ret
-}
-
-pub fn batch_activate_deals_raw(
-    rt: &MockRuntime,
-    provider: Address,
-    sectors_deals: Vec<SectorDeals>,
-    expected_activated_deals: &[DealID],
-) -> Result<Option<IpldBlock>, ActorError> {
-    rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
-    rt.expect_validate_caller_type(vec![Type::Miner]);
-
-    let params = BatchActivateDealsParams { sectors: sectors_deals };
-
-    for deal_id in expected_activated_deals {
-        let dp = get_deal_proposal(rt, *deal_id);
-
+    for deal_id in expected_deal_activations {
+        let proposal = get_deal_proposal(rt, *deal_id);
         expect_emitted(
             rt,
             "deal-activated",
             *deal_id,
-            dp.client.id().unwrap(),
-            dp.provider.id().unwrap(),
+            proposal.client.id().unwrap(),
+            proposal.provider.id().unwrap(),
         );
     }
-    let ret = rt.call::<MarketActor>(
-        Method::BatchActivateDeals as u64,
-        IpldBlock::serialize_cbor(&params).unwrap(),
-    )?;
-    rt.verify();
-
-    Ok(ret)
+    let changes = vec![SectorChanges {
+        sector: sector_number,
+        minimum_commitment_epoch: sector_expiry,
+        added,
+    }];
+    sector_content_changed(rt, provider, changes).unwrap()
 }
 
 pub fn sector_content_changed(

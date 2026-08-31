@@ -936,16 +936,12 @@ impl Actor {
             })
             .collect();
 
-        let data_activations = validate_and_summarize_pieces(rt, data_activation_inputs)?;
+        let sector_spaces = validate_and_total_pieces(rt, data_activation_inputs)?;
 
         let mut state_updates_by_dline = BTreeMap::<u64, Vec<ReplicaUpdateStateInputs>>::new();
-        for ((update, sector_info), data_activation) in
-            proven_manifests.iter().zip(data_activations)
-        {
-            let activated_data = ReplicaUpdateActivatedData {
-                seal_cid: update.new_sealed_cid,
-                space: data_activation.space,
-            };
+        for ((update, sector_info), space) in proven_manifests.iter().zip(sector_spaces) {
+            let activated_data =
+                ReplicaUpdateActivatedData { seal_cid: update.new_sealed_cid, space };
             state_updates_by_dline.entry(update.deadline).or_default().push(
                 ReplicaUpdateStateInputs {
                     deadline: update.deadline,
@@ -1628,7 +1624,7 @@ impl Actor {
             })
             .collect();
 
-        let data_activations = validate_and_summarize_pieces(rt, data_activation_inputs)?;
+        let sector_spaces = validate_and_total_pieces(rt, data_activation_inputs)?;
         let successful_precommits =
             proven_activation_inputs.iter().map(|(_, second)| *second).collect();
 
@@ -1644,13 +1640,7 @@ impl Actor {
             epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
             ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
-        activate_new_sector_infos(
-            rt,
-            successful_precommits,
-            data_activations,
-            &pledge_inputs,
-            &info,
-        )?;
+        activate_new_sector_infos(rt, successful_precommits, sector_spaces, &pledge_inputs, &info)?;
 
         // Notify data consumers.
         let mut notifications: Vec<ActivationNotifications> = vec![];
@@ -1673,6 +1663,8 @@ impl Actor {
         Ok(ProveCommitSectors3Return { activation_results: result })
     }
 
+    /// Turns genesis preseal precommits into live sectors. System-callable only.
+    /// Preseal sectors have no pieces and have the FULL_QA_POWER flag set.
     fn internal_sector_setup_preseal(
         rt: &impl Runtime,
         params: InternalSectorSetupForPresealParams,
@@ -1688,13 +1680,7 @@ impl Actor {
                     "failed to load pre-committed sectors",
                 )
             })?;
-
-        let data_activations: Vec<DealsActivationInput> =
-            precommited_sectors.iter().map(|x| x.clone().into()).collect();
         let info = get_miner_info(rt.store(), &st)?;
-
-        let (batch_return, data_activations) = activate_sectors_deals(rt, &data_activations)?;
-        let successful_activations = batch_return.successes(&precommited_sectors);
 
         let pledge_inputs = NetworkPledgeInputs {
             network_qap: params.quality_adj_power_smoothed,
@@ -1706,15 +1692,14 @@ impl Actor {
         };
         activate_new_sector_infos(
             rt,
-            successful_activations.clone(),
-            data_activations.clone(),
+            precommited_sectors.iter().collect(),
+            vec![0; precommited_sectors.len()],
             &pledge_inputs,
             &info,
         )?;
 
-        for (pc, data) in successful_activations.iter().zip(data_activations.iter()) {
-            let unsealed_cid = pc.info.unsealed_cid.0;
-            emit::sector_activated(rt, pc.info.sector_number, unsealed_cid, &data.pieces)?;
+        for pc in &precommited_sectors {
+            emit::sector_activated(rt, pc.info.sector_number, pc.info.unsealed_cid.0, &[])?;
         }
 
         Ok(())
@@ -5375,7 +5360,7 @@ fn check_peer_info(
 fn activate_new_sector_infos(
     rt: &impl Runtime,
     precommits: Vec<&SectorPreCommitOnChainInfo>,
-    data_activations: Vec<DataActivationOutput>,
+    sector_spaces: Vec<u64>,
     pledge_inputs: &NetworkPledgeInputs,
     info: &MinerInfo,
 ) -> Result<(), ActorError> {
@@ -5385,7 +5370,7 @@ fn activate_new_sector_infos(
         let policy = rt.policy();
         let store = rt.store();
 
-        let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(data_activations.len());
+        let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(sector_spaces.len());
         let mut deposit_to_unlock = TokenAmount::zero();
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
@@ -5396,7 +5381,7 @@ fn activate_new_sector_infos(
         let daily_fee = daily_proof_fee(policy, &pledge_inputs.circulating_supply, &power);
         let initial_pledge = pledge_inputs.initial_pledge_for_power(&power);
 
-        for (pci, deal_spaces) in precommits.iter().zip(data_activations) {
+        for (pci, space) in precommits.iter().zip(sector_spaces) {
             // compute initial pledge
             let duration = pci.info.expiration - activation_epoch;
             // This is probably always caught in precommit but fail cleanly if it occurs
@@ -5410,7 +5395,7 @@ fn activate_new_sector_infos(
                 ));
             }
 
-            let verified_deal_weight = BigInt::from(deal_spaces.space) * duration;
+            let verified_deal_weight = BigInt::from(space) * duration;
 
             deposit_to_unlock += pci.pre_commit_deposit.clone();
             total_pledge += &initial_pledge;
@@ -5517,44 +5502,6 @@ pub struct SectorPiecesActivationInput {
     pub expected_commd: Option<CompactCommD>,
 }
 
-// Inputs for activating builtin market deals for one sector
-#[derive(Debug, Clone)]
-pub struct DealsActivationInput {
-    pub deal_ids: Vec<DealID>,
-    pub sector_expiry: ChainEpoch,
-    pub sector_number: SectorNumber,
-    pub sector_type: RegisteredSealProof,
-}
-
-impl From<SectorPreCommitOnChainInfo> for DealsActivationInput {
-    fn from(pci: SectorPreCommitOnChainInfo) -> DealsActivationInput {
-        DealsActivationInput {
-            deal_ids: pci.info.deal_ids,
-            sector_expiry: pci.info.expiration,
-            sector_number: pci.info.sector_number,
-            sector_type: pci.info.seal_proof,
-        }
-    }
-}
-
-impl From<&UpdateAndSectorInfo<'_>> for DealsActivationInput {
-    fn from(usi: &UpdateAndSectorInfo) -> DealsActivationInput {
-        DealsActivationInput {
-            sector_number: usi.sector_info.sector_number,
-            sector_expiry: usi.sector_info.expiration,
-            deal_ids: vec![],
-            sector_type: usi.sector_info.seal_proof,
-        }
-    }
-}
-
-// Data activation results for one sector
-#[derive(Clone)]
-struct DataActivationOutput {
-    pub space: u64,
-    pub pieces: Vec<PieceInfo>,
-}
-
 // Track information needed to update a sector info's data during ProveReplicaUpdate
 #[derive(Clone, Debug)]
 struct UpdateAndSectorInfo<'a> {
@@ -5580,11 +5527,11 @@ struct ReplicaUpdateActivatedData {
 // space per sector.
 // `verified_allocation_key` on piece manifests is accepted and ignored: QA power comes from
 // the FULL_QA_POWER flag rather than from allocations (FIP-0118).
-fn validate_and_summarize_pieces(
+fn validate_and_total_pieces(
     rt: &impl Runtime,
     activation_inputs: Vec<SectorPiecesActivationInput>,
-) -> Result<Vec<DataActivationOutput>, ActorError> {
-    let mut activation_outputs = Vec::with_capacity(activation_inputs.len());
+) -> Result<Vec<u64>, ActorError> {
+    let mut sector_spaces = Vec::with_capacity(activation_inputs.len());
 
     for activation_info in &activation_inputs {
         // Check a declared CommD matches that computed from the data.
@@ -5609,7 +5556,6 @@ fn validate_and_summarize_pieces(
         }
 
         let mut space: u64 = 0;
-        let mut pieces = Vec::with_capacity(activation_info.piece_manifests.len());
         for piece in &activation_info.piece_manifests {
             // Caller-supplied sizes are unbounded until CommD is computed, which is optional.
             space = space.checked_add(piece.size.0).ok_or_else(|| {
@@ -5619,70 +5565,11 @@ fn validate_and_summarize_pieces(
                     activation_info.sector_number
                 )
             })?;
-            pieces.push(PieceInfo { cid: piece.cid, size: piece.size });
         }
-        activation_outputs.push(DataActivationOutput { space, pieces });
+        sector_spaces.push(space);
     }
 
-    Ok(activation_outputs)
-}
-
-/// Asks the market to activate each sector's deals, returning the pieces it resolved from
-/// them. Only the market can map a deal id to its piece.
-fn activate_sectors_deals(
-    rt: &impl Runtime,
-    activation_infos: &[DealsActivationInput],
-) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
-    let batch_activation_res = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
-        true => ext::market::BatchActivateDealsResult {
-            // if all sectors are empty of deals, skip calling the market actor
-            activations: vec![Vec::default(); activation_infos.len()],
-            activation_results: BatchReturn::ok(activation_infos.len() as u32),
-        },
-        false => {
-            let sector_activation_params = activation_infos
-                .iter()
-                .map(|activation_info| ext::market::SectorDeals {
-                    sector_number: activation_info.sector_number,
-                    deal_ids: activation_info.deal_ids.clone(),
-                    sector_expiry: activation_info.sector_expiry,
-                    sector_type: activation_info.sector_type,
-                })
-                .collect();
-            let activate_raw = extract_send_result(rt.send_simple(
-                &STORAGE_MARKET_ACTOR_ADDR,
-                ext::market::BATCH_ACTIVATE_DEALS_METHOD,
-                IpldBlock::serialize_cbor(&ext::market::BatchActivateDealsParams {
-                    sectors: sector_activation_params,
-                })?,
-                TokenAmount::zero(),
-            ))?;
-            deserialize_block::<ext::market::BatchActivateDealsResult>(activate_raw)?
-        }
-    };
-
-    // When all prove commits have failed abort early
-    if batch_activation_res.activation_results.success_count == 0 {
-        return Err(actor_error!(illegal_argument, "all deals failed to activate"));
-    }
-
-    let activation_outputs = batch_activation_res
-        .activations
-        .into_iter()
-        .map(|pieces| {
-            let mut space: u64 = 0;
-            for piece in &pieces {
-                // Sizes come from market state, but the sum is still checked.
-                space = space.checked_add(piece.size.0).ok_or_else(|| {
-                    actor_error!(illegal_state, "piece sizes overflow for activated deals")
-                })?;
-            }
-            Ok(DataActivationOutput { space, pieces })
-        })
-        .collect::<Result<Vec<_>, ActorError>>()?;
-
-    // Return the deal spaces for activated sectors only
-    Ok((batch_activation_res.activation_results, activation_outputs))
+    Ok(sector_spaces)
 }
 
 fn unsealed_cid_from_pieces(

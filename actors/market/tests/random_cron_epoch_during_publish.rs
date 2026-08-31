@@ -7,7 +7,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 
-use fil_actor_market::EX_DEAL_EXPIRED;
+use fil_actor_market::ext::miner::PieceReturn;
 use fil_actor_market::{State, deal_cid};
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -124,7 +124,7 @@ fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
         &[deal_id],
         &[],
     );
-    assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED]);
+    assert_eq!(vec![PieceReturn { accepted: false }], res.sectors[0].added);
     check_state(&rt);
 }
 

@@ -43,9 +43,8 @@ use num_traits::Signed;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod, NO_ALLOCATION_ID,
-    OnMinerSectorsTerminateParams, SectorDeals, VerifyDealsForActivationParams,
-    VerifyDealsForActivationReturn,
+    Method as MarketMethod, NO_ALLOCATION_ID, OnMinerSectorsTerminateParams, SectorDeals,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::{
     ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
@@ -93,7 +92,7 @@ use fil_actors_runtime::{
     MessageAccumulator, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };
-use fil_actors_runtime::{BatchReturnGen, EventBuilder, test_utils::*};
+use fil_actors_runtime::{EventBuilder, test_utils::*};
 
 const DEFAULT_PIECE_SIZE: u64 = 128;
 
@@ -1020,133 +1019,32 @@ impl ActorHarness {
         Ok(result)
     }
 
-    // Check that sectors are activating
-    // This is a separate method because historically this functionality was shared between various commitment entrypoints
-    fn expect_sectors_activated(
-        &self,
-        rt: &MockRuntime,
-        cfg: ProveCommitConfig,
-        pcs: &[SectorPreCommitOnChainInfo],
-    ) -> HashMap<SectorNumber, Vec<(Cid, u64)>> {
-        let mut valid_pcs = Vec::new();
-
-        // build expectations per sector
-        let mut sector_activation_params: Vec<SectorDeals> = Vec::new();
-        let mut sector_activations: Vec<Vec<PieceInfo>> = Vec::new();
-        let mut sector_activation_results = BatchReturnGen::new(pcs.len());
-        let mut pieces: HashMap<SectorNumber, Vec<(Cid, u64)>> = HashMap::new();
-
-        for pc in pcs {
-            pieces.insert(pc.info.sector_number, Vec::new());
-
-            if !pc.info.deal_ids.is_empty() {
-                let activate_params = SectorDeals {
-                    sector_number: pc.info.sector_number,
-                    deal_ids: pc.info.deal_ids.clone(),
-                    sector_expiry: pc.info.expiration,
-                    sector_type: pc.info.seal_proof,
-                };
-                sector_activation_params.push(activate_params);
-
-                let ret: Vec<PieceInfo> =
-                    cfg.activated_deals.get(&pc.info.sector_number).cloned().unwrap_or_default();
-
-                for info in &ret {
-                    pieces.get_mut(&pc.info.sector_number).unwrap().push((info.cid, info.size.0));
-                }
-
-                match cfg.verify_deals_exit.get(&pc.info.sector_number) {
-                    Some(exit_code) => {
-                        sector_activation_results.add_fail(*exit_code);
-                    }
-                    None => {
-                        sector_activations.push(ret.clone());
-                        sector_activation_results.add_success();
-                        valid_pcs.push(pc);
-                    }
-                }
-            } else {
-                // empty deal ids
-                sector_activation_params.push(SectorDeals {
-                    sector_number: pc.info.sector_number,
-                    deal_ids: vec![],
-                    sector_expiry: pc.info.expiration,
-                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-                });
-                sector_activations.push(vec![]);
-                sector_activation_results.add_success();
-                valid_pcs.push(pc);
-            }
-        }
-
-        if !sector_activation_params.iter().all(|p| p.deal_ids.is_empty()) {
-            rt.expect_send_simple(
-                STORAGE_MARKET_ACTOR_ADDR,
-                MarketMethod::BatchActivateDeals as u64,
-                IpldBlock::serialize_cbor(&BatchActivateDealsParams {
-                    sectors: sector_activation_params,
-                })
-                .unwrap(),
-                TokenAmount::zero(),
-                IpldBlock::serialize_cbor(&BatchActivateDealsResult {
-                    activations: sector_activations,
-                    activation_results: sector_activation_results.generate(),
-                })
-                .unwrap(),
-                ExitCode::OK,
-            );
-        }
-
-        // No verifreg claim allocations call (FIP-0118: all space is unverified,
-        // sectors get 10x QAP via FULL_QA_POWER flag).
-
-        if !valid_pcs.is_empty() {
-            let mut expected_pledge = TokenAmount::zero();
-
-            for pc in valid_pcs {
-                let duration = pc.info.expiration - *rt.epoch.borrow();
-                if duration >= rt.policy.min_sector_expiration {
-                    // Every sector onboarded post-FIP-0118 carries FULL_QA_POWER.
-                    expected_pledge +=
-                        self.initial_pledge_for_power(rt, &qa_power_max(self.sector_size));
-                }
-            }
-
-            expect_update_pledge(rt, &expected_pledge);
-        }
-
-        pieces
-    }
-
-    /// Drives `InternalSectorSetupForPreseal`, the system-only entry point that activates
-    /// genesis presealed sectors.
+    /// Drives `InternalSectorSetupForPreseal`, which activates whichever of the named
+    /// `sectors` have a pre-commit; the expectations cover exactly `pcs`.
     pub fn internal_sector_setup_for_preseal(
         &self,
         rt: &MockRuntime,
-        cfg: ProveCommitConfig,
+        sectors: Vec<SectorNumber>,
         pcs: Vec<SectorPreCommitOnChainInfo>,
     ) -> Result<(), ActorError> {
-        let pieces = self.expect_sectors_activated(rt, cfg.clone(), &pcs);
+        let expected_pledge =
+            self.initial_pledge_for_power(rt, &qa_power_max(self.sector_size)) * pcs.len();
+        expect_update_pledge(rt, &expected_pledge);
 
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-
         for pc in pcs.iter() {
-            if cfg.verify_deals_exit.contains_key(&pc.info.sector_number) {
-                continue;
-            }
-            let num = &pc.info.sector_number;
             expect_sector_event(
                 rt,
                 "sector-activated",
-                num,
+                &pc.info.sector_number,
                 pc.info.unsealed_cid.0,
-                pieces.get(num).unwrap(),
+                &vec![],
             );
         }
 
         let params = InternalSectorSetupForPresealParams {
-            sectors: pcs.iter().map(|pc| pc.info.sector_number).collect(),
+            sectors,
             reward_smoothed: self.epoch_reward_smooth.clone(),
             reward_baseline_power: self.baseline_power.clone(),
             quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),

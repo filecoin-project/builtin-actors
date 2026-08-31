@@ -26,9 +26,6 @@ const MINER_ADDRESSES: MinerAddresses = MinerAddresses {
     control: vec![],
 };
 
-// These tests share a lot in common with those for BatchActivateDeals,
-// as they perform similar functions.
-
 #[test]
 fn empty_params() {
     let rt = setup();

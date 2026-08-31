@@ -75,7 +75,7 @@ pub enum Method {
     WithdrawBalance = 3,
     PublishStorageDeals = 4,
     VerifyDealsForActivation = 5,
-    BatchActivateDeals = 6,
+    // BatchActivateDeals = 6, // Deprecated
     OnMinerSectorsTerminate = 7,
     // ComputeDataCommitment = 8, // Deprecated
     CronTick = 9,
@@ -478,116 +478,6 @@ impl Actor {
         }
 
         Ok(VerifyDealsForActivationReturn { unsealed_cids })
-    }
-
-    /// Activates a set of deals grouped by sector, returning each sector's pieces.
-    /// Sectors' deals are activated in parameter-defined order.
-    /// Each sector's deals are activated or fail as a group, but independently of other sectors.
-    /// Note that confirming all deals fit within a sector is the caller's responsibility
-    /// (and is implied by confirming the sector's data commitment is derived from the deal peices).
-    // see https://github.com/filecoin-project/builtin-actors/issues/1308
-    fn batch_activate_deals(
-        rt: &impl Runtime,
-        params: BatchActivateDealsParams,
-    ) -> Result<BatchActivateDealsResult, ActorError> {
-        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-        let miner_addr = rt.message().caller();
-        let curr_epoch = rt.curr_epoch();
-
-        let (activations, batch_ret) = rt.transaction(|st: &mut State, rt| {
-            let proposals = st.load_proposals(rt.store())?;
-            let states = st.load_deal_states(rt.store())?;
-            let pending_deals = st.load_pending_deals(rt.store())?;
-
-            let mut deal_states: Vec<(DealID, DealState)> = vec![];
-            let mut batch_gen = BatchReturnGen::new(params.sectors.len());
-            let mut activations: Vec<Vec<PieceInfo>> = vec![];
-            let mut activated_deals: HashSet<DealID> = HashSet::new();
-            let mut sectors_deals: Vec<(SectorNumber, Vec<DealID>)> = vec![];
-
-            'sector: for sector in params.sectors {
-                let mut sector_deal_ids = sector.deal_ids.clone();
-                sector_deal_ids.sort();
-                if sector_deal_ids.windows(2).any(|w| w[0] == w[1]) {
-                    log::warn!("failed to activate sector, duplicate deal");
-                    batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
-                    continue;
-                }
-                let mut validated_proposals = vec![];
-                // Iterate once to validate all the requested deals.
-                // If a deal fails, skip the whole sector.
-                for &deal_id in &sector.deal_ids {
-                    // Check each deal is present only once, within and across sectors.
-                    if activated_deals.contains(&deal_id) {
-                        log::warn!("failed to activate sector, duplicated deal {}", deal_id);
-                        batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
-                        continue 'sector;
-                    }
-
-                    let proposal = match preactivate_deal(
-                        rt,
-                        deal_id,
-                        &proposals,
-                        &states,
-                        &pending_deals,
-                        &miner_addr,
-                        sector.sector_expiry,
-                        curr_epoch,
-                        st.next_id,
-                    )? {
-                        Ok(v) => v,
-                        Err(e) => {
-                            log::warn!("failed to activate deal: {}", e);
-                            batch_gen.add_fail(e.exit_code());
-                            continue 'sector;
-                        }
-                    };
-                    validated_proposals.push(proposal);
-                }
-
-                let mut activated = vec![];
-                // Given that all deals validated, prepare the state updates for them all.
-                // There's no continue below here to ensure updates are consistent.
-                // Any error must abort.
-                for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
-                    activated_deals.insert(*deal_id);
-
-                    activated
-                        .push(PieceInfo { size: proposal.piece_size, cid: proposal.piece_cid });
-
-                    // Prepare initial deal state.
-                    deal_states.push((
-                        *deal_id,
-                        DealState {
-                            sector_number: sector.sector_number,
-                            sector_start_epoch: curr_epoch,
-                            last_updated_epoch: EPOCH_UNDEFINED,
-                            slash_epoch: EPOCH_UNDEFINED,
-                        },
-                    ));
-                }
-
-                sectors_deals.push((sector.sector_number, sector.deal_ids.clone()));
-                activations.push(activated);
-
-                for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
-                    emit::deal_activated(
-                        rt,
-                        *deal_id,
-                        proposal.client.id().unwrap(),
-                        proposal.provider.id().unwrap(),
-                    )?;
-                }
-
-                batch_gen.add_success();
-            }
-
-            st.put_deal_states(rt.store(), &deal_states)?;
-            st.put_sector_deal_ids(rt.store(), miner_addr.id().unwrap(), &sectors_deals)?;
-            Ok((activations, batch_gen.generate()))
-        })?;
-
-        Ok(BatchActivateDealsResult { activations, activation_results: batch_ret })
     }
 
     /// Receives notification of a change to sector content, which may satisfy to activate a deal.
@@ -1654,7 +1544,6 @@ impl ActorCode for Actor {
         WithdrawBalance|WithdrawBalanceExported => withdraw_balance,
         PublishStorageDeals|PublishStorageDealsExported => publish_storage_deals,
         VerifyDealsForActivation => verify_deals_for_activation,
-        BatchActivateDeals => batch_activate_deals,
         OnMinerSectorsTerminate => on_miner_sectors_terminate,
         CronTick => cron_tick,
         GetBalanceExported => get_balance,

@@ -12,7 +12,7 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
+use fvm_shared::piece::PaddedPieceSize;
 
 use crate::Label;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
@@ -88,23 +88,6 @@ pub struct VerifyDealsForActivationReturn {
     // The unsealed CID computed from the deals specified for each sector.
     // A None indicates no deals were specified.
     pub unsealed_cids: Vec<Option<Cid>>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct BatchActivateDealsParams {
-    /// Deals to activate, grouped by sector.
-    /// A failed deal activation will cause other deals in the same sector group to also fail,
-    /// but allow other sectors to proceed.
-    pub sectors: Vec<SectorDeals>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct BatchActivateDealsResult {
-    /// Status of each sector grouping of deals.
-    pub activation_results: BatchReturn,
-    /// Pieces activated for each successful sector group, in input order.
-    /// Its length equals `activation_results.success_count`.
-    pub activations: Vec<Vec<PieceInfo>>,
 }
 
 /// A specialization of a array to deals.

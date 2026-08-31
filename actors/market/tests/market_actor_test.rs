@@ -14,7 +14,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use fvm_shared::sector::StoragePower;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND, MethodNum};
 use num_traits::{FromPrimitive, Zero};
@@ -22,14 +22,15 @@ use regex::Regex;
 
 use fil_actor_market::balance_table::BalanceTable;
 use fil_actor_market::ext::account::{AUTHENTICATE_MESSAGE_METHOD, AuthenticateMessageParams};
+use fil_actor_market::ext::miner::PieceReturn;
 
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
-    Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal, DEAL_OPS_BY_EPOCH_CONFIG,
-    DealArray, DealMetaArray, DealOpsByEpoch, EX_DEAL_EXPIRED, Label, MARKET_NOTIFY_DEAL_METHOD,
-    MarketNotifyDealParams, Method, PENDING_PROPOSALS_CONFIG, PROPOSALS_AMT_BITWIDTH,
-    PendingProposalsSet, PublishStorageDealsParams, PublishStorageDealsReturn, STATES_AMT_BITWIDTH,
-    SectorDeals, State, WithdrawBalanceParams,
+    Actor as MarketActor, ClientDealProposal, DEAL_OPS_BY_EPOCH_CONFIG, DealArray, DealMetaArray,
+    DealOpsByEpoch, Label, MARKET_NOTIFY_DEAL_METHOD, MarketNotifyDealParams, Method,
+    PENDING_PROPOSALS_CONFIG, PROPOSALS_AMT_BITWIDTH, PendingProposalsSet,
+    PublishStorageDealsParams, PublishStorageDealsReturn, STATES_AMT_BITWIDTH, State,
+    WithdrawBalanceParams,
 };
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -1368,45 +1369,6 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
 }
 
 #[test]
-fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
-    let start_epoch = 10;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let sector_expiry = end_epoch + 100;
-    let sector_number = 7;
-
-    let rt = setup();
-    let (deal_id, _) = generate_and_publish_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-    );
-
-    rt.set_epoch(start_epoch + 1);
-    let res = batch_activate_deals_raw(
-        &rt,
-        PROVIDER_ADDR,
-        vec![SectorDeals {
-            sector_number,
-            sector_expiry,
-            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-            deal_ids: vec![deal_id],
-        }],
-        &[],
-    )
-    .unwrap();
-
-    let res: BatchActivateDealsResult =
-        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
-
-    assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED]);
-
-    rt.verify();
-    check_state(&rt);
-}
-
-#[test]
 fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
@@ -1421,79 +1383,11 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
         end_epoch,
     );
 
-    let res = batch_activate_deals_raw(
-        &rt,
-        PROVIDER_ADDR,
-        vec![SectorDeals {
-            sector_number,
-            sector_expiry: end_epoch - 1,
-            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-            deal_ids: vec![deal_id],
-        }],
-        &[],
-    )
-    .unwrap();
+    // The sector commitment ends before the deal does.
+    let res =
+        activate_deals_for(&rt, end_epoch - 1, PROVIDER_ADDR, 0, sector_number, &[deal_id], &[]);
+    assert_eq!(vec![PieceReturn { accepted: false }], res.sectors[0].added);
 
-    let res: BatchActivateDealsResult =
-        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
-
-    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
-
-    rt.verify();
-    check_state(&rt);
-}
-
-#[test]
-fn fail_to_activate_all_deals_if_one_deal_fails() {
-    let start_epoch = 10;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let sector_expiry = end_epoch + 100;
-    let sector_number = 7;
-
-    let rt = setup();
-    // activate deal1 so it fails later
-    let (deal_id1, _) = generate_and_publish_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-    );
-    batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_number, sector_expiry, vec![deal_id1])]);
-
-    let (deal_id2, _) = generate_and_publish_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch + 1,
-    );
-
-    let res = batch_activate_deals_raw(
-        &rt,
-        PROVIDER_ADDR,
-        vec![SectorDeals {
-            sector_number,
-            sector_expiry,
-            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-            deal_ids: vec![deal_id1, deal_id2],
-        }],
-        &[],
-    )
-    .unwrap();
-    let res: BatchActivateDealsResult =
-        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
-
-    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
-    rt.verify();
-
-    // no state for deal2 means deal2 activation has failed
-    let st: State = rt.get_state();
-
-    let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
-
-    let s = states.get(deal_id2).unwrap();
-    assert!(s.is_none());
     check_state(&rt);
 }
 
