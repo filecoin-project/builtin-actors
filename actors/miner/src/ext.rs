@@ -1,11 +1,9 @@
-use cid::Cid;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 
 use fil_actors_runtime::reward::FilterEstimate;
@@ -18,18 +16,9 @@ pub mod market {
     use super::*;
     use fvm_ipld_bitfield::BitField;
 
-    pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
 
     pub const NO_ALLOCATION_ID: u64 = 0;
-
-    #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct SectorDeals {
-        pub sector_number: SectorNumber,
-        pub sector_type: RegisteredSealProof,
-        pub sector_expiry: ChainEpoch,
-        pub deal_ids: Vec<DealID>,
-    }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct OnMinerSectorsTerminateParams {
@@ -41,16 +30,6 @@ pub mod market {
     pub struct SectorDataSpec {
         pub deal_ids: Vec<DealID>,
         pub sector_type: RegisteredSealProof,
-    }
-
-    #[derive(Serialize_tuple)]
-    pub struct VerifyDealsForActivationParamsRef<'a> {
-        pub sectors: &'a [SectorDeals],
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
-    pub struct VerifyDealsForActivationReturn {
-        pub unsealed_cids: Vec<Option<Cid>>,
     }
 }
 

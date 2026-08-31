@@ -42,10 +42,7 @@ use multihash_codetable::MultihashDigest;
 use num_traits::Signed;
 
 use fil_actor_account::Method as AccountMethod;
-use fil_actor_market::{
-    Method as MarketMethod, NO_ALLOCATION_ID, OnMinerSectorsTerminateParams, SectorDeals,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
-};
+use fil_actor_market::{NO_ALLOCATION_ID, OnMinerSectorsTerminateParams};
 use fil_actor_miner::{
     ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
     CRON_EVENT_PROVING_DEADLINE, ChangeBeneficiaryParams, ChangeMultiaddrsParams,
@@ -671,34 +668,6 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
 
         self.expect_query_network_info(rt);
-        let mut sector_deals = Vec::new();
-        let mut sector_deal_data = Vec::new();
-        let mut any_deals = false;
-        for sector in sectors.iter() {
-            sector_deals.push(SectorDeals {
-                sector_number: sector.sector_number,
-                sector_type: sector.seal_proof,
-                sector_expiry: sector.expiration,
-                deal_ids: sector.deal_ids.clone(),
-            });
-
-            sector_deal_data.push(sector.unsealed_cid.0);
-            // Sanity check on expectations
-            let sector_has_deals = !sector.deal_ids.is_empty();
-            any_deals |= sector_has_deals;
-        }
-        if any_deals {
-            let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
-            let vdreturn = VerifyDealsForActivationReturn { unsealed_cids: sector_deal_data };
-            rt.expect_send_simple(
-                STORAGE_MARKET_ACTOR_ADDR,
-                MarketMethod::VerifyDealsForActivation as u64,
-                IpldBlock::serialize_cbor(&vdparams).unwrap(),
-                TokenAmount::zero(),
-                IpldBlock::serialize_cbor(&vdreturn).unwrap(),
-                ExitCode::OK,
-            );
-        }
 
         let state = self.get_state(rt);
 

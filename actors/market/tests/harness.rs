@@ -30,8 +30,7 @@ use fil_actor_market::ext::miner::{
 use fil_actor_market::{
     Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
     GetBalanceReturn, Label, MARKET_NOTIFY_DEAL_METHOD, MarketNotifyDealParams, Method,
-    OnMinerSectorsTerminateParams, PublishStorageDealsParams, PublishStorageDealsReturn,
-    SectorDeals, State, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    OnMinerSectorsTerminateParams, PublishStorageDealsParams, PublishStorageDealsReturn, State,
     WithdrawBalanceParams, WithdrawBalanceReturn, ext, ext::miner::GetControlAddressesReturnParams,
     next_update_epoch, testing::check_state_invariants,
 };
@@ -1517,47 +1516,6 @@ pub fn assert_account_zero(rt: &MockRuntime, addr: Address) {
     let account = get_balance(rt, &addr);
     assert!(account.balance.is_zero());
     assert!(account.locked.is_zero());
-}
-
-pub fn verify_deals_for_activation<F>(
-    rt: &MockRuntime,
-    provider: Address,
-    sector_deals: Vec<SectorDeals>,
-    piece_info_override: F,
-) -> VerifyDealsForActivationReturn
-where
-    F: Fn(usize) -> Option<Vec<fvm_shared::piece::PieceInfo>>,
-{
-    rt.expect_validate_caller_type(vec![Type::Miner]);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
-
-    for (i, sd) in sector_deals.iter().enumerate() {
-        let pi = piece_info_override(i).unwrap_or_else(|| {
-            vec![fvm_shared::piece::PieceInfo {
-                cid: make_piece_cid("1".as_bytes()),
-                size: PaddedPieceSize(2048),
-            }]
-        });
-        rt.expect_compute_unsealed_sector_cid(
-            sd.sector_type,
-            pi,
-            make_piece_cid("1".as_bytes()),
-            ExitCode::OK,
-        )
-    }
-
-    let param = VerifyDealsForActivationParams { sectors: sector_deals };
-    let ret: VerifyDealsForActivationReturn = rt
-        .call::<MarketActor>(
-            Method::VerifyDealsForActivation as u64,
-            IpldBlock::serialize_cbor(&param).unwrap(),
-        )
-        .unwrap()
-        .unwrap()
-        .deserialize()
-        .expect("VerifyDealsForActivation failed!");
-    rt.verify();
-    ret
 }
 
 // market cron tick uses last_updated_epoch == EPOCH_UNDEFINED to determine if a deal is new

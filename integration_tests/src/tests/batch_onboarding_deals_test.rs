@@ -10,7 +10,6 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::runtime::policy::policy_constants::{
     MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, PRE_COMMIT_CHALLENGE_DELAY,
 };
-use fil_actors_runtime::test_utils::make_piece_cid;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -38,7 +37,7 @@ const BATCH_SIZE: usize = 8;
 const SEAL_PROOF: RegisteredSealProof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
 #[vm_test]
-pub fn pre_commit_requires_commd_test(v: &dyn VM) {
+pub fn pre_commit_rejects_deal_ids_test(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
     let sector_duration: ChainEpoch = deal_duration + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 
@@ -73,29 +72,12 @@ pub fn pre_commit_requires_commd_test(v: &dyn VM) {
     let good_inputs = bf_all(ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
 
-    // precommit without specifying commD fails
+    // Deals are no longer activated at pre-commit; naming one is rejected outright.
     let sector_number = 100;
     precommit_sectors_v2_expect_code(
         v,
         1,
         vec![PrecommitMetadata { deals: vec![0], commd: CompactCommD(None) }],
-        &worker,
-        &miner,
-        SEAL_PROOF,
-        sector_number,
-        true,
-        Some(sector_duration),
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-    );
-
-    // precommit specifying the wrong commD fails
-    precommit_sectors_v2_expect_code(
-        v,
-        1,
-        vec![PrecommitMetadata {
-            deals: vec![0],
-            commd: CompactCommD(Some(make_piece_cid("This is not commP".as_bytes()))),
-        }],
         &worker,
         &miner,
         SEAL_PROOF,

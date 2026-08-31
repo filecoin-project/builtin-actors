@@ -69,27 +69,6 @@ pub struct PublishStorageDealsReturn {
     pub valid_deals: BitField,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct VerifyDealsForActivationParams {
-    /// Deals to verify, grouped by sector.
-    pub sectors: Vec<SectorDeals>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct SectorDeals {
-    pub sector_number: SectorNumber,
-    pub sector_type: RegisteredSealProof,
-    pub sector_expiry: ChainEpoch,
-    pub deal_ids: Vec<DealID>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct VerifyDealsForActivationReturn {
-    // The unsealed CID computed from the deals specified for each sector.
-    // A None indicates no deals were specified.
-    pub unsealed_cids: Vec<Option<Cid>>,
-}
-
 /// A specialization of a array to deals.
 pub type DealArray<'bs, BS> = Array<'bs, DealProposal, BS>;
 

@@ -18,8 +18,7 @@ use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PieceInfo;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber, SectorSize, StoragePower};
+use fvm_shared::sector::{SectorNumber, StoragePower};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
 use integer_encoding::VarInt;
@@ -31,7 +30,7 @@ use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    ActorContext, ActorDowncast, ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    ActorContext, ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, actor_dispatch, actor_error,
     deserialize_block,
 };
@@ -74,7 +73,7 @@ pub enum Method {
     AddBalance = 2,
     WithdrawBalance = 3,
     PublishStorageDeals = 4,
-    VerifyDealsForActivation = 5,
+    // VerifyDealsForActivation = 5, // Deprecated
     // BatchActivateDeals = 6, // Deprecated
     OnMinerSectorsTerminate = 7,
     // ComputeDataCommitment = 8, // Deprecated
@@ -438,51 +437,8 @@ impl Actor {
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })
     }
 
-    /// Verify that a given set of storage deals is valid for a sector currently being PreCommitted
-    /// and return UnsealedCID for the set of deals.
-    fn verify_deals_for_activation(
-        rt: &impl Runtime,
-        params: VerifyDealsForActivationParams,
-    ) -> Result<VerifyDealsForActivationReturn, ActorError> {
-        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-        let miner_addr = rt.message().caller();
-        let curr_epoch = rt.curr_epoch();
-
-        let st: State = rt.state()?;
-        let proposal_array = st.load_proposals(rt.store())?;
-
-        let mut unsealed_cids = Vec::with_capacity(params.sectors.len());
-        for sector in params.sectors.iter() {
-            let sector_proposals = get_proposals(&proposal_array, &sector.deal_ids, st.next_id)?;
-            let sector_size = sector
-                .sector_type
-                .sector_size()
-                .map_err(|e| actor_error!(illegal_argument, "sector size unknown: {}", e))?;
-            validate_deals_for_sector(
-                &sector_proposals,
-                &miner_addr,
-                sector.sector_expiry,
-                curr_epoch,
-                sector_size,
-            )
-            .context("failed to validate deal proposals for activation")?;
-
-            let commd = if sector.deal_ids.is_empty() {
-                None
-            } else {
-                let proposals_iter = sector_proposals.iter().map(|(_, p)| p);
-                Some(compute_data_commitment(rt, proposals_iter, sector.sector_type)?)
-            };
-
-            unsealed_cids.push(commd);
-        }
-
-        Ok(VerifyDealsForActivationReturn { unsealed_cids })
-    }
-
     /// Receives notification of a change to sector content, which may satisfy to activate a deal.
     /// Deals are activated or fail independently, including in the same sector.
-    /// This is an alternative to ActivateDeals.
     fn sector_content_changed(
         rt: &impl Runtime,
         params: ext::miner::SectorContentChangedParams,
@@ -1168,70 +1124,6 @@ impl Actor {
         Ok(SettleDealPaymentsReturn { results: batch_gen.generate(), settlements })
     }
 }
-
-fn get_proposals<BS: Blockstore>(
-    proposal_array: &DealArray<BS>,
-    deal_ids: &[DealID],
-    next_id: DealID,
-) -> Result<Vec<(DealID, DealProposal)>, ActorError> {
-    let mut proposals = Vec::new();
-    let mut seen_deal_ids = BTreeSet::new();
-    for deal_id in deal_ids {
-        if !seen_deal_ids.insert(deal_id) {
-            return Err(actor_error!(illegal_argument, "duplicate deal ID {} in sector", deal_id));
-        }
-        let proposal = get_proposal(proposal_array, *deal_id, next_id)?;
-        proposals.push((*deal_id, proposal));
-    }
-    Ok(proposals)
-}
-
-fn compute_data_commitment<'a>(
-    rt: &impl Runtime,
-    proposals: impl IntoIterator<Item = &'a DealProposal>,
-    sector_type: RegisteredSealProof,
-) -> Result<Cid, ActorError> {
-    let mut pieces = vec![];
-
-    for deal in proposals {
-        pieces.push(PieceInfo { cid: deal.piece_cid, size: deal.piece_size });
-    }
-
-    rt.compute_unsealed_sector_cid(sector_type, &pieces).map_err(|e| {
-        e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to compute unsealed sector CID")
-    })
-}
-
-// Validates that each of a collection of deal proposals is valid and that they
-// all fit within a sector.
-pub fn validate_deals_for_sector(
-    proposals: &[(DealID, DealProposal)],
-    miner_addr: &Address,
-    sector_expiry: ChainEpoch,
-    sector_activation: ChainEpoch,
-    sector_size: SectorSize,
-) -> Result<(), ActorError> {
-    let mut deal_space: u64 = 0;
-
-    for (deal_id, proposal) in proposals {
-        validate_deal_can_activate(proposal, miner_addr, sector_expiry, sector_activation)
-            .with_context(|| format!("cannot activate deal {}", deal_id))?;
-        // Saturating: a bogus size lands above the sector bound rather than wrapping.
-        deal_space = deal_space.saturating_add(proposal.piece_size.0);
-    }
-
-    if deal_space > sector_size as u64 {
-        return Err(actor_error!(
-            illegal_argument,
-            "deals too large to fit in sector {} > {}",
-            deal_space,
-            sector_size
-        ));
-    }
-
-    Ok(())
-}
-
 // Validates a deal is ready to activate now.
 // There are two types of error possible here:
 // - An Err in the outer result indicates something broken that should be propagated
@@ -1543,7 +1435,6 @@ impl ActorCode for Actor {
         AddBalance|AddBalanceExported => add_balance,
         WithdrawBalance|WithdrawBalanceExported => withdraw_balance,
         PublishStorageDeals|PublishStorageDealsExported => publish_storage_deals,
-        VerifyDealsForActivation => verify_deals_for_activation,
         OnMinerSectorsTerminate => on_miner_sectors_terminate,
         CronTick => cron_tick,
         GetBalanceExported => get_balance,

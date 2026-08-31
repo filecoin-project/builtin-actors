@@ -27,7 +27,7 @@ use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, MARKET_NOTIFY_DEAL_METHOD, Method as MarketMethod,
-    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State as MarketState,
+    PublishStorageDealsParams, PublishStorageDealsReturn, State as MarketState,
 };
 use fil_actor_miner::{
     ChangeBeneficiaryParams, CompactCommD, DataActivationNotification, DeadlineInfo,
@@ -250,7 +250,6 @@ pub fn precommit_sectors_v2_expect_code(
 
     let mut sector_idx: usize = 0;
     let no_deals = PrecommitMetadata::default();
-    let mut sectors_with_deals: Vec<SectorDeals> = vec![];
     while sector_idx < count {
         let msg_sector_idx_base = sector_idx;
         let mut invocs =
@@ -268,14 +267,6 @@ pub fn precommit_sectors_v2_expect_code(
                 expiration,
                 unsealed_cid: sector_meta.commd.clone(),
             });
-            if !sector_meta.deals.is_empty() {
-                sectors_with_deals.push(SectorDeals {
-                    sector_number,
-                    sector_type: seal_proof,
-                    sector_expiry: expiration,
-                    deal_ids: sector_meta.deals.clone(),
-                });
-            }
             sector_idx += 1;
         }
 
@@ -284,9 +275,6 @@ pub fn precommit_sectors_v2_expect_code(
             .map(|ps| Expect::build_miner_event("sector-precommitted", miner_id, ps.sector_number))
             .collect();
 
-        if !sectors_with_deals.is_empty() {
-            invocs.push(Expect::market_verify_deals(miner_id, sectors_with_deals.clone()));
-        }
         if expect_cron_enroll && msg_sector_idx_base == 0 {
             invocs.push(Expect::power_enrol_cron(miner_id));
         }

@@ -109,10 +109,6 @@ pub struct Policy {
     /// and sector.ActivationEpoch+sealProof.SectorMaximumLifetime()
     pub max_sector_expiration_extension: i64,
 
-    /// Ratio of sector size to maximum deals per sector.
-    /// The maximum number of deals is the sector size divided by this number.
-    pub deal_limit_denominator: u64,
-
     /// Number of epochs after a consensus fault for which a miner is ineligible
     /// for permissioned actor methods and winning block elections.
     pub consensus_fault_ineligibility_duration: ChainEpoch,
@@ -197,7 +193,6 @@ impl Default for Policy {
             worker_key_change_delay: policy_constants::WORKER_KEY_CHANGE_DELAY,
             min_sector_expiration: policy_constants::MIN_SECTOR_EXPIRATION,
             max_sector_expiration_extension: policy_constants::MAX_SECTOR_EXPIRATION_EXTENSION,
-            deal_limit_denominator: policy_constants::DEAL_LIMIT_DENOMINATOR,
             consensus_fault_ineligibility_duration:
                 policy_constants::CONSENSUS_FAULT_INELIGIBILITY_DURATION,
             new_sectors_per_period_max: policy_constants::NEW_SECTORS_PER_PERIOD_MAX,
@@ -322,9 +317,6 @@ pub mod policy_constants {
     pub const MIN_SECTOR_EXPIRATION: i64 = 180 * EPOCHS_IN_DAY;
 
     pub const MAX_SECTOR_EXPIRATION_EXTENSION: i64 = 1278 * EPOCHS_IN_DAY;
-
-    /// A value (2^27) limits 32GiB sectors to 256 deals and 64GiB sectors to 512.
-    pub const DEAL_LIMIT_DENOMINATOR: u64 = 134217728;
 
     pub const CONSENSUS_FAULT_INELIGIBILITY_DURATION: ChainEpoch = CHAIN_FINALITY;
 

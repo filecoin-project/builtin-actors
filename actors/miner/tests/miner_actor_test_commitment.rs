@@ -1,6 +1,5 @@
 use fil_actor_miner::{
-    DeadlineInfo, State, VestSpec, max_prove_commit_duration, pre_commit_deposit_for_power,
-    qa_power_max,
+    State, VestSpec, max_prove_commit_duration, pre_commit_deposit_for_power, qa_power_max,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
@@ -8,7 +7,6 @@ use fil_actors_runtime::test_utils::*;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
-use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
@@ -18,6 +16,7 @@ use num_traits::Zero;
 use std::collections::HashMap;
 
 mod util;
+use fil_actors_runtime::test_utils::expect_abort_contains_message;
 use util::*;
 
 // an expiration ~10 days greater than effective min expiration taking into account 30 days max
@@ -26,7 +25,7 @@ const DEFAULT_SECTOR_EXPIRATION: i64 = 220;
 
 // A balance for use in tests where the miner's low balance is not interesting.
 
-fn assert_simple_pre_commit(sector_number: SectorNumber, deal_ids: &[DealID]) {
+fn assert_simple_pre_commit(sector_number: SectorNumber) {
     let period_offset = ChainEpoch::from(100);
 
     let mut h = ActorHarness::new(period_offset);
@@ -43,7 +42,7 @@ fn assert_simple_pre_commit(sector_number: SectorNumber, deal_ids: &[DealID]) {
     let expiration =
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // on deadline boundary but > 180 days
     let precommit_params =
-        h.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, deal_ids.to_vec());
+        h.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, vec![]);
     let precommit = h.pre_commit_sector_and_get(
         &rt,
         precommit_params.clone(),
@@ -58,7 +57,7 @@ fn assert_simple_pre_commit(sector_number: SectorNumber, deal_ids: &[DealID]) {
     assert_eq!(precommit_params.seal_proof, precommit.info.seal_proof);
     assert_eq!(precommit_params.sealed_cid, precommit.info.sealed_cid);
     assert_eq!(precommit_params.seal_rand_epoch, precommit.info.seal_rand_epoch);
-    assert_eq!(precommit_params.deal_ids, precommit.info.deal_ids);
+    assert!(precommit.info.deal_ids.is_empty());
     assert_eq!(precommit_params.expiration, precommit.info.expiration);
 
     let pwr_estimate = qa_power_max(h.sector_size);
@@ -87,22 +86,12 @@ mod miner_actor_test_commitment {
 
     #[test]
     fn no_deals() {
-        assert_simple_pre_commit(0, &[]);
+        assert_simple_pre_commit(0);
     }
 
     #[test]
     fn max_sector_number() {
-        assert_simple_pre_commit(MAX_SECTOR_NUMBER, &[]);
-    }
-
-    #[test]
-    fn one_deal() {
-        assert_simple_pre_commit(100, &[1]);
-    }
-
-    #[test]
-    fn two_deals() {
-        assert_simple_pre_commit(100, &[1, 2]);
+        assert_simple_pre_commit(MAX_SECTOR_NUMBER);
     }
 
     #[test]
@@ -157,11 +146,37 @@ mod miner_actor_test_commitment {
         st.fee_debt = TokenAmount::from_atto(9999);
         rt.replace_state(&st);
 
-        let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
+        let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![]);
 
         h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), true).unwrap();
         let st: State = rt.get_state();
         assert_eq!(TokenAmount::zero(), st.fee_debt);
+        h.check_state(&rt);
+    }
+
+    // Deals are no longer activated at pre-commit, so a deal-bearing pre-commit is rejected
+    // outright rather than left unprovable.
+    #[test]
+    fn rejects_deal_ids() {
+        let period_offset = ChainEpoch::from(100);
+        let h = ActorHarness::new(period_offset);
+        let rt = h.new_runtime();
+        rt.set_balance(BIG_BALANCE.clone());
+        let precommit_epoch = period_offset + 1;
+        rt.set_epoch(precommit_epoch);
+        h.construct_and_verify(&rt);
+        let deadline = h.deadline(&rt);
+        let expiration =
+            deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
+
+        let precommit_params =
+            h.make_pre_commit_params(101, precommit_epoch - 1, expiration, vec![1]);
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "pre-committed deals are no longer supported",
+            h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), true),
+        );
+        rt.reset();
         h.check_state(&rt);
     }
 
@@ -408,74 +423,6 @@ mod miner_actor_test_commitment {
     }
 
     #[test]
-    fn fails_with_too_many_deals() {
-        let setup = |proof: RegisteredSealProof| -> (MockRuntime, ActorHarness, DeadlineInfo) {
-            let period_offset = ChainEpoch::from(100);
-
-            let mut h = ActorHarness::new(period_offset);
-            h.set_proof_type(proof);
-            let rt = h.new_runtime();
-
-            rt.set_balance(BIG_BALANCE.clone());
-            rt.set_received(TokenAmount::zero());
-
-            rt.set_epoch(period_offset + 1);
-            h.construct_and_verify(&rt);
-            let deadline = h.deadline(&rt);
-            (rt, h, deadline)
-        };
-
-        let make_deal_ids = |n| -> Vec<DealID> { (0..n).collect() };
-
-        let sector_number: SectorNumber = 100;
-        let deal_limits = [
-            (RegisteredSealProof::StackedDRG2KiBV1P1, 256),
-            (RegisteredSealProof::StackedDRG2KiBV1P1_Feat_SyntheticPoRep, 256),
-            (RegisteredSealProof::StackedDRG32GiBV1P1, 256),
-            (RegisteredSealProof::StackedDRG32GiBV1P1_Feat_SyntheticPoRep, 256),
-            (RegisteredSealProof::StackedDRG64GiBV1P1, 512),
-            (RegisteredSealProof::StackedDRG64GiBV1P1_Feat_SyntheticPoRep, 512),
-        ];
-
-        for (proof, limit) in deal_limits {
-            // attempt to pre-commmit a sector with too many deals
-            let (rt, h, deadline) = setup(proof);
-            let expiration =
-                deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
-            let precommit_params = h.make_pre_commit_params(
-                sector_number,
-                *rt.epoch.borrow() - 1,
-                expiration,
-                make_deal_ids(limit + 1),
-            );
-            let ret =
-                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), true);
-            expect_abort_contains_message(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                "too many deals for sector",
-                ret,
-            );
-            rt.reset();
-
-            // sector at or below limit succeeds
-            let (rt, h, _) = setup(proof);
-            let precommit_params = h.make_pre_commit_params(
-                sector_number,
-                *rt.epoch.borrow() - 1,
-                expiration,
-                make_deal_ids(limit),
-            );
-            h.pre_commit_sector_and_get(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                true,
-            );
-            util::check_state_invariants_from_mock_runtime(&rt);
-        }
-    }
-
-    #[test]
     fn precommit_checks_seal_proof_version() {
         let period_offset = ChainEpoch::from(100);
 
@@ -554,7 +501,7 @@ mod miner_actor_test_commitment {
 
         // Pre-commit with a deal in order to exercise non-zero deal weights.
         let precommit_params =
-            h.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, vec![1]);
+            h.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, vec![]);
         // The below call expects no pledge delta.
         h.pre_commit_sector_and_get(&rt, precommit_params, util::PreCommitConfig::default(), true);
     }

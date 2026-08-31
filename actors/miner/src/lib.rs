@@ -1246,7 +1246,6 @@ impl Actor {
         }
         // Check per-sector preconditions before opening state transaction or sending other messages.
         let challenge_earliest = curr_epoch - rt.policy().max_pre_commit_randomness_lookback;
-        let mut sectors_deals = Vec::with_capacity(sectors.len());
         let mut sector_numbers = BitField::new();
         for precommit in sectors.iter() {
             let set = sector_numbers.get(precommit.sector_number);
@@ -1258,6 +1257,16 @@ impl Actor {
                 ));
             }
             sector_numbers.set(precommit.sector_number);
+
+            // Deals are no longer activated at pre-commit; a deal-bearing pre-commit could
+            // never be proven, so reject it before it wastes a deposit.
+            if !precommit.deal_ids.is_empty() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "sector {} has deal ids, pre-committed deals are no longer supported",
+                    precommit.sector_number
+                ));
+            }
 
             if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof) {
                 return Err(actor_error!(
@@ -1312,26 +1321,10 @@ impl Actor {
                 precommit.expiration,
                 precommit.seal_proof,
             )?;
-
-            sectors_deals.push(ext::market::SectorDeals {
-                sector_number: precommit.sector_number,
-                sector_type: precommit.seal_proof,
-                sector_expiry: precommit.expiration,
-                deal_ids: precommit.deal_ids.clone(),
-            })
         }
         // gather information from other actors
         let reward_stats = request_current_epoch_block_reward(rt)?;
         let power_total = request_current_total_power(rt)?;
-        let verify_return = verify_deals(rt, &sectors_deals)?;
-        if verify_return.unsealed_cids.len() != sectors.len() {
-            return Err(actor_error!(
-                illegal_state,
-                "deal weight request returned {} records, expected {}",
-                verify_return.unsealed_cids.len(),
-                sectors.len()
-            ));
-        }
         let mut fee_to_burn = TokenAmount::zero();
         let mut needs_cron = false;
         rt.transaction(|state: &mut State, rt| {
@@ -1363,12 +1356,11 @@ impl Actor {
             let mut chain_infos = Vec::with_capacity(sectors.len());
             let mut total_deposit_required = TokenAmount::zero();
             let mut clean_up_events = Vec::with_capacity(sectors.len());
-            let deal_count_max = sector_deals_max(rt.policy(), info.sector_size);
 
             let sector_weight_for_deposit = qa_power_max(info.sector_size);
             let deposit_req = pre_commit_deposit_for_power(&reward_stats.this_epoch_reward_smoothed, &power_total.quality_adj_power_smoothed, &sector_weight_for_deposit);
 
-            for (i, precommit) in sectors.into_iter().enumerate() {
+            for precommit in sectors.into_iter() {
                 // Sector must have the same Window PoSt proof type as the miner's recorded seal type.
                 let sector_wpost_proof = precommit.seal_proof
                     .registered_window_post_proof()
@@ -1381,25 +1373,8 @@ impl Actor {
                 if sector_wpost_proof != info.window_post_proof_type {
                     return Err(actor_error!(illegal_argument, "sector Window PoSt proof type %d must match miner Window PoSt proof type {} (seal proof type {})", i64::from(sector_wpost_proof), i64::from(info.window_post_proof_type)));
                 }
-                if precommit.deal_ids.len() as u64 > deal_count_max {
-                    return Err(actor_error!(illegal_argument, "too many deals for sector {} > {}", precommit.deal_ids.len(), deal_count_max));
-                }
-
-                // 1. verify that precommit.unsealed_cid is correct
-                // 2. create a new on_chain_precommit
-
-                // Presence of unsealed CID is checked in the preconditions.
-                // It must always be specified from nv22 onwards.
-                let declared_commd = precommit.unsealed_cid;
-                // This is not a CompactCommD, None means that nothing was computed and nothing needs to be checked
-                if let Some(computed_cid) = verify_return.unsealed_cids[i] {
-                    // It is possible the computed commd is the zero commd so expand declared_commd
-                    if declared_commd.get_cid(precommit.seal_proof)? != computed_cid {
-                        return Err(actor_error!(illegal_argument, "computed {:?} and passed {:?} CommDs not equal",
-                                computed_cid, declared_commd));
-                    }
-                }
-
+                // The declared CommD is recorded as given: the seal proof binds CommR to
+                // CommD at prove-commit, and piece manifests are checked against it there.
                 let on_chain_precommit = SectorPreCommitInfo {
                     seal_proof: precommit.seal_proof,
                     sector_number: precommit.sector_number,
@@ -1407,7 +1382,7 @@ impl Actor {
                     seal_rand_epoch: precommit.seal_rand_epoch,
                     deal_ids: precommit.deal_ids,
                     expiration: precommit.expiration,
-                    unsealed_cid: declared_commd,
+                    unsealed_cid: precommit.unsealed_cid,
                 };
 
                 // Build on-chain record.
@@ -1535,9 +1510,8 @@ impl Actor {
         }
 
         // Validate pre-commits.
-        let allow_deals = false; // New onboarding entry point does not allow pre-committed deals.
         let (validation_batch, proof_inputs) =
-            validate_precommits(rt, &precommits, allow_deals, params.require_activation_success)?;
+            validate_precommits(rt, &precommits, params.require_activation_success)?;
         if validation_batch.success_count == 0 {
             return Err(actor_error!(illegal_argument, "no valid precommits specified"));
         }
@@ -4718,7 +4692,6 @@ impl SectorSealProofInput {
 fn validate_precommits(
     rt: &impl Runtime,
     precommits: &[SectorPreCommitOnChainInfo],
-    allow_deal_ids: bool,
     all_or_nothing: bool,
 ) -> Result<(BatchReturn, Vec<SectorSealProofInput>), ActorError> {
     if precommits.is_empty() {
@@ -4732,7 +4705,9 @@ fn validate_precommits(
         // 1. compute aggregate seal verification inputs
         // 2. check for whole message failure conditions
         let mut fail_validation = false;
-        if !(allow_deal_ids || precommit.info.deal_ids.is_empty()) {
+        // A pre-Solstice precommit may still carry deal ids; nothing activates them, so it
+        // can never be proven.
+        if !precommit.info.deal_ids.is_empty() {
             warn!(
                 "skipping commitment for sector {}, precommit has deal ids which are disallowed",
                 precommit.info.sector_number,
@@ -5017,29 +4992,6 @@ fn verify_aggregate_seal(
         infos: seal_verify_inputs,
     })
     .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")
-}
-
-fn verify_deals(
-    rt: &impl Runtime,
-    sectors: &[ext::market::SectorDeals],
-) -> Result<ext::market::VerifyDealsForActivationReturn, ActorError> {
-    // Short-circuit if there are no deals in any of the sectors.
-    let mut deal_count = 0;
-    for sector in sectors {
-        deal_count += sector.deal_ids.len();
-    }
-    if deal_count == 0 {
-        return Ok(ext::market::VerifyDealsForActivationReturn {
-            unsealed_cids: vec![None; sectors.len()],
-        });
-    }
-
-    deserialize_block(extract_send_result(rt.send_simple(
-        &STORAGE_MARKET_ACTOR_ADDR,
-        ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
-        IpldBlock::serialize_cbor(&ext::market::VerifyDealsForActivationParamsRef { sectors })?,
-        TokenAmount::zero(),
-    ))?)
 }
 
 /// Requests the current epoch target block reward from the reward actor.

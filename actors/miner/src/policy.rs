@@ -167,11 +167,6 @@ pub fn raw_power_for_sector(size: SectorSize) -> StoragePower {
     BigInt::from(size as u64)
 }
 
-/// Determine maximum number of deal miner's sector can hold
-pub fn sector_deals_max(policy: &Policy, size: SectorSize) -> u64 {
-    cmp::max(256, size as u64 / policy.deal_limit_denominator)
-}
-
 /// Specification for a linear vesting schedule.
 pub struct VestSpec {
     /// Delay before any amount starts vesting.
