@@ -2,9 +2,8 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use fvm_shared::sector::StoragePower;
 
 use fil_actors_runtime::reward::FilterEstimate;
 
@@ -24,12 +23,6 @@ pub mod market {
     pub struct OnMinerSectorsTerminateParams {
         pub epoch: ChainEpoch,
         pub sectors: BitField,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct SectorDataSpec {
-        pub deal_ids: Vec<DealID>,
-        pub sector_type: RegisteredSealProof,
     }
 }
 
@@ -74,6 +67,3 @@ pub mod power {
 pub mod reward {
     pub const THIS_EPOCH_REWARD_METHOD: u64 = 3;
 }
-
-// FIP-0118: verifreg ext module removed. The miner actor no longer interacts
-// with the verified registry for allocation claims or claim validation.

@@ -27,7 +27,6 @@ fil_actor_reward = { workspace = true}
 fil_actor_system = { workspace = true}
 fil_actor_init = { workspace = true}
 fil_actors_runtime = { workspace = true}
-frc46_token = { workspace = true }
 fvm_shared = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }

@@ -15,7 +15,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 
 use crate::Label;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
+use fvm_shared::sector::SectorNumber;
 
 use super::deal::{ClientDealProposal, DealProposal, DealState};
 
@@ -74,12 +74,6 @@ pub type DealArray<'bs, BS> = Array<'bs, DealProposal, BS>;
 
 /// A specialization of a array to deals.
 pub type DealMetaArray<'bs, BS> = Array<'bs, DealState, BS>;
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct SectorDataSpec {
-    pub deal_ids: Vec<DealID>,
-    pub sector_type: RegisteredSealProof,
-}
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
