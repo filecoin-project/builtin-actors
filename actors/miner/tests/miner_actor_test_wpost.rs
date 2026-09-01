@@ -1375,6 +1375,60 @@ fn dispute_faults_a_sector_at_its_current_power() {
     dispute_at_current_power(&h, &rt, &snapshot, &upgraded, Some(-upgraded_power));
 }
 
+#[test]
+fn disputed_snap_sector_recovers_at_its_current_power_and_fee() {
+    let (mut h, rt) = dispute_harness();
+    let snapshot = snapshot_legacy_sector(&mut h, &rt);
+    let sector_number = snapshot.legacy.sector_number;
+    let upgraded = snap_to_full_power(&h, &rt, sector_number);
+    let upgraded_power = miner::power_for_sector(h.sector_size, &upgraded);
+    let upgraded_fee = upgraded.daily_fee.clone();
+    assert_eq!(miner::PowerPair::new(BigInt::from(2048), BigInt::from(20480)), upgraded_power);
+    assert_eq!(TokenAmount::from_atto(1_650), upgraded_fee);
+
+    dispute_at_current_power(&h, &rt, &snapshot, &upgraded, Some(-upgraded_power.clone()));
+
+    h.declare_recoveries(
+        &rt,
+        snapshot.dlidx,
+        snapshot.pidx,
+        make_bitfield(&[sector_number]),
+        TokenAmount::zero(),
+    )
+    .unwrap();
+    let partition =
+        h.get_deadline(&rt, snapshot.dlidx).load_partition(rt.store(), snapshot.pidx).unwrap();
+    assert_eq!(upgraded_power, partition.recovering_power);
+
+    let dlinfo = h.advance_to_deadline(&rt, snapshot.dlidx);
+    h.submit_window_post(
+        &rt,
+        &dlinfo,
+        vec![miner::PoStPartition { index: snapshot.pidx, skipped: make_empty_bitfield() }],
+        vec![upgraded.clone()],
+        PoStConfig::with_expected_power_delta(&upgraded_power),
+    );
+
+    let (deadline, partition) = h.find_sector(&rt, sector_number);
+    assert_eq!(upgraded_power, deadline.live_power);
+    assert_eq!(miner::PowerPair::zero(), deadline.faulty_power);
+    assert_eq!(upgraded_fee, deadline.daily_fee);
+    assert_eq!(upgraded_power, partition.live_power);
+    assert_eq!(miner::PowerPair::zero(), partition.faulty_power);
+    assert_eq!(miner::PowerPair::zero(), partition.recovering_power);
+    assert!(partition.faults.is_empty());
+    assert!(partition.recoveries.is_empty());
+
+    let state = h.get_state(&rt);
+    let quant = state.quant_spec_for_deadline(rt.policy(), snapshot.dlidx);
+    let expirations = h.collect_partition_expirations(&rt, &partition);
+    let expiration = expirations.get(&quant.quantize_up(upgraded.expiration)).unwrap();
+    assert_eq!(upgraded_power, expiration.active_power);
+    assert_eq!(miner::PowerPair::zero(), expiration.faulty_power);
+    assert_eq!(upgraded_fee, expiration.fee_deduction);
+    h.check_state(&rt);
+}
+
 /// Same, with the power raised by UpgradeSectorQuality rather than a snap.
 #[test]
 fn dispute_faults_an_upgraded_sector_at_its_current_power() {
@@ -1392,7 +1446,7 @@ fn dispute_faults_an_upgraded_sector_at_its_current_power() {
     h.upgrade_sector_quality(
         &rt,
         miner::UpgradeSectorQualityParams {
-            extensions: vec![miner::UpgradeSectorQuality {
+            upgrades: vec![miner::UpgradeSectorQuality {
                 deadline: snapshot.dlidx,
                 partition: snapshot.pidx,
                 sectors: make_bitfield(&[sector_number]),

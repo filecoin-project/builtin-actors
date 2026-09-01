@@ -9,7 +9,8 @@ mod serialization {
 
     use fil_actor_miner::{
         Deadline, ExpirationSet, PowerPair, ProveCommitSectorsNIParams, SectorNIActivationInfo,
-        SectorOnChainInfo, SectorOnChainInfoFlags,
+        SectorOnChainInfo, SectorOnChainInfoFlags, UpgradeSectorQuality,
+        UpgradeSectorQualityParams,
     };
     use fvm_ipld_bitfield::BitField;
     use fvm_ipld_bitfield::iter::Ranges;
@@ -90,6 +91,75 @@ mod serialization {
             let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
             assert_eq!(encoded.data, expected);
             let decoded: ProveCommitSectorsNIParams = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(params, decoded);
+        }
+    }
+
+    #[test]
+    fn upgrade_sector_quality_params() {
+        let bf = |bits: &[u64]| BitField::try_from_bits(bits.iter().copied()).unwrap();
+        let test_cases = vec![
+            (
+                UpgradeSectorQualityParams { upgrades: vec![] },
+                // [[]]
+                &hex!("8180")[..],
+            ),
+            (
+                UpgradeSectorQualityParams {
+                    upgrades: vec![UpgradeSectorQuality {
+                        deadline: 1,
+                        partition: 2,
+                        sectors: bf(&[3]),
+                        new_expiration: None,
+                    }],
+                },
+                // [[[1,2,byte[7002],null]]]
+                &hex!("8181840102427002f6")[..],
+            ),
+            (
+                UpgradeSectorQualityParams {
+                    upgrades: vec![UpgradeSectorQuality {
+                        deadline: 4,
+                        partition: 5,
+                        sectors: bf(&[6, 7]),
+                        new_expiration: Some(8),
+                    }],
+                },
+                // [[[4,5,byte[d014],8]]]
+                &hex!("818184040542d01408")[..],
+            ),
+            (
+                UpgradeSectorQualityParams {
+                    upgrades: vec![
+                        UpgradeSectorQuality {
+                            deadline: 9,
+                            partition: 10,
+                            sectors: bf(&[11, 12, 13, 20, 21]),
+                            new_expiration: None,
+                        },
+                        UpgradeSectorQuality {
+                            deadline: 14,
+                            partition: 15,
+                            sectors: bf(&[16]),
+                            new_expiration: Some(1_000_000),
+                        },
+                        UpgradeSectorQuality {
+                            deadline: 18,
+                            partition: 19,
+                            sectors: bf(&[]),
+                            new_expiration: Some(17),
+                        },
+                    ],
+                },
+                // [[[9,10,byte[701d4d01],null],[14,15,byte[0022],1000000],[18,19,byte[],17]]]
+                &hex!("818384090a44701d4d01f6840e0f4200221a000f42408412134011")[..],
+            ),
+        ];
+
+        for (params, expected) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
+            assert_eq!(encoded.data, expected);
+            let decoded: UpgradeSectorQualityParams = IpldBlock::deserialize(&encoded).unwrap();
             assert_eq!(params, decoded);
         }
     }

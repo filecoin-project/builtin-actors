@@ -2172,7 +2172,7 @@ impl Actor {
         )?;
         let policy = rt.policy();
         let curr_epoch = rt.curr_epoch();
-        validate_upgrade_quality_extensions(policy, curr_epoch, &params.extensions)?;
+        validate_upgrade_quality_extensions(policy, curr_epoch, &params.upgrades)?;
 
         // Pledge inputs come from other actors and must be fetched before the
         // transaction, where sends are blocked.
@@ -2194,7 +2194,7 @@ impl Actor {
 
         let (power_delta, pledge_delta, fee_to_burn) = rt.transaction(|state: &mut State, rt| {
             let declarations: Vec<ValidatedExpirationExtension> =
-                params.extensions.into_iter().map(|e| e.into()).collect();
+                params.upgrades.into_iter().map(|e| e.into()).collect();
             let (power_delta, pledge_delta) = replace_sector_records(
                 policy,
                 rt.store(),
@@ -5081,9 +5081,6 @@ fn notify_pledge_changed(rt: &impl Runtime, pledge_delta: &TokenAmount) -> Resul
     }
     Ok(())
 }
-
-// FIP-0118: get_claims function removed. The miner actor no longer validates
-// verifreg claims during extension or activation.
 
 /// Assigns proving period offset randomly in the range [0, WPoStProvingPeriod) by hashing
 /// the actor's address and current epoch.

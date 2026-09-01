@@ -141,7 +141,7 @@ pub fn upgrade_sector_quality_upgrades_legacy_sector_test(v: &dyn VM) {
         &TokenAmount::zero(),
         MinerMethod::UpgradeSectorQuality as u64,
         Some(UpgradeSectorQualityParams {
-            extensions: vec![UpgradeSectorQuality {
+            upgrades: vec![UpgradeSectorQuality {
                 deadline,
                 partition,
                 sectors: sectors.clone(),
@@ -200,7 +200,7 @@ pub fn upgrade_sector_quality_upgrades_legacy_sector_test(v: &dyn VM) {
             &TokenAmount::zero(),
             MinerMethod::UpgradeSectorQuality as u64,
             Some(UpgradeSectorQualityParams {
-                extensions: vec![UpgradeSectorQuality {
+                upgrades: vec![UpgradeSectorQuality {
                     deadline,
                     partition,
                     sectors: sectors.clone(),

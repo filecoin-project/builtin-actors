@@ -136,7 +136,7 @@ fn upgrade_params(
 ) -> UpgradeSectorQualityParams {
     let (deadline, partition) = sector_location(rt, sector_number);
     UpgradeSectorQualityParams {
-        extensions: vec![declaration(deadline, partition, &[sector_number], new_expiration)],
+        upgrades: vec![declaration(deadline, partition, &[sector_number], new_expiration)],
     }
 }
 
@@ -480,7 +480,7 @@ fn clears_deprecated_reward_estimates_on_upgrade() {
     let legacy: Vec<_> = numbers.iter().map(|&n| h.get_sector(&rt, n)).collect();
 
     // One sector upgrades in place, the other also extends: both paths clear the estimates.
-    let extensions = vec![
+    let upgrades = vec![
         declaration(deadline, partition, &[numbers[0]], None),
         declaration(
             deadline,
@@ -492,7 +492,7 @@ fn clears_deprecated_reward_estimates_on_upgrade() {
     let (power_delta, pledge_delta) = expected_upgrade_deltas(&h, &rt, &legacy);
     h.upgrade_sector_quality(
         &rt,
-        UpgradeSectorQualityParams { extensions },
+        UpgradeSectorQualityParams { upgrades },
         power_delta,
         pledge_delta,
     )
@@ -538,7 +538,7 @@ fn one_declaration_upgrades_sectors_with_different_expirations() {
     h.upgrade_sector_quality(
         &rt,
         UpgradeSectorQualityParams {
-            extensions: vec![declaration(deadline, partition, &numbers, None)],
+            upgrades: vec![declaration(deadline, partition, &numbers, None)],
         },
         power_delta,
         pledge_delta,
@@ -576,7 +576,7 @@ fn extension_extends_but_does_not_upgrade_full_power_sectors() {
     h.upgrade_sector_quality(
         &rt,
         UpgradeSectorQualityParams {
-            extensions: vec![declaration(deadline, partition, &both, Some(new_expiration))],
+            upgrades: vec![declaration(deadline, partition, &both, Some(new_expiration))],
         },
         power_delta,
         pledge_delta,
@@ -618,7 +618,7 @@ fn mixed_batch_upgrades_extends_and_requeues_across_epochs() {
     let base = max(by_number[&pair[0]].expiration, by_number[&pair[1]].expiration);
     let epoch_one = base + 30 * EPOCHS_IN_DAY;
     let epoch_two = base + 60 * EPOCHS_IN_DAY;
-    let extensions = vec![
+    let upgrades = vec![
         declaration(deadline, partition, &[pair[0]], Some(epoch_one)),
         declaration(deadline, partition, &[pair[1]], Some(epoch_two)),
         declaration(other_deadline, other_partition, &[other[0]], None),
@@ -628,7 +628,7 @@ fn mixed_batch_upgrades_extends_and_requeues_across_epochs() {
     let (power_delta, pledge_delta) = expected_upgrade_deltas(&h, &rt, &declared);
     h.upgrade_sector_quality(
         &rt,
-        UpgradeSectorQualityParams { extensions },
+        UpgradeSectorQualityParams { upgrades },
         power_delta,
         pledge_delta,
     )
@@ -660,7 +660,7 @@ fn later_declaration_extends_an_upgraded_sector_again() {
     let first = legacy.expiration + 30 * EPOCHS_IN_DAY;
     let second = legacy.expiration + 60 * EPOCHS_IN_DAY;
     let declare_twice = |expirations: [ChainEpoch; 2]| UpgradeSectorQualityParams {
-        extensions: expirations
+        upgrades: expirations
             .iter()
             .map(|&e| declaration(deadline, partition, &[legacy.sector_number], Some(e)))
             .collect(),
@@ -825,7 +825,7 @@ fn extension_of_full_power_sector_matches_extend_sector_expiration2() {
     let (power_delta, pledge_delta) = expected_upgrade_deltas(&h, &rt, &legacy);
     h.upgrade_sector_quality(
         &rt,
-        UpgradeSectorQualityParams { extensions: upgrade_only_declarations(&rt, &legacy) },
+        UpgradeSectorQualityParams { upgrades: upgrade_only_declarations(&rt, &legacy) },
         power_delta,
         pledge_delta,
     )
@@ -924,7 +924,7 @@ fn rejects_empty_declaration_list() {
     expect_upgrade_abort(
         &h,
         &rt,
-        UpgradeSectorQualityParams { extensions: vec![] },
+        UpgradeSectorQualityParams { upgrades: vec![] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "no extension declarations",
     );
@@ -943,7 +943,7 @@ fn rejects_empty_sector_selection() {
             &h,
             &rt,
             UpgradeSectorQualityParams {
-                extensions: vec![declaration(deadline, partition, &[], new_expiration)],
+                upgrades: vec![declaration(deadline, partition, &[], new_expiration)],
             },
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "no sectors selected",
@@ -1028,7 +1028,7 @@ fn rejects_unknown_deadline_partition_and_sector() {
             &h,
             &rt,
             UpgradeSectorQualityParams {
-                extensions: vec![declaration(deadline, partition, &[sector_number], None)],
+                upgrades: vec![declaration(deadline, partition, &[sector_number], None)],
             },
             code,
             message,
@@ -1052,7 +1052,7 @@ fn faulty_declaration_aborts_the_whole_batch() {
     expect_upgrade_abort(
         &h,
         &rt,
-        UpgradeSectorQualityParams { extensions: declarations },
+        UpgradeSectorQualityParams { upgrades: declarations },
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "is not active in",
     );
@@ -1090,7 +1090,7 @@ fn rejects_sector_from_another_partition() {
         &h,
         &rt,
         UpgradeSectorQualityParams {
-            extensions: vec![declaration(deadline, partition, &[elsewhere], None)],
+            upgrades: vec![declaration(deadline, partition, &[elsewhere], None)],
         },
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "is not active in",

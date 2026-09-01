@@ -257,12 +257,12 @@ pub struct ExpirationExtension2 {
     pub new_expiration: ChainEpoch,
 }
 
-#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct UpgradeSectorQualityParams {
-    pub extensions: Vec<UpgradeSectorQuality>,
+    pub upgrades: Vec<UpgradeSectorQuality>,
 }
 
-#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct UpgradeSectorQuality {
     pub deadline: u64,
     pub partition: u64,
