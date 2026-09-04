@@ -235,6 +235,11 @@ impl Actor {
     /// Pays the named wallets' live and carried entitlements for one explicit stream.
     ///
     /// Anyone may call this method; amounts and payout events preserve request order.
+    ///
+    /// A claim always names a stream ID, and a stream that has been removed keeps answering under
+    /// that same ID, because removal files its unpaid rows as a tombstone there. The tombstone
+    /// deletes itself when its last row is claimed, and the ID returns zeros from then on. A
+    /// wallet owed by several streams claims one stream at a time, live or tombstoned alike.
     fn claim(rt: &impl Runtime, params: ClaimParams) -> Result<ClaimReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         if params.wallets.len() > MAX_RECIPIENTS {

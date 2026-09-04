@@ -1,17 +1,14 @@
-//! State validation, in three tiers.
+//! What has to be true of the persisted state in distinct three groups, and who checks each.
 //!
-//! FIP-0118 2.4.3 and 2.4.8 distinguish three tiers of state trust:
+//! - **structure**: keys sorted and unique, sizes within the bounds, deferred payloads that
+//!   decode to their canonical shape, stream IDs disjoint across live streams, tombstones and
+//!   pending registrations, and tombstone rows within capacity.
+//! - **accounting**: one accrual row per live explicit stream and no others, accruals
+//!   non-negative, recipient rows positive, and no wallet claimed more than it has earned.
+//! - **schedule**: every weight record in band, and the weights summing to at most `DENOM` at
+//!   every breakpoint from a given epoch onward.
 //!
-//! - **structure**: sorted unique keys, bounds, deferred payloads decoding to their canonical
-//!   shape, stream IDs disjoint across live streams, tombstones and pending registrations,
-//!   tombstone capacity.
-//! - **accounting**: accrual rows corresponding one to one with the live explicit streams,
-//!   non-negative accruals, positive recipient rows, each claimed amount within what its
-//!   recipient has earned.
-//! - **schedule**: every weight record in band, and the aggregate within `DENOM` at every
-//!   breakpoint from a given epoch onward.
-//!
-//! Each entry point requires a different set, and fails differently when one does not hold:
+//! Who needs which, and what happens when one fails:
 //!
 //! | entry | structure | accounting | schedule |
 //! |---|---|---|---|
@@ -20,13 +17,13 @@
 //! | award | gas only | gas only | gas only |
 //! | invariant checker | reported | reported | reported |
 //!
-//! Each tier runs once where it's needed. [`structure`] and [`accounting`] run together when
-//! a [`Ledger`](super::Ledger) is constructed, which is the only way an operation receives state,
-//! so operations below that point assume both and re-prove neither. [`schedule`] is not held at
-//! load, because claims, cancellation and `SetShares` stay usable from an invalid schedule
-//! (2.4.8); the queue applies it from the epoch each write becomes effective, and
-//! [`schedule_at`] applies it at the award's own epoch. [`validate_streams_state`] runs all
-//! three (also what `testing.rs` reports from).
+//! Each group is checked once, where it's needed. [`structure`] and [`accounting`] run when a
+//! [`Ledger`](super::Ledger) is built, and building one is the only way an operation gets its
+//! state, so nothing past that point checks them again. [`schedule`] is deliberately not part
+//! of that: claims, cancellation and `SetShares` have to keep working while the schedule is
+//! broken (FIP-0118 2.4.8), so the queue checks it from each write's effective epoch and
+//! [`schedule_at`] checks it at the award's epoch. [`validate_streams_state`] runs all three and
+//! is what `testing.rs` reports from.
 
 use std::collections::BTreeSet;
 
@@ -43,7 +40,7 @@ use super::{
     StreamAccrual, StreamsState,
 };
 
-/// The structure invariants tier: the shape of the streams block, independent of accounting and
+/// The structure invariants: the shape of the streams block, independent of accounting and
 /// weights.
 pub(crate) fn structure(streams: &StreamsState) -> Result<()> {
     validate_pending_queue(&streams.pending_writes)?;
@@ -73,7 +70,7 @@ pub(crate) fn structure(streams: &StreamsState) -> Result<()> {
     Ok(())
 }
 
-/// The accounting invariants tier: the accrual rows against the explicit streams they belong to.
+/// The accounting invariants: the accrual rows against the explicit streams they belong to.
 pub(crate) fn accounting(streams: &StreamsState, accrued: &[StreamAccrual]) -> Result<()> {
     ensure!(accrued.is_sorted_by(|a, b| a.id < b.id), "explicit-stream accruals are not ordered");
 
@@ -103,7 +100,7 @@ pub(crate) fn accounting(streams: &StreamsState, accrued: &[StreamAccrual]) -> R
     Ok(())
 }
 
-/// The schedule invariants tier: every record in band and the envelope within `DENOM` from `from`
+/// The schedule invariants: every record in band and the envelope within `DENOM` from `from`
 /// onward.
 ///
 /// The sum is piecewise linear, so checking it at every record's breakpoints and at the epoch

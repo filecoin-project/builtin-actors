@@ -60,9 +60,7 @@ use serde::{Deserialize, Serialize};
 
 use super::invariants::validate_tombstone_capacity;
 use super::queue::PendingWriteOp;
-use super::{
-    DENOM, Ledger, MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, StreamId, accrual, accrual_mut,
-};
+use super::{DENOM, Ledger, MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, StreamId};
 
 /// One recipient entry in a share-map message and in persisted distribution state.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
@@ -154,7 +152,7 @@ impl RecipientTable {
         count + self.0.len() - row_idx + shares.len() - share_idx
     }
 
-    pub fn len(&self) -> usize {
+    pub(super) fn len(&self) -> usize {
         self.0.len()
     }
 
@@ -262,15 +260,13 @@ impl Ledger {
             .pending_writes
             .iter()
             .any(|write| write.op == PendingWriteOp::RemoveStream);
-        let stream =
-            self.streams.stream_mut(id).ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
-        let distribution =
-            stream.explicit_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
-        let accrual = accrual_mut(&mut self.accrued, id)
-            .expect("accounting invariants: every explicit stream has an accrual row");
+        ensure!(self.streams.has_stream(id), "stream {id} not found");
+        let Some((distribution, accrual)) = self.explicit_and_accrual_mut(id) else {
+            return Err(anyhow::anyhow!("stream {id} is implicit"));
+        };
 
         let mut next_distribution = distribution.clone();
-        let burn = fold(&mut next_distribution, &accrual.amount);
+        let burn = fold(&mut next_distribution, accrual);
         let reserved_rows = next_distribution.payable.union_len(&shares);
         ensure!(
             reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
@@ -279,7 +275,7 @@ impl Ledger {
         next_distribution.shares = shares;
 
         *distribution = next_distribution;
-        accrual.amount = TokenAmount::zero();
+        *accrual = TokenAmount::zero();
         // A pending removal has reserved tombstone rows for the map this fold leaves behind.
         if removal_pending {
             validate_tombstone_capacity(&self.streams)?;
@@ -288,6 +284,11 @@ impl Ledger {
     }
 
     /// Claims live and carried earnings from either a registered stream or its tombstone.
+    ///
+    /// A claim always names a stream, and a removed stream is claimed under the same ID it had,
+    /// because removal moves its unpaid rows into a tombstone filed under that ID. The tombstone
+    /// deletes itself once its last row is claimed, and the ID then answers with zeros. A wallet
+    /// owed by several streams claims from one stream at a time, live or tombstoned.
     ///
     /// A `None` wallet is one the actor layer could not resolve. Stored recipients are ID
     /// addresses, so such a wallet matches no row and we pass that through back to the caller with
@@ -299,13 +300,10 @@ impl Ledger {
     ) -> Result<ClaimResult> {
         self.streams_dirty = true;
         if self.streams.has_stream(id) {
-            let distribution = self
-                .streams
-                .explicit_mut(id)
-                .ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
-            let pool = accrual(&self.accrued, id)
-                .expect("accounting invariants: every explicit stream has an accrual row");
-            Ok(claim_live(distribution, &pool.amount, wallets))
+            let Some((distribution, accrual)) = self.explicit_and_accrual_mut(id) else {
+                return Err(anyhow::anyhow!("stream {id} is implicit"));
+            };
+            Ok(claim_live(distribution, accrual, wallets))
         } else if let Some(tombstone) = self.streams.tombstone_mut(id) {
             // A tombstone holds payable rows and nothing else, so a claim against it is a drain.
             let result: ClaimResult = wallets

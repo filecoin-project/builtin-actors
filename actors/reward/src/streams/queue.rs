@@ -93,10 +93,7 @@ use super::weights::{
     WeightRecord, WeightRecordUpdate, WeightRecordsPayload, validate_weight_record,
     validate_weight_updates,
 };
-use super::{
-    Ledger, MAX_PENDING_WRITES, MAX_STREAMS, Stream, StreamAccrual, StreamId, StreamsState,
-    accrual_mut, insert_accrual, take_accrual,
-};
+use super::{Ledger, MAX_PENDING_WRITES, MAX_STREAMS, Stream, StreamId, StreamsState};
 
 const EMPTY_TUPLE_CBOR: &[u8] = &[0x80];
 
@@ -350,7 +347,7 @@ pub struct SetDistributionPayload {
 ///
 /// This crosses Rust call boundaries only so doesn't need to be encodable.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ApplyResult {
+pub(crate) struct ApplyResult {
     pub fold_dust: TokenAmount,
     /// Successful writes for actor-layer events after a committed application. Admission-only
     /// projections discard them.
@@ -400,15 +397,13 @@ impl Ledger {
                     claimed_period: RecipientTable::default(),
                 });
                 if distribution.is_some() {
-                    insert_accrual(&mut self.accrued, id);
+                    self.insert_accrual(id);
                 }
                 self.streams.insert_stream(Stream { id, weight: weight.clone(), distribution });
                 TokenAmount::zero()
             }
-            QueuedCall::Remove { id } => remove_stream(&mut self.streams, &mut self.accrued, *id)?,
-            QueuedCall::SetDistribution { id, writer } => {
-                replace_writer(&mut self.streams, &mut self.accrued, *id, *writer)?
-            }
+            QueuedCall::Remove { id } => self.remove_stream(*id)?,
+            QueuedCall::SetDistribution { id, writer } => self.replace_writer(*id, *writer)?,
         };
         // Only the weight envelope needs checking here. The stream table is guarded by the
         // registration preconditions above, a fold only moves value between existing recipients,
@@ -416,6 +411,40 @@ impl Ledger {
         // admitted.
         schedule(&self.streams.streams, effective).map_err(Stranded::Schedule)?;
         Ok(dust)
+    }
+
+    /// Removes a live stream, folding its closing period into a tombstone when anything is unpaid.
+    pub(super) fn remove_stream(&mut self, id: StreamId) -> Result<TokenAmount, Stranded> {
+        let mut stream = self.streams.take_stream(id).ok_or(Stranded::MissingStream(id))?;
+        let Some(distribution) = stream.explicit_mut() else {
+            return Ok(TokenAmount::zero());
+        };
+        let accrual = self
+            .take_accrual(id)
+            .expect("accounting invariants: every explicit stream has an accrual row");
+        let burn = fold(distribution, &accrual);
+        if !distribution.payable.is_empty() {
+            self.streams.insert_tombstone(id, std::mem::take(&mut distribution.payable));
+        }
+        Ok(burn)
+    }
+
+    /// Closes an explicit stream's period and points it at a new designated writer.
+    pub(super) fn replace_writer(
+        &mut self,
+        id: StreamId,
+        writer: Address,
+    ) -> Result<TokenAmount, Stranded> {
+        if !self.streams.has_stream(id) {
+            return Err(Stranded::MissingStream(id));
+        }
+        let Some((distribution, accrual)) = self.explicit_and_accrual_mut(id) else {
+            return Err(Stranded::NotExplicit(id));
+        };
+        let burn = fold(distribution, accrual);
+        *accrual = TokenAmount::zero();
+        distribution.writer = writer;
+        Ok(burn)
     }
 
     /// Applies every write due through `epoch`, each validated from its own effective epoch just
@@ -582,42 +611,6 @@ impl Ledger {
         }
         Ok(projection)
     }
-}
-
-/// Removes a live stream, folding its closing period into a tombstone when anything is unpaid.
-pub(super) fn remove_stream(
-    streams: &mut StreamsState,
-    accruals: &mut Vec<StreamAccrual>,
-    id: StreamId,
-) -> Result<TokenAmount, Stranded> {
-    let mut stream = streams.take_stream(id).ok_or(Stranded::MissingStream(id))?;
-    let Some(distribution) = stream.explicit_mut() else {
-        return Ok(TokenAmount::zero());
-    };
-    let accrual = take_accrual(accruals, id)
-        .expect("accounting invariants: every explicit stream has an accrual row");
-    let burn = fold(distribution, &accrual.amount);
-    if !distribution.payable.is_empty() {
-        streams.insert_tombstone(id, std::mem::take(&mut distribution.payable));
-    }
-    Ok(burn)
-}
-
-/// Closes an explicit stream's period and points it at a new designated writer.
-pub(super) fn replace_writer(
-    streams: &mut StreamsState,
-    accruals: &mut [StreamAccrual],
-    id: StreamId,
-    writer: Address,
-) -> Result<TokenAmount, Stranded> {
-    let stream = streams.stream_mut(id).ok_or(Stranded::MissingStream(id))?;
-    let distribution = stream.explicit_mut().ok_or(Stranded::NotExplicit(id))?;
-    let accrual = accrual_mut(accruals, id)
-        .expect("accounting invariants: every explicit stream has an accrual row");
-    let burn = fold(distribution, &accrual.amount);
-    accrual.amount = TokenAmount::zero();
-    distribution.writer = writer;
-    Ok(burn)
 }
 
 fn timelock_epoch(current_epoch: ChainEpoch, timelock_epochs: ChainEpoch) -> Result<ChainEpoch> {

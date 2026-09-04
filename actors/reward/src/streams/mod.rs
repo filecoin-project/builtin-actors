@@ -36,21 +36,38 @@ pub use self::distribution::{
     DistributionInit, ExplicitDistribution, RecipientAmount, RecipientShare, RecipientTable,
 };
 pub(crate) use self::invariants::validate_streams_state;
+pub(crate) use self::queue::{ApplyResult, QueuedCall, Slot};
 pub use self::queue::{
-    ApplyResult, PendingWrite, PendingWriteOp, RegisterStreamPayload, SetDistributionPayload,
+    PendingWrite, PendingWriteOp, RegisterStreamPayload, SetDistributionPayload,
 };
-pub(crate) use self::queue::{QueuedCall, Slot};
 pub use self::weights::{WeightRecord, WeightRecordUpdate, WeightRecordsPayload};
 
 pub type StreamId = u64;
 
+// These bound the work an award or a mutation can do, and raising any of them takes a FIP and a
+// network upgrade that reshapes the affected structures for the new scale (FIP-0118 2.4.9).
+
+/// The fixed point scale for weights and shares (FIP-0118 2.4.1(4)). At 10^18 the percentages the
+/// FIP is written in are exact integers, and a wire share map sums to exactly this.
 pub const DENOM: u64 = 1_000_000_000_000_000_000;
+/// Streams the schedule can carry, counting the implicit consensus stream.
 pub const MAX_STREAMS: usize = 8;
+/// Recipients in one share map, and wallets in one `Claim` batch.
 pub const MAX_RECIPIENTS: usize = 64;
+/// Payable rows one live stream carries, which covers the union of an outgoing share map with an
+/// incoming one. The cap is per stream, so a hostile writer fills only its own stream's table, and
+/// one full `Claim` batch drains half of it.
 pub const MAX_PAYABLE_ROWS_PER_STREAM: usize = 2 * MAX_RECIPIENTS;
+/// Payable rows across every tombstone. Each pending removal reserves at least `MAX_RECIPIENTS` of
+/// it, so at most four removals are ever in flight together.
 pub const MAX_TOMBSTONE_ROWS: usize = 256;
+/// Registration, removal and writer change, the three operations one stream can have queued.
 const STREAM_SCOPED_PENDING_OPS: usize = 3;
+/// `SetWeightRecords` and `StepWeightRecords`, which act on the whole schedule.
 const SCHEDULE_WIDE_PENDING_OPS: usize = 2;
+/// Entries in the pending-write queue, which is the slot space of every per-stream operation
+/// across a full stream table plus the two schedule-wide slots. The queue enforces it as a plain
+/// length check rather than deriving it from the slots in use.
 pub const MAX_PENDING_WRITES: usize =
     MAX_STREAMS * STREAM_SCOPED_PENDING_OPS + SCHEDULE_WIDE_PENDING_OPS;
 
@@ -87,11 +104,19 @@ pub struct Tombstone {
 }
 
 /// Stream state persisted as the block referenced by `State.streams_root`.
+///
+/// A removed stream leaves a tombstone under its own ID holding the rows it had not paid, so a
+/// live ID and a tombstoned ID never name the same stream at once. A `RegisterStream` for an ID
+/// that is live, tombstoned or already queued for registration is rejected at admission by
+/// `ensure_stream_id_available`, and one whose ID has become live or tombstoned since strands at
+/// application as `Stranded::StreamIdInUse`. An ID therefore comes back into use only once its
+/// tombstone is gone, which is when its last row is claimed, and a removal that leaves nothing
+/// unpaid files no tombstone at all.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct StreamsState {
     /// Ordered by stream ID.
     pub streams: Vec<Stream>,
-    /// Ordered by stream ID.
+    /// Ordered by stream ID, disjoint from the live streams.
     pub tombstones: Vec<Tombstone>,
     /// Ordered by effective epoch; equal epochs retain queue position.
     pub pending_writes: Vec<PendingWrite>,
@@ -168,29 +193,6 @@ pub struct StreamAccrual {
     pub amount: TokenAmount,
 }
 
-/// The accrual row for `id`; the accounting invariants give every live explicit stream one.
-pub(super) fn accrual(rows: &[StreamAccrual], id: StreamId) -> Option<&StreamAccrual> {
-    rows.iter().find(|row| row.id == id)
-}
-
-pub(super) fn accrual_mut(rows: &mut [StreamAccrual], id: StreamId) -> Option<&mut StreamAccrual> {
-    rows.iter_mut().find(|row| row.id == id)
-}
-
-/// Opens an accrual row for a newly registered explicit stream, keeping the rows ascending.
-pub(super) fn insert_accrual(rows: &mut Vec<StreamAccrual>, id: StreamId) {
-    let idx = rows
-        .binary_search_by_key(&id, |row| row.id)
-        .expect_err("accounting invariants: an accrual row belongs to one live explicit stream");
-    rows.insert(idx, StreamAccrual { id, amount: TokenAmount::zero() });
-}
-
-/// Closes a removed stream's accrual row and hands over its balance.
-pub(super) fn take_accrual(rows: &mut Vec<StreamAccrual>, id: StreamId) -> Option<StreamAccrual> {
-    let idx = rows.iter().position(|row| row.id == id)?;
-    Some(rows.remove(idx))
-}
-
 /// Stream state that has passed the structure and accounting invariants.
 ///
 /// Construction is the only place either invariant runs, and it is the only way to obtain one, so
@@ -254,6 +256,44 @@ impl Ledger {
 
     pub(crate) fn streams(&self) -> &StreamsState {
         &self.streams
+    }
+
+    /// A live explicit stream's distribution together with the accrual that it pays from.
+    ///
+    /// The accounting invariants pair the two so this becomes `None` only when `id` doesn't
+    /// identify a live explicit stream or it identifies the implicit one.
+    /// A fold also needs both halves at once and they live in different structures, so this is the
+    /// one lookup that borrows the pair together.
+    fn explicit_and_accrual_mut(
+        &mut self,
+        id: StreamId,
+    ) -> Option<(&mut ExplicitDistribution, &mut TokenAmount)> {
+        let distribution = self.streams.explicit_mut(id)?;
+        let row = self
+            .accrued
+            .iter_mut()
+            .find(|row| row.id == id)
+            .expect("accounting invariants: every explicit stream has an accrual row");
+        Some((distribution, &mut row.amount))
+    }
+
+    /// A live explicit stream's accrual, which the accounting invariants give every one of them.
+    fn accrual_mut(&mut self, id: StreamId) -> Option<&mut TokenAmount> {
+        self.accrued.iter_mut().find(|row| row.id == id).map(|row| &mut row.amount)
+    }
+
+    /// Opens an accrual row for a newly registered explicit stream, keeping the rows ascending.
+    fn insert_accrual(&mut self, id: StreamId) {
+        let idx = self.accrued.binary_search_by_key(&id, |row| row.id).expect_err(
+            "accounting invariants: an accrual row belongs to one live explicit stream",
+        );
+        self.accrued.insert(idx, StreamAccrual { id, amount: TokenAmount::zero() });
+    }
+
+    /// Closes a removed stream's accrual row and hands over its balance.
+    fn take_accrual(&mut self, id: StreamId) -> Option<TokenAmount> {
+        let idx = self.accrued.iter().position(|row| row.id == id)?;
+        Some(self.accrued.remove(idx).amount)
     }
 }
 

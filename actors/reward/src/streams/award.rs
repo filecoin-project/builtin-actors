@@ -66,7 +66,7 @@ use num_traits::Zero;
 use super::invariants::schedule_at;
 use super::queue::ApplyResult;
 use super::weights::compute_weight;
-use super::{DENOM, Ledger, StreamAccrual, StreamId, StreamsState, accrual_mut};
+use super::{DENOM, Ledger, StreamAccrual, StreamId, StreamsState};
 
 /// One block reward split into its destinations.
 ///
@@ -190,9 +190,10 @@ impl Ledger {
     /// removal moves both together so we never have a mismatch.
     pub(crate) fn accrue(&mut self, portions: &[(StreamId, TokenAmount)]) {
         for (id, amount) in portions {
-            let row = accrual_mut(&mut self.accrued, *id)
+            let accrual = self
+                .accrual_mut(*id)
                 .expect("accounting invariants: every explicit stream has an accrual row");
-            row.amount += amount;
+            *accrual += amount;
         }
     }
 }
@@ -200,6 +201,8 @@ impl Ledger {
 /// Explicit-stream funds held by f02. This is the unclaimed current-period earnings across the live
 /// streams, plus every carried balance, live or tombstoned.
 ///
+/// This is the slice-shaped form of `Ledger::liability`, for a caller holding no `Ledger`. The
+/// invariant checker measures state that may be corrupt, which is state no `Ledger` would accept.
 /// The caller's responsible for maintaining the accounting invariants (which every `Ledger` does,
 /// and which the invariant checker proves before it measures a persisted state).
 pub fn explicit_liability(streams: &StreamsState, accrued: &[StreamAccrual]) -> TokenAmount {
