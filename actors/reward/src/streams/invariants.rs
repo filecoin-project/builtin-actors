@@ -25,8 +25,8 @@
 //! so operations below that point assume both and re-prove neither. [`schedule`] is not held at
 //! load, because claims, cancellation and `SetShares` stay usable from an invalid schedule
 //! (2.4.8); the queue applies it from the epoch each write becomes effective, and the award
-//! applies it at its own epoch. [`validate_streams_state`] runs all three plus the projected
-//! queue, and is what `testing.rs` reports from.
+//! applies it at its own epoch. [`validate_streams_state`] runs all three, and is what
+//! `testing.rs` reports from.
 
 use std::collections::BTreeSet;
 
@@ -36,10 +36,10 @@ use fvm_shared::clock::ChainEpoch;
 use super::distribution::{
     validate_amount_rows, validate_id_address, validate_period_claims, validate_stored_shares,
 };
-use super::queue::{PendingWriteOp, validate_pending_queue, validate_projected_queue_inner};
-use super::weights::validate_weight_schedule;
+use super::queue::{PendingWriteOp, validate_pending_queue};
+use super::weights::{compute_weight, validate_weight_record, weight_breakpoints};
 use super::{
-    MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, MAX_STREAMS, MAX_TOMBSTONE_ROWS, Stream,
+    DENOM, MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, MAX_STREAMS, MAX_TOMBSTONE_ROWS, Stream,
     StreamAccrual, StreamsState,
 };
 
@@ -96,10 +96,7 @@ pub(super) fn accounting(streams: &StreamsState, accrued: &[StreamAccrual]) -> R
         );
         // Exact accrual-ID equality above proves this is a live explicit stream.
         let distribution = streams
-            .streams
-            .iter()
-            .find(|stream| stream.id == accrual.id)
-            .and_then(Stream::explicit)
+            .explicit(accrual.id)
             .expect("explicit-stream accrual IDs matched explicit streams");
         validate_period_claims(distribution, &accrual.amount)?;
     }
@@ -108,12 +105,26 @@ pub(super) fn accounting(streams: &StreamsState, accrued: &[StreamAccrual]) -> R
 
 /// The schedule invariants tier: every record in band and the envelope within `DENOM` from `from`
 /// onward.
+///
+/// The sum is piecewise linear, so checking it at every record's breakpoints and at the epoch
+/// domain's endpoint covers every epoch in between.
 pub(super) fn schedule(streams: &[Stream], from: ChainEpoch) -> Result<()> {
-    validate_weight_schedule(streams, from)
+    let mut epochs = BTreeSet::from([from, ChainEpoch::MAX]);
+    for stream in streams {
+        validate_weight_record(&stream.weight)?;
+        epochs.extend(weight_breakpoints(&stream.weight, from));
+    }
+
+    for epoch in epochs {
+        let sum: u128 =
+            streams.iter().map(|stream| u128::from(compute_weight(&stream.weight, epoch))).sum();
+        ensure!(sum <= u128::from(DENOM), "stream weights exceed DENOM at epoch {epoch}: {sum}");
+    }
+    Ok(())
 }
 
-/// The live stream table and its stored rows: the part of [`structure`] a transition can break.
-pub(super) fn stream_table(streams: &[Stream]) -> Result<()> {
+/// The live stream table and its stored rows.
+fn stream_table(streams: &[Stream]) -> Result<()> {
     ensure!(streams.len() <= MAX_STREAMS, "stream count exceeds maximum {MAX_STREAMS}");
     ensure!(streams.is_sorted_by(|a, b| a.id < b.id), "stream IDs are not ordered");
     ensure!(!streams.iter().any(|stream| stream.id == 0), "stream ID 0 is reserved");
@@ -144,7 +155,7 @@ pub(super) fn stream_table(streams: &[Stream]) -> Result<()> {
     Ok(())
 }
 
-/// Validates persisted stream state and its queued schedule at `current_epoch`.
+/// Validates persisted stream state and its schedule at `current_epoch`.
 pub(crate) fn validate_streams_state(
     streams: &StreamsState,
     accrued: &[StreamAccrual],
@@ -152,10 +163,7 @@ pub(crate) fn validate_streams_state(
 ) -> Result<()> {
     structure(streams)?;
     accounting(streams, accrued)?;
-    schedule(&streams.streams, current_epoch)?;
-    // Persisted writes may be past due after null rounds or a quiet stream-engine interval.
-    validate_projected_queue_inner(streams, current_epoch, None, false, None)?;
-    Ok(())
+    schedule(&streams.streams, current_epoch)
 }
 
 /// The tombstone row bound, which reserves `MAX_RECIPIENTS` or the removal's own union for every
@@ -167,14 +175,9 @@ pub(super) fn validate_tombstone_capacity(streams: &StreamsState) -> Result<()> 
             continue;
         }
         let id = write.id.expect("validated removal has a stream ID");
-        rows += streams
-            .streams
-            .iter()
-            .find(|stream| stream.id == id)
-            .and_then(Stream::explicit)
-            .map_or(MAX_RECIPIENTS, |distribution| {
-                MAX_RECIPIENTS.max(distribution.payable.union_len(&distribution.shares))
-            });
+        rows += streams.explicit(id).map_or(MAX_RECIPIENTS, |distribution| {
+            MAX_RECIPIENTS.max(distribution.payable.union_len(&distribution.shares))
+        });
     }
     ensure!(
         rows <= MAX_TOMBSTONE_ROWS,

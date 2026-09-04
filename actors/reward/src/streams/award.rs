@@ -65,7 +65,7 @@ use num_traits::Zero;
 
 use super::distribution::{validate_amount_rows, validate_period_claims};
 use super::weights::{compute_weight, validate_weight_record};
-use super::{DENOM, Stream, StreamAccrual, StreamsState};
+use super::{DENOM, Stream, StreamAccrual, StreamsState, accrual_mut};
 
 /// One block reward split into its destinations.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -134,10 +134,8 @@ pub(crate) fn allocate_reward(
 /// accounting invariants pairs one to one; a projected registration or removal moves both together.
 pub(crate) fn accrue_explicit(accruals: &mut [StreamAccrual], portions: &[StreamAccrual]) {
     for portion in portions {
-        let row = accruals
-            .iter_mut()
-            .find(|row| row.id == portion.id)
-            .expect("accounting invariant: every explicit stream has an accrual row");
+        let row = accrual_mut(accruals, portion.id)
+            .expect("accounting invariants: every explicit stream has an accrual row");
         row.amount += &portion.amount;
     }
 }

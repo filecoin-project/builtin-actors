@@ -3,9 +3,8 @@ use fvm_shared::clock::ChainEpoch;
 use num_traits::ToPrimitive;
 
 use super::*;
-use crate::streams::weights::{
-    compute_weight, validate_weight_record, validate_weight_schedule, weight_breakpoints,
-};
+use crate::streams::invariants::schedule;
+use crate::streams::weights::{compute_weight, validate_weight_record, weight_breakpoints};
 
 fn compute_weight_unbounded(record: &WeightRecord, epoch: ChainEpoch) -> u64 {
     let delta = BigInt::from(epoch) - BigInt::from(record.t_start);
@@ -116,13 +115,13 @@ fn validates_weight_records_and_piecewise_schedule() {
         stream(1, pct(60), None),
         stream(2, pct(40), Some(explicit(200, shares(&[(101, DENOM)])))),
     ];
-    validate_weight_schedule(&valid, 0).unwrap();
+    schedule(&valid, 0).unwrap();
 
     let invalid = vec![
         stream(1, pct(60), None),
         stream(2, pct(41), Some(explicit(200, shares(&[(101, DENOM)])))),
     ];
-    let error = validate_weight_schedule(&invalid, 0).unwrap_err();
+    let error = schedule(&invalid, 0).unwrap_err();
     assert!(error.to_string().contains("exceed DENOM"));
 
     let crossing = vec![
@@ -139,7 +138,7 @@ fn validates_weight_records_and_piecewise_schedule() {
         },
         stream(2, pct(40), Some(explicit(200, shares(&[(101, DENOM)])))),
     ];
-    assert!(validate_weight_schedule(&crossing, 0).is_err());
+    assert!(schedule(&crossing, 0).is_err());
 
     let near_end = i64::MAX - 100;
     let endpoint_overlap = vec![
@@ -166,7 +165,7 @@ fn validates_weight_records_and_piecewise_schedule() {
             distribution: Some(explicit(200, shares(&[(101, DENOM)]))),
         },
     ];
-    assert!(validate_weight_schedule(&endpoint_overlap, near_end).is_err());
+    assert!(schedule(&endpoint_overlap, near_end).is_err());
 }
 
 #[test]
@@ -185,7 +184,7 @@ fn solstice_migration_bootstrap_records_have_canonical_anchors() {
 
     validate_weight_record(&consensus).unwrap();
     validate_weight_record(&service).unwrap();
-    validate_weight_schedule(
+    schedule(
         &[
             Stream { id: 1, weight: consensus, distribution: None },
             Stream {

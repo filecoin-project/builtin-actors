@@ -75,13 +75,108 @@ fn tombstone(id: StreamId, first_recipient: u64, rows: usize) -> Tombstone {
     }
 }
 
+/// A ledger over state the test built by hand, bypassing the invariants a load would run.
+///
+/// Wherever the operation under test reads an accrual row, the state given here has to satisfy
+/// those invariants anyway: the engine's accrual lookups are `expect`s, so a live explicit stream
+/// without its row panics rather than returning the rejection the test is looking for.
+fn ledger(streams: &StreamsState, accruals: &[StreamAccrual]) -> Ledger {
+    Ledger { streams: streams.clone(), accrued: accruals.to_vec(), streams_dirty: false }
+}
+
+/// The queue operations as the actor drives them: load a ledger, act, keep what it holds only if
+/// the call was admitted, since a rejected ledger is unspecified and the caller discards it.
+///
+/// Admission never changes the accrual rows, so these hand them back untouched and take a slice.
+fn admit(
+    streams: &mut StreamsState,
+    accruals: &[StreamAccrual],
+    call: QueuedCall,
+    epoch: ChainEpoch,
+    timelock: ChainEpoch,
+) -> anyhow::Result<PendingWrite> {
+    let mut ledger = ledger(streams, accruals);
+    let queued = ledger.admit(call, epoch, timelock).cloned()?;
+    *streams = ledger.streams;
+    Ok(queued)
+}
+
+fn queue_weight_records(
+    streams: &mut StreamsState,
+    accruals: &[StreamAccrual],
+    epoch: ChainEpoch,
+    timelock: ChainEpoch,
+    op: PendingWriteOp,
+    updates: &[WeightRecordUpdate],
+) -> anyhow::Result<PendingWrite> {
+    let call = QueuedCall::Weights { op, updates: updates.to_vec() };
+    admit(streams, accruals, call, epoch, timelock)
+}
+
+fn queue_register_stream(
+    streams: &mut StreamsState,
+    accruals: &[StreamAccrual],
+    epoch: ChainEpoch,
+    timelock: ChainEpoch,
+    stream: Stream,
+    activation: ChainEpoch,
+) -> anyhow::Result<PendingWrite> {
+    let call = QueuedCall::Register {
+        id: stream.id,
+        weight: stream.weight,
+        distribution: stream.distribution.map(|distribution| DistributionInit {
+            writer: distribution.writer,
+            shares: distribution.shares,
+        }),
+        activation,
+    };
+    admit(streams, accruals, call, epoch, timelock)
+}
+
+fn queue_remove_stream(
+    streams: &mut StreamsState,
+    accruals: &[StreamAccrual],
+    epoch: ChainEpoch,
+    timelock: ChainEpoch,
+    id: StreamId,
+) -> anyhow::Result<PendingWrite> {
+    admit(streams, accruals, QueuedCall::Remove { id }, epoch, timelock)
+}
+
+fn queue_set_distribution(
+    streams: &mut StreamsState,
+    accruals: &[StreamAccrual],
+    epoch: ChainEpoch,
+    timelock: ChainEpoch,
+    id: StreamId,
+    writer: Address,
+) -> anyhow::Result<PendingWrite> {
+    admit(streams, accruals, QueuedCall::SetDistribution { id, writer }, epoch, timelock)
+}
+
+fn apply_due_writes(
+    streams: &mut StreamsState,
+    accruals: &mut Vec<StreamAccrual>,
+    epoch: ChainEpoch,
+) -> ApplyResult {
+    let mut ledger = ledger(streams, accruals);
+    let result = ledger.apply_due(epoch);
+    *streams = ledger.streams;
+    *accruals = ledger.accrued;
+    result
+}
+
 /// The cancellation path as the actor drives it: resolve the slot, then empty it.
 fn cancel(
     streams: &mut StreamsState,
     id: Option<StreamId>,
     op: PendingWriteOp,
 ) -> anyhow::Result<Option<PendingWrite>> {
-    Ok(super::queue::cancel_pending(streams, Slot::for_cancel(id, op)?))
+    let slot = Slot::for_cancel(id, op)?;
+    let mut ledger = ledger(streams, &[]);
+    let removed = ledger.cancel(slot);
+    *streams = ledger.streams;
+    Ok(removed)
 }
 
 fn amount(rows: &RecipientTable, recipient: u64) -> TokenAmount {

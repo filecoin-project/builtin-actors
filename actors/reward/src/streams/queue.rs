@@ -25,11 +25,11 @@
 //! prerequisite after admission, application has to be able to drop it, and admission has to
 //! validate against the state _as it will be at application_ rather than today's, since two
 //! writes, each fine on their own, can sum past one together. That's why both
-//! `validate_new_pending` and `apply_due_writes` replay the queue in effective order.
+//! [`Ledger::admit`] and [`Ledger::apply_due`] replay the queue in effective order.
 //!
 //! The admission rule: *W is admitted iff, applying the queue in effective order, W applies in
 //! the state its predecessors produce, and every write that applied before W's admission still
-//! applies after it*. The second clause is the subset check in `validate_new_pending`. It's
+//! applies after it*. The second clause is the subset check in [`Ledger::admit`]. It's
 //! there because a `RegisterStream` can have a far-future activation, so a `SetWeightRecords`
 //! admitted later but effective earlier applies first and could eat the headroom the
 //! registration was admitted on. Without it, admission would be a second way to strand a write,
@@ -72,6 +72,7 @@
 //! about what admission proves, stranding, and repair.
 
 use std::collections::BTreeSet;
+use std::fmt;
 
 use anyhow::{Result, ensure};
 use fvm_ipld_encoding::RawBytes;
@@ -80,18 +81,22 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use log::info;
 use num_traits::Zero;
 
 use super::distribution::{
     DistributionInit, ExplicitDistribution, RecipientTable, fold, validate_distribution_init,
     validate_id_address,
 };
-use super::invariants::{schedule, stream_table, validate_tombstone_capacity};
+use super::invariants::{schedule, validate_tombstone_capacity};
 use super::weights::{
     WeightRecord, WeightRecordUpdate, WeightRecordsPayload, validate_weight_record,
     validate_weight_updates,
 };
-use super::{MAX_PENDING_WRITES, Stream, StreamAccrual, StreamId, StreamsState, Tombstone};
+use super::{
+    Ledger, MAX_PENDING_WRITES, MAX_STREAMS, Stream, StreamAccrual, StreamId, StreamsState,
+    accrual_mut, insert_accrual, take_accrual,
+};
 
 const EMPTY_TUPLE_CBOR: &[u8] = &[0x80];
 
@@ -152,10 +157,68 @@ pub struct PendingWrite {
 }
 
 impl PendingWrite {
-    /// The slot this write occupies; `Err` for a persisted ID and operation that disagree.
-    fn slot(&self) -> Result<Slot> {
+    /// The slot this write occupies.
+    fn slot(&self) -> Slot {
         Slot::for_target(self.id, self.op)
+            .expect("structure invariants: every queued write names a slot")
     }
+}
+
+/// A prerequisite a queued write can lose between admission and application.
+///
+/// Only cancellation takes one away; the module doc says which earlier write provides each. This
+/// is the complete failure set of [`Ledger::apply`], so an `Err` there is always a drop.
+#[derive(Debug)]
+pub(super) enum Stranded {
+    /// A weights update, removal or writer change names an ID that is not live.
+    MissingStream(StreamId),
+    /// A writer change names the implicit stream.
+    NotExplicit(StreamId),
+    /// A registration's ID is live or tombstoned.
+    StreamIdInUse(StreamId),
+    /// A registration has no room left in the stream table.
+    StreamTableFull,
+    /// A registration would give the schedule a second implicit stream.
+    SecondImplicit,
+    /// A registration names the reserved ID 0.
+    ReservedId,
+    /// The weight schedule does not hold from the write's effective epoch onward, either because
+    /// a record is out of band or because the envelope exceeds `DENOM` at some epoch.
+    Schedule(anyhow::Error),
+}
+
+impl fmt::Display for Stranded {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Stranded::MissingStream(id) => write!(f, "stream {id} not found"),
+            Stranded::NotExplicit(id) => write!(f, "stream {id} is implicit"),
+            Stranded::StreamIdInUse(id) => write!(f, "stream ID {id} is live or tombstoned"),
+            Stranded::StreamTableFull => {
+                write!(f, "stream count exceeds maximum {MAX_STREAMS}")
+            }
+            Stranded::SecondImplicit => write!(f, "multiple implicit streams"),
+            Stranded::ReservedId => write!(f, "stream ID 0 is reserved"),
+            Stranded::Schedule(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+/// Whether the weight schedule holds before the queue is replayed.
+///
+/// `Repairing` is the exception FIP-0118 2.4.8 allows: from an invalid schedule a
+/// `SetWeightRecords` batch may still be admitted, provided it puts the schedule back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Baseline {
+    Valid,
+    Repairing,
+}
+
+/// The queue replayed in effective order: the slots that apply, and the prerequisite each of the
+/// others is missing.
+#[derive(Debug, Default)]
+struct Projection {
+    accepted: BTreeSet<Slot>,
+    stranded: Vec<(Slot, Stranded)>,
 }
 
 /// A queued write's operation and arguments, decoded from its payload.
@@ -164,11 +227,26 @@ impl PendingWrite {
 /// the CBOR in `PendingWrite.payload` is confined to [`QueuedCall::decode`] and
 /// [`QueuedCall::encode`].
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum QueuedCall {
-    Weights { op: PendingWriteOp, updates: Vec<WeightRecordUpdate> },
-    Register { id: StreamId, weight: WeightRecord, distribution: Option<DistributionInit> },
-    Remove { id: StreamId },
-    SetDistribution { id: StreamId, writer: Address },
+pub(crate) enum QueuedCall {
+    Weights {
+        op: PendingWriteOp,
+        updates: Vec<WeightRecordUpdate>,
+    },
+    Register {
+        id: StreamId,
+        weight: WeightRecord,
+        distribution: Option<DistributionInit>,
+        /// The epoch the stream activates, which is the entry's effective epoch rather than a
+        /// payload field.
+        activation: ChainEpoch,
+    },
+    Remove {
+        id: StreamId,
+    },
+    SetDistribution {
+        id: StreamId,
+        writer: Address,
+    },
 }
 
 impl QueuedCall {
@@ -189,6 +267,7 @@ impl QueuedCall {
                     id,
                     weight: payload.weight,
                     distribution: payload.distribution,
+                    activation: write.effective_epoch,
                 }
             }
             Slot::PerStream(id, PendingWriteOp::RemoveStream) => {
@@ -269,7 +348,7 @@ pub struct SetDistributionPayload {
 
 /// The effects of applying due writes, for the actor layer to settle after the transaction.
 ///
-/// This and the effect types below cross Rust call boundaries only so don't need to be encodable.
+/// This crosses Rust call boundaries only so doesn't need to be encodable.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ApplyResult {
     pub fold_dust: TokenAmount,
@@ -281,223 +360,264 @@ pub struct ApplyResult {
     pub dropped: Vec<PendingWrite>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct ProjectedStreams {
-    pub streams: StreamsState,
-    pub accruals: Vec<StreamAccrual>,
-    pub apply_result: ApplyResult,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CancelResult {
-    pub apply_result: ApplyResult,
-    /// Cancelled write for actor-layer events after a committed removal.
-    pub removed: Option<PendingWrite>,
-}
-
-/// Queues a weight batch at the timelock boundary after validating all projected writes.
-pub(crate) fn queue_weight_records(
-    streams: &mut StreamsState,
-    current_epoch: ChainEpoch,
-    timelock_epochs: ChainEpoch,
-    op: PendingWriteOp,
-    updates: &[WeightRecordUpdate],
-) -> Result<PendingWrite> {
-    ensure!(op.is_schedule_wide(), "invalid weight-record operation {op:?}");
-    let effective_epoch = timelock_epoch(current_epoch, timelock_epochs)?;
-    let mut updates = updates.to_vec();
-    updates.sort_by_key(|update| update.id);
-    validate_weight_updates(&updates)?;
-    let queued = QueuedCall::Weights { op, updates }.queue_entry(effective_epoch)?;
-
-    let mut proposed = streams.clone();
-    ensure_slot_available(&proposed, Slot::ScheduleWide(op))?;
-    proposed.pending_writes.push(queued.clone());
-    sort_pending(&mut proposed.pending_writes);
-    validate_new_pending(streams, &proposed, current_epoch, Slot::ScheduleWide(op))?;
-
-    *streams = proposed;
-    Ok(queued)
-}
-
-/// Queues registration at an activation epoch no earlier than the timelock boundary.
-pub(crate) fn queue_register_stream(
-    streams: &mut StreamsState,
-    current_epoch: ChainEpoch,
-    timelock_epochs: ChainEpoch,
-    stream: Stream,
-    activation_epoch: ChainEpoch,
-) -> Result<PendingWrite> {
-    ensure!(stream.id != 0, "stream ID 0 is reserved");
-    validate_weight_record(&stream.weight)?;
-    if let Some(distribution) = stream.explicit()
-        && (!distribution.payable.is_empty() || !distribution.claimed_period.is_empty())
-    {
-        return Err(anyhow::anyhow!("new stream has pre-existing accounting state"));
-    }
-    let mut distribution = stream.distribution.map(|distribution| DistributionInit {
-        writer: distribution.writer,
-        shares: distribution.shares,
-    });
-    if let Some(distribution) = &mut distribution {
-        distribution.shares.sort_by_key(|row| row.recipient);
-    }
-    validate_distribution_init(&distribution)?;
-    ensure_stream_id_available(streams, stream.id)?;
-    let slot = Slot::PerStream(stream.id, PendingWriteOp::RegisterStream);
-    ensure_slot_available(streams, slot)?;
-
-    let earliest = timelock_epoch(current_epoch, timelock_epochs)?;
-    ensure!(
-        activation_epoch >= earliest,
-        "activation epoch {activation_epoch} is before timelock floor {earliest}"
-    );
-    let queued = QueuedCall::Register { id: stream.id, weight: stream.weight, distribution }
-        .queue_entry(activation_epoch)?;
-
-    let mut proposed = streams.clone();
-    proposed.pending_writes.push(queued.clone());
-    sort_pending(&mut proposed.pending_writes);
-    validate_new_pending(streams, &proposed, current_epoch, slot)?;
-
-    *streams = proposed;
-    Ok(queued)
-}
-
-/// Queues removal; explicit-stream liabilities are settled when the write applies.
-pub(crate) fn queue_remove_stream(
-    streams: &mut StreamsState,
-    current_epoch: ChainEpoch,
-    timelock_epochs: ChainEpoch,
-    id: StreamId,
-) -> Result<PendingWrite> {
-    let effective_epoch = timelock_epoch(current_epoch, timelock_epochs)?;
-    let slot = Slot::PerStream(id, PendingWriteOp::RemoveStream);
-    ensure_slot_available(streams, slot)?;
-    let queued = QueuedCall::Remove { id }.queue_entry(effective_epoch)?;
-
-    let mut proposed = streams.clone();
-    proposed.pending_writes.push(queued.clone());
-    sort_pending(&mut proposed.pending_writes);
-    validate_new_pending(streams, &proposed, current_epoch, slot)?;
-    validate_tombstone_capacity(&proposed)?;
-
-    *streams = proposed;
-    Ok(queued)
-}
-
-/// Queues writer replacement; the outgoing period is settled when the write applies.
-pub(crate) fn queue_set_distribution(
-    streams: &mut StreamsState,
-    current_epoch: ChainEpoch,
-    timelock_epochs: ChainEpoch,
-    id: StreamId,
-    writer: Address,
-) -> Result<PendingWrite> {
-    let effective_epoch = timelock_epoch(current_epoch, timelock_epochs)?;
-    let slot = Slot::PerStream(id, PendingWriteOp::SetDistribution);
-    ensure_slot_available(streams, slot)?;
-    let queued = QueuedCall::SetDistribution { id, writer }.queue_entry(effective_epoch)?;
-
-    let mut proposed = streams.clone();
-    proposed.pending_writes.push(queued.clone());
-    sort_pending(&mut proposed.pending_writes);
-    validate_new_pending(streams, &proposed, current_epoch, slot)?;
-
-    *streams = proposed;
-    Ok(queued)
-}
-
-/// Empties one queue slot. Cancelling an empty slot is a no-op.
-pub(super) fn cancel_pending(streams: &mut StreamsState, slot: Slot) -> Option<PendingWrite> {
-    streams
-        .pending_writes
-        .iter()
-        .position(|write| write.slot().is_ok_and(|occupied| occupied == slot))
-        .map(|idx| streams.pending_writes.remove(idx))
-}
-
-/// Applies writes due through `epoch` before attempting cancellation.
-pub(crate) fn apply_due_writes_and_cancel(
-    streams: &mut StreamsState,
-    accruals: &mut Vec<StreamAccrual>,
-    epoch: ChainEpoch,
-    slot: Slot,
-) -> Result<CancelResult> {
-    let mut projected = project_due_writes(streams, accruals, epoch)?;
-    let removed = cancel_pending(&mut projected.streams, slot);
-    *streams = projected.streams;
-    *accruals = projected.accruals;
-    Ok(CancelResult { apply_result: projected.apply_result, removed })
-}
-
-/// Applies every write due through `epoch`, each validated from its own effective epoch just
-/// as its admission projected. From invalid weight state, only writes that restore a valid
-/// schedule apply and the rest are dropped.
-pub(crate) fn apply_due_writes(
-    streams: &mut StreamsState,
-    accruals: &mut Vec<StreamAccrual>,
-    epoch: ChainEpoch,
-) -> Result<ApplyResult> {
-    if streams.pending_writes.first().is_none_or(|write| write.effective_epoch > epoch) {
-        return Ok(ApplyResult::default());
-    }
-
-    let mut next_streams = streams.clone();
-    let mut next_accruals = accruals.clone();
-
-    let due_count = next_streams
-        .pending_writes
-        .iter()
-        .take_while(|write| write.effective_epoch <= epoch)
-        .count();
-    let due: Vec<_> = next_streams.pending_writes.drain(..due_count).collect();
-    let mut fold_dust = TokenAmount::zero();
-    let mut applied = Vec::new();
-    let mut dropped = Vec::new();
-
-    for write in due {
-        let Ok(call) = QueuedCall::decode(&write) else {
-            dropped.push(write);
-            continue;
+impl Ledger {
+    /// Applies one queued call in the state its predecessors left, from the epoch it becomes
+    /// effective.
+    ///
+    /// Returns the fold dust for the caller to burn, or the one prerequisite the call is missing.
+    /// Only `RemoveStream` and `SetDistribution` fold, closing the explicit stream's period before
+    /// it is tombstoned or re-pointed, so only they can leave dust; the other calls return zero.
+    fn apply(&mut self, call: &QueuedCall, effective: ChainEpoch) -> Result<TokenAmount, Stranded> {
+        let dust = match call {
+            QueuedCall::Weights { updates, .. } => {
+                for update in updates {
+                    let stream = self
+                        .streams
+                        .stream_mut(update.id)
+                        .ok_or(Stranded::MissingStream(update.id))?;
+                    stream.weight = update.weight.clone();
+                }
+                TokenAmount::zero()
+            }
+            QueuedCall::Register { id, weight, distribution, .. } => {
+                let id = *id;
+                if id == 0 {
+                    return Err(Stranded::ReservedId);
+                }
+                if self.streams.has_stream(id) || self.streams.has_tombstone(id) {
+                    return Err(Stranded::StreamIdInUse(id));
+                }
+                if self.streams.streams.len() >= MAX_STREAMS {
+                    return Err(Stranded::StreamTableFull);
+                }
+                if distribution.is_none() && self.streams.streams.iter().any(Stream::is_implicit) {
+                    return Err(Stranded::SecondImplicit);
+                }
+                let distribution = distribution.as_ref().map(|distribution| ExplicitDistribution {
+                    writer: distribution.writer,
+                    shares: distribution.shares.clone(),
+                    payable: RecipientTable::default(),
+                    claimed_period: RecipientTable::default(),
+                });
+                if distribution.is_some() {
+                    insert_accrual(&mut self.accrued, id);
+                }
+                self.streams.insert_stream(Stream { id, weight: weight.clone(), distribution });
+                TokenAmount::zero()
+            }
+            QueuedCall::Remove { id } => remove_stream(&mut self.streams, &mut self.accrued, *id)?,
+            QueuedCall::SetDistribution { id, writer } => {
+                replace_writer(&mut self.streams, &mut self.accrued, *id, *writer)?
+            }
         };
-        // Records-only first, to decide apply vs drop without touching the accruals. This is the
-        // same as admission, but now dealing with whatever cancellation may have removed.
-        let mut projected = next_streams.clone();
-        let stranded = apply_pending_transition(&mut projected, None, &call)
-            .and_then(|_| validate_transition_state(&projected, write.effective_epoch))
-            .is_err();
-        if stranded {
-            dropped.push(write);
-            continue;
+        // Only the weight envelope needs checking here. The stream table is guarded by the
+        // registration preconditions above, a fold only moves value between existing recipients,
+        // inserts stay sorted and positive, and tombstone room was charged when the removal was
+        // admitted.
+        schedule(&self.streams.streams, effective).map_err(Stranded::Schedule)?;
+        Ok(dust)
+    }
+
+    /// Applies every write due through `epoch`, each validated from its own effective epoch just
+    /// as its admission projected. From invalid weight state, only writes that restore a valid
+    /// schedule apply and the rest are dropped.
+    pub(crate) fn apply_due(&mut self, epoch: ChainEpoch) -> ApplyResult {
+        let due_count = self
+            .streams
+            .pending_writes
+            .iter()
+            .take_while(|write| write.effective_epoch <= epoch)
+            .count();
+        let due: Vec<PendingWrite> = self.streams.pending_writes.drain(..due_count).collect();
+        let mut result = ApplyResult::default();
+
+        for write in due {
+            let call = QueuedCall::decode(&write)
+                .expect("structure invariants: every queued payload decodes");
+            // A drop must leave no partial mutation, so a call runs on a copy that only success
+            // commits.
+            let mut next = self.clone();
+            match next.apply(&call, write.effective_epoch) {
+                Ok(dust) => {
+                    *self = next;
+                    result.fold_dust += dust;
+                    result.applied.push(write);
+                }
+                Err(stranded) => {
+                    info!(
+                        "dropping pending write {:?} effective at {}: {stranded}",
+                        call.slot(),
+                        write.effective_epoch
+                    );
+                    result.dropped.push(write);
+                }
+            }
         }
 
-        let mut candidate_streams = next_streams.clone();
-        let mut candidate_accruals = next_accruals.clone();
-        let write_dust =
-            apply_pending_transition(&mut candidate_streams, Some(&mut candidate_accruals), &call)?;
-        validate_transition_state(&candidate_streams, write.effective_epoch)?;
-        next_streams = candidate_streams;
-        next_accruals = candidate_accruals;
-        applied.push(write);
-        fold_dust += write_dust;
+        self.streams_dirty |= !(result.applied.is_empty() && result.dropped.is_empty());
+        result
     }
 
-    *streams = next_streams;
-    *accruals = next_accruals;
-    Ok(ApplyResult { fold_dust, applied, dropped })
+    /// Queues one SWA call, rejecting it unless it applies in the state its predecessors produce
+    /// and leaves every already-admitted call still applying.
+    ///
+    /// Returns the entry it inserted, for the actor layer's `write-queued` event.
+    pub(crate) fn admit(
+        &mut self,
+        mut call: QueuedCall,
+        epoch: ChainEpoch,
+        timelock: ChainEpoch,
+    ) -> Result<&PendingWrite> {
+        let effective = match &mut call {
+            QueuedCall::Weights { op, updates } => {
+                ensure!(op.is_schedule_wide(), "invalid weight-record operation {op:?}");
+                let effective = timelock_epoch(epoch, timelock)?;
+                updates.sort_by_key(|update| update.id);
+                validate_weight_updates(updates)?;
+                effective
+            }
+            QueuedCall::Register { id, weight, distribution, activation } => {
+                ensure!(*id != 0, "stream ID 0 is reserved");
+                validate_weight_record(weight)?;
+                if let Some(distribution) = distribution.as_mut() {
+                    distribution.shares.sort_by_key(|row| row.recipient);
+                }
+                validate_distribution_init(distribution)?;
+                ensure_stream_id_available(&self.streams, *id)?;
+                let earliest = timelock_epoch(epoch, timelock)?;
+                ensure!(
+                    *activation >= earliest,
+                    "activation epoch {activation} is before timelock floor {earliest}"
+                );
+                *activation
+            }
+            QueuedCall::Remove { .. } => timelock_epoch(epoch, timelock)?,
+            QueuedCall::SetDistribution { writer, .. } => {
+                validate_id_address(writer, "distribution writer")?;
+                timelock_epoch(epoch, timelock)?
+            }
+        };
+
+        let slot = call.slot();
+        ensure_slot_available(&self.streams, slot)?;
+        // Admission is the only thing that lengthens the queue, so this is the point where we need
+        // to do the bounds check.
+        let count = self.streams.pending_writes.len() + 1;
+        ensure!(
+            count <= MAX_PENDING_WRITES,
+            "pending write count {count} exceeds maximum {MAX_PENDING_WRITES}"
+        );
+        // Every method applies due writes before its own work, so nothing here is in the past.
+        debug_assert!(
+            self.streams.pending_writes.iter().all(|write| write.effective_epoch >= epoch),
+            "admission projects a queue that is entirely ahead of it"
+        );
+
+        // The queue as it stands has to project, which is also where the baseline comes from: from
+        // an invalid schedule, a SetWeightRecords batch is the one admissible repair (2.4.8).
+        let (baseline, before) = match self.project(epoch, Baseline::Valid) {
+            Ok(before) => (Baseline::Valid, before),
+            Err(_) if slot == Slot::ScheduleWide(PendingWriteOp::SetWeightRecords) => {
+                (Baseline::Repairing, self.project(epoch, Baseline::Repairing)?)
+            }
+            Err(error) => return Err(error),
+        };
+
+        self.streams.pending_writes.push(call.queue_entry(effective)?);
+        // Stable sorting preserves insertion order among calls effective at the same epoch.
+        self.streams.pending_writes.sort_by_key(|write| write.effective_epoch);
+        self.streams_dirty = true;
+
+        let after = self.project(epoch, baseline)?;
+        if let Some((_, stranded)) = after.stranded.iter().find(|(occupied, _)| *occupied == slot) {
+            return Err(anyhow::anyhow!("pending call {slot:?} is invalid: {stranded}"));
+        }
+        ensure!(
+            before.accepted.is_subset(&after.accepted),
+            "new call invalidates an existing pending call"
+        );
+        if let QueuedCall::Remove { .. } = call {
+            // A removal reserves the tombstone rows its fold may leave behind.
+            validate_tombstone_capacity(&self.streams)?;
+        }
+
+        Ok(self
+            .streams
+            .pending_writes
+            .iter()
+            .find(|write| write.slot() == slot)
+            .expect("the admitted call occupies its slot"))
+    }
+
+    /// Empties one queue slot. Cancelling an empty slot is a no-op.
+    pub(crate) fn cancel(&mut self, slot: Slot) -> Option<PendingWrite> {
+        // Cancellation rewrites the streams block whether or not the slot held a write.
+        self.streams_dirty = true;
+        let idx = self.streams.pending_writes.iter().position(|write| write.slot() == slot)?;
+        Some(self.streams.pending_writes.remove(idx))
+    }
+
+    /// Replays the queue in effective order on a copy of this ledger, through the same transition
+    /// application uses. Calls stranded by cancellation become future drops.
+    fn project(&self, epoch: ChainEpoch, baseline: Baseline) -> Result<Projection> {
+        if baseline == Baseline::Valid {
+            schedule(&self.streams.streams, epoch)?;
+        }
+        let mut projected = self.clone();
+        let mut projection = Projection::default();
+
+        for write in &self.streams.pending_writes {
+            let call = QueuedCall::decode(write)
+                .expect("structure invariants: every queued payload decodes");
+            // Validated from the entry's effective epoch, as at application, so a null round at
+            // that epoch cannot change which writes apply.
+            let mut candidate = projected.clone();
+            match candidate.apply(&call, write.effective_epoch) {
+                Ok(_) => {
+                    projected = candidate;
+                    projection.accepted.insert(call.slot());
+                }
+                Err(stranded) => projection.stranded.push((call.slot(), stranded)),
+            }
+        }
+        Ok(projection)
+    }
 }
 
-/// Projects due writes without mutating the supplied state.
-pub(super) fn project_due_writes(
-    streams: &StreamsState,
-    accruals: &[StreamAccrual],
-    epoch: ChainEpoch,
-) -> Result<ProjectedStreams> {
-    let mut projected_streams = streams.clone();
-    let mut projected_accruals = accruals.to_vec();
-    let apply_result = apply_due_writes(&mut projected_streams, &mut projected_accruals, epoch)?;
-    Ok(ProjectedStreams { streams: projected_streams, accruals: projected_accruals, apply_result })
+/// Removes a live stream, folding its closing period into a tombstone when anything is unpaid.
+pub(super) fn remove_stream(
+    streams: &mut StreamsState,
+    accruals: &mut Vec<StreamAccrual>,
+    id: StreamId,
+) -> Result<TokenAmount, Stranded> {
+    let mut stream = streams.take_stream(id).ok_or(Stranded::MissingStream(id))?;
+    let Some(distribution) = stream.explicit_mut() else {
+        return Ok(TokenAmount::zero());
+    };
+    let accrual = take_accrual(accruals, id)
+        .expect("accounting invariants: every explicit stream has an accrual row");
+    let burn = fold(distribution, &accrual.amount);
+    if !distribution.payable.is_empty() {
+        streams.insert_tombstone(id, std::mem::take(&mut distribution.payable));
+    }
+    Ok(burn)
+}
+
+/// Closes an explicit stream's period and points it at a new designated writer.
+pub(super) fn replace_writer(
+    streams: &mut StreamsState,
+    accruals: &mut [StreamAccrual],
+    id: StreamId,
+    writer: Address,
+) -> Result<TokenAmount, Stranded> {
+    let stream = streams.stream_mut(id).ok_or(Stranded::MissingStream(id))?;
+    let distribution = stream.explicit_mut().ok_or(Stranded::NotExplicit(id))?;
+    let accrual = accrual_mut(accruals, id)
+        .expect("accounting invariants: every explicit stream has an accrual row");
+    let burn = fold(distribution, &accrual.amount);
+    accrual.amount = TokenAmount::zero();
+    distribution.writer = writer;
+    Ok(burn)
 }
 
 fn timelock_epoch(current_epoch: ChainEpoch, timelock_epochs: ChainEpoch) -> Result<ChainEpoch> {
@@ -509,24 +629,15 @@ fn timelock_epoch(current_epoch: ChainEpoch, timelock_epochs: ChainEpoch) -> Res
 
 fn ensure_slot_available(streams: &StreamsState, slot: Slot) -> Result<()> {
     ensure!(
-        !streams
-            .pending_writes
-            .iter()
-            .any(|write| write.slot().is_ok_and(|occupied| occupied == slot)),
+        !streams.pending_writes.iter().any(|write| write.slot() == slot),
         "pending slot {slot:?} is occupied"
     );
     Ok(())
 }
 
 fn ensure_stream_id_available(streams: &StreamsState, id: StreamId) -> Result<()> {
-    ensure!(
-        !streams.streams.iter().any(|stream| stream.id == id),
-        "stream ID {id} is already registered"
-    );
-    ensure!(
-        !streams.tombstones.iter().any(|tombstone| tombstone.id == id),
-        "stream ID {id} is tombstoned"
-    );
+    ensure!(!streams.has_stream(id), "stream ID {id} is already registered");
+    ensure!(!streams.has_tombstone(id), "stream ID {id} is tombstoned");
     ensure!(
         !streams
             .pending_writes
@@ -537,127 +648,8 @@ fn ensure_stream_id_available(streams: &StreamsState, id: StreamId) -> Result<()
     Ok(())
 }
 
-/// Stable sorting preserves insertion order among calls effective at the same epoch.
-fn sort_pending(writes: &mut [PendingWrite]) {
-    writes.sort_by_key(|write| write.effective_epoch);
-}
-
-/// Admits the proposed queue: the new write must apply in the state its predecessors produce,
-/// and every write that applied before it must still apply after it.
-fn validate_new_pending(
-    current: &StreamsState,
-    proposed: &StreamsState,
-    current_epoch: ChainEpoch,
-    new_slot: Slot,
-) -> Result<()> {
-    // Admission is the only thing that lengthens the queue, so this is the point where we need to
-    // do the bounds check.
-    ensure!(
-        proposed.pending_writes.len() <= MAX_PENDING_WRITES,
-        "pending write count {} exceeds maximum {MAX_PENDING_WRITES}",
-        proposed.pending_writes.len()
-    );
-    // From an invalid schedule, a SetWeightRecords batch is the one admissible repair (2.4.8).
-    let repairing = new_slot == Slot::ScheduleWide(PendingWriteOp::SetWeightRecords);
-    let accepted_before = match validate_projected_queue(current, current_epoch, None) {
-        Ok(accepted) => accepted,
-        Err(error) if repairing => {
-            validate_projected_queue_recovering(current, current_epoch, None).map_err(|_| error)?
-        }
-        Err(error) => return Err(error),
-    };
-    let accepted_after = match validate_projected_queue(proposed, current_epoch, Some(new_slot)) {
-        Ok(accepted) => accepted,
-        Err(error) if repairing => {
-            validate_projected_queue_recovering(proposed, current_epoch, Some(new_slot))
-                .map_err(|_| error)?
-        }
-        Err(error) => return Err(error),
-    };
-    ensure!(
-        accepted_before.is_subset(&accepted_after),
-        "new call invalidates an existing pending call"
-    );
-    Ok(())
-}
-
-/// Projects calls in execution order. Calls stranded by cancellation become future drops.
-fn validate_projected_queue(
-    streams: &StreamsState,
-    current_epoch: ChainEpoch,
-    required_slot: Option<Slot>,
-) -> Result<BTreeSet<Slot>> {
-    validate_projected_queue_inner(
-        streams,
-        current_epoch,
-        required_slot,
-        false,
-        Some(current_epoch),
-    )
-}
-
-/// Projects a repair from otherwise well-formed state with invalid weight records or envelope.
-fn validate_projected_queue_recovering(
-    streams: &StreamsState,
-    current_epoch: ChainEpoch,
-    required_slot: Option<Slot>,
-) -> Result<BTreeSet<Slot>> {
-    validate_projected_queue_inner(streams, current_epoch, required_slot, true, Some(current_epoch))
-}
-
-pub(super) fn validate_projected_queue_inner(
-    streams: &StreamsState,
-    current_epoch: ChainEpoch,
-    required_slot: Option<Slot>,
-    allow_invalid_initial_schedule: bool,
-    minimum_epoch: Option<ChainEpoch>,
-) -> Result<BTreeSet<Slot>> {
-    // Admission projects a queue that is entirely ahead of it, due writes having applied first.
-    if let Some(epoch) = minimum_epoch {
-        for write in &streams.pending_writes {
-            if write.effective_epoch < epoch {
-                let slot = write.slot()?;
-                return Err(anyhow::anyhow!("pending write {slot:?} is in the past"));
-            }
-        }
-    }
-    if !allow_invalid_initial_schedule {
-        schedule(&streams.streams, current_epoch)?;
-    }
-    let mut projected = streams.clone();
-    let mut accepted = BTreeSet::new();
-
-    for write in &streams.pending_writes {
-        let slot = write.slot()?;
-        // Validated from the entry's effective epoch, as at application, so a null round at
-        // that epoch cannot change which writes apply.
-        let mut candidate = projected.clone();
-        let result = QueuedCall::decode(write).and_then(|call| {
-            apply_pending_transition(&mut candidate, None, &call)?;
-            validate_transition_state(&candidate, write.effective_epoch)
-        });
-        match result {
-            Ok(()) => {
-                projected = candidate;
-                accepted.insert(slot);
-            }
-            Err(error) if Some(slot) == required_slot => {
-                return Err(anyhow::anyhow!("pending call {slot:?} is invalid: {error}"));
-            }
-            Err(_) => {}
-        }
-    }
-    Ok(accepted)
-}
-
-fn validate_transition_state(streams: &StreamsState, start_epoch: ChainEpoch) -> Result<()> {
-    stream_table(&streams.streams)?;
-    schedule(&streams.streams, start_epoch)?;
-    validate_tombstone_capacity(streams)
-}
-
 /// Check the queue according to the structure invariants: ordered, bounded, one write per slot, and
-/// every payload decodable.
+/// every payload decodable. Everything downstream reads a slot or a payload without re-proving it.
 pub(super) fn validate_pending_queue(writes: &[PendingWrite]) -> Result<()> {
     ensure!(
         writes.is_sorted_by_key(|write| write.effective_epoch),
@@ -674,146 +666,4 @@ pub(super) fn validate_pending_queue(writes: &[PendingWrite]) -> Result<()> {
         ensure!(slots.insert(slot), "duplicate pending slot {slot:?}");
     }
     Ok(())
-}
-
-/// Applies one captured call.
-///
-/// Without accruals it moves stream records only, which is what a projection needs to answer
-/// "would this write apply". With accruals it is the committing form: it also folds the closing
-/// period, tombstones what a removal leaves behind, and adds or drops the stream's accrual row.
-fn apply_pending_transition(
-    state: &mut StreamsState,
-    accruals: Option<&mut Vec<StreamAccrual>>,
-    call: &QueuedCall,
-) -> Result<TokenAmount> {
-    match call {
-        QueuedCall::Weights { updates, .. } => {
-            for update in updates {
-                let stream = state
-                    .streams
-                    .iter_mut()
-                    .find(|stream| stream.id == update.id)
-                    .ok_or_else(|| anyhow::anyhow!("stream {} not found", update.id))?;
-                stream.weight = update.weight.clone();
-            }
-            Ok(TokenAmount::zero())
-        }
-        QueuedCall::Register { id, weight, distribution } => {
-            let id = *id;
-            ensure!(id != 0, "stream ID 0 is reserved");
-            ensure!(
-                !state.streams.iter().any(|stream| stream.id == id),
-                "stream ID {id} is already registered"
-            );
-            ensure!(
-                !state.tombstones.iter().any(|tombstone| tombstone.id == id),
-                "stream ID {id} is tombstoned"
-            );
-            let distribution = distribution.as_ref().map(|distribution| ExplicitDistribution {
-                writer: distribution.writer,
-                shares: distribution.shares.clone(),
-                payable: RecipientTable::default(),
-                claimed_period: RecipientTable::default(),
-            });
-            if distribution.is_some()
-                && let Some(accruals) = accruals
-            {
-                accruals.push(StreamAccrual { id, amount: TokenAmount::zero() });
-                accruals.sort_by_key(|row| row.id);
-            }
-            state.streams.push(Stream { id, weight: weight.clone(), distribution });
-            state.streams.sort_by_key(|stream| stream.id);
-            Ok(TokenAmount::zero())
-        }
-        QueuedCall::Remove { id } => {
-            let id = *id;
-            match accruals {
-                Some(accruals) => {
-                    remove_stream(&mut state.streams, &mut state.tombstones, accruals, id)
-                }
-                None => {
-                    let idx = state
-                        .streams
-                        .iter()
-                        .position(|stream| stream.id == id)
-                        .ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
-                    state.streams.remove(idx);
-                    Ok(TokenAmount::zero())
-                }
-            }
-        }
-        QueuedCall::SetDistribution { id, writer } => {
-            let id = *id;
-            match accruals {
-                Some(accruals) => replace_writer(&mut state.streams, accruals, id, *writer),
-                None => {
-                    let stream = state
-                        .streams
-                        .iter_mut()
-                        .find(|stream| stream.id == id)
-                        .ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
-                    let distribution = stream
-                        .explicit_mut()
-                        .ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
-                    distribution.writer = *writer;
-                    Ok(TokenAmount::zero())
-                }
-            }
-        }
-    }
-}
-
-pub(super) fn remove_stream(
-    streams: &mut Vec<Stream>,
-    tombstones: &mut Vec<Tombstone>,
-    accruals: &mut Vec<StreamAccrual>,
-    id: StreamId,
-) -> Result<TokenAmount> {
-    let idx = streams
-        .iter()
-        .position(|stream| stream.id == id)
-        .ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
-    let mut stream = streams.remove(idx);
-    let Some(distribution) = stream.explicit_mut() else {
-        return Ok(TokenAmount::zero());
-    };
-    // Removing without the accrual row would orphan an unknown explicit-stream liability.
-    let accrual_idx = accruals
-        .iter()
-        .position(|row| row.id == id)
-        .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?;
-    let accrual = accruals.remove(accrual_idx);
-    let burn = fold(distribution, &accrual.amount);
-    if !distribution.payable.is_empty() {
-        ensure!(
-            !tombstones.iter().any(|tombstone| tombstone.id == id),
-            "stream ID {id} is already tombstoned"
-        );
-        tombstones.push(Tombstone { id, payable: std::mem::take(&mut distribution.payable) });
-        tombstones.sort_by_key(|tombstone| tombstone.id);
-    }
-    Ok(burn)
-}
-
-pub(super) fn replace_writer(
-    streams: &mut [Stream],
-    accruals: &mut [StreamAccrual],
-    id: StreamId,
-    writer: Address,
-) -> Result<TokenAmount> {
-    let stream = streams
-        .iter_mut()
-        .find(|stream| stream.id == id)
-        .ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
-    let distribution =
-        stream.explicit_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
-    // Changing writers without the accrual row could reassign an unknown explicit-stream liability.
-    let accrual = accruals
-        .iter_mut()
-        .find(|row| row.id == id)
-        .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?;
-    let burn = fold(distribution, &accrual.amount);
-    accrual.amount = TokenAmount::zero();
-    distribution.writer = writer;
-    Ok(burn)
 }

@@ -42,7 +42,7 @@
 //! - `compute_weight` is `ComputeWeight` using `DENOM` fixed point.
 //! - `weight_breakpoints` enumerates that epoch list for one record, bracketing each crossing so
 //!   integer division can't step over a one-epoch violation.
-//! - `validate_weight_schedule` sums every stream at every breakpoint from a start epoch onward.
+//! - `invariants::schedule` sums every stream at every breakpoint from a start epoch onward.
 
 use std::collections::BTreeSet;
 
@@ -50,7 +50,7 @@ use anyhow::{Result, ensure};
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::clock::ChainEpoch;
 
-use super::{DENOM, Stream, StreamId};
+use super::{DENOM, StreamId};
 
 /// A clamped linear weight in `DENOM` fixed point.
 ///
@@ -157,34 +157,4 @@ pub(super) fn weight_breakpoints(
     }
     epochs.insert(ChainEpoch::MAX);
     epochs.into_iter().collect()
-}
-
-/// Validates aggregate stream weight from `start_epoch` onward.
-pub(super) fn validate_weight_schedule(streams: &[Stream], start_epoch: ChainEpoch) -> Result<()> {
-    validate_weight_schedule_through(streams, start_epoch, ChainEpoch::MAX)
-}
-
-/// Validates aggregate stream weight over the inclusive epoch interval.
-fn validate_weight_schedule_through(
-    streams: &[Stream],
-    start_epoch: ChainEpoch,
-    end_epoch: ChainEpoch,
-) -> Result<()> {
-    ensure!(end_epoch >= start_epoch, "weight schedule interval is reversed");
-    let mut epochs = BTreeSet::from([start_epoch, end_epoch]);
-    for stream in streams {
-        validate_weight_record(&stream.weight)?;
-        epochs.extend(
-            weight_breakpoints(&stream.weight, start_epoch)
-                .into_iter()
-                .take_while(|epoch| *epoch <= end_epoch),
-        );
-    }
-
-    for epoch in epochs {
-        let sum: u128 =
-            streams.iter().map(|stream| u128::from(compute_weight(&stream.weight, epoch))).sum();
-        ensure!(sum <= u128::from(DENOM), "stream weights exceed DENOM at epoch {epoch}: {sum}");
-    }
-    Ok(())
 }

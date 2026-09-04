@@ -16,10 +16,10 @@ use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{ActorDowncast, ActorError, actor_error};
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{CborStore, from_slice};
-use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use multihash_codetable::Code;
+use num_traits::Zero;
 
 use crate::State;
 
@@ -39,10 +39,7 @@ pub(crate) use self::invariants::validate_streams_state;
 pub use self::queue::{
     ApplyResult, PendingWrite, PendingWriteOp, RegisterStreamPayload, SetDistributionPayload,
 };
-pub(crate) use self::queue::{
-    CancelResult, Slot, queue_register_stream, queue_remove_stream, queue_set_distribution,
-    queue_weight_records,
-};
+pub(crate) use self::queue::{QueuedCall, Slot};
 pub use self::weights::{WeightRecord, WeightRecordUpdate, WeightRecordsPayload};
 
 pub type StreamId = u64;
@@ -100,6 +97,68 @@ pub struct StreamsState {
     pub pending_writes: Vec<PendingWrite>,
 }
 
+/// Lookups by stream ID. The tables are bounded, so a linear scan is fine.
+impl StreamsState {
+    pub(crate) fn stream(&self, id: StreamId) -> Option<&Stream> {
+        self.streams.iter().find(|stream| stream.id == id)
+    }
+
+    pub(crate) fn stream_mut(&mut self, id: StreamId) -> Option<&mut Stream> {
+        self.streams.iter_mut().find(|stream| stream.id == id)
+    }
+
+    /// The stored writer and recipient tables of a live explicit stream.
+    pub(crate) fn explicit(&self, id: StreamId) -> Option<&ExplicitDistribution> {
+        self.stream(id).and_then(Stream::explicit)
+    }
+
+    pub(super) fn explicit_mut(&mut self, id: StreamId) -> Option<&mut ExplicitDistribution> {
+        self.stream_mut(id).and_then(Stream::explicit_mut)
+    }
+
+    pub(crate) fn has_stream(&self, id: StreamId) -> bool {
+        self.stream(id).is_some()
+    }
+
+    /// Files a live stream, keeping the table ascending by stream ID.
+    pub(super) fn insert_stream(&mut self, stream: Stream) {
+        let idx = self
+            .streams
+            .binary_search_by_key(&stream.id, |live| live.id)
+            .expect_err("registration precondition: the stream ID is not live");
+        self.streams.insert(idx, stream);
+    }
+
+    /// Removes the live stream with this ID and hands it over.
+    pub(super) fn take_stream(&mut self, id: StreamId) -> Option<Stream> {
+        let idx = self.streams.iter().position(|stream| stream.id == id)?;
+        Some(self.streams.remove(idx))
+    }
+
+    pub(super) fn tombstone_mut(&mut self, id: StreamId) -> Option<&mut Tombstone> {
+        self.tombstones.iter_mut().find(|tombstone| tombstone.id == id)
+    }
+
+    pub(crate) fn has_tombstone(&self, id: StreamId) -> bool {
+        self.tombstones.iter().any(|tombstone| tombstone.id == id)
+    }
+
+    /// Files a removed stream's unpaid rows, keeping the tombstones ascending by stream ID.
+    pub(super) fn insert_tombstone(&mut self, id: StreamId, payable: RecipientTable) {
+        let idx = self
+            .tombstones
+            .binary_search_by_key(&id, |tombstone| tombstone.id)
+            .expect_err("structure invariants: live and tombstoned stream IDs are disjoint");
+        self.tombstones.insert(idx, Tombstone { id, payable });
+    }
+
+    /// Removes a drained tombstone.
+    pub(super) fn take_tombstone(&mut self, id: StreamId) -> Option<Tombstone> {
+        let idx = self.tombstones.iter().position(|tombstone| tombstone.id == id)?;
+        Some(self.tombstones.remove(idx))
+    }
+}
+
 /// Current-period gross accrual persisted inline in `State`.
 ///
 /// It stays outside `StreamsState` because it changes on every award.
@@ -107,6 +166,29 @@ pub struct StreamsState {
 pub struct StreamAccrual {
     pub id: StreamId,
     pub amount: TokenAmount,
+}
+
+/// The accrual row for `id`; the accounting invariants give every live explicit stream one.
+pub(super) fn accrual(rows: &[StreamAccrual], id: StreamId) -> Option<&StreamAccrual> {
+    rows.iter().find(|row| row.id == id)
+}
+
+pub(super) fn accrual_mut(rows: &mut [StreamAccrual], id: StreamId) -> Option<&mut StreamAccrual> {
+    rows.iter_mut().find(|row| row.id == id)
+}
+
+/// Opens an accrual row for a newly registered explicit stream, keeping the rows ascending.
+pub(super) fn insert_accrual(rows: &mut Vec<StreamAccrual>, id: StreamId) {
+    let idx = rows
+        .binary_search_by_key(&id, |row| row.id)
+        .expect_err("accounting invariants: an accrual row belongs to one live explicit stream");
+    rows.insert(idx, StreamAccrual { id, amount: TokenAmount::zero() });
+}
+
+/// Closes a removed stream's accrual row and hands over its balance.
+pub(super) fn take_accrual(rows: &mut Vec<StreamAccrual>, id: StreamId) -> Option<StreamAccrual> {
+    let idx = rows.iter().position(|row| row.id == id)?;
+    Some(rows.remove(idx))
 }
 
 /// Stream state that has passed the structure and accounting invariants.
@@ -118,6 +200,11 @@ pub struct StreamAccrual {
 ///
 /// The accrual rows are part of the ledger even though they persist in the state root rather than
 /// the streams block, because every liability the block describes is measured against them.
+///
+/// Operations mutate in place. On `Err` the ledger is unspecified and the caller discards it,
+/// which every caller does: `rt.transaction` drops the state when its closure fails, and FVM
+/// rollback reverts an aborted call.
+#[derive(Clone)]
 pub(crate) struct Ledger {
     streams: StreamsState,
     accrued: Vec<StreamAccrual>,
@@ -182,25 +269,6 @@ impl Ledger {
     pub(crate) fn mutate(&mut self) -> (&mut StreamsState, &mut Vec<StreamAccrual>) {
         self.streams_dirty = true;
         (&mut self.streams, &mut self.accrued)
-    }
-
-    /// Applies every write due through `epoch`, which every method does before its own work.
-    pub(crate) fn apply_due(&mut self, epoch: ChainEpoch) -> Result<ApplyResult> {
-        let result = queue::apply_due_writes(&mut self.streams, &mut self.accrued, epoch)?;
-        self.streams_dirty |= !(result.applied.is_empty() && result.dropped.is_empty());
-        Ok(result)
-    }
-
-    /// Applies due writes, then empties one queue slot.
-    pub(crate) fn apply_due_and_cancel(
-        &mut self,
-        epoch: ChainEpoch,
-        slot: Slot,
-    ) -> Result<CancelResult> {
-        let result =
-            queue::apply_due_writes_and_cancel(&mut self.streams, &mut self.accrued, epoch, slot)?;
-        self.streams_dirty = true;
-        Ok(result)
     }
 }
 

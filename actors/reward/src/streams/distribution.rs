@@ -61,6 +61,7 @@ use super::invariants::validate_tombstone_capacity;
 use super::queue::PendingWriteOp;
 use super::{
     DENOM, MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, StreamAccrual, StreamId, StreamsState,
+    accrual, accrual_mut,
 };
 
 /// One recipient entry in a share-map message and in persisted distribution state.
@@ -254,38 +255,14 @@ pub(crate) fn set_shares(
     id: StreamId,
     shares: Vec<RecipientShare>,
 ) -> Result<TokenAmount> {
-    if !streams.pending_writes.iter().any(|write| write.op == PendingWriteOp::RemoveStream) {
-        return set_shares_inner(streams, accruals, id, shares);
-    }
-
-    let mut next_streams = streams.clone();
-    let mut next_accruals = accruals.to_vec();
-    let burn = set_shares_inner(&mut next_streams, &mut next_accruals, id, shares)?;
-    validate_tombstone_capacity(&next_streams)?;
-    *streams = next_streams;
-    // The slice signature prevents either path from changing the accrual row count.
-    accruals.clone_from_slice(&next_accruals);
-    Ok(burn)
-}
-
-fn set_shares_inner(
-    streams: &mut StreamsState,
-    accruals: &mut [StreamAccrual],
-    id: StreamId,
-    shares: Vec<RecipientShare>,
-) -> Result<TokenAmount> {
     let shares = normalize_shares(shares)?;
-    let stream = streams
-        .streams
-        .iter_mut()
-        .find(|stream| stream.id == id)
-        .ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
+    let removal_pending =
+        streams.pending_writes.iter().any(|write| write.op == PendingWriteOp::RemoveStream);
+    let stream = streams.stream_mut(id).ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
     let distribution =
         stream.explicit_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
-    let accrual = accruals
-        .iter_mut()
-        .find(|row| row.id == id)
-        .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?;
+    let accrual = accrual_mut(accruals, id)
+        .expect("accounting invariants: every explicit stream has an accrual row");
 
     let mut next_distribution = distribution.clone();
     let burn = fold(&mut next_distribution, &accrual.amount);
@@ -298,6 +275,10 @@ fn set_shares_inner(
 
     *distribution = next_distribution;
     accrual.amount = TokenAmount::zero();
+    // A pending removal has reserved tombstone rows for the map this fold leaves behind.
+    if removal_pending {
+        validate_tombstone_capacity(streams)?;
+    }
     Ok(burn)
 }
 
@@ -308,22 +289,19 @@ pub(crate) fn claim(
     id: StreamId,
     wallets: &[Address],
 ) -> Result<ClaimResult> {
-    if let Some(stream_idx) = streams.streams.iter().position(|stream| stream.id == id) {
-        let stream = &mut streams.streams[stream_idx];
+    if streams.has_stream(id) {
         let distribution =
-            stream.explicit_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
-        let pool = &accruals
-            .iter()
-            .find(|row| row.id == id)
-            .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?
-            .amount;
-        Ok(claim_live(distribution, pool, wallets))
-    } else if let Some(tombstone_idx) =
-        streams.tombstones.iter().position(|tombstone| tombstone.id == id)
-    {
-        let result = claim_payable(&mut streams.tombstones[tombstone_idx].payable, wallets);
-        if streams.tombstones[tombstone_idx].payable.is_empty() {
-            streams.tombstones.remove(tombstone_idx);
+            streams.explicit_mut(id).ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
+        let pool = accrual(accruals, id)
+            .expect("accounting invariants: every explicit stream has an accrual row");
+        Ok(claim_live(distribution, &pool.amount, wallets))
+    } else if let Some(tombstone) = streams.tombstone_mut(id) {
+        // A tombstone holds payable rows and nothing else, so a claim against it is a drain.
+        let result: ClaimResult =
+            wallets.iter().map(|wallet| tombstone.payable.take(wallet)).collect();
+        let drained = tombstone.payable.is_empty();
+        if drained {
+            streams.take_tombstone(id);
         }
         Ok(result)
     } else {
@@ -384,10 +362,6 @@ fn claim_live(
     }
 
     amounts
-}
-
-fn claim_payable(payable: &mut RecipientTable, wallets: &[Address]) -> ClaimResult {
-    wallets.iter().map(|wallet| payable.take(wallet)).collect()
 }
 
 /// The relation between a stream's stored shares, its pool and what its recipients have already
