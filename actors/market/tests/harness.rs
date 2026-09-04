@@ -152,6 +152,7 @@ pub fn check_state(rt: &MockRuntime) {
         rt.store(),
         &rt.get_balance(),
         *rt.epoch.borrow(),
+        rt.policy.deal_updates_interval,
     );
     acc.assert_empty();
 }
@@ -164,6 +165,7 @@ pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) 
         rt.store(),
         &rt.get_balance(),
         *rt.epoch.borrow(),
+        rt.policy.deal_updates_interval,
     );
     acc.assert_expected(expected_patterns);
 }
@@ -366,7 +368,7 @@ pub fn activate_deals_legacy(
 ) {
     activate_deals(rt, sector_expiry, provider, current_epoch, sector_number, deal_ids);
     for deal_id in deal_ids {
-        simulate_legacy_deal(rt, *deal_id, current_epoch);
+        simulate_legacy_deal(rt, *deal_id);
     }
 }
 
@@ -570,15 +572,15 @@ pub fn cron_tick_and_assert_balances(
         payment_start = s.last_updated_epoch;
     }
     let duration = payment_end - payment_start;
-    let payment = duration * d.storage_price_per_epoch;
+    let payment = duration * &d.storage_price_per_epoch;
 
     // expected updated amounts
     let updated_client_escrow = c_acct.balance - &payment;
     let updated_provider_escrow = (p_acct.balance + &payment) - &amount_slashed;
     let mut updated_client_locked = c_acct.locked - &payment;
     let mut updated_provider_locked = p_acct.locked;
-    // if the deal has expired or been slashed, locked amount will be zero for provider .
     let is_deal_expired = payment_end == d.end_epoch;
+    // if the deal has expired or been slashed, locked amount will be zero for provider .
     if is_deal_expired || s.slash_epoch != EPOCH_UNDEFINED {
         updated_client_locked = TokenAmount::zero();
         updated_provider_locked = TokenAmount::zero();
@@ -822,7 +824,8 @@ pub fn settle_deal_payments_no_change(
 ) {
     let st: State = rt.get_state();
     let epoch_cid = st.deal_ops_by_epoch;
-
+    let states_cid = st.states;
+    let pending_cid = st.pending_proposals;
     // fetch current client  escrow balances
     let client_acct = get_balance(rt, &client_addr);
     let provider_acct = get_balance(rt, &provider_addr);
@@ -833,6 +836,8 @@ pub fn settle_deal_payments_no_change(
     let new_client_acct = get_balance(rt, &client_addr);
     let new_provider_acct = get_balance(rt, &provider_addr);
     assert_eq!(epoch_cid, st.deal_ops_by_epoch);
+    assert_eq!(pending_cid, st.pending_proposals);
+    assert_eq!(states_cid, st.states);
     assert_eq!(client_acct, new_client_acct);
     assert_eq!(provider_acct, new_provider_acct);
 }
@@ -1022,6 +1027,26 @@ pub fn assert_deals_not_marked_terminated(rt: &MockRuntime, deal_ids: &[DealID])
     }
 }
 
+pub fn assert_deal_pending(rt: &MockRuntime, proposal: &DealProposal, expected: bool) {
+    let st: State = rt.get_state();
+    let pending_deals = PendingProposalsSet::load(
+        rt.store(),
+        &st.pending_proposals,
+        PENDING_PROPOSALS_CONFIG,
+        "pending proposals",
+    )
+    .unwrap();
+    let proposal_cid = deal_cid(rt, proposal).unwrap();
+    assert_eq!(expected, pending_deals.has(&proposal_cid).unwrap());
+}
+
+pub fn remove_deal_pending(rt: &MockRuntime, proposal: &DealProposal) {
+    let mut st: State = rt.get_state();
+    let proposal_cid = deal_cid(rt, proposal).unwrap();
+    assert!(st.remove_pending_deal(rt.store(), proposal_cid).unwrap().is_some());
+    rt.replace_state(&st);
+}
+
 pub fn assert_deal_deleted(
     rt: &MockRuntime,
     deal_id: DealID,
@@ -1140,6 +1165,14 @@ pub fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
     next_update_epoch(deal_id, Policy::default().deal_updates_interval, start_epoch)
 }
 
+/// The cron visit a simulated legacy deal is queued for. Cron drops any deal at the
+/// visit scheduled for it at publish, so a "legacy" (pre FIP-0074) deal, which is
+/// one cron knows to reschedule for continued cron handling, must already be one
+/// interval past that.
+pub fn legacy_process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
+    process_epoch(start_epoch, deal_id) + Policy::default().deal_updates_interval
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn publish_and_activate_deal(
     rt: &MockRuntime,
@@ -1179,7 +1212,7 @@ pub fn publish_and_activate_deal_legacy(
         current_epoch,
         sector_expiry,
     );
-    simulate_legacy_deal(rt, deal_id, start_epoch);
+    simulate_legacy_deal(rt, deal_id);
     (deal_id, proposal)
 }
 
@@ -1518,25 +1551,34 @@ pub fn assert_account_zero(rt: &MockRuntime, addr: Address) {
     assert!(account.locked.is_zero());
 }
 
-// market cron tick uses last_updated_epoch == EPOCH_UNDEFINED to determine if a deal is new
-// it will not process such deals
-// however, for testing we need to simulate deals that are already in the system that should be
-// continued to be processed by cron
-fn simulate_legacy_deal(
-    rt: &fil_actors_runtime::test_utils::MockRuntime,
-    deal_id: u64,
-    start_epoch: i64,
-) {
+// Cron drops every deal at the visit scheduled for it at publish, so a legacy deal (one cron
+// still services) is already past that visit. It's updated once, pending proposal gone,
+// and queued for the following interval. See legacy_process_epoch.
+fn simulate_legacy_deal(rt: &fil_actors_runtime::test_utils::MockRuntime, deal_id: u64) {
     let mut state = rt.get_state::<State>();
-    let mut deal_state = state.remove_deal_state(rt.store(), deal_id).unwrap().unwrap();
-
-    // set last_updated_epoch to the beginning of the deal (if cron had run here, it would have been a no-op)
-    deal_state.last_updated_epoch = start_epoch;
-    state.put_deal_states(rt.store(), &[(deal_id, deal_state)]).unwrap();
-
-    // the first cron_tick would have removed the proposal from the pending queue
     let proposal = state.find_proposal(rt.store(), deal_id).unwrap().unwrap();
-    state.remove_pending_deal(rt.store(), deal_cid(rt, &proposal).unwrap()).unwrap();
+    let interval = rt.policy.deal_updates_interval;
+    let first_visit = next_update_epoch(deal_id, interval, proposal.start_epoch);
+
+    let mut deal_state = state.remove_deal_state(rt.store(), deal_id).unwrap().unwrap();
+    let dcid = deal_cid(rt, &proposal).unwrap();
+    let expected_payment = (first_visit - proposal.start_epoch) * &proposal.storage_price_per_epoch;
+    let (slashed, payment, completed, remove_deal) =
+        state.process_deal_update(rt.store(), &deal_state, &proposal, &dcid, first_visit).unwrap();
+    assert!(slashed.is_zero());
+    assert_eq!(expected_payment, payment);
+    assert!(!completed);
+    assert!(!remove_deal);
+
+    deal_state.last_updated_epoch = first_visit;
+    state.put_deal_states(rt.store(), &[(deal_id, deal_state)]).unwrap();
+    state.remove_pending_deal(rt.store(), dcid).unwrap();
+
+    let next_visit = next_update_epoch(deal_id, interval, first_visit + 1);
+    let mut deal_ops = state.load_deal_ops(rt.store()).unwrap();
+    deal_ops.remove(&first_visit, deal_id).unwrap();
+    deal_ops.put(&next_visit, deal_id).unwrap();
+    state.deal_ops_by_epoch = deal_ops.flush().unwrap();
 
     rt.replace_state(&state);
 }

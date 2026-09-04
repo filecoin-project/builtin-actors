@@ -73,7 +73,7 @@ fn deal_is_slashed() {
         // publish and activate
         rt.set_epoch(tc.activation_epoch);
         let sector_number: SectorNumber = i as SectorNumber;
-        let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
+        let (deal_id, deal_proposal) = publish_and_activate_deal(
             &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
@@ -132,7 +132,7 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
     // as deal is considered to be expired.
     rt.set_epoch(END_EPOCH);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[SECTOR_NUMBER], &[]);
-    let duration = END_EPOCH - START_EPOCH;
+    let duration = END_EPOCH - process_epoch(START_EPOCH, deal_id);
 
     let current = END_EPOCH + 300;
     rt.set_epoch(current);
@@ -269,14 +269,15 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
         SECTOR_EXPIRY,
     );
 
-    // move the current epoch to the process epoch + 5 so payment is made
-    let process_start = process_epoch(START_EPOCH, deal_id);
+    // move the current epoch to the legacy deal's visit + 5 so payment is made
+    let process_start = legacy_process_epoch(START_EPOCH, deal_id);
     let current = rt.set_epoch(process_start + 5);
 
     // assert payment
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
-    assert_eq!(pay, (5 + process_start - START_EPOCH) * &deal_proposal.storage_price_per_epoch);
+    let first_visit = process_epoch(START_EPOCH, deal_id);
+    assert_eq!(pay, (current - first_visit) * &deal_proposal.storage_price_per_epoch);
     assert!(slashed.is_zero());
 
     // Setting the current epoch to before the next schedule will NOT make any changes as the deal
@@ -337,13 +338,14 @@ fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_wil
         SECTOR_EXPIRY,
     );
 
-    // move the current epoch to processEpoch + 5 so payment is made and assert payment
-    let process_start = process_epoch(START_EPOCH, deal_id);
+    // move the current epoch to the legacy deal's visit + 5 so payment is made and assert payment
+    let process_start = legacy_process_epoch(START_EPOCH, deal_id);
     let current = process_start + 5;
     rt.set_epoch(current);
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
-    assert_eq!(pay, (5 + process_start - START_EPOCH) * &deal_proposal.storage_price_per_epoch);
+    let first_visit = process_epoch(START_EPOCH, deal_id);
+    assert_eq!(pay, (current - first_visit) * &deal_proposal.storage_price_per_epoch);
     assert!(slashed.is_zero());
 
     //  Incrementing the current epoch another update interval will make another payment

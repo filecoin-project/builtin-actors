@@ -160,6 +160,102 @@ fn settling_payments_before_start_epoch_results_in_no_payment_or_slashing() {
     settle_deal_payments_no_change(&rt, addrs.owner, CLIENT_ADDR, addrs.provider, &[deal]);
 }
 
+fn assert_settlement_does_not_allow_republishing(settlement_epoch: ChainEpoch) {
+    let rt = setup();
+    let addrs = MinerAddresses::default();
+    let sector_number = 7;
+    let start_epoch = 100;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    rt.set_epoch(50);
+    let (deal_id, proposal) =
+        generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
+
+    // Fund a second publication so only the replay guard can reject it.
+    add_provider_funds(&rt, proposal.provider_collateral.clone(), &addrs);
+    add_participant_funds(&rt, proposal.client, proposal.client_balance_requirement());
+
+    rt.set_epoch(60);
+    activate_deals(&rt, end_epoch, addrs.provider, 60, sector_number, &[deal_id]);
+
+    rt.set_epoch(settlement_epoch);
+    let settlement = settle_deal_payments(&rt, addrs.owner, &[deal_id], &[], &[]);
+    assert!(settlement.results.all_ok());
+    assert_eq!(
+        vec![DealSettlementSummary { completed: false, payment: Default::default() }],
+        settlement.settlements
+    );
+
+    publish_deals_expect_abort(&rt, &addrs, proposal, ExitCode::USR_ILLEGAL_ARGUMENT);
+    check_state(&rt);
+}
+
+#[test]
+fn early_settlement_does_not_allow_republishing_the_proposal() {
+    assert_settlement_does_not_allow_republishing(70);
+}
+
+#[test]
+fn start_epoch_settlement_does_not_allow_republishing_the_proposal() {
+    assert_settlement_does_not_allow_republishing(100);
+}
+
+#[test]
+fn start_epoch_settlement_then_cron_closes_the_replay_window() {
+    let rt = setup();
+    let addrs = MinerAddresses::default();
+    let sector_number = 7;
+    let start_epoch = 30 * EPOCHS_IN_DAY;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    rt.set_epoch(50);
+    let (deal_id, proposal) =
+        generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
+
+    // Fund a second publication so only the replay guard can reject it.
+    add_provider_funds(&rt, proposal.provider_collateral.clone(), &addrs);
+    add_participant_funds(&rt, proposal.client, proposal.client_balance_requirement());
+
+    rt.set_epoch(60);
+    activate_deals(&rt, end_epoch, addrs.provider, 60, sector_number, &[deal_id]);
+
+    rt.set_epoch(start_epoch);
+    publish_deals_expect_abort(&rt, &addrs, proposal.clone(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    let settlement = settle_deal_payments(&rt, addrs.owner, &[deal_id], &[], &[]);
+    assert!(settlement.results.all_ok());
+    assert_deal_pending(&rt, &proposal, true);
+
+    cron_tick(&rt);
+    assert_deal_pending(&rt, &proposal, false);
+
+    rt.set_epoch(start_epoch + 1);
+    publish_deals_expect_abort(&rt, &addrs, proposal, ExitCode::USR_ILLEGAL_ARGUMENT);
+    check_state(&rt);
+}
+
+#[test]
+fn start_epoch_cron_tolerates_pending_removed_by_early_settlement() {
+    let rt = setup();
+    let addrs = MinerAddresses::default();
+    let sector_number = 7;
+    let start_epoch = 30 * EPOCHS_IN_DAY;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    rt.set_epoch(50);
+    let (deal_id, proposal) =
+        generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
+    rt.set_epoch(60);
+    activate_deals(&rt, end_epoch, addrs.provider, 60, sector_number, &[deal_id]);
+
+    // Reproduce state written by the vulnerable pre-upgrade settlement path.
+    update_last_updated(&rt, deal_id, 70);
+    remove_deal_pending(&rt, &proposal);
+
+    rt.set_epoch(start_epoch);
+    cron_tick(&rt);
+    check_state(&rt);
+}
+
 #[test]
 fn batch_settlement_of_deals_allows_partial_success() {
     let rt = setup();

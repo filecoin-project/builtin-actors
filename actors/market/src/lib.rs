@@ -619,11 +619,9 @@ impl Actor {
                     warn!("deal {}, already slashed, terminating now anyway", id);
                 }
 
-                // Deals that were never processed may still have a pending proposal linked
-                if state.last_updated_epoch == EPOCH_UNDEFINED {
-                    let dcid = deal_cid(rt, &deal)?;
-                    st.remove_pending_deal(rt.store(), dcid)?;
-                }
+                // The pending proposal outlives settlement at the start epoch, so remove it
+                // whether or not the deal was ever updated.
+                st.remove_pending_deal(rt.store(), deal_cid(rt, &deal)?)?;
 
                 state.slash_epoch = params.epoch;
                 total_slashed += st.process_slashed_deal(rt.store(), &deal, &state)?;
@@ -699,13 +697,23 @@ impl Actor {
                         }
                     };
 
-                    if state.last_updated_epoch == EPOCH_UNDEFINED {
-                        st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
-                            actor_error!(
-                                illegal_state,
-                                "failed to delete pending proposal: does not exist"
-                            )
-                        })?;
+                    if curr_epoch == deal_proposal.start_epoch {
+                        // Cron follows explicit messages, so pending is no longer needed at the deal start epoch.
+                        st.remove_pending_deal(rt.store(), dcid)?;
+                    }
+
+                    // A deal should get just one cron visit, scheduled at publish. Anything queued
+                    // later was rescheduled by cron itself, which only applies to legacy deals
+                    // which get continued cron handling (See FIP-0074).
+                    let first_visit = next_update_epoch(
+                        deal_id,
+                        rt.policy().deal_updates_interval,
+                        deal_proposal.start_epoch,
+                    );
+                    if i == first_visit {
+                        if curr_epoch > deal_proposal.start_epoch {
+                            st.remove_pending_deal(rt.store(), dcid)?;
+                        }
 
                         // newly activated deals are not scheduled for cron processing. they are handled explicitly by
                         // calling ProcessDealUpdates method with specific deal ids.
