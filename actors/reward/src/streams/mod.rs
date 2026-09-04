@@ -1,5 +1,15 @@
-// Copyright 2019-2022 ChainSafe Systems
-// SPDX-License-Identifier: Apache-2.0, MIT
+//! Stream state: the block behind `State.streams_root`, plus the accrual rows in the state root.
+//!
+//! FIP-0118 section 2.4.2 defines the layout as implemented here.
+//!
+//! 2.4.2 also defines ordering: "`accrued`, `streams`, and `tombstones` have unique ascending
+//! stream IDs; recipient tables have unique ascending recipient IDs; and `pending_writes` is
+//! ordered by effective epoch, preserving admission order at equal epochs."
+//!
+//! A stream's distribution is one of two kinds (2.4.1). `IMPLICIT`, the `None` arm, stores
+//! nothing and pays the block winner; only the consensus stream is implicit. `EXPLICIT`, the
+//! `Some` arm, carries a writer and three wallet-keyed tables. The FIP-0118 migration pins
+//! consensus = 1 and the service stream = 2, but f02 only knows and cares about the kind.
 
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::econ::TokenAmount;
@@ -10,8 +20,8 @@ mod invariants;
 mod queue;
 mod weights;
 
-pub use self::award::{RewardAllocation, compute_service_liability};
-pub(crate) use self::award::{accrue_service, allocate_reward};
+pub use self::award::{RewardAllocation, explicit_liability};
+pub(crate) use self::award::{accrue_explicit, allocate_reward};
 pub use self::distribution::{
     DistributionInit, ExplicitDistribution, RecipientAmount, RecipientShare,
 };
@@ -23,8 +33,8 @@ pub use self::queue::{
     ApplyResult, PendingWrite, PendingWriteOp, RegisterStreamPayload, SetDistributionPayload,
 };
 pub(crate) use self::queue::{
-    apply_due_writes, apply_due_writes_and_cancel, queue_register_stream, queue_remove_stream,
-    queue_set_distribution, queue_weight_records, validate_cancel_target,
+    Slot, apply_due_writes, apply_due_writes_and_cancel, queue_register_stream,
+    queue_remove_stream, queue_set_distribution, queue_weight_records,
 };
 pub use self::weights::{WeightRecord, WeightRecordUpdate};
 
@@ -45,8 +55,24 @@ pub const MAX_PENDING_WRITES: usize =
 pub struct Stream {
     pub id: StreamId,
     pub weight: WeightRecord,
-    /// None is the implicit consensus distribution; Some is an explicit service distribution.
+    /// None is the implicit consensus distribution; Some is an explicit distribution.
     pub distribution: Option<ExplicitDistribution>,
+}
+
+impl Stream {
+    /// True for the consensus stream, whose portion pays the block winner directly.
+    pub(crate) fn is_implicit(&self) -> bool {
+        self.distribution.is_none()
+    }
+
+    /// The stored writer and recipient tables, for an explicit stream.
+    pub(crate) fn explicit(&self) -> Option<&ExplicitDistribution> {
+        self.distribution.as_ref()
+    }
+
+    pub(crate) fn explicit_mut(&mut self) -> Option<&mut ExplicitDistribution> {
+        self.distribution.as_mut()
+    }
 }
 
 /// Persisted liabilities for a removed stream.

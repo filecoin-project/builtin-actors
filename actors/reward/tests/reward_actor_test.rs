@@ -76,7 +76,7 @@ mod construction_tests {
     }
 
     #[test]
-    fn checks_service_accounting_invariants() {
+    fn checks_explicit_accounting_invariants() {
         let rt = construct_and_verify(&StoragePower::from(0));
         let mut state: State = rt.get_state();
         let allocation = TokenAmount::from_whole(1_100_000_000);

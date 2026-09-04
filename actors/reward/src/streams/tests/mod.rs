@@ -74,17 +74,26 @@ fn tombstone(id: StreamId, first_recipient: u64, rows: usize) -> Tombstone {
     }
 }
 
+/// The cancellation path as the actor drives it: resolve the slot, then empty it.
+fn cancel(
+    streams: &mut StreamsState,
+    id: Option<StreamId>,
+    op: PendingWriteOp,
+) -> anyhow::Result<Option<PendingWrite>> {
+    Ok(super::queue::cancel_pending(streams, Slot::for_cancel(id, op)?))
+}
+
 fn amount(rows: &[RecipientAmount], recipient: u64) -> TokenAmount {
     rows.iter()
         .find(|row| row.recipient == Address::new_id(recipient))
         .map_or_else(TokenAmount::zero, |row| row.amount.clone())
 }
 
-fn service_liabilities(streams: &StreamsState, accruals: &[StreamAccrual]) -> TokenAmount {
-    compute_service_liability(streams, accruals).unwrap()
+fn explicit_liabilities(streams: &StreamsState, accruals: &[StreamAccrual]) -> TokenAmount {
+    explicit_liability(streams, accruals).unwrap()
 }
 
-fn assert_service_conserved(
+fn assert_explicit_conserved(
     gross: &TokenAmount,
     paid: &TokenAmount,
     burned: &TokenAmount,
@@ -93,7 +102,7 @@ fn assert_service_conserved(
 ) {
     let mut accounted = paid.clone();
     accounted += burned;
-    accounted += service_liabilities(streams, accruals);
+    accounted += explicit_liabilities(streams, accruals);
     assert_eq!(*gross, accounted);
 }
 
@@ -101,7 +110,7 @@ fn assert_service_conserved(
 struct SupplyTracker {
     total_minted: TokenAmount,
     total_burn: TokenAmount,
-    total_service: TokenAmount,
+    total_explicit: TokenAmount,
     total_dust: TokenAmount,
     f099_balance: TokenAmount,
     actor_balance: TokenAmount,
@@ -117,14 +126,14 @@ impl SupplyTracker {
     ) {
         let allocation = allocate_reward(&streams.streams, epoch, &reward).unwrap();
         assert!(allocation.schedule_valid, "valid randomized state entered degradation");
-        let service =
-            allocation.service.iter().fold(TokenAmount::zero(), |total, row| total + &row.amount);
-        accrue_service(accruals, &allocation.service).unwrap();
+        let explicit =
+            allocation.portions.iter().fold(TokenAmount::zero(), |total, row| total + &row.amount);
+        accrue_explicit(accruals, &allocation.portions).unwrap();
         self.total_minted += &reward;
         self.total_burn += &allocation.burn;
-        self.total_service += &service;
+        self.total_explicit += &explicit;
         self.f099_balance += allocation.burn;
-        self.actor_balance += service;
+        self.actor_balance += explicit;
     }
 
     fn burn_dust(&mut self, dust: TokenAmount) {
@@ -139,13 +148,13 @@ impl SupplyTracker {
     }
 
     fn assert_invariants(&self, streams: &StreamsState, accruals: &[StreamAccrual]) {
-        let liabilities = service_liabilities(streams, accruals);
+        let liabilities = explicit_liabilities(streams, accruals);
         assert_eq!(self.actor_balance, liabilities);
         assert!(
-            liabilities <= self.total_service,
-            "conservative service reserve is below exact liability"
+            liabilities <= self.total_explicit,
+            "conservative explicit reserve is below exact liability"
         );
-        let miner = &self.total_minted - &self.total_burn - &self.total_service;
+        let miner = &self.total_minted - &self.total_burn - &self.total_explicit;
         assert!(miner >= TokenAmount::zero());
         assert_eq!(self.f099_balance, &self.total_burn + &self.total_dust);
     }

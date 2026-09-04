@@ -80,17 +80,17 @@ fn fold_dust_preserves_the_supply_decomposition_without_moving_counters() {
     for _ in 0..2 {
         supply.award(&streams, &mut accruals, 0, TokenAmount::from_atto(51));
         let before_burn = supply.total_burn.clone();
-        let before_service = supply.total_service.clone();
+        let before_explicit = supply.total_explicit.clone();
         let dust = set_shares(&mut streams, &mut accruals, 2, split.clone()).unwrap();
         assert_eq!(TokenAmount::from_atto(1), dust);
         supply.burn_dust(dust);
         assert_eq!(before_burn, supply.total_burn);
-        assert_eq!(before_service, supply.total_service);
+        assert_eq!(before_explicit, supply.total_explicit);
         supply.assert_invariants(&streams, &accruals);
     }
 
     assert_eq!(TokenAmount::from_atto(22), supply.total_burn);
-    assert_eq!(TokenAmount::from_atto(20), supply.total_service);
+    assert_eq!(TokenAmount::from_atto(20), supply.total_explicit);
     assert_eq!(TokenAmount::from_atto(2), supply.total_dust);
     supply.assert_invariants(&streams, &accruals);
 }

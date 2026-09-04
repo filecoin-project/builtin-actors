@@ -1,5 +1,32 @@
-// Copyright 2019-2022 ChainSafe Systems
-// SPDX-License-Identifier: Apache-2.0, MIT
+//! State validation, in three tiers.
+//!
+//! FIP-0118 2.4.3 and 2.4.8 distinguish three tiers of state trust:
+//!
+//! - **structure**: sorted unique keys, bounds, deferred payloads decoding to their canonical
+//!   shape, stream IDs disjoint across live streams, tombstones and pending registrations,
+//!   tombstone capacity.
+//! - **accounting**: accrual rows corresponding one to one with the live explicit streams,
+//!   non-negative accruals, positive recipient rows, each claimed amount within what its
+//!   recipient has earned.
+//! - **schedule**: every weight record in band, and the aggregate within `DENOM` at every
+//!   breakpoint from a given epoch onward.
+//!
+//! Each entry point requires a different set, and fails differently when one does not hold:
+//!
+//! | entry | structure | accounting | schedule |
+//! |---|---|---|---|
+//! | explicit method, at load | abort | abort | not required (2.4.8) |
+//! | admission of a queued call | held | held | required on the projection; `SetWeightRecords` may repair |
+//! | award | gas only | `allocate_without_explicit` | gas only |
+//! | invariant checker | reported | reported | reported |
+//!
+//! The functions here cover the first two tiers in combinations rather than one function per
+//! tier. `validate_award_state_structure` is the structure tier, and the award runs it alone.
+//! `validate_mutation_state` is structure plus accounting, which every mutating method runs
+//! before it touches the queue. `validate_streams_state` adds the schedule tier over the
+//! projected queue and is what `testing.rs` reports from. The schedule tier itself lives in
+//! `weights.rs`; the queue applies it at admission and at application, from the epoch each
+//! write becomes effective.
 
 use std::collections::BTreeSet;
 
@@ -37,11 +64,11 @@ pub(super) fn validate_stream_configuration_without_weights(streams: &[Stream]) 
     ensure!(streams.is_sorted_by(|a, b| a.id < b.id), "stream IDs are not ordered");
     ensure!(!streams.iter().any(|stream| stream.id == 0), "stream ID 0 is reserved");
     ensure!(
-        streams.iter().filter(|stream| stream.distribution.is_none()).count() <= 1,
+        streams.iter().filter(|stream| stream.is_implicit()).count() <= 1,
         "multiple implicit streams"
     );
     for stream in streams {
-        if let Some(distribution) = &stream.distribution {
+        if let Some(distribution) = stream.explicit() {
             validate_id_address(&distribution.writer, "distribution writer")?;
             validate_stored_shares(&distribution.shares)?;
             validate_amount_rows(&distribution.payable, "payable")?;
@@ -97,7 +124,7 @@ fn validate_streams_state_structure_without_weights(
     let explicit_ids: BTreeSet<_> = streams
         .streams
         .iter()
-        .filter(|stream| stream.distribution.is_some())
+        .filter(|stream| !stream.is_implicit())
         .map(|stream| stream.id)
         .collect();
     let accrual_ids: BTreeSet<_> = accruals.iter().map(|row| row.id).collect();
@@ -116,7 +143,7 @@ fn validate_streams_state_structure_without_weights(
             .streams
             .iter()
             .find(|stream| stream.id == accrual.id)
-            .and_then(|stream| stream.distribution.as_ref())
+            .and_then(Stream::explicit)
             .expect("explicit-stream accrual IDs matched explicit streams");
         validate_period_claims(distribution, &accrual.amount)?;
     }
@@ -163,7 +190,7 @@ pub(super) fn validate_tombstone_capacity(streams: &StreamsState) -> Result<()> 
             .streams
             .iter()
             .find(|stream| stream.id == id)
-            .and_then(|stream| stream.distribution.as_ref())
+            .and_then(Stream::explicit)
             .map_or(MAX_RECIPIENTS, |distribution| {
                 MAX_RECIPIENTS.max(recipient_union_len(&distribution.payable, &distribution.shares))
             });

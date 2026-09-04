@@ -7,7 +7,7 @@ use fil_actor_reward::{
     PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare, RegisterStreamParams,
     RegisterStreamPayload, RemoveStreamParams, STORAGE_MINING_ALLOCATION, SetDistributionParams,
     SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State, Stream, StreamAccrual,
-    StreamsState, WeightRecord, WeightRecordUpdate, compute_service_liability, ext,
+    StreamsState, WeightRecord, WeightRecordUpdate, explicit_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
     ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
@@ -87,9 +87,9 @@ fn load_streams(rt: &MockRuntime) -> StreamsState {
     rt.store.get_cbor(&state.streams_root).unwrap().unwrap()
 }
 
-fn service_liability(rt: &MockRuntime) -> TokenAmount {
+fn liability(rt: &MockRuntime) -> TokenAmount {
     let state: State = rt.get_state();
-    compute_service_liability(&load_streams(rt), &state.accrued).unwrap()
+    explicit_liability(&load_streams(rt), &state.accrued).unwrap()
 }
 
 fn assert_state_invariants(rt: &MockRuntime) {
@@ -562,7 +562,7 @@ fn set_shares_folds_liabilities_and_burns_dust() {
 
     let state: State = rt.get_state();
     assert_eq!(TokenAmount::zero(), state.accrued[0].amount);
-    assert_eq!(TokenAmount::from_atto(4), service_liability(&rt));
+    assert_eq!(TokenAmount::from_atto(4), liability(&rt));
     let distribution = load_streams(&rt).streams.remove(1).distribution.unwrap();
     assert_eq!(
         vec![
@@ -629,7 +629,7 @@ fn claim_returns_positional_amounts_and_deletes_drained_tombstone() {
         vec![TokenAmount::from_atto(10), TokenAmount::zero(), TokenAmount::zero()],
         result.amounts
     );
-    assert_eq!(TokenAmount::from_atto(7), service_liability(&rt));
+    assert_eq!(TokenAmount::from_atto(7), liability(&rt));
 
     rt.expect_validate_caller_any();
     let result = call(
@@ -661,7 +661,7 @@ fn claim_returns_positional_amounts_and_deletes_drained_tombstone() {
     .unwrap();
     rt.verify();
     assert!(load_streams(&rt).tombstones.is_empty());
-    assert_eq!(TokenAmount::zero(), service_liability(&rt));
+    assert_eq!(TokenAmount::zero(), liability(&rt));
 }
 
 #[test]
@@ -711,7 +711,7 @@ fn settlement_remains_live_while_the_weight_envelope_is_invalid() {
     rt.verify();
 
     assert_eq!(vec![TokenAmount::from_atto(10)], result.amounts);
-    assert_eq!(TokenAmount::zero(), service_liability(&rt));
+    assert_eq!(TokenAmount::zero(), liability(&rt));
 }
 
 #[test]
@@ -1062,7 +1062,7 @@ fn award_pays_only_gas_for_malformed_weights_until_repaired() {
     assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(1), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(1), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(1), service_liability(&rt));
+    assert_eq!(TokenAmount::from_atto(1), liability(&rt));
     assert_eq!(TokenAmount::from_atto(1), state.accrued[0].amount);
 }
 
@@ -1152,7 +1152,7 @@ fn full_explicit_stream_decommission_preserves_and_drains_liabilities() {
     assert_state_invariants(&rt);
     let state: State = rt.get_state();
     assert_eq!(TokenAmount::from_atto(11), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(11), service_liability(&rt));
+    assert_eq!(TokenAmount::from_atto(11), liability(&rt));
 
     rt.epoch.replace(2);
     expect_write_event(&rt, "write-applied", &removal, false);
@@ -1165,7 +1165,7 @@ fn full_explicit_stream_decommission_preserves_and_drains_liabilities() {
     let streams = load_streams(&rt);
     assert!(state.accrued.is_empty());
     assert_eq!(TokenAmount::from_atto(11), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(11), service_liability(&rt));
+    assert_eq!(TokenAmount::from_atto(11), liability(&rt));
     assert_eq!(1, streams.streams.len());
     assert_eq!(2, streams.tombstones[0].id);
     assert_eq!(TokenAmount::from_atto(11), streams.tombstones[0].payable[0].amount);
@@ -1200,7 +1200,7 @@ fn full_explicit_stream_decommission_preserves_and_drains_liabilities() {
     rt.verify();
     assert_eq!(vec![TokenAmount::from_atto(11)], result.amounts);
     assert!(load_streams(&rt).tombstones.is_empty());
-    assert_eq!(TokenAmount::zero(), service_liability(&rt));
+    assert_eq!(TokenAmount::zero(), liability(&rt));
     assert_state_invariants(&rt);
 
     rt.expect_validate_caller_any();
@@ -1280,7 +1280,7 @@ fn zero_explicit_streams_are_a_stable_award_and_claim_state() {
         assert_eq!(TokenAmount::from_atto(5 * award_count), state.total_minted_reward);
         assert_eq!(TokenAmount::from_atto(2 * award_count), state.total_burn_minted);
         assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
-        assert_eq!(TokenAmount::zero(), service_liability(&rt));
+        assert_eq!(TokenAmount::zero(), liability(&rt));
         assert!(state.accrued.is_empty());
         assert_eq!(streams_root, state.streams_root);
         assert_state_invariants(&rt);
@@ -1337,7 +1337,7 @@ fn consensus_stream_removal_uses_the_normal_queue_and_award_paths() {
     assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(5), state.total_burn_minted);
     assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
-    assert_eq!(TokenAmount::zero(), service_liability(&rt));
+    assert_eq!(TokenAmount::zero(), liability(&rt));
     assert_state_invariants(&rt);
 }
 #[test]
@@ -1378,7 +1378,7 @@ fn award_burns_transition_dust_without_counting_it_as_reward_residual() {
     assert_eq!(TokenAmount::from_atto(10), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(2), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(5), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(4), service_liability(&rt));
+    assert_eq!(TokenAmount::from_atto(4), liability(&rt));
     assert!(state.accrued.is_empty());
     assert_eq!(
         TokenAmount::from_atto(4),
@@ -1387,7 +1387,7 @@ fn award_burns_transition_dust_without_counting_it_as_reward_residual() {
 }
 
 #[test]
-fn award_reserves_existing_service_liabilities_when_reward_balance_is_low() {
+fn award_reserves_existing_explicit_liabilities_when_reward_balance_is_low() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
     state.this_epoch_reward = TokenAmount::from_atto(100);
@@ -1407,12 +1407,12 @@ fn award_reserves_existing_service_liabilities_when_reward_balance_is_low() {
     assert_eq!(TokenAmount::from_atto(2), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(32), state.total_explicit_minted);
     assert_eq!(TokenAmount::from_atto(32), state.accrued[0].amount);
-    assert_eq!(TokenAmount::from_atto(32), service_liability(&rt));
+    assert_eq!(TokenAmount::from_atto(32), liability(&rt));
     assert_eq!(TokenAmount::from_atto(32), *rt.balance.borrow());
 }
 
 #[test]
-fn award_uses_allocation_remainder_until_invalid_service_accounting_is_repaired() {
+fn award_uses_allocation_remainder_until_invalid_explicit_accounting_is_repaired() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
     let supply_total = STORAGE_MINING_ALLOCATION.clone();

@@ -1,5 +1,48 @@
-// Copyright 2019-2022 ChainSafe Systems
-// SPDX-License-Identifier: Apache-2.0, MIT
+//! Stream weights: one clamped linear segment per stream, and the envelope over all of them.
+//!
+//! FIP-0118 2.4.1(3), `ComputeWeight`:
+//!
+//! ```text
+//! WeightRecord = { v_start, slope, t_start, floor, cap }   // one record per stream
+//!
+//! func clamp(x, lo, hi) -> Fraction:
+//!     return max(lo, min(hi, x))
+//!
+//! func ComputeWeight(w WeightRecord, e Epoch) -> Fraction:
+//!     return clamp(w.v_start + w.slope * (e - w.t_start), w.floor, w.cap)
+//!
+//! // per-epoch weights, all evaluated by the same function:
+//! w1(e) = ComputeWeight(W_consensus, e)  // linear: slope < 0, floor = W1_FLOOR, cap = W1_START
+//! w2(e) = ComputeWeight(W_service, e)    // Q1: linear bootstrap record mirroring w1's ramp;
+//!                                        // Q2 onward: constant record stepped by the gate
+//! w0(e) = 1 - sum_{i>=1} ComputeWeight(W_i, e)  // residual over all streams; never stored
+//! ```
+//!
+//! FIP-0118 2.4.8 reduces the envelope to finitely many epochs:
+//!
+//! ```text
+//! The checks: per record, `0 <= floor <= v_start <= cap <= 1`; and the
+//! projected weights must satisfy `sum_{i>=1} w_i(e) <= 1` at every epoch,
+//! so the burn residual w0 stays non-negative. Each weight is a clamped linear
+//! function of the epoch (`ComputeWeight`), so the sum is piecewise
+//! linear: between breakpoints it is a straight line, and a line at or
+//! below 1 at both ends stays at or below 1 in between. `sum <= 1`
+//! therefore need only hold at:
+//!
+//!   - each record's `t_start`, where its segment begins;
+//!
+//!   - each epoch where a ramping weight meets a clamp and goes flat:
+//!     `e = t_start + (floor - v_start)/slope` and
+//!     `e = t_start + (cap - v_start)/slope`, for `slope != 0`;
+//!
+//!   - one point past the last of these, where every weight has gone
+//!     flat and the sum no longer changes.
+//! ```
+//!
+//! - `compute_weight` is `ComputeWeight` using `DENOM` fixed point.
+//! - `weight_breakpoints` enumerates that epoch list for one record, bracketing each crossing so
+//!    integer division can't step over a one-epoch violation.
+//! - `validate_weight_schedule` sums every stream at every breakpoint from a start epoch onward.
 
 use std::collections::BTreeSet;
 

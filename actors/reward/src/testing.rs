@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::{
     STORAGE_MINING_ALLOCATION, State, StreamsState,
-    streams::{compute_service_liability, validate_streams_state},
+    streams::{explicit_liability, validate_streams_state},
 };
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
@@ -72,7 +72,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     acc.require(
         &state.total_burn_minted + &state.total_explicit_minted <= state.total_minted_reward,
         format!(
-            "burn {} + service {} exceeds total minted {}",
+            "burn {} + explicit {} exceeds total minted {}",
             state.total_burn_minted, state.total_explicit_minted, state.total_minted_reward
         ),
     );
@@ -128,7 +128,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     let explicit_stream_ids: BTreeSet<_> = streams_state
         .streams
         .iter()
-        .filter(|stream| stream.distribution.is_some())
+        .filter(|stream| !stream.is_implicit())
         .map(|stream| stream.id)
         .collect();
     let accrual_ids: BTreeSet<_> = state.accrued.iter().map(|row| row.id).collect();
@@ -161,7 +161,7 @@ pub fn check_state_invariants<BS: Blockstore>(
         "pending writes are not ordered by effective epoch",
     );
 
-    match compute_service_liability(&streams_state, &state.accrued) {
+    match explicit_liability(&streams_state, &state.accrued) {
         Ok(liabilities) => {
             acc.require(
                 liabilities <= state.total_explicit_minted,

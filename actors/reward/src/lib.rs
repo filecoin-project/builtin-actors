@@ -106,7 +106,7 @@ impl Actor {
         let (apply_result, queued) = rt.transaction(|st: &mut State, rt| {
             let mut streams = load_streams(rt, st)?;
             let apply_result = apply_due(rt, st, &mut streams)?;
-            queue_weight_records(
+            let queued = queue_weight_records(
                 &mut streams,
                 rt.curr_epoch(),
                 st.swa_timelock_epochs,
@@ -114,7 +114,6 @@ impl Actor {
                 &params.updates,
             )
             .map_err(|e| illegal_argument(e, "failed to queue weight records"))?;
-            let queued = pending_write(&streams, None, op)?;
             store_streams(rt, st, &streams)?;
             Ok((apply_result, queued))
         })?;
@@ -142,7 +141,7 @@ impl Actor {
         let (apply_result, queued) = rt.transaction(|st: &mut State, rt| {
             let mut streams = load_streams(rt, st)?;
             let apply_result = apply_due(rt, st, &mut streams)?;
-            queue_register_stream(
+            let queued = queue_register_stream(
                 &mut streams,
                 rt.curr_epoch(),
                 st.swa_timelock_epochs,
@@ -150,7 +149,6 @@ impl Actor {
                 params.activation_epoch,
             )
             .map_err(|e| illegal_argument(e, "failed to queue stream registration"))?;
-            let queued = pending_write(&streams, Some(params.id), PendingWriteOp::RegisterStream)?;
             store_streams(rt, st, &streams)?;
             Ok((apply_result, queued))
         })?;
@@ -163,9 +161,13 @@ impl Actor {
         let (apply_result, queued) = rt.transaction(|st: &mut State, rt| {
             let mut streams = load_streams(rt, st)?;
             let apply_result = apply_due(rt, st, &mut streams)?;
-            queue_remove_stream(&mut streams, rt.curr_epoch(), st.swa_timelock_epochs, params.id)
-                .map_err(|e| illegal_argument(e, "failed to queue stream removal"))?;
-            let queued = pending_write(&streams, Some(params.id), PendingWriteOp::RemoveStream)?;
+            let queued = queue_remove_stream(
+                &mut streams,
+                rt.curr_epoch(),
+                st.swa_timelock_epochs,
+                params.id,
+            )
+            .map_err(|e| illegal_argument(e, "failed to queue stream removal"))?;
             store_streams(rt, st, &streams)?;
             Ok((apply_result, queued))
         })?;
@@ -182,7 +184,7 @@ impl Actor {
         let (apply_result, queued) = rt.transaction(|st: &mut State, rt| {
             let mut streams = load_streams(rt, st)?;
             let apply_result = apply_due(rt, st, &mut streams)?;
-            queue_set_distribution(
+            let queued = queue_set_distribution(
                 &mut streams,
                 rt.curr_epoch(),
                 st.swa_timelock_epochs,
@@ -190,7 +192,6 @@ impl Actor {
                 writer,
             )
             .map_err(|e| illegal_argument(e, "failed to queue distribution writer"))?;
-            let queued = pending_write(&streams, Some(params.id), PendingWriteOp::SetDistribution)?;
             store_streams(rt, st, &streams)?;
             Ok((apply_result, queued))
         })?;
@@ -200,7 +201,7 @@ impl Actor {
     /// Applies due writes, then removes the pending write in the named queue slot.
     fn cancel_pending(rt: &impl Runtime, params: CancelPendingParams) -> Result<(), ActorError> {
         validate_swa(rt)?;
-        validate_cancel_target(params.id, params.op)
+        let slot = Slot::for_cancel(params.id, params.op)
             .map_err(|e| illegal_argument(e, "invalid cancellation target"))?;
         let result = rt.transaction(|st: &mut State, rt| {
             let mut streams = load_streams(rt, st)?;
@@ -210,19 +211,14 @@ impl Actor {
                     "invalid stream state before cancellation",
                 )
             })?;
-            let result = apply_due_writes_and_cancel(
-                &mut streams,
-                &mut st.accrued,
-                rt.curr_epoch(),
-                params.id,
-                params.op,
-            )
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to apply due writes before cancellation",
-                )
-            })?;
+            let epoch = rt.curr_epoch();
+            let result = apply_due_writes_and_cancel(&mut streams, &mut st.accrued, epoch, slot)
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to apply due writes before cancellation",
+                    )
+                })?;
             store_streams(rt, st, &streams)?;
             Ok(result)
         })?;
@@ -248,7 +244,7 @@ impl Actor {
                 .streams
                 .iter()
                 .find(|stream| stream.id == params.id)
-                .and_then(|stream| stream.distribution.as_ref())
+                .and_then(Stream::explicit)
                 .map(|distribution| distribution.writer)
                 .ok_or_else(|| {
                     actor_error!(illegal_argument, "stream {} is not explicit", params.id)
@@ -263,9 +259,9 @@ impl Actor {
                 ));
             }
             let shares = resolve_shares(rt, params.shares)?;
-            let burn = set_shares(&mut streams, &mut st.accrued, params.id, shares)
+            let fold_dust = set_shares(&mut streams, &mut st.accrued, params.id, shares)
                 .map_err(|e| illegal_argument(e, "failed to set stream shares"))?;
-            apply_result.burn += burn;
+            apply_result.fold_dust += fold_dust;
             store_streams(rt, st, &streams)?;
             Ok(apply_result)
         })?;
@@ -406,16 +402,16 @@ impl Actor {
             let expected_block_reward: TokenAmount =
                 (&st.this_epoch_reward * params.win_count).div_floor(EXPECTED_LEADERS_PER_EPOCH);
             let current_liabilities =
-                match compute_service_liability(&streams, &st.accrued) {
+                match explicit_liability(&streams, &st.accrued) {
                     Ok(liabilities) => liabilities,
                     Err(error) => {
                         error!(
                             "invalid explicit-stream accounting at epoch {}: {};\
-                            suspending service accrual",
+                            suspending explicit accrual",
                             rt.curr_epoch(),
                             error
                         );
-                        return allocate_without_service(
+                        return allocate_without_explicit(
                             st,
                             &streams,
                             rt.curr_epoch(),
@@ -443,11 +439,11 @@ impl Actor {
                             Err(error) => {
                                 error!(
                                     "failed to apply due writes at epoch {}: {};\
-                                    suspending service accrual",
+                                    suspending explicit accrual",
                                     rt.curr_epoch(),
                                     error
                                 );
-                                return allocate_without_service(
+                                return allocate_without_explicit(
                                     st,
                                     &current_streams,
                                     rt.curr_epoch(),
@@ -458,16 +454,16 @@ impl Actor {
                             }
                         };
                     let liabilities =
-                        match compute_service_liability(&next_streams, &next_accrued) {
+                        match explicit_liability(&next_streams, &next_accrued) {
                             Ok(liabilities) => liabilities,
                             Err(error) => {
                                 error!(
                                     "due writes produced invalid explicit-stream accounting at epoch {}: {};\
-                                    suspending service accrual",
+                                    suspending explicit accrual",
                                     rt.curr_epoch(),
                                     error
                                 );
-                                return allocate_without_service(
+                                return allocate_without_explicit(
                                     st,
                                     &current_streams,
                                     rt.curr_epoch(),
@@ -497,12 +493,12 @@ impl Actor {
             let mut block_reward = expected_block_reward.clone();
             // Due folds leave dust out of the derived liability before its post-transaction
             // burn send, so it remains reserved until that send executes.
-            let reserved = &params.gas_reward + &liabilities + &apply_result.burn;
+            let reserved = &params.gas_reward + &liabilities + &apply_result.fold_dust;
             if prior_balance <= reserved {
                 warn!(
                     "reward balance {} does not exceed gas {}, explicit-stream liabilities {},\
                     and pending dust {}; paying gas reward only",
-                    prior_balance, params.gas_reward, liabilities, apply_result.burn
+                    prior_balance, params.gas_reward, liabilities, apply_result.fold_dust
                 );
                 return Ok((
                     params.gas_reward.clone(),
@@ -543,14 +539,14 @@ impl Actor {
                     ApplyResult::default(),
                 ));
             }
-            if let Err(error) = accrue_service(&mut next_accrued, &allocation.service) {
+            if let Err(error) = accrue_explicit(&mut next_accrued, &allocation.portions) {
                 error!(
                     "failed to accrue explicit-stream reward at epoch {}: {};\
-                    suspending service accrual",
+                    suspending explicit accrual",
                     rt.curr_epoch(),
                     error
                 );
-                return allocate_without_service(
+                return allocate_without_explicit(
                     st,
                     prior_streams.as_ref().unwrap_or(&next_streams),
                     rt.curr_epoch(),
@@ -559,22 +555,22 @@ impl Actor {
                     &expected_block_reward,
                 );
             }
-            let service = allocation
-                .service
+            let explicit = allocation
+                .portions
                 .iter()
                 .fold(TokenAmount::zero(), |total, row| total + &row.amount);
 
             st.accrued = next_accrued;
             st.total_minted_reward += &block_reward;
             st.total_burn_minted += &allocation.burn;
-            st.total_explicit_minted += service;
+            st.total_explicit_minted += explicit;
             if !(apply_result.applied.is_empty() && apply_result.dropped.is_empty()) {
                 store_streams(rt, st, &next_streams)?;
             }
 
             Ok((
                 &params.gas_reward + allocation.miner,
-                &apply_result.burn + allocation.burn,
+                &apply_result.fold_dust + allocation.burn,
                 apply_result,
             ))
         })?;
@@ -680,7 +676,7 @@ impl Actor {
         Ok(())
     }
 }
-fn allocate_without_service(
+fn allocate_without_explicit(
     state: &mut State,
     streams: &StreamsState,
     epoch: ChainEpoch,
@@ -797,20 +793,6 @@ fn apply_due(
     Ok(result)
 }
 
-fn pending_write(
-    streams: &StreamsState,
-    id: Option<StreamId>,
-    op: PendingWriteOp,
-) -> Result<PendingWrite, ActorError> {
-    // Every caller reaches this only after its queue helper inserted the exact slot.
-    streams
-        .pending_writes
-        .iter()
-        .find(|write| write.id == id && write.op == op)
-        .cloned()
-        .ok_or_else(|| actor_error!(illegal_state, "queued write ({id:?}, {op:?}) not found"))
-}
-
 fn illegal_argument(error: anyhow::Error, context: &'static str) -> ActorError {
     error.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, context)
 }
@@ -843,12 +825,12 @@ fn emit_apply(rt: &impl Runtime, result: &ApplyResult) -> Result<(), ActorError>
 
 fn complete_apply(rt: &impl Runtime, result: &ApplyResult) -> Result<(), ActorError> {
     emit_apply(rt, result)?;
-    if result.burn > TokenAmount::zero() {
+    if result.fold_dust > TokenAmount::zero() {
         extract_send_result(rt.send_simple(
             &BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
             None,
-            result.burn.clone(),
+            result.fold_dust.clone(),
         ))?;
     }
     Ok(())

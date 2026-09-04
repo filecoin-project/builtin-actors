@@ -74,7 +74,7 @@ pub struct State {
     /// Cumulative block-reward residual sent to the burnt funds actor.
     pub total_burn_minted: TokenAmount,
 
-    /// Cumulative block reward accrued to explicit service streams.
+    /// Cumulative block reward accrued to explicit streams.
     pub total_explicit_minted: TokenAmount,
 
     /// Current-period accrual for each explicit stream, ordered by stream ID.

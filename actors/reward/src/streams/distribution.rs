@@ -1,5 +1,50 @@
-// Copyright 2019-2022 ChainSafe Systems
-// SPDX-License-Identifier: Apache-2.0, MIT
+//! Explicit-stream recipient accounting: the share map, the period fold, and claims.
+//!
+//! Field order and enum discriminants are wire format for the types declared here.
+//!
+//! A period is the interval between two `SetShares` calls on one stream. f02 knows nothing of
+//! quarters and imposes no cadence; installing a new map first closes the current period under
+//! the outgoing one, which is what makes a share change strictly prospective.
+//!
+//! FIP-0118 2.4.4, `SetShares`:
+//!
+//! ```text
+//! SetShares(id, new_map):     // designated writer only; never queued
+//!     require caller == the stream's designated writer
+//!     require sum new_map wire shares == DENOM, every share positive
+//!     reject a repeated recipient, except f099, which may appear more
+//!         than once
+//!     resolve each recipient to an ID address, rejecting on failure
+//!     strip f099 rows from new_map
+//!     pool = accrued[id]
+//!     share_total = sum OLD map shares              // stored; f099 absent
+//!     for each (wallet, share) in the OLD map:
+//!         earned = floor(share * pool / share_total)
+//!         payable[wallet] += earned - claimed_period[wallet]
+//!     residue = pool - sum earned               // rounding dust only
+//!     send(f099, residue)                     // burned; neither counter moves
+//!     accrued[id] = 0; clear claimed_period
+//!     install new_map
+//! ```
+//!
+//! FIP-0118 2.4.5, `Claim`:
+//!
+//! ```text
+//! `Claim(id, wallets[]) -> amounts[]` is permissionless and batched. Each
+//! wallet's entitlement is its live portion of the current period,
+//! `floor(share * accrued[id] / stored_share_total)` minus what it has
+//! already claimed this period, plus its payable balance from closed
+//! periods; zero stored shares give no live entitlement. For a tombstoned
+//! id, the payable balance alone applies. f02 records the claim
+//! (bumping `claimed_period`, deleting the payable row), sends the wallet
+//! its entitlement, and emits `claim-payout` (Section 2.4.9).
+//! ```
+//!
+//! `fold` is the loop of the first block and returns the residue for the caller to burn;
+//! `set_shares` wraps it with admission of the incoming map, and the queue calls it again for
+//! removal and writer replacement (2.4.6). `claim` selects the live or tombstone arm of the
+//! second block. The pool either divides is the stream's `StreamAccrual` row, passed in
+//! because accruals live inline in root state rather than behind `streams_root`.
 
 use std::collections::BTreeSet;
 
@@ -24,7 +69,7 @@ pub struct RecipientShare {
     pub share: u64,
 }
 
-/// Persisted allocation state for an explicit service stream.
+/// Persisted allocation state for an explicit stream.
 ///
 /// The accounting rows are actor-owned state, not caller-supplied share-map fields.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
@@ -157,14 +202,14 @@ fn set_shares_inner(
         .find(|stream| stream.id == id)
         .ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
     let distribution =
-        stream.distribution.as_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
+        stream.explicit_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
     let accrual = accruals
         .iter_mut()
         .find(|row| row.id == id)
         .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?;
 
     let mut next_distribution = distribution.clone();
-    let burn = settle_period(&mut next_distribution, &accrual.amount)?;
+    let burn = fold(&mut next_distribution, &accrual.amount)?;
     let reserved_rows = recipient_union_len(&next_distribution.payable, &shares);
     ensure!(
         reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
@@ -186,10 +231,8 @@ pub(crate) fn claim(
 ) -> Result<ClaimResult> {
     if let Some(stream_idx) = streams.streams.iter().position(|stream| stream.id == id) {
         let stream = &mut streams.streams[stream_idx];
-        let distribution = stream
-            .distribution
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
+        let distribution =
+            stream.explicit_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
         let pool = &accruals
             .iter()
             .find(|row| row.id == id)
@@ -210,7 +253,7 @@ pub(crate) fn claim(
 }
 
 /// Carries current-period earnings into payable balances and returns rounding dust.
-pub(super) fn settle_period(
+pub(super) fn fold(
     distribution: &mut ExplicitDistribution,
     pool: &TokenAmount,
 ) -> Result<TokenAmount> {

@@ -1,5 +1,75 @@
-// Copyright 2019-2022 ChainSafe Systems
-// SPDX-License-Identifier: Apache-2.0, MIT
+//! The pending-write queue: the SWA timelock, admission, cancellation, and application.
+//!
+//! Field order and enum discriminants are wire format for the types declared here.
+//!
+//! Every SWA write lands here first as a `PendingWrite` containing the op, its encoded params,
+//! and the  epoch it becomes due. Each one sits in a [`Slot`]. Per-stream ops key by `(id, op)`;
+//! the two weight ops are schedule-wide and key by `op` alone (i.e. null id). One write per slot,
+//! and an occupied slot means a new write for that slot will be rejected, so changing your mind
+//! means a cancel plus requeue and the timelock starts again. `CancelPending` has to name the slot
+//! being cancelled the same way the queue keys it. For cancellation a mismatched id/op is an error,
+//! an empty slot is a no-op, and `StepWeightRecords` can't be cancelled at all (the discretionary
+//! `SetWeightRecords` can be).
+//!
+//! Three epochs matter for an entry. The queue epoch is when the SWA called. The effective epoch
+//! is queue plus `swa_timelock_epochs`, except for `RegisterStream`, which brings its own
+//! `activation_epoch` and just has to be at or past that floor. The apply epoch is whenever the
+//! next stream-engine method runs at or after that, `AwardBlockReward` included, because every
+//! one of them applies due entries before doing its own thing. The queue is sorted by effective
+//! epoch with ties in arrival order, so the head tells you whether anything is due. The
+//! objection window is `[queue, effective)`, and a due entry applies before a same-epoch cancel.
+//!
+//! One rule drives most of the logic in here: *cancellation is unconditional*. A compromised SWA
+//! must not be able to make a bad write uncancellable by queueing something that depends on it,
+//! and both governance multisigs may relay the same objection. So an admitted write can lose a
+//! prerequisite after admission, application has to be able to drop it, and admission has to
+//! validate against the state _as it will be at application_ rather than today's, since two
+//! writes, each fine on their own, can sum past one together. That's why both
+//! `validate_new_pending` and `apply_due_writes` replay the queue in effective order.
+//!
+//! The admission rule: *W is admitted iff, applying the queue in effective order, W applies in
+//! the state its predecessors produce, and every write that applied before W's admission still
+//! applies after it*. The second clause is the subset check in `validate_new_pending`. It's
+//! there because a `RegisterStream` can have a far-future activation, so a `SetWeightRecords`
+//! admitted later but effective earlier applies first and could eat the headroom the
+//! registration was admitted on. Without it, admission would be a second way to strand a write,
+//! and cancellation is meant to be the only one.
+//!
+//! What each op needs at its effective epoch:
+//!
+//! | op | needs at its effective epoch |
+//! |---|---|
+//! | `SetWeightRecords`, `StepWeightRecords` | every target id live; envelope holds from the effective epoch |
+//! | `RegisterStream` | id not live or tombstoned; stream table below `MAX_STREAMS`; if implicit, no other implicit; envelope holds from activation |
+//! | `RemoveStream` | id live |
+//! | `SetDistribution` | id live and explicit |
+//!
+//! And which earlier writes provide one of those, so cancelling them takes it away:
+//!
+//! | earlier write | provides, for a later write |
+//! |---|---|
+//! | `RegisterStream(id)` | existence of `id` for a later `Set`, `Step`, `Remove` or `SetDistribution` on it |
+//! | `RemoveStream(id)` | a table slot, the implicit slot, and envelope headroom for a later `Register`, `Set` or `Step` |
+//! | `SetWeightRecords` (a decrease) | envelope headroom for a later `Set`, `Step` or `Register` |
+//!
+//! So there's three providers and four things they can provide (existence, table room, the implicit
+//! slot, envelope headroom). `StepWeightRecords` can't be cancelled and `SetDistribution` provides
+//! nothing, so neither strands anything. The envelope is the piecewise-linear sum check over in
+//! `weights`, and it's the only one with (awkward) arithmetic in it.
+//!
+//! At application, due entries go in queue order, each validated from its own effective epoch
+//! rather than the current one, so a null round can't change which ones apply. A well-formed
+//! entry that's lost its prerequisite is dropped with a `write-dropped` event and we carry on;
+//! the installed config is untouched. A payload that won't decode, or a queue that isn't
+//! canonical, is corruption and explicit methods abort and the award pays gas only.
+//!
+//! If the persisted weight records or envelope are already invalid, due entries still only
+//! apply when their result validates, and new ones are rejected, with one exception: a
+//! `SetWeightRecords` that repairs things without stranding a still-valid entry. It gets the
+//! ordinary timelock like anything else.
+//!
+//! FIP-0118 2.4.7 has the timelock, the three epochs, slots and cancellability; 2.4.8 has details
+//! about what admission proves, stranding, and repair.
 
 use std::collections::BTreeSet;
 
@@ -13,8 +83,7 @@ use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
 use super::distribution::{
-    DistributionInit, ExplicitDistribution, settle_period, validate_distribution_init,
-    validate_id_address,
+    DistributionInit, ExplicitDistribution, fold, validate_distribution_init, validate_id_address,
 };
 use super::invariants::{
     validate_mutation_state, validate_stream_configuration,
@@ -40,6 +109,39 @@ pub enum PendingWriteOp {
     SetDistribution = 4,
 }
 
+impl PendingWriteOp {
+    /// Schedule-wide operations act on the whole weight schedule and carry no stream ID.
+    fn is_schedule_wide(self) -> bool {
+        matches!(self, PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords)
+    }
+}
+
+/// The queue position that a single pending write occupies (one write per slot).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Slot {
+    PerStream(StreamId, PendingWriteOp),
+    ScheduleWide(PendingWriteOp),
+}
+
+impl Slot {
+    /// The slot that an operation on `id` occupies, rejecting a mismatched ID and operation.
+    fn for_target(id: Option<StreamId>, op: PendingWriteOp) -> Result<Slot> {
+        match (op.is_schedule_wide(), id) {
+            (true, None) => Ok(Slot::ScheduleWide(op)),
+            (true, Some(_)) => Err(anyhow::anyhow!("schedule-wide call has a stream ID")),
+            (false, Some(id)) => Ok(Slot::PerStream(id, op)),
+            (false, None) => Err(anyhow::anyhow!("per-stream call has no stream ID")),
+        }
+    }
+
+    /// The slot `CancelPending` identifies with `StepWeightRecords` being the one uncancellable
+    /// operation.
+    pub(crate) fn for_cancel(id: Option<StreamId>, op: PendingWriteOp) -> Result<Slot> {
+        ensure!(op != PendingWriteOp::StepWeightRecords, "StepWeightRecords cannot be cancelled");
+        Slot::for_target(id, op)
+    }
+}
+
 /// A deferred SWA operation persisted in `StreamsState`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct PendingWrite {
@@ -51,26 +153,36 @@ pub struct PendingWrite {
     pub effective_epoch: ChainEpoch,
 }
 
-/// Private tuple stored in `PendingWrite.payload` for `RegisterStream`.
+impl PendingWrite {
+    /// The slot this write occupies; `Err` for a persisted ID and operation that disagree.
+    fn slot(&self) -> Result<Slot> {
+        Slot::for_target(self.id, self.op)
+    }
+}
+
+/// The tuple stored in `PendingWrite.payload` for `RegisterStream`.
 ///
-/// This is not the public actor-method parameter tuple.
+/// This is the deferred call's own payload, not the `RegisterStream` method parameter tuple.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RegisterStreamPayload {
     pub weight: WeightRecord,
     pub distribution: Option<DistributionInit>,
 }
 
-/// Private tuple stored in `PendingWrite.payload` for `SetDistribution`.
+/// The tuple stored in `PendingWrite.payload` for `SetDistribution`.
 ///
-/// This is not the public actor-method parameter tuple.
+/// This is the deferred call's own payload, not the `SetDistribution` method parameter tuple.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct SetDistributionPayload {
     pub writer: Address,
 }
 
+/// The effects of applying due writes, for the actor layer to settle after the transaction.
+///
+/// This and the effect types below cross Rust call boundaries only so don't need to be encodable.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ApplyResult {
-    pub burn: TokenAmount,
+    pub fold_dust: TokenAmount,
     /// Successful writes for actor-layer events after a committed application. Admission-only
     /// projections discard them.
     pub applied: Vec<PendingWrite>,
@@ -100,29 +212,27 @@ pub(crate) fn queue_weight_records(
     timelock_epochs: ChainEpoch,
     op: PendingWriteOp,
     updates: &[WeightRecordUpdate],
-) -> Result<ChainEpoch> {
-    ensure!(
-        matches!(op, PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords),
-        "invalid weight-record operation {op:?}"
-    );
+) -> Result<PendingWrite> {
+    ensure!(op.is_schedule_wide(), "invalid weight-record operation {op:?}");
     let effective_epoch = timelock_epoch(current_epoch, timelock_epochs)?;
     let mut updates = updates.to_vec();
     updates.sort_by_key(|update| update.id);
     validate_weight_updates(&updates)?;
-
-    let mut proposed = streams.clone();
-    ensure_slot_available(&proposed, None, op)?;
-    proposed.pending_writes.push(PendingWrite {
+    let queued = PendingWrite {
         id: None,
         op,
         payload: RawBytes::serialize(&WeightRecordsPayload { updates })?,
         effective_epoch,
-    });
+    };
+
+    let mut proposed = streams.clone();
+    ensure_slot_available(&proposed, Slot::ScheduleWide(op))?;
+    proposed.pending_writes.push(queued.clone());
     sort_pending(&mut proposed.pending_writes);
-    validate_new_pending(streams, &proposed, current_epoch, (None, op))?;
+    validate_new_pending(streams, &proposed, current_epoch, Slot::ScheduleWide(op))?;
 
     *streams = proposed;
-    Ok(effective_epoch)
+    Ok(queued)
 }
 
 /// Queues registration at an activation epoch no earlier than the timelock boundary.
@@ -132,10 +242,10 @@ pub(crate) fn queue_register_stream(
     timelock_epochs: ChainEpoch,
     stream: Stream,
     activation_epoch: ChainEpoch,
-) -> Result<ChainEpoch> {
+) -> Result<PendingWrite> {
     ensure!(stream.id != 0, "stream ID 0 is reserved");
     validate_weight_record(&stream.weight)?;
-    if let Some(distribution) = &stream.distribution
+    if let Some(distribution) = stream.explicit()
         && (!distribution.payable.is_empty() || !distribution.claimed_period.is_empty())
     {
         return Err(anyhow::anyhow!("new stream has pre-existing accounting state"));
@@ -149,16 +259,15 @@ pub(crate) fn queue_register_stream(
     }
     validate_distribution_init(&distribution)?;
     ensure_stream_id_available(streams, stream.id)?;
-    ensure_slot_available(streams, Some(stream.id), PendingWriteOp::RegisterStream)?;
+    let slot = Slot::PerStream(stream.id, PendingWriteOp::RegisterStream);
+    ensure_slot_available(streams, slot)?;
 
     let earliest = timelock_epoch(current_epoch, timelock_epochs)?;
     ensure!(
         activation_epoch >= earliest,
         "activation epoch {activation_epoch} is before timelock floor {earliest}"
     );
-
-    let mut proposed = streams.clone();
-    proposed.pending_writes.push(PendingWrite {
+    let queued = PendingWrite {
         id: Some(stream.id),
         op: PendingWriteOp::RegisterStream,
         payload: RawBytes::serialize(&RegisterStreamPayload {
@@ -166,17 +275,15 @@ pub(crate) fn queue_register_stream(
             distribution,
         })?,
         effective_epoch: activation_epoch,
-    });
+    };
+
+    let mut proposed = streams.clone();
+    proposed.pending_writes.push(queued.clone());
     sort_pending(&mut proposed.pending_writes);
-    validate_new_pending(
-        streams,
-        &proposed,
-        current_epoch,
-        (Some(stream.id), PendingWriteOp::RegisterStream),
-    )?;
+    validate_new_pending(streams, &proposed, current_epoch, slot)?;
 
     *streams = proposed;
-    Ok(activation_epoch)
+    Ok(queued)
 }
 
 /// Queues removal; explicit-stream liabilities are settled when the write applies.
@@ -185,28 +292,25 @@ pub(crate) fn queue_remove_stream(
     current_epoch: ChainEpoch,
     timelock_epochs: ChainEpoch,
     id: StreamId,
-) -> Result<ChainEpoch> {
+) -> Result<PendingWrite> {
     let effective_epoch = timelock_epoch(current_epoch, timelock_epochs)?;
-    ensure_slot_available(streams, Some(id), PendingWriteOp::RemoveStream)?;
-
-    let mut proposed = streams.clone();
-    proposed.pending_writes.push(PendingWrite {
+    let slot = Slot::PerStream(id, PendingWriteOp::RemoveStream);
+    ensure_slot_available(streams, slot)?;
+    let queued = PendingWrite {
         id: Some(id),
         op: PendingWriteOp::RemoveStream,
         payload: RawBytes::new(EMPTY_TUPLE_CBOR.to_vec()),
         effective_epoch,
-    });
+    };
+
+    let mut proposed = streams.clone();
+    proposed.pending_writes.push(queued.clone());
     sort_pending(&mut proposed.pending_writes);
-    validate_new_pending(
-        streams,
-        &proposed,
-        current_epoch,
-        (Some(id), PendingWriteOp::RemoveStream),
-    )?;
+    validate_new_pending(streams, &proposed, current_epoch, slot)?;
     validate_tombstone_capacity(&proposed)?;
 
     *streams = proposed;
-    Ok(effective_epoch)
+    Ok(queued)
 }
 
 /// Queues writer replacement; the outgoing period is settled when the write applies.
@@ -216,47 +320,33 @@ pub(crate) fn queue_set_distribution(
     timelock_epochs: ChainEpoch,
     id: StreamId,
     writer: Address,
-) -> Result<ChainEpoch> {
+) -> Result<PendingWrite> {
     let effective_epoch = timelock_epoch(current_epoch, timelock_epochs)?;
-    ensure_slot_available(streams, Some(id), PendingWriteOp::SetDistribution)?;
-
-    let mut proposed = streams.clone();
-    proposed.pending_writes.push(PendingWrite {
+    let slot = Slot::PerStream(id, PendingWriteOp::SetDistribution);
+    ensure_slot_available(streams, slot)?;
+    let queued = PendingWrite {
         id: Some(id),
         op: PendingWriteOp::SetDistribution,
         payload: RawBytes::serialize(&SetDistributionPayload { writer })?,
         effective_epoch,
-    });
+    };
+
+    let mut proposed = streams.clone();
+    proposed.pending_writes.push(queued.clone());
     sort_pending(&mut proposed.pending_writes);
-    validate_new_pending(
-        streams,
-        &proposed,
-        current_epoch,
-        (Some(id), PendingWriteOp::SetDistribution),
-    )?;
+    validate_new_pending(streams, &proposed, current_epoch, slot)?;
 
     *streams = proposed;
-    Ok(effective_epoch)
+    Ok(queued)
 }
 
-pub(super) fn cancel_pending(
-    streams: &mut StreamsState,
-    id: Option<StreamId>,
-    op: PendingWriteOp,
-) -> Result<Option<PendingWrite>> {
-    validate_cancel_target(id, op)?;
-    let slot = pending_slot(id, op);
-    let removed = streams
+/// Empties one queue slot. Cancelling an empty slot is a no-op.
+pub(super) fn cancel_pending(streams: &mut StreamsState, slot: Slot) -> Option<PendingWrite> {
+    streams
         .pending_writes
         .iter()
-        .position(|write| pending_slot(write.id, write.op) == slot)
-        .map(|idx| streams.pending_writes.remove(idx));
-    Ok(removed)
-}
-
-pub(crate) fn validate_cancel_target(id: Option<StreamId>, op: PendingWriteOp) -> Result<()> {
-    ensure!(op != PendingWriteOp::StepWeightRecords, "StepWeightRecords cannot be cancelled");
-    validate_pending_target(id, op)
+        .position(|write| write.slot().is_ok_and(|occupied| occupied == slot))
+        .map(|idx| streams.pending_writes.remove(idx))
 }
 
 /// Applies writes due through `epoch` before attempting cancellation.
@@ -264,20 +354,19 @@ pub(crate) fn apply_due_writes_and_cancel(
     streams: &mut StreamsState,
     accruals: &mut Vec<StreamAccrual>,
     epoch: ChainEpoch,
-    id: Option<StreamId>,
-    op: PendingWriteOp,
+    slot: Slot,
 ) -> Result<CancelResult> {
     validate_mutation_state(streams, accruals)?;
     let mut projected = project_due_writes(streams, accruals, epoch)?;
-    let removed = cancel_pending(&mut projected.streams, id, op)?;
+    let removed = cancel_pending(&mut projected.streams, slot);
     *streams = projected.streams;
     *accruals = projected.accruals;
     Ok(CancelResult { apply_result: projected.apply_result, removed })
 }
 
-/// Applies every write due through `epoch`, each validated from its own effective epoch exactly
-/// as admission projected it. From invalid weight state, only writes that restore a valid
-/// schedule apply; the rest are dropped atomically.
+/// Applies every write due through `epoch`, each validated from its own effective epoch just
+/// as its admission projected. From invalid weight state, only writes that restore a valid
+/// schedule apply and the rest are dropped.
 pub(crate) fn apply_due_writes(
     streams: &mut StreamsState,
     accruals: &mut Vec<StreamAccrual>,
@@ -297,11 +386,13 @@ pub(crate) fn apply_due_writes(
         .take_while(|write| write.effective_epoch <= epoch)
         .count();
     let due: Vec<_> = next_streams.pending_writes.drain(..due_count).collect();
-    let mut burn = TokenAmount::zero();
+    let mut fold_dust = TokenAmount::zero();
     let mut applied = Vec::new();
     let mut dropped = Vec::new();
 
     for write in due {
+        // Records-only first, to decide apply vs drop without touching the accruals. This is the
+        // same as admission, but now dealing with whatever cancellation may have removed.
         let mut projected = next_streams.clone();
         let stranded = apply_pending_transition(&mut projected, None, &write)
             .and_then(|_| validate_transition_state(&projected, write.effective_epoch))
@@ -313,7 +404,7 @@ pub(crate) fn apply_due_writes(
 
         let mut candidate_streams = next_streams.clone();
         let mut candidate_accruals = next_accruals.clone();
-        let write_burn = apply_pending_transition(
+        let write_dust = apply_pending_transition(
             &mut candidate_streams,
             Some(&mut candidate_accruals),
             &write,
@@ -322,12 +413,12 @@ pub(crate) fn apply_due_writes(
         next_streams = candidate_streams;
         next_accruals = candidate_accruals;
         applied.push(write);
-        burn += write_burn;
+        fold_dust += write_dust;
     }
 
     *streams = next_streams;
     *accruals = next_accruals;
-    Ok(ApplyResult { burn, applied, dropped })
+    Ok(ApplyResult { fold_dust, applied, dropped })
 }
 
 /// Projects due writes without mutating the supplied state.
@@ -349,34 +440,13 @@ fn timelock_epoch(current_epoch: ChainEpoch, timelock_epochs: ChainEpoch) -> Res
         .ok_or_else(|| anyhow::anyhow!("timelock epoch overflow"))
 }
 
-fn pending_slot(id: Option<StreamId>, op: PendingWriteOp) -> (Option<StreamId>, PendingWriteOp) {
-    match op {
-        PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords => (None, op),
-        _ => (id, op),
-    }
-}
-
-fn validate_pending_target(id: Option<StreamId>, op: PendingWriteOp) -> Result<()> {
-    let schedule_wide =
-        matches!(op, PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords);
-    match (schedule_wide, id) {
-        (true, Some(_)) => Err(anyhow::anyhow!("schedule-wide call has a stream ID")),
-        (false, None) => Err(anyhow::anyhow!("per-stream call has no stream ID")),
-        _ => Ok(()),
-    }
-}
-
-fn ensure_slot_available(
-    streams: &StreamsState,
-    id: Option<StreamId>,
-    op: PendingWriteOp,
-) -> Result<()> {
-    let slot = pending_slot(id, op);
+fn ensure_slot_available(streams: &StreamsState, slot: Slot) -> Result<()> {
     ensure!(
-        !streams.pending_writes.iter().any(|write| pending_slot(write.id, write.op) == slot),
-        "pending slot ({:?}, {:?}) is occupied",
-        slot.0,
-        slot.1
+        !streams
+            .pending_writes
+            .iter()
+            .any(|write| write.slot().is_ok_and(|occupied| occupied == slot)),
+        "pending slot {slot:?} is occupied"
     );
     Ok(())
 }
@@ -405,22 +475,26 @@ fn sort_pending(writes: &mut [PendingWrite]) {
     writes.sort_by_key(|write| write.effective_epoch);
 }
 
+/// Admits the proposed queue: the new write must apply in the state its predecessors produce,
+/// and every write that applied before it must still apply after it.
 fn validate_new_pending(
     current: &StreamsState,
     proposed: &StreamsState,
     current_epoch: ChainEpoch,
-    new_slot: (Option<StreamId>, PendingWriteOp),
+    new_slot: Slot,
 ) -> Result<()> {
+    // From an invalid schedule, a SetWeightRecords batch is the one admissible repair (2.4.8).
+    let repairing = new_slot == Slot::ScheduleWide(PendingWriteOp::SetWeightRecords);
     let accepted_before = match validate_projected_queue(current, current_epoch, None) {
         Ok(accepted) => accepted,
-        Err(error) if new_slot.1 == PendingWriteOp::SetWeightRecords => {
+        Err(error) if repairing => {
             validate_projected_queue_recovering(current, current_epoch, None).map_err(|_| error)?
         }
         Err(error) => return Err(error),
     };
     let accepted_after = match validate_projected_queue(proposed, current_epoch, Some(new_slot)) {
         Ok(accepted) => accepted,
-        Err(error) if new_slot.1 == PendingWriteOp::SetWeightRecords => {
+        Err(error) if repairing => {
             validate_projected_queue_recovering(proposed, current_epoch, Some(new_slot))
                 .map_err(|_| error)?
         }
@@ -437,8 +511,8 @@ fn validate_new_pending(
 fn validate_projected_queue(
     streams: &StreamsState,
     current_epoch: ChainEpoch,
-    required_slot: Option<(Option<StreamId>, PendingWriteOp)>,
-) -> Result<BTreeSet<(Option<StreamId>, PendingWriteOp)>> {
+    required_slot: Option<Slot>,
+) -> Result<BTreeSet<Slot>> {
     validate_projected_queue_inner(
         streams,
         current_epoch,
@@ -452,18 +526,18 @@ fn validate_projected_queue(
 fn validate_projected_queue_recovering(
     streams: &StreamsState,
     current_epoch: ChainEpoch,
-    required_slot: Option<(Option<StreamId>, PendingWriteOp)>,
-) -> Result<BTreeSet<(Option<StreamId>, PendingWriteOp)>> {
+    required_slot: Option<Slot>,
+) -> Result<BTreeSet<Slot>> {
     validate_projected_queue_inner(streams, current_epoch, required_slot, true, Some(current_epoch))
 }
 
 pub(super) fn validate_projected_queue_inner(
     streams: &StreamsState,
     current_epoch: ChainEpoch,
-    required_slot: Option<(Option<StreamId>, PendingWriteOp)>,
+    required_slot: Option<Slot>,
     allow_invalid_initial_schedule: bool,
     minimum_epoch: Option<ChainEpoch>,
-) -> Result<BTreeSet<(Option<StreamId>, PendingWriteOp)>> {
+) -> Result<BTreeSet<Slot>> {
     validate_pending_queue(&streams.pending_writes, minimum_epoch)?;
     if allow_invalid_initial_schedule {
         validate_stream_configuration_without_weights(&streams.streams)?;
@@ -475,7 +549,7 @@ pub(super) fn validate_projected_queue_inner(
     let mut accepted = BTreeSet::new();
 
     for write in &streams.pending_writes {
-        let slot = pending_slot(write.id, write.op);
+        let slot = write.slot()?;
         // Validated from the entry's effective epoch, as at application, so a null round at
         // that epoch cannot change which writes apply.
         let mut candidate = projected.clone();
@@ -487,11 +561,7 @@ pub(super) fn validate_projected_queue_inner(
                 accepted.insert(slot);
             }
             Err(error) if Some(slot) == required_slot => {
-                return Err(anyhow::anyhow!(
-                    "pending call ({:?}, {:?}) is invalid: {error}",
-                    write.id,
-                    write.op
-                ));
+                return Err(anyhow::anyhow!("pending call {slot:?} is invalid: {error}"));
             }
             Err(_) => {}
         }
@@ -520,27 +590,13 @@ pub(super) fn validate_pending_queue(
     );
     let mut slots = BTreeSet::new();
     for write in writes {
-        let is_schedule = matches!(
-            write.op,
-            PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords
-        );
-        ensure!(
-            is_schedule == write.id.is_none(),
-            "pending call ({:?}, {:?}) has a non-canonical stream ID",
-            write.id,
-            write.op
-        );
+        let slot = write.slot()?;
         validate_pending_payload(write)?;
-        let slot = pending_slot(write.id, write.op);
-        ensure!(slots.insert(slot), "duplicate pending slot ({:?}, {:?})", slot.0, slot.1);
+        ensure!(slots.insert(slot), "duplicate pending slot {slot:?}");
         if let Some(epoch) = minimum_epoch
             && write.effective_epoch < epoch
         {
-            return Err(anyhow::anyhow!(
-                "pending write ({:?}, {:?}) is in the past",
-                write.id,
-                write.op
-            ));
+            return Err(anyhow::anyhow!("pending write {slot:?} is in the past"));
         }
     }
     Ok(())
@@ -571,7 +627,11 @@ fn validate_pending_payload(write: &PendingWrite) -> Result<()> {
     Ok(())
 }
 
-/// Applies one captured call. Supplying accruals enables settlement and liability effects.
+/// Applies one captured call.
+///
+/// Without accruals it moves stream records only, which is what a projection needs to answer
+/// "would this write apply". With accruals it is the committing form: it also folds the closing
+/// period, tombstones what a removal leaves behind, and adds or drops the stream's accrual row.
 fn apply_pending_transition(
     state: &mut StreamsState,
     accruals: Option<&mut Vec<StreamAccrual>>,
@@ -654,8 +714,7 @@ fn apply_pending_transition(
                         .find(|stream| stream.id == id)
                         .ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
                     let distribution = stream
-                        .distribution
-                        .as_mut()
+                        .explicit_mut()
                         .ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
                     distribution.writer = payload.writer;
                     Ok(TokenAmount::zero())
@@ -676,7 +735,7 @@ pub(super) fn remove_stream(
         .position(|stream| stream.id == id)
         .ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
     let mut stream = streams.remove(idx);
-    let Some(distribution) = stream.distribution.as_mut() else {
+    let Some(distribution) = stream.explicit_mut() else {
         return Ok(TokenAmount::zero());
     };
     // Removing without the accrual row would orphan an unknown explicit-stream liability.
@@ -685,7 +744,7 @@ pub(super) fn remove_stream(
         .position(|row| row.id == id)
         .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?;
     let accrual = accruals.remove(accrual_idx);
-    let burn = settle_period(distribution, &accrual.amount)?;
+    let burn = fold(distribution, &accrual.amount)?;
     if !distribution.payable.is_empty() {
         ensure!(
             !tombstones.iter().any(|tombstone| tombstone.id == id),
@@ -708,13 +767,13 @@ pub(super) fn replace_writer(
         .find(|stream| stream.id == id)
         .ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
     let distribution =
-        stream.distribution.as_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
+        stream.explicit_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
     // Changing writers without the accrual row could reassign an unknown explicit-stream liability.
     let accrual = accruals
         .iter_mut()
         .find(|row| row.id == id)
         .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?;
-    let burn = settle_period(distribution, &accrual.amount)?;
+    let burn = fold(distribution, &accrual.amount)?;
     accrual.amount = TokenAmount::zero();
     distribution.writer = writer;
     Ok(burn)

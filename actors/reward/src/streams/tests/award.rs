@@ -15,15 +15,15 @@ fn allocates_reward_in_stream_order_and_conserves_attos() {
     let allocation = allocate_reward(&streams, 0, &reward).unwrap();
 
     assert_eq!(TokenAmount::from_atto(3), allocation.miner);
-    assert_eq!(vec![2, 3], allocation.service.iter().map(|row| row.id).collect::<Vec<_>>());
-    assert_eq!(TokenAmount::from_atto(1), allocation.service[0].amount);
-    assert_eq!(TokenAmount::zero(), allocation.service[1].amount);
+    assert_eq!(vec![2, 3], allocation.portions.iter().map(|row| row.id).collect::<Vec<_>>());
+    assert_eq!(TokenAmount::from_atto(1), allocation.portions[0].amount);
+    assert_eq!(TokenAmount::zero(), allocation.portions[1].amount);
     assert_eq!(TokenAmount::from_atto(3), allocation.burn);
     assert!(allocation.schedule_valid);
     assert_eq!(
         reward,
         &allocation.miner
-            + &allocation.service.iter().fold(TokenAmount::zero(), |sum, row| sum + &row.amount)
+            + &allocation.portions.iter().fold(TokenAmount::zero(), |sum, row| sum + &row.amount)
             + &allocation.burn
     );
 
@@ -31,13 +31,13 @@ fn allocates_reward_in_stream_order_and_conserves_attos() {
         StreamAccrual { id: 2, amount: TokenAmount::from_atto(4) },
         StreamAccrual { id: 3, amount: TokenAmount::from_atto(5) },
     ];
-    accrue_service(&mut accruals, &allocation.service).unwrap();
+    accrue_explicit(&mut accruals, &allocation.portions).unwrap();
     assert_eq!(TokenAmount::from_atto(5), accruals[0].amount);
     assert_eq!(TokenAmount::from_atto(5), accruals[1].amount);
 
     let before = accruals.clone();
     assert!(
-        accrue_service(
+        accrue_explicit(
             &mut accruals,
             &[
                 StreamAccrual { id: 2, amount: TokenAmount::from_atto(1) },
@@ -55,7 +55,7 @@ fn indivisible_sentinel_portion_preserves_survivor_entitlements() {
     let survivor_shares = shares(&[(101, third), (102, third)]);
     let reward = TokenAmount::from_atto(2);
 
-    // Control: three ordinary recipients split the full two-atto service pool. Each recipient's
+    // Control: three ordinary recipients split the full two-atto explicit pool. Each recipient's
     // third floors to zero when claimed.
     let mut ordinary = StreamsState {
         streams: vec![stream(
@@ -66,7 +66,7 @@ fn indivisible_sentinel_portion_preserves_survivor_entitlements() {
         ..Default::default()
     };
     let ordinary_allocation = allocate_reward(&ordinary.streams, 0, &reward).unwrap();
-    let mut ordinary_accruals = ordinary_allocation.service.clone();
+    let mut ordinary_accruals = ordinary_allocation.portions.clone();
     let ordinary_claims =
         claim(&mut ordinary, &ordinary_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
             .unwrap();
@@ -80,27 +80,27 @@ fn indivisible_sentinel_portion_preserves_survivor_entitlements() {
         ..Default::default()
     };
     let sentinel_allocation = allocate_reward(&sentinel.streams, 0, &reward).unwrap();
-    assert_eq!(TokenAmount::from_atto(1), sentinel_allocation.service[0].amount);
+    assert_eq!(TokenAmount::from_atto(1), sentinel_allocation.portions[0].amount);
     assert_eq!(TokenAmount::from_atto(1), sentinel_allocation.burn);
     assert_eq!(
-        ordinary_allocation.service[0].amount,
-        &sentinel_allocation.service[0].amount + &sentinel_allocation.burn
+        ordinary_allocation.portions[0].amount,
+        &sentinel_allocation.portions[0].amount + &sentinel_allocation.burn
     );
 
-    let mut sentinel_accruals = sentinel_allocation.service.clone();
+    let mut sentinel_accruals = sentinel_allocation.portions.clone();
     let sentinel_claims =
         claim(&mut sentinel, &sentinel_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
             .unwrap();
     assert_eq!(ordinary_claims, sentinel_claims);
 
-    accrue_service(
+    accrue_explicit(
         &mut ordinary_accruals,
-        &allocate_reward(&ordinary.streams, 0, &reward).unwrap().service,
+        &allocate_reward(&ordinary.streams, 0, &reward).unwrap().portions,
     )
     .unwrap();
-    accrue_service(
+    accrue_explicit(
         &mut sentinel_accruals,
-        &allocate_reward(&sentinel.streams, 0, &reward).unwrap().service,
+        &allocate_reward(&sentinel.streams, 0, &reward).unwrap().portions,
     )
     .unwrap();
     let ordinary_claims =
@@ -125,7 +125,7 @@ fn invalid_weight_envelope_allocates_no_reward_portion() {
 
     assert!(!allocation.schedule_valid);
     assert_eq!(TokenAmount::zero(), allocation.miner);
-    assert!(allocation.service.is_empty());
+    assert!(allocation.portions.is_empty());
     assert_eq!(TokenAmount::zero(), allocation.burn);
 }
 
@@ -140,7 +140,7 @@ fn malformed_implicit_weight_allocates_no_reward_portion() {
 
     assert!(!allocation.schedule_valid);
     assert_eq!(TokenAmount::zero(), allocation.miner);
-    assert!(allocation.service.is_empty());
+    assert!(allocation.portions.is_empty());
     assert_eq!(TokenAmount::zero(), allocation.burn);
 }
 
@@ -154,6 +154,6 @@ fn malformed_explicit_weight_allocates_no_reward_portion() {
 
     assert!(!allocation.schedule_valid);
     assert_eq!(TokenAmount::zero(), allocation.miner);
-    assert!(allocation.service.is_empty());
+    assert!(allocation.portions.is_empty());
     assert_eq!(TokenAmount::zero(), allocation.burn);
 }

@@ -8,7 +8,7 @@ use num_traits::Zero;
 use super::*;
 use crate::streams::distribution::recipient_union_len;
 use crate::streams::queue::{
-    cancel_pending, project_due_writes, remove_stream, replace_writer, validate_pending_queue,
+    project_due_writes, remove_stream, replace_writer, validate_pending_queue,
 };
 use crate::streams::weights::{WeightRecordsPayload, compute_weight};
 
@@ -186,7 +186,7 @@ fn burns_sentinel_share_without_accruing_or_tombstoning_it() {
 
     let common = allocate_reward(&streams.streams, 0, &reward).unwrap();
     assert_eq!(TokenAmount::from_atto(60), common.miner);
-    assert_eq!(TokenAmount::from_atto(20), common.service[0].amount);
+    assert_eq!(TokenAmount::from_atto(20), common.portions[0].amount);
     assert_eq!(TokenAmount::from_atto(20), common.burn);
 
     set_shares(
@@ -201,10 +201,10 @@ fn burns_sentinel_share_without_accruing_or_tombstoning_it() {
 
     let partial = allocate_reward(&streams.streams, 0, &reward).unwrap();
     assert_eq!(TokenAmount::from_atto(60), partial.miner);
-    assert_eq!(TokenAmount::from_atto(10), partial.service[0].amount);
+    assert_eq!(TokenAmount::from_atto(10), partial.portions[0].amount);
     assert_eq!(TokenAmount::from_atto(30), partial.burn);
-    assert_eq!(reward, &partial.miner + &partial.service[0].amount + &partial.burn);
-    accrue_service(&mut accruals, &partial.service).unwrap();
+    assert_eq!(reward, &partial.miner + &partial.portions[0].amount + &partial.burn);
+    accrue_explicit(&mut accruals, &partial.portions).unwrap();
 
     // f099 is included to prove the sentinel has no claimable balance. Recipient 102 is omitted
     // so its entitlement is folded into payable below.
@@ -226,10 +226,10 @@ fn burns_sentinel_share_without_accruing_or_tombstoning_it() {
 
     let removed = allocate_reward(&streams.streams, 0, &reward).unwrap();
     assert_eq!(TokenAmount::from_atto(60), removed.miner);
-    assert_eq!(TokenAmount::zero(), removed.service[0].amount);
+    assert_eq!(TokenAmount::zero(), removed.portions[0].amount);
     assert_eq!(TokenAmount::from_atto(40), removed.burn);
-    assert_eq!(reward, &removed.miner + &removed.service[0].amount + &removed.burn);
-    accrue_service(&mut accruals, &removed.service).unwrap();
+    assert_eq!(reward, &removed.miner + &removed.portions[0].amount + &removed.burn);
+    accrue_explicit(&mut accruals, &removed.portions).unwrap();
 
     queue_remove_stream(&mut streams, 0, 1, 2).unwrap();
     apply_due_writes(&mut streams, &mut accruals, 1).unwrap();
@@ -522,6 +522,7 @@ fn queues_batches_cancels_slots_and_tracks_queue_head() {
         17,
         queue_weight_records(&mut streams, 10, 7, PendingWriteOp::SetWeightRecords, &updates,)
             .unwrap()
+            .effective_epoch
     );
     assert_eq!(17, next_epoch(&streams));
     assert_eq!(1, streams.pending_writes.len());
@@ -533,37 +534,30 @@ fn queues_batches_cancels_slots_and_tracks_queue_head() {
             .is_err()
     );
 
-    assert!(cancel_pending(&mut streams, Some(999), PendingWriteOp::SetWeightRecords).is_err());
+    assert!(cancel(&mut streams, Some(999), PendingWriteOp::SetWeightRecords).is_err());
     assert_eq!(17, next_epoch(&streams));
-    assert!(
-        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some()
-    );
+    assert!(cancel(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some());
     assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
-    assert!(
-        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_none()
-    );
-    assert!(cancel_pending(&mut streams, None, PendingWriteOp::RemoveStream).is_err());
+    assert!(cancel(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_none());
+    assert!(cancel(&mut streams, None, PendingWriteOp::RemoveStream).is_err());
 
     queue_weight_records(&mut streams, 20, 7, PendingWriteOp::SetWeightRecords, &updates[1..])
         .unwrap();
     assert_eq!(27, next_epoch(&streams));
-    assert!(
-        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some()
-    );
+    assert!(cancel(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some());
     assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
 
     queue_weight_records(&mut streams, 10, 7, PendingWriteOp::StepWeightRecords, &updates[..1])
         .unwrap();
-    assert!(cancel_pending(&mut streams, None, PendingWriteOp::StepWeightRecords).is_err());
+    assert!(cancel(&mut streams, None, PendingWriteOp::StepWeightRecords).is_err());
     let result = apply_due_writes_and_cancel(
         &mut streams,
         &mut accruals,
         17,
-        None,
-        PendingWriteOp::SetWeightRecords,
+        Slot::ScheduleWide(PendingWriteOp::SetWeightRecords),
     )
     .unwrap();
-    assert_eq!(TokenAmount::zero(), result.apply_result.burn);
+    assert_eq!(TokenAmount::zero(), result.apply_result.fold_dust);
     assert_eq!(
         vec![PendingWriteOp::StepWeightRecords],
         result.apply_result.applied.iter().map(|write| write.op).collect::<Vec<_>>()
@@ -582,6 +576,7 @@ fn queues_batches_cancels_slots_and_tracks_queue_head() {
             &[WeightRecordUpdate { id: 2, weight: constant_weight(pct(30)) }],
         )
         .unwrap()
+        .effective_epoch
     );
     assert_eq!(17, next_epoch(&streams));
     apply_due_writes(&mut streams, &mut accruals, 17).unwrap();
@@ -608,16 +603,13 @@ fn apply_and_cancel_surfaces_calls_dropped_before_cancellation() {
         &[WeightRecordUpdate { id: 3, weight: constant_weight(pct(10)) }],
     )
     .unwrap();
-    assert!(
-        cancel_pending(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some()
-    );
+    assert!(cancel(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some());
 
     let result = apply_due_writes_and_cancel(
         &mut streams,
         &mut accruals,
         10,
-        Some(99),
-        PendingWriteOp::RemoveStream,
+        Slot::PerStream(99, PendingWriteOp::RemoveStream),
     )
     .unwrap();
     assert_eq!(1, result.apply_result.dropped.len());
@@ -633,7 +625,10 @@ fn enforces_registration_bounds_and_id_availability() {
         stream(3, 0, Some(explicit(201, shares(&[(103, DENOM / 2), (102, DENOM - DENOM / 2)]))));
 
     assert!(queue_register_stream(&mut streams, 10, 7, new_stream.clone(), 16).is_err());
-    assert_eq!(17, queue_register_stream(&mut streams, 10, 7, new_stream, 17).unwrap());
+    assert_eq!(
+        17,
+        queue_register_stream(&mut streams, 10, 7, new_stream, 17).unwrap().effective_epoch
+    );
     let payload: RegisterStreamPayload = streams.pending_writes[0].payload.deserialize().unwrap();
     assert_eq!(
         vec![Address::new_id(102), Address::new_id(103)],
@@ -726,6 +721,7 @@ fn enforces_registration_bounds_and_id_availability() {
             1,
         )
         .unwrap()
+        .effective_epoch
     );
 }
 
@@ -851,9 +847,7 @@ fn drops_a_weight_batch_stranded_by_cancelled_registration() {
     )
     .unwrap();
     queue_set_distribution(&mut streams, 0, 10, 2, Address::new_id(999)).unwrap();
-    assert!(
-        cancel_pending(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some()
-    );
+    assert!(cancel(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some());
 
     let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert_eq!(1, result.dropped.len());
@@ -869,7 +863,7 @@ fn drops_a_weight_batch_stranded_by_cancelled_registration() {
 
     let allocation = allocate_reward(&streams.streams, 10, &TokenAmount::from_atto(100)).unwrap();
     assert_eq!(TokenAmount::from_atto(60), allocation.miner);
-    assert_eq!(TokenAmount::from_atto(20), allocation.service[0].amount);
+    assert_eq!(TokenAmount::from_atto(20), allocation.portions[0].amount);
     assert_eq!(TokenAmount::from_atto(20), allocation.burn);
 }
 
@@ -967,9 +961,7 @@ fn drops_two_dependents_stranded_by_one_cancelled_registration() {
     )
     .unwrap();
     queue_set_distribution(&mut streams, 0, 10, 3, Address::new_id(303)).unwrap();
-    assert!(
-        cancel_pending(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some()
-    );
+    assert!(cancel(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some());
 
     let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert_eq!(
@@ -999,9 +991,7 @@ fn new_admission_can_revive_a_previously_stranded_call() {
         &[WeightRecordUpdate { id: 2, weight: constant_weight(pct(50)) }],
     )
     .unwrap();
-    assert!(
-        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some()
-    );
+    assert!(cancel(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some());
     let stranded = project_due_writes(&streams, &accruals, 20).unwrap();
     assert_eq!(1, stranded.apply_result.dropped.len());
 
@@ -1043,7 +1033,7 @@ fn null_round_at_effective_epoch_cannot_revive_a_stranded_call() {
         &[WeightRecordUpdate { id: 2, weight: constant_weight(pct(45)) }],
     )
     .unwrap();
-    assert!(cancel_pending(&mut streams, Some(1), PendingWriteOp::RemoveStream).unwrap().is_some());
+    assert!(cancel(&mut streams, Some(1), PendingWriteOp::RemoveStream).unwrap().is_some());
     // Admitted at 12 on the projection that the stranded weight write drops: 40 + 20 + 20.
     queue_register_stream(
         &mut streams,
@@ -1101,9 +1091,7 @@ fn drops_a_stranded_gate_batch_and_accepts_the_next_absolute_level() {
         &[WeightRecordUpdate { id: 2, weight: constant_weight(pct(55)) }],
     )
     .unwrap();
-    assert!(
-        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some()
-    );
+    assert!(cancel(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some());
 
     let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert_eq!(1, result.dropped.len());
@@ -1145,9 +1133,7 @@ fn repairs_a_dropped_terminal_gate_with_a_discretionary_write() {
         &[WeightRecordUpdate { id: 2, weight: constant_weight(pct(50)) }],
     )
     .unwrap();
-    assert!(
-        cancel_pending(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some()
-    );
+    assert!(cancel(&mut streams, None, PendingWriteOp::SetWeightRecords).unwrap().is_some());
 
     let result = apply_due_writes(&mut streams, &mut accruals, 10).unwrap();
     assert_eq!(1, result.dropped.len());
@@ -1200,7 +1186,7 @@ fn removal_settles_into_a_claimable_tombstone() {
 
     queue_remove_stream(&mut streams, 0, 1, 2).unwrap();
     let result = apply_due_writes(&mut streams, &mut accruals, 1).unwrap();
-    assert_eq!(TokenAmount::from_atto(1), result.burn);
+    assert_eq!(TokenAmount::from_atto(1), result.fold_dust);
     assert_eq!(vec![1], streams.streams.iter().map(|stream| stream.id).collect::<Vec<_>>());
     assert!(accruals.is_empty());
     assert_eq!(TokenAmount::from_atto(3), amount(&streams.tombstones[0].payable, 101));
@@ -1222,7 +1208,7 @@ fn writer_replacement_settles_before_repointing() {
     queue_set_distribution(&mut streams, 0, 1, 2, Address::new_id(999)).unwrap();
     let result = apply_due_writes(&mut streams, &mut accruals, 1).unwrap();
     let distribution = streams.streams[1].distribution.as_ref().unwrap();
-    assert_eq!(TokenAmount::from_atto(1), result.burn);
+    assert_eq!(TokenAmount::from_atto(1), result.fold_dust);
     assert_eq!(Address::new_id(999), distribution.writer);
     assert_eq!(TokenAmount::from_atto(2), amount(&distribution.payable, 101));
     assert_eq!(TokenAmount::from_atto(2), amount(&distribution.payable, 102));
@@ -1230,7 +1216,7 @@ fn writer_replacement_settles_before_repointing() {
 }
 
 #[test]
-fn conserves_service_value_across_claims_folds_and_removal() {
+fn conserves_explicit_value_across_claims_folds_and_removal() {
     let third = DENOM / 3;
     let mut streams = StreamsState {
         streams: vec![stream(
@@ -1244,29 +1230,29 @@ fn conserves_service_value_across_claims_folds_and_removal() {
     let mut gross = TokenAmount::from_atto(10);
     let mut paid = TokenAmount::zero();
     let mut burned = TokenAmount::zero();
-    assert_service_conserved(&gross, &paid, &burned, &streams, &accruals);
+    assert_explicit_conserved(&gross, &paid, &burned, &streams, &accruals);
 
     let result = claim(&mut streams, &accruals, 2, &[Address::new_id(101)]).unwrap();
     paid += &result[0];
-    assert_service_conserved(&gross, &paid, &burned, &streams, &accruals);
+    assert_explicit_conserved(&gross, &paid, &burned, &streams, &accruals);
 
     burned += set_shares(&mut streams, &mut accruals, 2, shares(&[(104, DENOM)])).unwrap();
-    assert_service_conserved(&gross, &paid, &burned, &streams, &accruals);
+    assert_explicit_conserved(&gross, &paid, &burned, &streams, &accruals);
 
     accruals[0].amount += TokenAmount::from_atto(5);
     gross += TokenAmount::from_atto(5);
     let result = claim(&mut streams, &accruals, 2, &[Address::new_id(104)]).unwrap();
     paid += &result[0];
-    assert_service_conserved(&gross, &paid, &burned, &streams, &accruals);
+    assert_explicit_conserved(&gross, &paid, &burned, &streams, &accruals);
     queue_remove_stream(&mut streams, 0, 1, 2).unwrap();
-    burned += apply_due_writes(&mut streams, &mut accruals, 1).unwrap().burn;
-    assert_service_conserved(&gross, &paid, &burned, &streams, &accruals);
+    burned += apply_due_writes(&mut streams, &mut accruals, 1).unwrap().fold_dust;
+    assert_explicit_conserved(&gross, &paid, &burned, &streams, &accruals);
 
     let result =
         claim(&mut streams, &accruals, 2, &[Address::new_id(102), Address::new_id(103)]).unwrap();
     paid += result.iter().fold(TokenAmount::zero(), |total, amount| total + amount);
     assert!(streams.tombstones.is_empty());
-    assert_service_conserved(&gross, &paid, &burned, &streams, &accruals);
+    assert_explicit_conserved(&gross, &paid, &burned, &streams, &accruals);
 }
 
 #[test]
@@ -1284,7 +1270,7 @@ fn projects_due_writes_without_mutating_stored_state() {
     let projected = project_due_writes(&streams, &accruals, 10).unwrap();
     assert_eq!(pct(70), projected.streams.streams[0].weight.v_start);
     assert!(projected.streams.pending_writes.is_empty());
-    assert_eq!(TokenAmount::zero(), projected.apply_result.burn);
+    assert_eq!(TokenAmount::zero(), projected.apply_result.fold_dust);
 
     assert_eq!(pct(60), streams.streams[0].weight.v_start);
     assert_eq!(1, streams.pending_writes.len());
@@ -1320,24 +1306,22 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
     covered[6] = true;
     queue_set_distribution(&mut streams, epoch, 2, 3, Address::new_id(303)).unwrap();
     covered[5] = true;
-    assert!(
-        cancel_pending(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some()
-    );
+    assert!(cancel(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some());
     covered[8] = true;
     epoch += 2;
     let result = apply_due_writes(&mut streams, &mut accruals, epoch).unwrap();
     assert_eq!(2, result.dropped.len());
-    supply.burn_dust(result.burn);
+    supply.burn_dust(result.fold_dust);
     let mut dropped = result.dropped.len();
 
     for _ in 0..512 {
         epoch += 1;
         let result = apply_due_writes(&mut streams, &mut accruals, epoch).unwrap();
         dropped += result.dropped.len();
-        supply.burn_dust(result.burn);
+        supply.burn_dust(result.fold_dust);
 
         let previous =
-            (supply.total_minted.clone(), supply.total_burn.clone(), supply.total_service.clone());
+            (supply.total_minted.clone(), supply.total_burn.clone(), supply.total_explicit.clone());
         match random_u64(&mut random) % covered.len() as u64 {
             0 => {
                 let reward = TokenAmount::from_atto(random_u64(&mut random) % 1_000 + 1);
@@ -1462,7 +1446,7 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
                 if !cancellable.is_empty() {
                     let (id, op) =
                         cancellable[random_u64(&mut random) as usize % cancellable.len()];
-                    if cancel_pending(&mut streams, id, op).unwrap().is_some() {
+                    if cancel(&mut streams, id, op).unwrap().is_some() {
                         covered[8] = true;
                     }
                 }
@@ -1472,14 +1456,14 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
 
         assert!(supply.total_minted >= previous.0);
         assert!(supply.total_burn >= previous.1);
-        assert!(supply.total_service >= previous.2);
+        assert!(supply.total_explicit >= previous.2);
         supply.assert_invariants(&streams, &accruals);
         validate_streams_state(&streams, &accruals, epoch).unwrap();
     }
 
     let result = apply_due_writes(&mut streams, &mut accruals, epoch + 2).unwrap();
     dropped += result.dropped.len();
-    supply.burn_dust(result.burn);
+    supply.burn_dust(result.fold_dust);
     supply.assert_invariants(&streams, &accruals);
     assert!(covered.iter().all(|covered| *covered), "missing operation coverage: {covered:?}");
     assert!(dropped >= 2);
