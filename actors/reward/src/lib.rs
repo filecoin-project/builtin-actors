@@ -131,8 +131,8 @@ impl Actor {
                     writer: resolve_required(rt, &distribution.writer, "distribution writer")?,
                     shares: streams::normalize_shares(shares)
                         .map_err(|e| illegal_argument(e, "invalid initial shares"))?,
-                    payable: Vec::new(),
-                    claimed_period: Vec::new(),
+                    payable: RecipientTable::default(),
+                    claimed_period: RecipientTable::default(),
                 })
             })
             .transpose()?;

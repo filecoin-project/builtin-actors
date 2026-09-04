@@ -4,10 +4,10 @@ use fil_actor_reward::testing::check_state_invariants;
 use fil_actor_reward::{
     Actor as RewardActor, AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn,
     DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, Method, PENALTY_MULTIPLIER,
-    PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare, RegisterStreamParams,
-    RegisterStreamPayload, RemoveStreamParams, STORAGE_MINING_ALLOCATION, SetDistributionParams,
-    SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State, Stream, StreamAccrual,
-    StreamsState, WeightRecord, WeightRecordUpdate, explicit_liability, ext,
+    PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare, RecipientTable,
+    RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, STORAGE_MINING_ALLOCATION,
+    SetDistributionParams, SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State,
+    Stream, StreamAccrual, StreamsState, WeightRecord, WeightRecordUpdate, explicit_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
     ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
@@ -63,8 +63,8 @@ fn base_runtime() -> MockRuntime {
                         recipient: Address::new_id(RECIPIENT_A),
                         share: DENOM,
                     }],
-                    payable: Vec::new(),
-                    claimed_period: Vec::new(),
+                    payable: RecipientTable::default(),
+                    claimed_period: RecipientTable::default(),
                 }),
             },
         ],
@@ -565,7 +565,7 @@ fn set_shares_folds_liabilities_and_burns_dust() {
     assert_eq!(TokenAmount::from_atto(4), liability(&rt));
     let distribution = load_streams(&rt).streams.remove(1).distribution.unwrap();
     assert_eq!(
-        vec![
+        RecipientTable::from(vec![
             RecipientAmount {
                 recipient: Address::new_id(RECIPIENT_A),
                 amount: TokenAmount::from_atto(2),
@@ -574,7 +574,7 @@ fn set_shares_folds_liabilities_and_burns_dust() {
                 recipient: Address::new_id(RECIPIENT_B),
                 amount: TokenAmount::from_atto(2),
             },
-        ],
+        ]),
         distribution.payable
     );
     assert_eq!(DENOM, distribution.shares[0].share);
@@ -592,7 +592,8 @@ fn claim_returns_positional_amounts_and_deletes_drained_tombstone() {
         payable: vec![RecipientAmount {
             recipient: Address::new_id(RECIPIENT_A),
             amount: TokenAmount::from_atto(7),
-        }],
+        }]
+        .into(),
     });
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     rt.replace_state(&state);
@@ -842,7 +843,7 @@ fn award_burns_sentinel_share_immediately_and_counts_it() {
         distribution
             .payable
             .iter()
-            .chain(&distribution.claimed_period)
+            .chain(distribution.claimed_period.iter())
             .all(|row| row.recipient != BURNT_FUNDS_ACTOR_ADDR)
     );
 
@@ -1168,7 +1169,10 @@ fn full_explicit_stream_decommission_preserves_and_drains_liabilities() {
     assert_eq!(TokenAmount::from_atto(11), liability(&rt));
     assert_eq!(1, streams.streams.len());
     assert_eq!(2, streams.tombstones[0].id);
-    assert_eq!(TokenAmount::from_atto(11), streams.tombstones[0].payable[0].amount);
+    assert_eq!(
+        TokenAmount::from_atto(11),
+        streams.tombstones[0].payable.get(&Address::new_id(RECIPIENT_A))
+    );
 
     rt.epoch.replace(3);
     expect_miner_reward(&rt, TokenAmount::from_atto(3), TokenAmount::zero(), ExitCode::OK);
@@ -1382,7 +1386,8 @@ fn award_burns_transition_dust_without_counting_it_as_reward_residual() {
     assert!(state.accrued.is_empty());
     assert_eq!(
         TokenAmount::from_atto(4),
-        streams.tombstones[0].payable[0].amount.clone() + &streams.tombstones[0].payable[1].amount
+        streams.tombstones[0].payable.get(&Address::new_id(RECIPIENT_A))
+            + streams.tombstones[0].payable.get(&Address::new_id(RECIPIENT_B))
     );
 }
 
@@ -1484,7 +1489,8 @@ fn award_uses_allocation_remainder_when_a_claimed_recipient_is_absent_from_share
     streams.streams[1].distribution.as_mut().unwrap().claimed_period = vec![RecipientAmount {
         recipient: Address::new_id(RECIPIENT_B),
         amount: TokenAmount::from_atto(10),
-    }];
+    }]
+    .into();
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     let before = state.clone();
     rt.replace_state(&state);
@@ -1571,7 +1577,8 @@ fn award_pays_only_gas_for_malformed_non_accounting_state() {
     streams.streams[1].distribution.as_mut().unwrap().payable = vec![RecipientAmount {
         recipient: Address::new_id(RECIPIENT_A),
         amount: TokenAmount::zero(),
-    }];
+    }]
+    .into();
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     state.this_epoch_reward = TokenAmount::from_atto(25);
     let before = state.clone();

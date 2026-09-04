@@ -26,12 +26,14 @@ fn rejects_non_id_addresses_in_persisted_state_and_pending_payloads() {
 
     let mut streams = base.clone();
     streams.streams[1].distribution.as_mut().unwrap().payable =
-        vec![RecipientAmount { recipient: delegated_address(), amount: TokenAmount::from_atto(1) }];
+        vec![RecipientAmount { recipient: delegated_address(), amount: TokenAmount::from_atto(1) }]
+            .into();
     assert_invalid(streams);
 
     let mut streams = base.clone();
     streams.streams[1].distribution.as_mut().unwrap().claimed_period =
-        vec![RecipientAmount { recipient: delegated_address(), amount: TokenAmount::from_atto(1) }];
+        vec![RecipientAmount { recipient: delegated_address(), amount: TokenAmount::from_atto(1) }]
+            .into();
     assert_invalid(streams);
 
     let mut streams = base.clone();
@@ -40,7 +42,8 @@ fn rejects_non_id_addresses_in_persisted_state_and_pending_payloads() {
         payable: vec![RecipientAmount {
             recipient: delegated_address(),
             amount: TokenAmount::from_atto(1),
-        }],
+        }]
+        .into(),
     }];
     assert_invalid(streams);
 
@@ -126,7 +129,8 @@ fn structural_validation_rejects_payable_reservation_over_cap() {
             recipient: Address::new_id(100 + idx as u64),
             amount: TokenAmount::from_atto(1),
         })
-        .collect();
+        .collect::<Vec<_>>()
+        .into();
     let streams = StreamsState {
         streams: vec![stream(2, pct(20), Some(distribution))],
         ..Default::default()

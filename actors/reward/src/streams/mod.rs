@@ -23,7 +23,7 @@ mod weights;
 pub use self::award::{RewardAllocation, explicit_liability};
 pub(crate) use self::award::{accrue_explicit, allocate_reward};
 pub use self::distribution::{
-    DistributionInit, ExplicitDistribution, RecipientAmount, RecipientShare,
+    DistributionInit, ExplicitDistribution, RecipientAmount, RecipientShare, RecipientTable,
 };
 pub(crate) use self::distribution::{claim, normalize_shares, set_shares};
 pub(crate) use self::invariants::{
@@ -36,7 +36,7 @@ pub(crate) use self::queue::{
     Slot, apply_due_writes, apply_due_writes_and_cancel, queue_register_stream,
     queue_remove_stream, queue_set_distribution, queue_weight_records,
 };
-pub use self::weights::{WeightRecord, WeightRecordUpdate};
+pub use self::weights::{WeightRecord, WeightRecordUpdate, WeightRecordsPayload};
 
 pub type StreamId = u64;
 
@@ -79,7 +79,7 @@ impl Stream {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct Tombstone {
     pub id: StreamId,
-    pub payable: Vec<RecipientAmount>,
+    pub payable: RecipientTable,
 }
 
 /// Stream state persisted as the block referenced by `State.streams_root`.

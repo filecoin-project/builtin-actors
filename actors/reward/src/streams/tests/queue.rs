@@ -6,7 +6,6 @@ use hex_literal::hex;
 use num_traits::Zero;
 
 use super::*;
-use crate::streams::distribution::recipient_union_len;
 use crate::streams::queue::{
     project_due_writes, remove_stream, replace_writer, validate_pending_queue,
 };
@@ -254,7 +253,8 @@ fn caps_payable_rows_at_128_rejects_129_atomically_and_recovers_through_claims()
             recipient: Address::new_id(1_000),
             amount: TokenAmount::from_atto(1),
         }])
-        .collect();
+        .collect::<Vec<_>>()
+        .into();
     let mut streams = StreamsState {
         streams: vec![stream(2, pct(20), Some(distribution))],
         ..Default::default()
@@ -281,10 +281,7 @@ fn caps_payable_rows_at_128_rejects_129_atomically_and_recovers_through_claims()
     );
     set_shares(&mut streams, &mut accruals, 2, new_shares.clone()).unwrap();
     let distribution = streams.streams[0].distribution.as_ref().unwrap();
-    assert_eq!(
-        MAX_PAYABLE_ROWS_PER_STREAM,
-        recipient_union_len(&distribution.payable, &distribution.shares)
-    );
+    assert_eq!(MAX_PAYABLE_ROWS_PER_STREAM, distribution.payable.union_len(&distribution.shares));
 
     accruals[0].amount = TokenAmount::from_atto(MAX_RECIPIENTS as u64);
     set_shares(&mut streams, &mut accruals, 2, new_shares.clone()).unwrap();
@@ -693,7 +690,8 @@ fn enforces_registration_bounds_and_id_availability() {
             payable: vec![RecipientAmount {
                 recipient: Address::new_id(101),
                 amount: TokenAmount::from_atto(1),
-            }],
+            }]
+            .into(),
         }],
         ..Default::default()
     };
@@ -1174,14 +1172,8 @@ fn removal_settles_into_a_claimable_tombstone() {
     let (mut streams, mut accruals) = base_state();
     let distribution = streams.streams[1].distribution.as_mut().unwrap();
     distribution.shares = shares(&[(101, DENOM / 2), (102, DENOM - DENOM / 2)]);
-    distribution.payable.push(RecipientAmount {
-        recipient: Address::new_id(102),
-        amount: TokenAmount::from_atto(3),
-    });
-    distribution.claimed_period.push(RecipientAmount {
-        recipient: Address::new_id(101),
-        amount: TokenAmount::from_atto(2),
-    });
+    distribution.payable.add(Address::new_id(102), TokenAmount::from_atto(3));
+    distribution.claimed_period.add(Address::new_id(101), TokenAmount::from_atto(2));
     accruals[0].amount = TokenAmount::from_atto(11);
 
     queue_remove_stream(&mut streams, 0, 1, 2).unwrap();

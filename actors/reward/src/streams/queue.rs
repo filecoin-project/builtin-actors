@@ -83,7 +83,8 @@ use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
 use super::distribution::{
-    DistributionInit, ExplicitDistribution, fold, validate_distribution_init, validate_id_address,
+    DistributionInit, ExplicitDistribution, RecipientTable, fold, validate_distribution_init,
+    validate_id_address,
 };
 use super::invariants::{
     validate_mutation_state, validate_stream_configuration,
@@ -160,6 +161,98 @@ impl PendingWrite {
     }
 }
 
+/// A queued write's operation and arguments, decoded from its payload.
+///
+/// Every read of a payload produces one of these and every write of a payload comes from one, so
+/// the CBOR in `PendingWrite.payload` is confined to [`QueuedCall::decode`] and
+/// [`QueuedCall::encode`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum QueuedCall {
+    Weights { op: PendingWriteOp, updates: Vec<WeightRecordUpdate> },
+    Register { id: StreamId, weight: WeightRecord, distribution: Option<DistributionInit> },
+    Remove { id: StreamId },
+    SetDistribution { id: StreamId, writer: Address },
+}
+
+impl QueuedCall {
+    /// Reads a queue entry's payload, rejecting one that disagrees with the entry's ID and
+    /// operation or does not hold that operation's canonical tuple.
+    fn decode(write: &PendingWrite) -> Result<QueuedCall> {
+        Ok(match Slot::for_target(write.id, write.op)? {
+            Slot::ScheduleWide(op) => {
+                let payload: WeightRecordsPayload = write.payload.deserialize()?;
+                validate_weight_updates(&payload.updates)?;
+                QueuedCall::Weights { op, updates: payload.updates }
+            }
+            Slot::PerStream(id, PendingWriteOp::RegisterStream) => {
+                let payload: RegisterStreamPayload = write.payload.deserialize()?;
+                validate_weight_record(&payload.weight)?;
+                validate_distribution_init(&payload.distribution)?;
+                QueuedCall::Register {
+                    id,
+                    weight: payload.weight,
+                    distribution: payload.distribution,
+                }
+            }
+            Slot::PerStream(id, PendingWriteOp::RemoveStream) => {
+                ensure!(
+                    write.payload.bytes() == EMPTY_TUPLE_CBOR,
+                    "RemoveStream payload is not an empty tuple"
+                );
+                QueuedCall::Remove { id }
+            }
+            Slot::PerStream(id, PendingWriteOp::SetDistribution) => {
+                let payload: SetDistributionPayload = write.payload.deserialize()?;
+                validate_id_address(&payload.writer, "distribution writer")?;
+                QueuedCall::SetDistribution { id, writer: payload.writer }
+            }
+            // Slot::for_target puts both weight operations in the schedule-wide arm.
+            Slot::PerStream(_, op) => {
+                return Err(anyhow::anyhow!("schedule-wide call {op:?} has a stream ID"));
+            }
+        })
+    }
+
+    /// The payload bytes a queue entry carries for this call.
+    fn encode(&self) -> Result<RawBytes> {
+        Ok(match self {
+            QueuedCall::Weights { updates, .. } => {
+                RawBytes::serialize(&WeightRecordsPayload { updates: updates.clone() })?
+            }
+            QueuedCall::Register { weight, distribution, .. } => {
+                RawBytes::serialize(&RegisterStreamPayload {
+                    weight: weight.clone(),
+                    distribution: distribution.clone(),
+                })?
+            }
+            QueuedCall::Remove { .. } => RawBytes::new(EMPTY_TUPLE_CBOR.to_vec()),
+            QueuedCall::SetDistribution { writer, .. } => {
+                RawBytes::serialize(&SetDistributionPayload { writer: *writer })?
+            }
+        })
+    }
+
+    fn slot(&self) -> Slot {
+        match self {
+            QueuedCall::Weights { op, .. } => Slot::ScheduleWide(*op),
+            QueuedCall::Register { id, .. } => Slot::PerStream(*id, PendingWriteOp::RegisterStream),
+            QueuedCall::Remove { id } => Slot::PerStream(*id, PendingWriteOp::RemoveStream),
+            QueuedCall::SetDistribution { id, .. } => {
+                Slot::PerStream(*id, PendingWriteOp::SetDistribution)
+            }
+        }
+    }
+
+    /// The queue entry carrying this call, due at `effective_epoch`.
+    fn queue_entry(&self, effective_epoch: ChainEpoch) -> Result<PendingWrite> {
+        let (id, op) = match self.slot() {
+            Slot::PerStream(id, op) => (Some(id), op),
+            Slot::ScheduleWide(op) => (None, op),
+        };
+        Ok(PendingWrite { id, op, payload: self.encode()?, effective_epoch })
+    }
+}
+
 /// The tuple stored in `PendingWrite.payload` for `RegisterStream`.
 ///
 /// This is the deferred call's own payload, not the `RegisterStream` method parameter tuple.
@@ -218,12 +311,7 @@ pub(crate) fn queue_weight_records(
     let mut updates = updates.to_vec();
     updates.sort_by_key(|update| update.id);
     validate_weight_updates(&updates)?;
-    let queued = PendingWrite {
-        id: None,
-        op,
-        payload: RawBytes::serialize(&WeightRecordsPayload { updates })?,
-        effective_epoch,
-    };
+    let queued = QueuedCall::Weights { op, updates }.queue_entry(effective_epoch)?;
 
     let mut proposed = streams.clone();
     ensure_slot_available(&proposed, Slot::ScheduleWide(op))?;
@@ -267,15 +355,8 @@ pub(crate) fn queue_register_stream(
         activation_epoch >= earliest,
         "activation epoch {activation_epoch} is before timelock floor {earliest}"
     );
-    let queued = PendingWrite {
-        id: Some(stream.id),
-        op: PendingWriteOp::RegisterStream,
-        payload: RawBytes::serialize(&RegisterStreamPayload {
-            weight: stream.weight,
-            distribution,
-        })?,
-        effective_epoch: activation_epoch,
-    };
+    let queued = QueuedCall::Register { id: stream.id, weight: stream.weight, distribution }
+        .queue_entry(activation_epoch)?;
 
     let mut proposed = streams.clone();
     proposed.pending_writes.push(queued.clone());
@@ -296,12 +377,7 @@ pub(crate) fn queue_remove_stream(
     let effective_epoch = timelock_epoch(current_epoch, timelock_epochs)?;
     let slot = Slot::PerStream(id, PendingWriteOp::RemoveStream);
     ensure_slot_available(streams, slot)?;
-    let queued = PendingWrite {
-        id: Some(id),
-        op: PendingWriteOp::RemoveStream,
-        payload: RawBytes::new(EMPTY_TUPLE_CBOR.to_vec()),
-        effective_epoch,
-    };
+    let queued = QueuedCall::Remove { id }.queue_entry(effective_epoch)?;
 
     let mut proposed = streams.clone();
     proposed.pending_writes.push(queued.clone());
@@ -324,12 +400,7 @@ pub(crate) fn queue_set_distribution(
     let effective_epoch = timelock_epoch(current_epoch, timelock_epochs)?;
     let slot = Slot::PerStream(id, PendingWriteOp::SetDistribution);
     ensure_slot_available(streams, slot)?;
-    let queued = PendingWrite {
-        id: Some(id),
-        op: PendingWriteOp::SetDistribution,
-        payload: RawBytes::serialize(&SetDistributionPayload { writer })?,
-        effective_epoch,
-    };
+    let queued = QueuedCall::SetDistribution { id, writer }.queue_entry(effective_epoch)?;
 
     let mut proposed = streams.clone();
     proposed.pending_writes.push(queued.clone());
@@ -391,10 +462,14 @@ pub(crate) fn apply_due_writes(
     let mut dropped = Vec::new();
 
     for write in due {
+        let Ok(call) = QueuedCall::decode(&write) else {
+            dropped.push(write);
+            continue;
+        };
         // Records-only first, to decide apply vs drop without touching the accruals. This is the
         // same as admission, but now dealing with whatever cancellation may have removed.
         let mut projected = next_streams.clone();
-        let stranded = apply_pending_transition(&mut projected, None, &write)
+        let stranded = apply_pending_transition(&mut projected, None, &call)
             .and_then(|_| validate_transition_state(&projected, write.effective_epoch))
             .is_err();
         if stranded {
@@ -404,11 +479,8 @@ pub(crate) fn apply_due_writes(
 
         let mut candidate_streams = next_streams.clone();
         let mut candidate_accruals = next_accruals.clone();
-        let write_dust = apply_pending_transition(
-            &mut candidate_streams,
-            Some(&mut candidate_accruals),
-            &write,
-        )?;
+        let write_dust =
+            apply_pending_transition(&mut candidate_streams, Some(&mut candidate_accruals), &call)?;
         validate_transition_state(&candidate_streams, write.effective_epoch)?;
         next_streams = candidate_streams;
         next_accruals = candidate_accruals;
@@ -553,8 +625,10 @@ pub(super) fn validate_projected_queue_inner(
         // Validated from the entry's effective epoch, as at application, so a null round at
         // that epoch cannot change which writes apply.
         let mut candidate = projected.clone();
-        let result = apply_pending_transition(&mut candidate, None, write)
-            .and_then(|_| validate_transition_state(&candidate, write.effective_epoch));
+        let result = QueuedCall::decode(write).and_then(|call| {
+            apply_pending_transition(&mut candidate, None, &call)?;
+            validate_transition_state(&candidate, write.effective_epoch)
+        });
         match result {
             Ok(()) => {
                 projected = candidate;
@@ -590,38 +664,12 @@ pub(super) fn validate_pending_queue(
     );
     let mut slots = BTreeSet::new();
     for write in writes {
-        let slot = write.slot()?;
-        validate_pending_payload(write)?;
+        let slot = QueuedCall::decode(write)?.slot();
         ensure!(slots.insert(slot), "duplicate pending slot {slot:?}");
         if let Some(epoch) = minimum_epoch
             && write.effective_epoch < epoch
         {
             return Err(anyhow::anyhow!("pending write {slot:?} is in the past"));
-        }
-    }
-    Ok(())
-}
-
-fn validate_pending_payload(write: &PendingWrite) -> Result<()> {
-    match write.op {
-        PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords => {
-            let payload: WeightRecordsPayload = write.payload.deserialize()?;
-            validate_weight_updates(&payload.updates)?;
-        }
-        PendingWriteOp::RegisterStream => {
-            let payload: RegisterStreamPayload = write.payload.deserialize()?;
-            validate_weight_record(&payload.weight)?;
-            validate_distribution_init(&payload.distribution)?;
-        }
-        PendingWriteOp::RemoveStream => {
-            ensure!(
-                write.payload.bytes() == EMPTY_TUPLE_CBOR,
-                "RemoveStream payload is not an empty tuple"
-            );
-        }
-        PendingWriteOp::SetDistribution => {
-            let payload: SetDistributionPayload = write.payload.deserialize()?;
-            validate_id_address(&payload.writer, "distribution writer")?;
         }
     }
     Ok(())
@@ -635,30 +683,23 @@ fn validate_pending_payload(write: &PendingWrite) -> Result<()> {
 fn apply_pending_transition(
     state: &mut StreamsState,
     accruals: Option<&mut Vec<StreamAccrual>>,
-    write: &PendingWrite,
+    call: &QueuedCall,
 ) -> Result<TokenAmount> {
-    match write.op {
-        PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords => {
-            ensure!(write.id.is_none(), "schedule-wide call has a stream ID");
-            let payload: WeightRecordsPayload = write.payload.deserialize()?;
-            validate_weight_updates(&payload.updates)?;
-            for update in payload.updates {
+    match call {
+        QueuedCall::Weights { updates, .. } => {
+            for update in updates {
                 let stream = state
                     .streams
                     .iter_mut()
                     .find(|stream| stream.id == update.id)
                     .ok_or_else(|| anyhow::anyhow!("stream {} not found", update.id))?;
-                stream.weight = update.weight;
+                stream.weight = update.weight.clone();
             }
             Ok(TokenAmount::zero())
         }
-        PendingWriteOp::RegisterStream => {
-            let id =
-                write.id.ok_or_else(|| anyhow::anyhow!("RegisterStream call has no stream ID"))?;
+        QueuedCall::Register { id, weight, distribution } => {
+            let id = *id;
             ensure!(id != 0, "stream ID 0 is reserved");
-            let payload: RegisterStreamPayload = write.payload.deserialize()?;
-            validate_weight_record(&payload.weight)?;
-            validate_distribution_init(&payload.distribution)?;
             ensure!(
                 !state.streams.iter().any(|stream| stream.id == id),
                 "stream ID {id} is already registered"
@@ -667,11 +708,11 @@ fn apply_pending_transition(
                 !state.tombstones.iter().any(|tombstone| tombstone.id == id),
                 "stream ID {id} is tombstoned"
             );
-            let distribution = payload.distribution.map(|distribution| ExplicitDistribution {
+            let distribution = distribution.as_ref().map(|distribution| ExplicitDistribution {
                 writer: distribution.writer,
-                shares: distribution.shares,
-                payable: Vec::new(),
-                claimed_period: Vec::new(),
+                shares: distribution.shares.clone(),
+                payable: RecipientTable::default(),
+                claimed_period: RecipientTable::default(),
             });
             if distribution.is_some()
                 && let Some(accruals) = accruals
@@ -679,13 +720,12 @@ fn apply_pending_transition(
                 accruals.push(StreamAccrual { id, amount: TokenAmount::zero() });
                 accruals.sort_by_key(|row| row.id);
             }
-            state.streams.push(Stream { id, weight: payload.weight, distribution });
+            state.streams.push(Stream { id, weight: weight.clone(), distribution });
             state.streams.sort_by_key(|stream| stream.id);
             Ok(TokenAmount::zero())
         }
-        PendingWriteOp::RemoveStream => {
-            let id =
-                write.id.ok_or_else(|| anyhow::anyhow!("RemoveStream call has no stream ID"))?;
+        QueuedCall::Remove { id } => {
+            let id = *id;
             match accruals {
                 Some(accruals) => {
                     remove_stream(&mut state.streams, &mut state.tombstones, accruals, id)
@@ -701,12 +741,10 @@ fn apply_pending_transition(
                 }
             }
         }
-        PendingWriteOp::SetDistribution => {
-            let id =
-                write.id.ok_or_else(|| anyhow::anyhow!("SetDistribution call has no stream ID"))?;
-            let payload: SetDistributionPayload = write.payload.deserialize()?;
+        QueuedCall::SetDistribution { id, writer } => {
+            let id = *id;
             match accruals {
-                Some(accruals) => replace_writer(&mut state.streams, accruals, id, payload.writer),
+                Some(accruals) => replace_writer(&mut state.streams, accruals, id, *writer),
                 None => {
                     let stream = state
                         .streams
@@ -716,7 +754,7 @@ fn apply_pending_transition(
                     let distribution = stream
                         .explicit_mut()
                         .ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
-                    distribution.writer = payload.writer;
+                    distribution.writer = *writer;
                     Ok(TokenAmount::zero())
                 }
             }

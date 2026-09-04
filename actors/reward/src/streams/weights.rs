@@ -41,7 +41,7 @@
 //!
 //! - `compute_weight` is `ComputeWeight` using `DENOM` fixed point.
 //! - `weight_breakpoints` enumerates that epoch list for one record, bracketing each crossing so
-//!    integer division can't step over a one-epoch violation.
+//!   integer division can't step over a one-epoch violation.
 //! - `validate_weight_schedule` sums every stream at every breakpoint from a start epoch onward.
 
 use std::collections::BTreeSet;
@@ -72,10 +72,13 @@ pub struct WeightRecordUpdate {
     pub weight: WeightRecord,
 }
 
-/// Complete weight-update batch captured in one deferred call.
+/// The tuple stored in `PendingWrite.payload` for `SetWeightRecords` and `StepWeightRecords`.
+///
+/// This is the deferred call's own payload, not the weight-management parameter tuples, which
+/// carry the same updates in their own shape.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub(super) struct WeightRecordsPayload {
-    pub(super) updates: Vec<WeightRecordUpdate>,
+pub struct WeightRecordsPayload {
+    pub updates: Vec<WeightRecordUpdate>,
 }
 
 /// Evaluates a weight at `epoch`, clamped to its inclusive floor and cap.

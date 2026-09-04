@@ -55,6 +55,7 @@ use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
+use serde::{Deserialize, Serialize};
 
 use super::invariants::validate_tombstone_capacity;
 use super::queue::PendingWriteOp;
@@ -79,9 +80,9 @@ pub struct ExplicitDistribution {
     /// Current recipient fractions for the open share period.
     pub shares: Vec<RecipientShare>,
     /// Unclaimed allocations carried from closed share periods.
-    pub payable: Vec<RecipientAmount>,
+    pub payable: RecipientTable,
     /// Amounts already claimed against the current period's gross accrual.
-    pub claimed_period: Vec<RecipientAmount>,
+    pub claimed_period: RecipientTable,
 }
 
 /// Persisted recipient balance in a live distribution or tombstone.
@@ -89,6 +90,83 @@ pub struct ExplicitDistribution {
 pub struct RecipientAmount {
     pub recipient: Address,
     pub amount: TokenAmount,
+}
+
+/// A wallet-keyed balance table. Rows ascending by recipient, where none are zero.
+///
+/// The methods maintain that shape, which is the ordering 2.4.2 requires. `From` and
+/// deserialization take whatever rows they are given, and persisted rows are checked by
+/// `validate_amount_rows`. The encoded wire form is just the bare row array.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct RecipientTable(Vec<RecipientAmount>);
+
+impl RecipientTable {
+    /// The recipient's balance, or zero when it holds no row.
+    pub fn get(&self, recipient: &Address) -> TokenAmount {
+        self.0
+            .binary_search_by(|row| row.recipient.cmp(recipient))
+            .map_or_else(|_| TokenAmount::zero(), |idx| self.0[idx].amount.clone())
+    }
+
+    /// Credits the recipient, inserting a row in order or accumulating onto its existing one.
+    pub(super) fn add(&mut self, recipient: Address, amount: TokenAmount) {
+        if amount.is_zero() {
+            return;
+        }
+        match self.0.binary_search_by(|row| row.recipient.cmp(&recipient)) {
+            Ok(idx) => self.0[idx].amount += amount,
+            Err(idx) => self.0.insert(idx, RecipientAmount { recipient, amount }),
+        }
+    }
+
+    /// Removes the recipient's row and returns its balance, or zero when it holds none.
+    pub(super) fn take(&mut self, recipient: &Address) -> TokenAmount {
+        self.0
+            .binary_search_by(|row| row.recipient.cmp(recipient))
+            .map_or_else(|_| TokenAmount::zero(), |idx| self.0.remove(idx).amount)
+    }
+
+    /// The number of rows this table would hold after folding a period under `shares`.
+    pub(super) fn union_len(&self, shares: &[RecipientShare]) -> usize {
+        let mut row_idx = 0;
+        let mut share_idx = 0;
+        let mut count = 0;
+        while row_idx < self.0.len() && share_idx < shares.len() {
+            count += 1;
+            match self.0[row_idx].recipient.cmp(&shares[share_idx].recipient) {
+                std::cmp::Ordering::Less => row_idx += 1,
+                std::cmp::Ordering::Equal => {
+                    row_idx += 1;
+                    share_idx += 1;
+                }
+                std::cmp::Ordering::Greater => share_idx += 1,
+            }
+        }
+        count + self.0.len() - row_idx + shares.len() - share_idx
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, RecipientAmount> {
+        self.0.iter()
+    }
+
+    pub(super) fn clear(&mut self) {
+        self.0.clear();
+    }
+}
+
+impl From<Vec<RecipientAmount>> for RecipientTable {
+    fn from(rows: Vec<RecipientAmount>) -> Self {
+        RecipientTable(rows)
+    }
 }
 
 /// Caller-supplied subset of a new explicit distribution.
@@ -210,7 +288,7 @@ fn set_shares_inner(
 
     let mut next_distribution = distribution.clone();
     let burn = fold(&mut next_distribution, &accrual.amount)?;
-    let reserved_rows = recipient_union_len(&next_distribution.payable, &shares);
+    let reserved_rows = next_distribution.payable.union_len(&shares);
     ensure!(
         reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
         "stream {id} payable row reservation {reserved_rows} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}"
@@ -265,8 +343,8 @@ pub(super) fn fold(
     for share in &distribution.shares {
         let earned = TokenAmount::from_atto(pool.atto() * share.share / &denom);
         allocated += &earned;
-        let claimed = amount_for(&distribution.claimed_period, &share.recipient);
-        add_amount(&mut distribution.payable, share.recipient, earned - claimed);
+        let claimed = distribution.claimed_period.get(&share.recipient);
+        distribution.payable.add(share.recipient, earned - claimed);
     }
     distribution.claimed_period.clear();
     Ok(pool - allocated)
@@ -293,18 +371,18 @@ fn claim_live(
         } else {
             TokenAmount::from_atto(pool.atto() * share / &denom)
         };
-        let claimed = amount_for(&distribution.claimed_period, wallet);
+        let claimed = distribution.claimed_period.get(wallet);
         // validate_period_claims established this relation for every stored recipient.
         debug_assert!(claimed <= earned);
         let live = earned - claimed;
-        let payable = amount_for(&distribution.payable, wallet);
+        let payable = distribution.payable.get(wallet);
         let entitlement = &live + &payable;
         if entitlement.is_zero() {
             amounts.push(TokenAmount::zero());
             continue;
         }
-        remove_amount(&mut distribution.payable, wallet);
-        add_amount(&mut distribution.claimed_period, *wallet, live);
+        distribution.payable.take(wallet);
+        distribution.claimed_period.add(*wallet, live);
 
         amounts.push(entitlement);
     }
@@ -312,18 +390,12 @@ fn claim_live(
     Ok(amounts)
 }
 
-fn claim_payable(payable: &mut Vec<RecipientAmount>, wallets: &[Address]) -> Result<ClaimResult> {
+fn claim_payable(payable: &mut RecipientTable, wallets: &[Address]) -> Result<ClaimResult> {
     validate_amount_rows(payable, "tombstone payable")?;
     let mut amounts = Vec::with_capacity(wallets.len());
 
     for wallet in wallets {
-        let entitlement = amount_for(payable, wallet);
-        if entitlement.is_zero() {
-            amounts.push(TokenAmount::zero());
-            continue;
-        }
-        remove_amount(payable, wallet);
-
+        let entitlement = payable.take(wallet);
         amounts.push(entitlement);
     }
     Ok(amounts)
@@ -338,7 +410,7 @@ pub(super) fn validate_period_claims(
     let share_total = validate_stored_shares(&distribution.shares)?;
     ensure!(share_total != 0 || pool.is_zero(), "zero-share distribution has non-zero accrual");
     let denom = BigInt::from(share_total);
-    for claimed in &distribution.claimed_period {
+    for claimed in distribution.claimed_period.iter() {
         let share =
             distribution
                 .shares
@@ -355,36 +427,16 @@ pub(super) fn validate_period_claims(
     Ok(share_total)
 }
 
-pub(super) fn validate_amount_rows(rows: &[RecipientAmount], label: &str) -> Result<()> {
+pub(super) fn validate_amount_rows(rows: &RecipientTable, label: &str) -> Result<()> {
     ensure!(
-        rows.is_sorted_by(|a, b| a.recipient < b.recipient),
+        rows.iter().is_sorted_by(|a, b| a.recipient < b.recipient),
         "{label} recipients are not ordered"
     );
-    for row in rows {
+    for row in rows.iter() {
         validate_id_address(&row.recipient, label)?;
         ensure!(row.amount > TokenAmount::zero(), "{label} amount is not positive");
     }
     Ok(())
-}
-
-fn amount_for(rows: &[RecipientAmount], recipient: &Address) -> TokenAmount {
-    rows.binary_search_by(|row| row.recipient.cmp(recipient))
-        .map_or_else(|_| TokenAmount::zero(), |idx| rows[idx].amount.clone())
-}
-
-fn add_amount(rows: &mut Vec<RecipientAmount>, recipient: Address, amount: TokenAmount) {
-    if amount.is_zero() {
-        return;
-    }
-    match rows.binary_search_by(|row| row.recipient.cmp(&recipient)) {
-        Ok(idx) => rows[idx].amount += amount,
-        Err(idx) => rows.insert(idx, RecipientAmount { recipient, amount }),
-    }
-}
-
-fn remove_amount(rows: &mut Vec<RecipientAmount>, recipient: &Address) -> TokenAmount {
-    rows.binary_search_by(|row| row.recipient.cmp(recipient))
-        .map_or_else(|_| TokenAmount::zero(), |idx| rows.remove(idx).amount)
 }
 
 pub(super) fn validate_distribution_init(distribution: &Option<DistributionInit>) -> Result<()> {
@@ -398,22 +450,4 @@ pub(super) fn validate_distribution_init(distribution: &Option<DistributionInit>
 pub(super) fn validate_id_address(address: &Address, label: &str) -> Result<()> {
     ensure!(address.protocol() == Protocol::ID, "{label} {address} is not an ID address");
     Ok(())
-}
-
-pub(super) fn recipient_union_len(payable: &[RecipientAmount], shares: &[RecipientShare]) -> usize {
-    let mut payable_idx = 0;
-    let mut shares_idx = 0;
-    let mut count = 0;
-    while payable_idx < payable.len() && shares_idx < shares.len() {
-        count += 1;
-        match payable[payable_idx].recipient.cmp(&shares[shares_idx].recipient) {
-            std::cmp::Ordering::Less => payable_idx += 1,
-            std::cmp::Ordering::Equal => {
-                payable_idx += 1;
-                shares_idx += 1;
-            }
-            std::cmp::Ordering::Greater => shares_idx += 1,
-        }
-    }
-    count + payable.len() - payable_idx + shares.len() - shares_idx
 }

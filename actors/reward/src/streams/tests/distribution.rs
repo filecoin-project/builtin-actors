@@ -43,14 +43,8 @@ fn folds_period_under_outgoing_shares_and_burns_only_dust() {
     let third = DENOM / 3;
     let old_shares = shares(&[(101, third), (102, third), (103, DENOM - 2 * third)]);
     let mut distribution = explicit(200, old_shares);
-    distribution.payable.push(RecipientAmount {
-        recipient: Address::new_id(104),
-        amount: TokenAmount::from_atto(5),
-    });
-    distribution.claimed_period.push(RecipientAmount {
-        recipient: Address::new_id(101),
-        amount: TokenAmount::from_atto(1),
-    });
+    distribution.payable.add(Address::new_id(104), TokenAmount::from_atto(5));
+    distribution.claimed_period.add(Address::new_id(101), TokenAmount::from_atto(1));
     let mut streams = StreamsState {
         streams: vec![stream(2, pct(20), Some(distribution))],
         ..Default::default()
@@ -101,11 +95,13 @@ fn claims_live_and_payable_amounts_once_in_request_order() {
     distribution.payable = vec![
         RecipientAmount { recipient: Address::new_id(101), amount: TokenAmount::from_atto(3) },
         RecipientAmount { recipient: Address::new_id(102), amount: TokenAmount::from_atto(4) },
-    ];
+    ]
+    .into();
     distribution.claimed_period = vec![RecipientAmount {
         recipient: Address::new_id(101),
         amount: TokenAmount::from_atto(2),
-    }];
+    }]
+    .into();
     let mut streams = StreamsState {
         streams: vec![stream(2, pct(20), Some(distribution))],
         ..Default::default()
@@ -149,7 +145,8 @@ fn claims_tombstones_and_deletes_them_when_drained() {
                     recipient: Address::new_id(102),
                     amount: TokenAmount::from_atto(8),
                 },
-            ],
+            ]
+            .into(),
         }],
         ..Default::default()
     };

@@ -34,8 +34,7 @@ use anyhow::{Result, ensure};
 use fvm_shared::clock::ChainEpoch;
 
 use super::distribution::{
-    recipient_union_len, validate_amount_rows, validate_id_address, validate_period_claims,
-    validate_stored_shares,
+    validate_amount_rows, validate_id_address, validate_period_claims, validate_stored_shares,
 };
 use super::queue::{PendingWriteOp, validate_pending_queue, validate_projected_queue_inner};
 use super::weights::validate_weight_record;
@@ -73,7 +72,7 @@ pub(super) fn validate_stream_configuration_without_weights(streams: &[Stream]) 
             validate_stored_shares(&distribution.shares)?;
             validate_amount_rows(&distribution.payable, "payable")?;
             validate_amount_rows(&distribution.claimed_period, "claimed-period")?;
-            let reserved_rows = recipient_union_len(&distribution.payable, &distribution.shares);
+            let reserved_rows = distribution.payable.union_len(&distribution.shares);
             ensure!(
                 reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
                 "stream {} payable row reservation {reserved_rows} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}",
@@ -192,7 +191,7 @@ pub(super) fn validate_tombstone_capacity(streams: &StreamsState) -> Result<()> 
             .find(|stream| stream.id == id)
             .and_then(Stream::explicit)
             .map_or(MAX_RECIPIENTS, |distribution| {
-                MAX_RECIPIENTS.max(recipient_union_len(&distribution.payable, &distribution.shares))
+                MAX_RECIPIENTS.max(distribution.payable.union_len(&distribution.shares))
             });
     }
     ensure!(

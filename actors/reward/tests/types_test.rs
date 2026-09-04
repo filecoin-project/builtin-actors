@@ -9,7 +9,7 @@ mod serialization {
         PendingWriteOp, RecipientAmount, RecipientShare, RegisterStreamParams, RemoveStreamParams,
         SetDistributionParams, SetSharesParams, SetWeightRecordsParams, State,
         StepWeightRecordsParams, Stream, StreamAccrual, StreamsState, ThisEpochRewardReturn,
-        Tombstone, UpdateNetworkKPIParams, WeightRecord, WeightRecordUpdate,
+        Tombstone, UpdateNetworkKPIParams, WeightRecord, WeightRecordUpdate, WeightRecordsPayload,
     };
     use fil_actors_runtime::reward::FilterEstimate;
     use fil_actors_runtime::test_blockstores::MemoryBlockstore;
@@ -191,11 +191,13 @@ mod serialization {
                         payable: vec![RecipientAmount {
                             recipient: Address::new_id(102),
                             amount: TokenAmount::from_atto(7),
-                        }],
+                        }]
+                        .into(),
                         claimed_period: vec![RecipientAmount {
                             recipient: Address::new_id(103),
                             amount: TokenAmount::from_atto(8),
-                        }],
+                        }]
+                        .into(),
                     }),
                 },
             ],
@@ -204,7 +206,8 @@ mod serialization {
                 payable: vec![RecipientAmount {
                     recipient: Address::new_id(104),
                     amount: TokenAmount::from_atto(9),
-                }],
+                }]
+                .into(),
             }],
             pending_writes: vec![PendingWrite {
                 id: Some(4),
@@ -385,6 +388,44 @@ mod serialization {
             assert_eq!(encoded.data, expected_hex);
             let decoded: StepWeightRecordsParams = IpldBlock::deserialize(&encoded).unwrap();
             assert_eq!(params, decoded);
+        }
+    }
+
+    #[test]
+    fn weight_records_payload() {
+        let test_cases = vec![
+            (
+                WeightRecordsPayload { updates: Vec::new() },
+                // [[]] encodes canonically but is rejected by payload validation.
+                &hex!("8180")[..],
+            ),
+            (
+                WeightRecordsPayload {
+                    updates: vec![
+                        WeightRecordUpdate { id: 24, weight: weight(24, -25, 256, 0, 65_536) },
+                        WeightRecordUpdate {
+                            id: 1_u64 << 32,
+                            weight: weight(1_u64 << 32, -((1_i64 << 32) + 1), 65_536, 256, DENOM),
+                        },
+                    ],
+                },
+                // [[
+                //   [24,[24,-25,256,0,65536]],
+                //   [4294967296,
+                //   [4294967296,-4294967297,65536,256,1000000000000000000]]
+                // ]]
+                &hex!(
+                    "81828218188518183818190100001a00010000821b0000000100000000"
+                    "851b00000001000000003b00000001000000001a000100001901001b0de0b6b3a7640000"
+                )[..],
+            ),
+        ];
+
+        for (payload, expected_hex) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&payload).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex);
+            let decoded: WeightRecordsPayload = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(payload, decoded);
         }
     }
 

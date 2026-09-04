@@ -39,8 +39,8 @@ fn explicit(writer: u64, shares: Vec<RecipientShare>) -> ExplicitDistribution {
     ExplicitDistribution {
         writer: Address::new_id(writer),
         shares,
-        payable: Vec::new(),
-        claimed_period: Vec::new(),
+        payable: RecipientTable::default(),
+        claimed_period: RecipientTable::default(),
     }
 }
 
@@ -70,7 +70,8 @@ fn tombstone(id: StreamId, first_recipient: u64, rows: usize) -> Tombstone {
                 recipient: Address::new_id(first_recipient + offset as u64),
                 amount: TokenAmount::from_atto(1),
             })
-            .collect(),
+            .collect::<Vec<_>>()
+            .into(),
     }
 }
 
@@ -83,10 +84,8 @@ fn cancel(
     Ok(super::queue::cancel_pending(streams, Slot::for_cancel(id, op)?))
 }
 
-fn amount(rows: &[RecipientAmount], recipient: u64) -> TokenAmount {
-    rows.iter()
-        .find(|row| row.recipient == Address::new_id(recipient))
-        .map_or_else(TokenAmount::zero, |row| row.amount.clone())
+fn amount(rows: &RecipientTable, recipient: u64) -> TokenAmount {
+    rows.get(&Address::new_id(recipient))
 }
 
 fn explicit_liabilities(streams: &StreamsState, accruals: &[StreamAccrual]) -> TokenAmount {
