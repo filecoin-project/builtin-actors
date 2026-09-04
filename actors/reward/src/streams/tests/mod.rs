@@ -4,6 +4,8 @@ use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
 use super::*;
+use crate::streams::award::Allocation;
+use crate::streams::invariants::schedule_at;
 
 mod award;
 mod distribution;
@@ -154,6 +156,53 @@ fn queue_set_distribution(
     admit(streams, accruals, QueuedCall::SetDistribution { id, writer }, epoch, timelock)
 }
 
+/// The explicit share update as the actor drives it, keeping what the ledger holds only on
+/// success.
+fn set_shares(
+    streams: &mut StreamsState,
+    accruals: &mut Vec<StreamAccrual>,
+    id: StreamId,
+    shares: Vec<RecipientShare>,
+) -> anyhow::Result<TokenAmount> {
+    let mut ledger = ledger(streams, accruals);
+    let dust = ledger.set_shares(id, shares)?;
+    *streams = ledger.streams;
+    *accruals = ledger.accrued;
+    Ok(dust)
+}
+
+/// A claim over wallets the actor layer has already resolved.
+fn claim(
+    streams: &mut StreamsState,
+    accruals: &[StreamAccrual],
+    id: StreamId,
+    wallets: &[Address],
+) -> anyhow::Result<Vec<TokenAmount>> {
+    let mut ledger = ledger(streams, accruals);
+    let resolved: Vec<Option<Address>> = wallets.iter().copied().map(Some).collect();
+    let amounts = ledger.claim(id, &resolved)?;
+    *streams = ledger.streams;
+    Ok(amounts)
+}
+
+/// One block reward split across a bare stream table, which is all the split reads.
+fn allocate(streams: &[Stream], epoch: ChainEpoch, block_reward: &TokenAmount) -> Allocation {
+    let table = StreamsState { streams: streams.to_vec(), ..Default::default() };
+    ledger(&table, &[]).allocate(epoch, block_reward)
+}
+
+/// The award crediting its portions, which changes no row's presence and so no length.
+fn accrue(accruals: &mut [StreamAccrual], portions: &[(StreamId, TokenAmount)]) {
+    let mut ledger = ledger(&StreamsState::default(), accruals);
+    ledger.accrue(portions);
+    accruals.clone_from_slice(&ledger.accrued);
+}
+
+/// The accrual rows an award's portions amount to from an empty start.
+fn accruals_of(portions: &[(StreamId, TokenAmount)]) -> Vec<StreamAccrual> {
+    portions.iter().map(|(id, amount)| StreamAccrual { id: *id, amount: amount.clone() }).collect()
+}
+
 fn apply_due_writes(
     streams: &mut StreamsState,
     accruals: &mut Vec<StreamAccrual>,
@@ -184,7 +233,7 @@ fn amount(rows: &RecipientTable, recipient: u64) -> TokenAmount {
 }
 
 fn explicit_liabilities(streams: &StreamsState, accruals: &[StreamAccrual]) -> TokenAmount {
-    explicit_liability(streams, accruals).unwrap()
+    ledger(streams, accruals).liability()
 }
 
 fn assert_explicit_conserved(
@@ -218,11 +267,13 @@ impl SupplyTracker {
         epoch: ChainEpoch,
         reward: TokenAmount,
     ) {
-        let allocation = allocate_reward(&streams.streams, epoch, &reward).unwrap();
-        assert!(allocation.schedule_valid, "valid randomized state entered degradation");
-        let explicit =
-            allocation.portions.iter().fold(TokenAmount::zero(), |total, row| total + &row.amount);
-        accrue_explicit(accruals, &allocation.portions);
+        schedule_at(&streams.streams, epoch).expect("valid randomized state entered degradation");
+        let allocation = allocate(&streams.streams, epoch, &reward);
+        let explicit = allocation
+            .portions
+            .iter()
+            .fold(TokenAmount::zero(), |total, (_, amount)| total + amount);
+        accrue(accruals, &allocation.portions);
         self.total_minted += &reward;
         self.total_burn += &allocation.burn;
         self.total_explicit += &explicit;

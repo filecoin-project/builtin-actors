@@ -183,9 +183,9 @@ fn burns_sentinel_share_without_accruing_or_tombstoning_it() {
     let mut accruals = vec![StreamAccrual { id: 2, amount: TokenAmount::zero() }];
     let reward = TokenAmount::from_atto(100);
 
-    let common = allocate_reward(&streams.streams, 0, &reward).unwrap();
+    let common = allocate(&streams.streams, 0, &reward);
     assert_eq!(TokenAmount::from_atto(60), common.miner);
-    assert_eq!(TokenAmount::from_atto(20), common.portions[0].amount);
+    assert_eq!(TokenAmount::from_atto(20), common.portions[0].1);
     assert_eq!(TokenAmount::from_atto(20), common.burn);
 
     set_shares(
@@ -198,12 +198,12 @@ fn burns_sentinel_share_without_accruing_or_tombstoning_it() {
     let distribution = streams.streams[1].distribution.as_ref().unwrap();
     assert_eq!(shares(&[(101, pct(25)), (102, pct(25))]), distribution.shares);
 
-    let partial = allocate_reward(&streams.streams, 0, &reward).unwrap();
+    let partial = allocate(&streams.streams, 0, &reward);
     assert_eq!(TokenAmount::from_atto(60), partial.miner);
-    assert_eq!(TokenAmount::from_atto(10), partial.portions[0].amount);
+    assert_eq!(TokenAmount::from_atto(10), partial.portions[0].1);
     assert_eq!(TokenAmount::from_atto(30), partial.burn);
-    assert_eq!(reward, &partial.miner + &partial.portions[0].amount + &partial.burn);
-    accrue_explicit(&mut accruals, &partial.portions);
+    assert_eq!(reward, &partial.miner + &partial.portions[0].1 + &partial.burn);
+    accrue(&mut accruals, &partial.portions);
 
     // f099 is included to prove the sentinel has no claimable balance. Recipient 102 is omitted
     // so its entitlement is folded into payable below.
@@ -223,12 +223,12 @@ fn burns_sentinel_share_without_accruing_or_tombstoning_it() {
         distribution.payable.iter().map(|row| row.recipient).collect::<Vec<_>>()
     });
 
-    let removed = allocate_reward(&streams.streams, 0, &reward).unwrap();
+    let removed = allocate(&streams.streams, 0, &reward);
     assert_eq!(TokenAmount::from_atto(60), removed.miner);
-    assert_eq!(TokenAmount::zero(), removed.portions[0].amount);
+    assert_eq!(TokenAmount::zero(), removed.portions[0].1);
     assert_eq!(TokenAmount::from_atto(40), removed.burn);
-    assert_eq!(reward, &removed.miner + &removed.portions[0].amount + &removed.burn);
-    accrue_explicit(&mut accruals, &removed.portions);
+    assert_eq!(reward, &removed.miner + &removed.portions[0].1 + &removed.burn);
+    accrue(&mut accruals, &removed.portions);
 
     queue_remove_stream(&mut streams, &accruals, 0, 1, 2).unwrap();
     apply_due_writes(&mut streams, &mut accruals, 1);
@@ -931,9 +931,9 @@ fn drops_a_weight_batch_stranded_by_cancelled_registration() {
     assert_eq!(Address::new_id(999), streams.streams[1].distribution.as_ref().unwrap().writer);
     assert_eq!(EPOCH_UNDEFINED, next_epoch(&streams));
 
-    let allocation = allocate_reward(&streams.streams, 10, &TokenAmount::from_atto(100)).unwrap();
+    let allocation = allocate(&streams.streams, 10, &TokenAmount::from_atto(100));
     assert_eq!(TokenAmount::from_atto(60), allocation.miner);
-    assert_eq!(TokenAmount::from_atto(20), allocation.portions[0].amount);
+    assert_eq!(TokenAmount::from_atto(20), allocation.portions[0].1);
     assert_eq!(TokenAmount::from_atto(20), allocation.burn);
 }
 

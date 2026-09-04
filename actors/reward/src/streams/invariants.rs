@@ -20,13 +20,13 @@
 //! | award | gas only | gas only | gas only |
 //! | invariant checker | reported | reported | reported |
 //!
-//! One function per tier, and each runs once. [`structure`] and [`accounting`] run together when
+//! Each tier runs once where it's needed. [`structure`] and [`accounting`] run together when
 //! a [`Ledger`](super::Ledger) is constructed, which is the only way an operation receives state,
 //! so operations below that point assume both and re-prove neither. [`schedule`] is not held at
 //! load, because claims, cancellation and `SetShares` stay usable from an invalid schedule
-//! (2.4.8); the queue applies it from the epoch each write becomes effective, and the award
-//! applies it at its own epoch. [`validate_streams_state`] runs all three, and is what
-//! `testing.rs` reports from.
+//! (2.4.8); the queue applies it from the epoch each write becomes effective, and
+//! [`schedule_at`] applies it at the award's own epoch. [`validate_streams_state`] runs all
+//! three (also what `testing.rs` reports from).
 
 use std::collections::BTreeSet;
 
@@ -45,7 +45,7 @@ use super::{
 
 /// The structure invariants tier: the shape of the streams block, independent of accounting and
 /// weights.
-pub(super) fn structure(streams: &StreamsState) -> Result<()> {
+pub(crate) fn structure(streams: &StreamsState) -> Result<()> {
     validate_pending_queue(&streams.pending_writes)?;
     stream_table(&streams.streams)?;
     ensure!(streams.tombstones.is_sorted_by(|a, b| a.id < b.id), "tombstones are not ordered");
@@ -74,7 +74,7 @@ pub(super) fn structure(streams: &StreamsState) -> Result<()> {
 }
 
 /// The accounting invariants tier: the accrual rows against the explicit streams they belong to.
-pub(super) fn accounting(streams: &StreamsState, accrued: &[StreamAccrual]) -> Result<()> {
+pub(crate) fn accounting(streams: &StreamsState, accrued: &[StreamAccrual]) -> Result<()> {
     ensure!(accrued.is_sorted_by(|a, b| a.id < b.id), "explicit-stream accruals are not ordered");
 
     let explicit_ids: BTreeSet<_> = streams
@@ -116,10 +116,29 @@ pub(super) fn schedule(streams: &[Stream], from: ChainEpoch) -> Result<()> {
     }
 
     for epoch in epochs {
-        let sum: u128 =
-            streams.iter().map(|stream| u128::from(compute_weight(&stream.weight, epoch))).sum();
-        ensure!(sum <= u128::from(DENOM), "stream weights exceed DENOM at epoch {epoch}: {sum}");
+        envelope_at(streams, epoch)?;
     }
+    Ok(())
+}
+
+/// The schedule invariants at one epoch alone, which is what the award requires (FIP-0118 2.4.3).
+///
+/// The award pays this block and nothing later, so a schedule that holds now and breaks at some
+/// future epoch still pays now. [`schedule`] is the stronger property that admission and
+/// application require, since a queued write has to hold from its effective epoch onward.
+pub(super) fn schedule_at(streams: &[Stream], epoch: ChainEpoch) -> Result<()> {
+    for stream in streams {
+        validate_weight_record(&stream.weight)?;
+    }
+    envelope_at(streams, epoch)
+}
+
+/// The evaluated weights at one epoch, summing within `DENOM` so the burn residual stays
+/// non-negative.
+fn envelope_at(streams: &[Stream], epoch: ChainEpoch) -> Result<()> {
+    let sum: u128 =
+        streams.iter().map(|stream| u128::from(compute_weight(&stream.weight, epoch))).sum();
+    ensure!(sum <= u128::from(DENOM), "stream weights exceed DENOM at epoch {epoch}: {sum}");
     Ok(())
 }
 

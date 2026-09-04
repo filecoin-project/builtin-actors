@@ -41,10 +41,11 @@
 //! ```
 //!
 //! `fold` is the loop of the first block and returns the residue for the caller to burn;
-//! `set_shares` wraps it with admission of the incoming map, and the queue calls it again for
-//! removal and writer replacement (2.4.6). `claim` selects the live or tombstone arm of the
-//! second block. The pool either divides is the stream's `StreamAccrual` row, passed in
-//! because accruals live inline in root state rather than behind `streams_root`.
+//! [`Ledger::set_shares`] wraps it with admission of the incoming map, and the queue calls it
+//! again for removal and writer replacement (2.4.6). [`Ledger::claim`] selects the live or
+//! tombstone arm of the second block. The pool either divides is the stream's `StreamAccrual`
+//! row, which the ledger carries beside the streams block because accruals live inline in root
+//! state rather than behind `streams_root`.
 
 use std::collections::BTreeSet;
 
@@ -60,8 +61,7 @@ use serde::{Deserialize, Serialize};
 use super::invariants::validate_tombstone_capacity;
 use super::queue::PendingWriteOp;
 use super::{
-    DENOM, MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, StreamAccrual, StreamId, StreamsState,
-    accrual, accrual_mut,
+    DENOM, Ledger, MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, StreamId, accrual, accrual_mut,
 };
 
 /// One recipient entry in a share-map message and in persisted distribution state.
@@ -247,65 +247,82 @@ pub(crate) fn normalize_shares(mut shares: Vec<RecipientShare>) -> Result<Vec<Re
     Ok(shares)
 }
 
-/// Closes the current period, preserves unclaimed earnings, and installs new shares.
-/// Returns indivisible rounding dust for burning.
-pub(crate) fn set_shares(
-    streams: &mut StreamsState,
-    accruals: &mut [StreamAccrual],
-    id: StreamId,
-    shares: Vec<RecipientShare>,
-) -> Result<TokenAmount> {
-    let shares = normalize_shares(shares)?;
-    let removal_pending =
-        streams.pending_writes.iter().any(|write| write.op == PendingWriteOp::RemoveStream);
-    let stream = streams.stream_mut(id).ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
-    let distribution =
-        stream.explicit_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
-    let accrual = accrual_mut(accruals, id)
-        .expect("accounting invariants: every explicit stream has an accrual row");
-
-    let mut next_distribution = distribution.clone();
-    let burn = fold(&mut next_distribution, &accrual.amount);
-    let reserved_rows = next_distribution.payable.union_len(&shares);
-    ensure!(
-        reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
-        "stream {id} payable row reservation {reserved_rows} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}"
-    );
-    next_distribution.shares = shares;
-
-    *distribution = next_distribution;
-    accrual.amount = TokenAmount::zero();
-    // A pending removal has reserved tombstone rows for the map this fold leaves behind.
-    if removal_pending {
-        validate_tombstone_capacity(streams)?;
-    }
-    Ok(burn)
-}
-
-/// Claims live and carried earnings from either a registered stream or its tombstone.
-pub(crate) fn claim(
-    streams: &mut StreamsState,
-    accruals: &[StreamAccrual],
-    id: StreamId,
-    wallets: &[Address],
-) -> Result<ClaimResult> {
-    if streams.has_stream(id) {
+impl Ledger {
+    /// Closes the current period, preserves unclaimed earnings, and installs new shares.
+    /// Returns indivisible rounding dust for burning.
+    pub(crate) fn set_shares(
+        &mut self,
+        id: StreamId,
+        shares: Vec<RecipientShare>,
+    ) -> Result<TokenAmount> {
+        self.streams_dirty = true;
+        let shares = normalize_shares(shares)?;
+        let removal_pending = self
+            .streams
+            .pending_writes
+            .iter()
+            .any(|write| write.op == PendingWriteOp::RemoveStream);
+        let stream =
+            self.streams.stream_mut(id).ok_or_else(|| anyhow::anyhow!("stream {id} not found"))?;
         let distribution =
-            streams.explicit_mut(id).ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
-        let pool = accrual(accruals, id)
+            stream.explicit_mut().ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
+        let accrual = accrual_mut(&mut self.accrued, id)
             .expect("accounting invariants: every explicit stream has an accrual row");
-        Ok(claim_live(distribution, &pool.amount, wallets))
-    } else if let Some(tombstone) = streams.tombstone_mut(id) {
-        // A tombstone holds payable rows and nothing else, so a claim against it is a drain.
-        let result: ClaimResult =
-            wallets.iter().map(|wallet| tombstone.payable.take(wallet)).collect();
-        let drained = tombstone.payable.is_empty();
-        if drained {
-            streams.take_tombstone(id);
+
+        let mut next_distribution = distribution.clone();
+        let burn = fold(&mut next_distribution, &accrual.amount);
+        let reserved_rows = next_distribution.payable.union_len(&shares);
+        ensure!(
+            reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
+            "stream {id} payable row reservation {reserved_rows} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}"
+        );
+        next_distribution.shares = shares;
+
+        *distribution = next_distribution;
+        accrual.amount = TokenAmount::zero();
+        // A pending removal has reserved tombstone rows for the map this fold leaves behind.
+        if removal_pending {
+            validate_tombstone_capacity(&self.streams)?;
         }
-        Ok(result)
-    } else {
-        Ok(vec![TokenAmount::zero(); wallets.len()])
+        Ok(burn)
+    }
+
+    /// Claims live and carried earnings from either a registered stream or its tombstone.
+    ///
+    /// A `None` wallet is one the actor layer could not resolve. Stored recipients are ID
+    /// addresses, so such a wallet matches no row and we pass that through back to the caller with
+    /// a zero entitlement.
+    pub(crate) fn claim(
+        &mut self,
+        id: StreamId,
+        wallets: &[Option<Address>],
+    ) -> Result<ClaimResult> {
+        self.streams_dirty = true;
+        if self.streams.has_stream(id) {
+            let distribution = self
+                .streams
+                .explicit_mut(id)
+                .ok_or_else(|| anyhow::anyhow!("stream {id} is implicit"))?;
+            let pool = accrual(&self.accrued, id)
+                .expect("accounting invariants: every explicit stream has an accrual row");
+            Ok(claim_live(distribution, &pool.amount, wallets))
+        } else if let Some(tombstone) = self.streams.tombstone_mut(id) {
+            // A tombstone holds payable rows and nothing else, so a claim against it is a drain.
+            let result: ClaimResult = wallets
+                .iter()
+                .map(|wallet| match wallet {
+                    Some(wallet) => tombstone.payable.take(wallet),
+                    None => TokenAmount::zero(),
+                })
+                .collect();
+            let drained = tombstone.payable.is_empty();
+            if drained {
+                self.streams.take_tombstone(id);
+            }
+            Ok(result)
+        } else {
+            Ok(vec![TokenAmount::zero(); wallets.len()])
+        }
     }
 }
 
@@ -325,16 +342,22 @@ pub(super) fn fold(distribution: &mut ExplicitDistribution, pool: &TokenAmount) 
     pool - allocated
 }
 
+/// Claims live earnings for each wallet, returning the entitlements in request order.
 fn claim_live(
     distribution: &mut ExplicitDistribution,
     pool: &TokenAmount,
-    wallets: &[Address],
+    wallets: &[Option<Address>],
 ) -> ClaimResult {
     let share_total = distribution.share_total();
     let denom = BigInt::from(share_total);
     let mut amounts = Vec::with_capacity(wallets.len());
 
     for wallet in wallets {
+        let Some(wallet) = wallet else {
+            // A `None` wallet is one the actor layer couldn't resolve, send it back with zero.
+            amounts.push(TokenAmount::zero());
+            continue;
+        };
         let share = distribution
             .shares
             .iter()

@@ -89,7 +89,7 @@ fn load_streams(rt: &MockRuntime) -> StreamsState {
 
 fn liability(rt: &MockRuntime) -> TokenAmount {
     let state: State = rt.get_state();
-    explicit_liability(&load_streams(rt), &state.accrued).unwrap()
+    explicit_liability(&load_streams(rt), &state.accrued)
 }
 
 fn assert_state_invariants(rt: &MockRuntime) {

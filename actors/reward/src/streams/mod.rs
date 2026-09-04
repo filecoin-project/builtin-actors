@@ -25,16 +25,16 @@ use crate::State;
 
 mod award;
 mod distribution;
-mod invariants;
+pub(crate) mod invariants;
 mod queue;
 mod weights;
 
-pub use self::award::{RewardAllocation, explicit_liability};
-pub(crate) use self::award::{accrue_explicit, allocate_reward};
+pub use self::award::explicit_liability;
+pub(crate) use self::award::{FullAward, plan_award};
+pub(crate) use self::distribution::normalize_shares;
 pub use self::distribution::{
     DistributionInit, ExplicitDistribution, RecipientAmount, RecipientShare, RecipientTable,
 };
-pub(crate) use self::distribution::{claim, normalize_shares, set_shares};
 pub(crate) use self::invariants::validate_streams_state;
 pub use self::queue::{
     ApplyResult, PendingWrite, PendingWriteOp, RegisterStreamPayload, SetDistributionPayload,
@@ -254,21 +254,6 @@ impl Ledger {
 
     pub(crate) fn streams(&self) -> &StreamsState {
         &self.streams
-    }
-
-    pub(crate) fn accrued(&self) -> &[StreamAccrual] {
-        &self.accrued
-    }
-
-    /// The accrual rows alone, which the award credits without touching the streams block.
-    pub(crate) fn accrued_mut(&mut self) -> &mut Vec<StreamAccrual> {
-        &mut self.accrued
-    }
-
-    /// Both halves, for an operation that moves value between them and rewrites the block.
-    pub(crate) fn mutate(&mut self) -> (&mut StreamsState, &mut Vec<StreamAccrual>) {
-        self.streams_dirty = true;
-        (&mut self.streams, &mut self.accrued)
     }
 }
 

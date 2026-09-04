@@ -10,6 +10,7 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
@@ -102,17 +103,14 @@ impl Actor {
     ) -> Result<(), ActorError> {
         validate_swa(rt)?;
         let call = QueuedCall::Weights { op, updates: params.updates };
-        let (apply_result, queued) = rt.transaction(|st: &mut State, rt| {
-            let mut ledger = Ledger::load(rt, st)?;
-            let apply_result = ledger.apply_due(rt.curr_epoch());
-            let queued = ledger
-                .admit(call, rt.curr_epoch(), st.swa_timelock_epochs)
-                .map_err(|e| illegal_argument(e, "failed to queue weight records"))?
-                .clone();
-            ledger.store(rt, st)?;
-            Ok((apply_result, queued))
+        let (applied, queued) = mutate(rt, |ledger, epoch, timelock| {
+            ledger
+                .admit(call, epoch, timelock)
+                .cloned()
+                .map_err(|e| illegal_argument(e, "failed to queue weight records"))
         })?;
-        complete_mutation(rt, &apply_result, Some(&queued), None)
+        settle(rt, &applied)?;
+        emit::write_queued(rt, &queued)
     }
 
     /// Queues a new stream for activation no earlier than the SWA timelock.
@@ -136,34 +134,28 @@ impl Actor {
             activation: params.activation_epoch,
         };
 
-        let (apply_result, queued) = rt.transaction(|st: &mut State, rt| {
-            let mut ledger = Ledger::load(rt, st)?;
-            let apply_result = ledger.apply_due(rt.curr_epoch());
-            let queued = ledger
-                .admit(call, rt.curr_epoch(), st.swa_timelock_epochs)
-                .map_err(|e| illegal_argument(e, "failed to queue stream registration"))?
-                .clone();
-            ledger.store(rt, st)?;
-            Ok((apply_result, queued))
+        let (applied, queued) = mutate(rt, |ledger, epoch, timelock| {
+            ledger
+                .admit(call, epoch, timelock)
+                .cloned()
+                .map_err(|e| illegal_argument(e, "failed to queue stream registration"))
         })?;
-        complete_mutation(rt, &apply_result, Some(&queued), None)
+        settle(rt, &applied)?;
+        emit::write_queued(rt, &queued)
     }
 
     /// Queues stream removal, preserving unpaid allocations when it applies.
     fn remove_stream(rt: &impl Runtime, params: RemoveStreamParams) -> Result<(), ActorError> {
         validate_swa(rt)?;
         let call = QueuedCall::Remove { id: params.id };
-        let (apply_result, queued) = rt.transaction(|st: &mut State, rt| {
-            let mut ledger = Ledger::load(rt, st)?;
-            let apply_result = ledger.apply_due(rt.curr_epoch());
-            let queued = ledger
-                .admit(call, rt.curr_epoch(), st.swa_timelock_epochs)
-                .map_err(|e| illegal_argument(e, "failed to queue stream removal"))?
-                .clone();
-            ledger.store(rt, st)?;
-            Ok((apply_result, queued))
+        let (applied, queued) = mutate(rt, |ledger, epoch, timelock| {
+            ledger
+                .admit(call, epoch, timelock)
+                .cloned()
+                .map_err(|e| illegal_argument(e, "failed to queue stream removal"))
         })?;
-        complete_mutation(rt, &apply_result, Some(&queued), None)
+        settle(rt, &applied)?;
+        emit::write_queued(rt, &queued)
     }
 
     /// Queues replacement of an explicit stream's writer, closing its current period on apply.
@@ -174,17 +166,14 @@ impl Actor {
         validate_swa(rt)?;
         let writer = resolve_required(rt, &params.writer, "distribution writer")?;
         let call = QueuedCall::SetDistribution { id: params.id, writer };
-        let (apply_result, queued) = rt.transaction(|st: &mut State, rt| {
-            let mut ledger = Ledger::load(rt, st)?;
-            let apply_result = ledger.apply_due(rt.curr_epoch());
-            let queued = ledger
-                .admit(call, rt.curr_epoch(), st.swa_timelock_epochs)
-                .map_err(|e| illegal_argument(e, "failed to queue distribution writer"))?
-                .clone();
-            ledger.store(rt, st)?;
-            Ok((apply_result, queued))
+        let (applied, queued) = mutate(rt, |ledger, epoch, timelock| {
+            ledger
+                .admit(call, epoch, timelock)
+                .cloned()
+                .map_err(|e| illegal_argument(e, "failed to queue distribution writer"))
         })?;
-        complete_mutation(rt, &apply_result, Some(&queued), None)
+        settle(rt, &applied)?;
+        emit::write_queued(rt, &queued)
     }
 
     /// Applies due writes, then removes the pending write in the named queue slot.
@@ -192,14 +181,12 @@ impl Actor {
         validate_swa(rt)?;
         let slot = Slot::for_cancel(params.id, params.op)
             .map_err(|e| illegal_argument(e, "invalid cancellation target"))?;
-        let (apply_result, cancelled) = rt.transaction(|st: &mut State, rt| {
-            let mut ledger = Ledger::load(rt, st)?;
-            let apply_result = ledger.apply_due(rt.curr_epoch());
-            let cancelled = ledger.cancel(slot);
-            ledger.store(rt, st)?;
-            Ok((apply_result, cancelled))
-        })?;
-        complete_mutation(rt, &apply_result, None, cancelled.as_ref())
+        let (applied, cancelled) = mutate(rt, |ledger, _, _| Ok(ledger.cancel(slot)))?;
+        settle(rt, &applied)?;
+        if let Some(write) = cancelled {
+            emit::write_cancelled(rt, &write)?;
+        }
+        Ok(())
     }
 
     /// Closes an explicit stream's current period and installs its next recipient share map.
@@ -214,9 +201,9 @@ impl Actor {
             ));
         }
         let caller = rt.message().caller();
-        let apply_result = rt.transaction(|st: &mut State, rt| {
-            let mut ledger = Ledger::load(rt, st)?;
-            let mut apply_result = ledger.apply_due(rt.curr_epoch());
+        let (mut applied, fold_dust) = mutate(rt, |ledger, _, _| {
+            // A due SetDistribution may have replaced the writer, so the check reads the ledger
+            // the due writes left rather than the one this method loaded.
             let writer = ledger
                 .streams()
                 .explicit(params.id)
@@ -233,15 +220,16 @@ impl Actor {
                     writer
                 ));
             }
+            // Recipient lookup stays behind the writer check, so an unauthorized call is
+            // forbidden rather than not-found.
             let shares = resolve_shares(rt, params.shares)?;
-            let (streams, accrued) = ledger.mutate();
-            let fold_dust = set_shares(streams, accrued, params.id, shares)
-                .map_err(|e| illegal_argument(e, "failed to set stream shares"))?;
-            apply_result.fold_dust += fold_dust;
-            ledger.store(rt, st)?;
-            Ok(apply_result)
+            ledger
+                .set_shares(params.id, shares)
+                .map_err(|e| illegal_argument(e, "failed to set stream shares"))
         })?;
-        complete_mutation(rt, &apply_result, None, None)
+        // One burn send carries the immediate fold's dust with any the due writes left.
+        applied.fold_dust += fold_dust;
+        settle(rt, &applied)
     }
 
     /// Pays the named wallets' live and carried entitlements for one explicit stream.
@@ -257,40 +245,26 @@ impl Actor {
                 MAX_RECIPIENTS
             ));
         }
-        let resolved_wallets: Vec<Option<Address>> = params
+        // Stored recipients are ID addresses, so an unresolvable input takes a positional zero.
+        let wallets: Vec<Option<Address>> = params
             .wallets
             .iter()
             .map(|wallet| rt.resolve_address(wallet).map(Address::new_id))
             .collect();
-        // Stored recipients are ID addresses, so an unresolvable input produces a positional zero.
-        let lookup_wallets: Vec<Address> = params
-            .wallets
-            .iter()
-            .zip(&resolved_wallets)
-            .map(|(original, resolved)| resolved.unwrap_or(*original))
-            .collect();
 
-        let (apply_result, amounts) = rt.transaction(|st: &mut State, rt| {
-            let mut ledger = Ledger::load(rt, st)?;
-            let apply_result = ledger.apply_due(rt.curr_epoch());
-            let (streams, accrued) = ledger.mutate();
-            let amounts = claim(streams, accrued, params.id, &lookup_wallets)
-                .map_err(|e| illegal_argument(e, "failed to claim stream funds"))?;
-            ledger.store(rt, st)?;
-            Ok((apply_result, amounts))
+        let (applied, amounts) = mutate(rt, |ledger, _, _| {
+            ledger
+                .claim(params.id, &wallets)
+                .map_err(|e| illegal_argument(e, "failed to claim stream funds"))
         })?;
-        complete_apply(rt, &apply_result)?;
-        for ((wallet, amount), resolved) in
-            params.wallets.iter().zip(&amounts).zip(&resolved_wallets)
-        {
-            if amount <= &TokenAmount::zero() {
-                continue;
+        settle(rt, &applied)?;
+        for (wallet, amount) in wallets.iter().zip(&amounts) {
+            if let Some(recipient) = wallet
+                && amount > &TokenAmount::zero()
+            {
+                extract_send_result(rt.send_simple(recipient, METHOD_SEND, None, amount.clone()))?;
+                emit::claim_payout(rt, params.id, recipient, amount)?;
             }
-            let recipient = resolved.as_ref().ok_or_else(|| {
-                actor_error!(illegal_state, "positive claim for unresolvable wallet {}", wallet)
-            })?;
-            extract_send_result(rt.send_simple(recipient, METHOD_SEND, None, amount.clone()))?;
-            emit::claim_payout(rt, params.id, recipient, amount)?;
         }
         Ok(ClaimReturn { amounts })
     }
@@ -334,7 +308,7 @@ impl Actor {
             .ok_or_else(|| actor_error!(not_found, "failed to resolve given owner address"))?;
         let penalty: TokenAmount = &params.penalty * PENALTY_MULTIPLIER;
 
-        let (miner_reward, burn, apply_result) = rt.transaction(|st: &mut State, rt| {
+        let (miner_reward, burn, applied) = rt.transaction(|st: &mut State, rt| {
             let stream_bytes = rt
                 .store()
                 .get(&st.streams_root)
@@ -347,13 +321,9 @@ impl Actor {
                     )
                 })?
                 .ok_or_else(|| {
-                    actor_error!(
-                        illegal_state,
-                        "streams state root {} not found",
-                        st.streams_root
-                    )
+                    actor_error!(illegal_state, "streams state root {} not found", st.streams_root)
                 })?;
-            let mut ledger = match Ledger::decode_for_award(&stream_bytes, &st.accrued) {
+            let ledger = match Ledger::decode_for_award(&stream_bytes, &st.accrued) {
                 Ok(ledger) => ledger,
                 Err(error) => {
                     error!(
@@ -361,99 +331,35 @@ impl Actor {
                         rt.curr_epoch(),
                         error
                     );
-                    return Ok((
-                        params.gas_reward.clone(),
-                        TokenAmount::zero(),
-                        ApplyResult::default(),
-                    ));
+                    return Ok(no_award(&params.gas_reward));
                 }
             };
             let expected_block_reward: TokenAmount =
                 (&st.this_epoch_reward * params.win_count).div_floor(EXPECTED_LEADERS_PER_EPOCH);
 
-            // Due writes are projected into the ledger and stored only for a full award, so a
-            // gas-only award doesn't commit a stream or accrual change.
-            let apply_result = ledger.apply_due(rt.curr_epoch());
-            let liabilities = match explicit_liability(ledger.streams(), ledger.accrued()) {
-                Ok(liabilities) => liabilities,
-                Err(error) => {
-                    error!(
-                        "invalid explicit-stream accounting at epoch {}: {}; paying gas reward only",
-                        rt.curr_epoch(),
-                        error
-                    );
-                    return Ok((
-                        params.gas_reward.clone(),
-                        TokenAmount::zero(),
-                        ApplyResult::default(),
-                    ));
-                }
+            // The plan owns the ledger it applied due writes into, so a gas-only award drops that
+            // work rather than storing it and commits no stream, accrual or counter change.
+            let Some((ledger, award)) = plan_award(
+                ledger,
+                rt.curr_epoch(),
+                &prior_balance,
+                &params.gas_reward,
+                &expected_block_reward,
+            ) else {
+                return Ok(no_award(&params.gas_reward));
             };
 
-            let mut block_reward = expected_block_reward;
-            // Due folds leave dust out of the derived liability before its post-transaction
-            // burn send, so it remains reserved until that send executes.
-            let reserved = &params.gas_reward + &liabilities + &apply_result.fold_dust;
-            if prior_balance <= reserved {
-                warn!(
-                    "reward balance {} does not exceed gas {}, explicit-stream liabilities {},\
-                    and pending dust {}; paying gas reward only",
-                    prior_balance, params.gas_reward, liabilities, apply_result.fold_dust
-                );
-                return Ok((
-                    params.gas_reward.clone(),
-                    TokenAmount::zero(),
-                    ApplyResult::default(),
-                ));
-            }
-            let available_reward = &prior_balance - reserved;
-            if block_reward > available_reward {
-                warn!(
-                    "reward actor spendable balance {} below block reward expected {},\
-                    paying out spendable balance",
-                    available_reward, block_reward
-                );
-                block_reward = available_reward;
-            }
-
-            let allocation =
-                match allocate_reward(&ledger.streams().streams, rt.curr_epoch(), &block_reward) {
-                    Ok(allocation) => allocation,
-                    Err(error) => {
-                        error!("failed to allocate reward at epoch {}: {}", rt.curr_epoch(), error);
-                        return Ok((
-                            params.gas_reward.clone(),
-                            TokenAmount::zero(),
-                            ApplyResult::default(),
-                        ));
-                    }
-                };
-            if !allocation.schedule_valid {
-                warn!(
-                    "invalid stream weights at epoch {}; paying gas reward only",
-                    rt.curr_epoch()
-                );
-                return Ok((
-                    params.gas_reward.clone(),
-                    TokenAmount::zero(),
-                    ApplyResult::default(),
-                ));
-            }
-            accrue_explicit(ledger.accrued_mut(), &allocation.portions);
-            let explicit = allocation
-                .portions
-                .iter()
-                .fold(TokenAmount::zero(), |total, row| total + &row.amount);
-
+            let FullAward { block_reward, allocation, applied } = award;
             ledger.store(rt, st)?;
             st.total_minted_reward += &block_reward;
             st.total_burn_minted += &allocation.burn;
-            st.total_explicit_minted += explicit;
+            st.total_explicit_minted +=
+                allocation.portions.iter().map(|(_, amount)| amount).sum::<TokenAmount>();
 
             Ok((
                 &params.gas_reward + allocation.miner,
-                &apply_result.fold_dust + allocation.burn,
-                apply_result,
+                &applied.fold_dust + allocation.burn,
+                applied,
             ))
         })?;
 
@@ -469,7 +375,7 @@ impl Actor {
         }
 
         // Implicit-message events are best-effort and require FIP-0107 for chain visibility.
-        if let Err(error) = emit_apply(rt, &apply_result) {
+        if let Err(error) = emit_apply(rt, &applied) {
             warn!("failed to emit implicit award events: {error}");
         }
         let reward_params = ext::miner::ApplyRewardParams { reward: miner_reward.clone(), penalty };
@@ -596,22 +502,41 @@ fn illegal_argument(error: anyhow::Error, context: &'static str) -> ActorError {
     error.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, context)
 }
 
-fn complete_mutation(
+/// Called by every explicit method because they do the same thing: load the ledger, apply the
+/// writes that have come due, do the method's own work, and store what it leaves.
+///
+/// The transaction is the atomicity boundary, so a rejection from `f` discards the whole thing,
+/// due writes included. The epochs `f` receives are the current one and the SWA timelock.
+fn mutate<T>(
     rt: &impl Runtime,
-    apply_result: &ApplyResult,
-    queued: Option<&PendingWrite>,
-    cancelled: Option<&PendingWrite>,
-) -> Result<(), ActorError> {
-    complete_apply(rt, apply_result)?;
-    if let Some(write) = queued {
-        emit::write_queued(rt, write)?;
-    }
-    if let Some(write) = cancelled {
-        emit::write_cancelled(rt, write)?;
+    f: impl FnOnce(&mut Ledger, ChainEpoch, ChainEpoch) -> Result<T, ActorError>,
+) -> Result<(ApplyResult, T), ActorError> {
+    rt.transaction(|st: &mut State, rt| {
+        let mut ledger = Ledger::load(rt, st)?;
+        let applied = ledger.apply_due(rt.curr_epoch());
+        let value = f(&mut ledger, rt.curr_epoch(), st.swa_timelock_epochs)?;
+        ledger.store(rt, st)?;
+        Ok((applied, value))
+    })
+}
+
+/// Settles what an operation's application owes. Emit an event per write that it moved, and
+/// then the fold dust left over (owed to nobody).
+fn settle(rt: &impl Runtime, applied: &ApplyResult) -> Result<(), ActorError> {
+    emit_apply(rt, applied)?;
+    if applied.fold_dust > TokenAmount::zero() {
+        extract_send_result(rt.send_simple(
+            &BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            None,
+            applied.fold_dust.clone(),
+        ))?;
     }
     Ok(())
 }
 
+/// Announces the writes an application moved. The award calls this on its own, because its burn
+/// carries the fold dust with the block reward's residual.
 fn emit_apply(rt: &impl Runtime, result: &ApplyResult) -> Result<(), ActorError> {
     for write in &result.applied {
         emit::write_applied(rt, write)?;
@@ -622,17 +547,10 @@ fn emit_apply(rt: &impl Runtime, result: &ApplyResult) -> Result<(), ActorError>
     Ok(())
 }
 
-fn complete_apply(rt: &impl Runtime, result: &ApplyResult) -> Result<(), ActorError> {
-    emit_apply(rt, result)?;
-    if result.fold_dust > TokenAmount::zero() {
-        extract_send_result(rt.send_simple(
-            &BURNT_FUNDS_ACTOR_ADDR,
-            METHOD_SEND,
-            None,
-            result.fold_dust.clone(),
-        ))?;
-    }
-    Ok(())
+/// FIP-0118 2.4.3's `no_award`: the miner is paid the gas reward, nothing is minted, and the
+/// state stands as it was.
+fn no_award(gas_reward: &TokenAmount) -> (TokenAmount, TokenAmount, ApplyResult) {
+    (gas_reward.clone(), TokenAmount::zero(), ApplyResult::default())
 }
 
 impl ActorCode for Actor {

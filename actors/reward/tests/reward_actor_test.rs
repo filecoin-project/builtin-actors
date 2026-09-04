@@ -126,11 +126,7 @@ mod construction_tests {
             check_state_invariants(&state, &*rt.store, -1, 0, &TokenAmount::from_atto(10));
         let messages = acc.messages();
         assert!(messages.iter().any(|message| message.contains("explicit-stream accrual")));
-        assert!(
-            messages
-                .iter()
-                .any(|message| message.contains("error computing explicit-stream liabilities"))
-        );
+        assert!(messages.iter().any(|message| message.contains("invalid streams state")));
     }
 
     #[test]

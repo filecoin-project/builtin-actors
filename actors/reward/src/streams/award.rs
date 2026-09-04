@@ -8,18 +8,18 @@
 //!     load the streams block            // absent block or store error aborts
 //!     computed_BR = this_epoch_reward * win_count / 5
 //!     if the block is undecodable, or its stream, tombstone or queue
-//!        structure is invalid:
+//!        structure or its accounting is invalid:
 //!         no_award()
 //!     projection = project valid due writes and cancellation-stranded drops
 //!     fold_dust = projection's fold dust
 //!     liability =
 //!         sum projected live (accrued - sum claimed_period + sum payable)
 //!         + sum projected tombstone payable
-//!     if the projection or the liability is uncomputable:
-//!         no_award()
 //!     if balance <= gas_reward + liability + fold_dust:
 //!         no_award()
 //!     BR = min(computed_BR, balance - gas_reward - liability - fold_dust)
+//!     if BR < 0:                        // only a negative this_epoch_reward
+//!         no_award()
 //!     evaluated = ComputeWeight for every active stream
 //!     if any record violates 0 <= floor <= v_start <= cap <= DENOM
 //!        or sum evaluated > DENOM:
@@ -50,138 +50,171 @@
 //!
 //! Every award is one of those two outcomes: `no_award`, which pays the gas reward alone and
 //! leaves the state as it stands, or the full split above.
-//! `Actor::award_block_reward` drives the sequence and performs the reserve check and the
-//! sends. This module has the other pieces it calls:
-//! - `allocate_reward` is the per-stream loop
-//! - `accrue_explicit` adds the resulting portions to the inline accrual rows
-//! - `explicit_liability` is the `liability` sum the reserve check subtracts, and the balance
+//! [`plan_award`] chooses between them, in the order written above, and
+//! `Actor::award_block_reward` applies what it chose and performs the sends. The pieces it calls:
+//! - [`Ledger::allocate`] is the per-stream loop
+//! - [`Ledger::accrue`] adds the resulting portions to the inline accrual rows
+//! - [`Ledger::liability`] is the `liability` sum the reserve check subtracts, and the balance
 //!   cover 2.5 requires of the counters this award moves
 
-use anyhow::{Result, ensure};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use log::{error, warn};
 use num_traits::Zero;
 
-use super::distribution::{validate_amount_rows, validate_period_claims};
-use super::weights::{compute_weight, validate_weight_record};
-use super::{DENOM, Stream, StreamAccrual, StreamsState, accrual_mut};
+use super::invariants::schedule_at;
+use super::queue::ApplyResult;
+use super::weights::compute_weight;
+use super::{DENOM, Ledger, StreamAccrual, StreamId, StreamsState, accrual_mut};
 
 /// One block reward split into its destinations.
+///
+/// This crosses Rust call boundaries only so doesn't need to be encodable.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RewardAllocation {
+pub(crate) struct Allocation {
     pub miner: TokenAmount,
-    pub portions: Vec<StreamAccrual>,
+    /// This block's portion for each explicit stream, in stream order.
+    pub portions: Vec<(StreamId, TokenAmount)>,
     pub burn: TokenAmount,
-    /// False when weight state is invalid; explicit portions are then skipped.
-    pub schedule_valid: bool,
 }
 
-/// Splits one block reward at `epoch`; invalid weight state allocates no portion.
-pub(crate) fn allocate_reward(
-    streams: &[Stream],
+/// A block reward to mint, and everything the award owes once it is minted.
+///
+/// This crosses Rust call boundaries only so doesn't need to be encodable.
+#[derive(Debug)]
+pub(crate) struct FullAward {
+    pub block_reward: TokenAmount,
+    pub allocation: Allocation,
+    /// The due writes this award committed, for the actor layer's events.
+    pub applied: ApplyResult,
+}
+
+/// Chooses between the two outcomes of an award at `epoch`.
+///
+/// `None` pays the gas reward alone and is for the various unexpected error cases. The ledger it
+/// consumed is dropped rather than stored, so nothing is minted and no counter, stream record or
+/// accrual moves.
+/// `Some` hands back the ledger to store alongside the split to pay out.
+pub(crate) fn plan_award(
+    mut ledger: Ledger,
     epoch: ChainEpoch,
-    block_reward: &TokenAmount,
-) -> Result<RewardAllocation> {
-    ensure!(!block_reward.is_negative(), "block reward is negative");
+    balance: &TokenAmount,
+    gas_reward: &TokenAmount,
+    expected: &TokenAmount,
+) -> Option<(Ledger, FullAward)> {
+    let applied = ledger.apply_due(epoch);
+    let liability = ledger.liability();
+    // A committed fold's dust is no longer owed to recipients but is not yet burnt, so it stays
+    // reserved until the post-transaction send moves it.
+    let reserve = gas_reward + &liability + &applied.fold_dust;
+    if *balance <= reserve {
+        warn!(
+            "reward balance {balance} does not exceed gas {gas_reward}, explicit-stream \
+             liabilities {liability} and pending dust {}; paying gas reward only",
+            applied.fold_dust
+        );
+        return None;
+    }
+    let available = balance - reserve;
+    let block_reward = if *expected > available {
+        warn!(
+            "reward actor spendable balance {available} below block reward expected {expected}, \
+             paying out spendable balance"
+        );
+        available
+    } else {
+        expected.clone()
+    };
+    // The reserve bounds the reward from above alone, so a negative expected reward would reach
+    // the split and allocate negative portions.
+    if block_reward.is_negative() {
+        error!("negative block reward {block_reward} at epoch {epoch}; paying gas reward only");
+        return None;
+    }
+    if let Err(error) = schedule_at(&ledger.streams.streams, epoch) {
+        warn!("invalid stream weights at epoch {epoch}: {error}; paying gas reward only");
+        return None;
+    }
+    let allocation = ledger.allocate(epoch, &block_reward);
+    ledger.accrue(&allocation.portions);
+    Some((ledger, FullAward { block_reward, allocation, applied }))
+}
 
-    let mut miner = TokenAmount::zero();
-    let mut portions = Vec::with_capacity(streams.len());
-    let mut burn = TokenAmount::zero();
-    let mut allocated = TokenAmount::zero();
-    let denom = BigInt::from(DENOM);
-    let mut weight_sum = 0_u128;
-    let mut records_valid = true;
+impl Ledger {
+    /// The value of the explicit-stream funds this ledger still holds.
+    pub(crate) fn liability(&self) -> TokenAmount {
+        explicit_liability(&self.streams, &self.accrued)
+    }
 
-    for stream in streams {
-        records_valid &= validate_weight_record(&stream.weight).is_ok();
-        let weight = compute_weight(&stream.weight, epoch);
-        weight_sum = weight_sum.saturating_add(u128::from(weight));
-        let mut portion = TokenAmount::from_atto(block_reward.atto() * weight / &denom);
-        allocated += &portion;
-        if let Some(distribution) = stream.explicit() {
-            let share_total = distribution.share_total();
-            if share_total != DENOM {
-                let explicit_portion =
-                    TokenAmount::from_atto(portion.atto() * share_total / &denom);
-                burn += &portion - &explicit_portion;
-                portion = explicit_portion;
+    /// Splits one block reward across the active streams at `epoch`, in stream order.
+    ///
+    /// The caller has proved the schedule invariants at `epoch`, which is what keeps the split
+    /// within the reward: each portion floors `weight * BR / DENOM` and the evaluated weights sum
+    /// to at most `DENOM`, so the portions sum to at most `BR` and the residual burn covers the
+    /// difference exactly.
+    pub(crate) fn allocate(&self, epoch: ChainEpoch, block_reward: &TokenAmount) -> Allocation {
+        let mut miner = TokenAmount::zero();
+        let mut portions = Vec::with_capacity(self.streams.streams.len());
+        let mut burn = TokenAmount::zero();
+        let mut allocated = TokenAmount::zero();
+        let denom = BigInt::from(DENOM);
+
+        for stream in &self.streams.streams {
+            let weight = compute_weight(&stream.weight, epoch);
+            let mut portion = TokenAmount::from_atto(block_reward.atto() * weight / &denom);
+            allocated += &portion;
+            if let Some(distribution) = stream.explicit() {
+                let share_total = distribution.share_total();
+                if share_total != DENOM {
+                    let explicit_portion =
+                        TokenAmount::from_atto(portion.atto() * share_total / &denom);
+                    burn += &portion - &explicit_portion;
+                    portion = explicit_portion;
+                }
+                portions.push((stream.id, portion));
+            } else {
+                miner += portion;
             }
-            portions.push(StreamAccrual { id: stream.id, amount: portion });
-        } else {
-            miner += portion;
+        }
+
+        debug_assert!(allocated <= *block_reward, "the split exceeds the block reward");
+        burn += block_reward - allocated;
+        Allocation { miner, portions, burn }
+    }
+
+    /// Adds an award's explicit-stream portions to their matching accrual rows.
+    ///
+    /// The portions are one per explicit stream in the state they were allocated from, which the
+    /// accounting invariants pairs one to one with the accrual rows. A projected registration or
+    /// removal moves both together so we never have a mismatch.
+    pub(crate) fn accrue(&mut self, portions: &[(StreamId, TokenAmount)]) {
+        for (id, amount) in portions {
+            let row = accrual_mut(&mut self.accrued, *id)
+                .expect("accounting invariants: every explicit stream has an accrual row");
+            row.amount += amount;
         }
     }
-
-    let schedule_valid =
-        records_valid && weight_sum <= u128::from(DENOM) && allocated <= *block_reward;
-    if !schedule_valid {
-        return Ok(RewardAllocation {
-            miner: TokenAmount::zero(),
-            portions: Vec::new(),
-            burn: TokenAmount::zero(),
-            schedule_valid,
-        });
-    }
-
-    burn += block_reward - allocated;
-    Ok(RewardAllocation { miner, portions, burn, schedule_valid })
 }
 
-/// Adds this award's explicit-stream portions to their matching inline accruals.
+/// Explicit-stream funds held by f02. This is the unclaimed current-period earnings across the live
+/// streams, plus every carried balance, live or tombstoned.
 ///
-/// The portions are one per explicit stream in the state the accruals came from, which the
-/// accounting invariants pairs one to one; a projected registration or removal moves both together.
-pub(crate) fn accrue_explicit(accruals: &mut [StreamAccrual], portions: &[StreamAccrual]) {
-    for portion in portions {
-        let row = accrual_mut(accruals, portion.id)
-            .expect("accounting invariants: every explicit stream has an accrual row");
-        row.amount += &portion.amount;
-    }
-}
-
-/// Computes explicit-stream funds still held by f02.
-pub fn explicit_liability(
-    streams: &StreamsState,
-    accruals: &[StreamAccrual],
-) -> Result<TokenAmount> {
+/// The caller's responsible for maintaining the accounting invariants (which every `Ledger` does,
+/// and which the invariant checker proves before it measures a persisted state).
+pub fn explicit_liability(streams: &StreamsState, accrued: &[StreamAccrual]) -> TokenAmount {
     let mut total = TokenAmount::zero();
-    let mut accruals = accruals.iter();
 
-    for stream in &streams.streams {
-        let Some(distribution) = stream.explicit() else {
-            // Implicit streams pay the miner directly and carry no explicit liability.
-            continue;
-        };
-        let accrual = accruals
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {}", stream.id))?;
-        ensure!(
-            accrual.id == stream.id,
-            "explicit-stream accrual {} does not match explicit stream {}",
-            accrual.id,
-            stream.id
-        );
-        ensure!(
-            !accrual.amount.is_negative(),
-            "explicit-stream accrual for stream {} is negative",
-            stream.id
-        );
-        validate_period_claims(distribution, &accrual.amount)?;
-
+    for accrual in accrued {
+        let distribution = streams
+            .explicit(accrual.id)
+            .expect("accounting invariants: an accrual row belongs to one live explicit stream");
         let claimed: TokenAmount = distribution.claimed_period.iter().map(|row| &row.amount).sum();
         total += &accrual.amount - claimed;
         total += distribution.payable.iter().map(|row| &row.amount).sum::<TokenAmount>();
     }
-    if let Some(accrual) = accruals.next() {
-        return Err(anyhow::anyhow!(
-            "explicit-stream accrual {} has no matching explicit stream",
-            accrual.id
-        ));
-    }
     for tombstone in &streams.tombstones {
-        validate_amount_rows(&tombstone.payable, "tombstone payable")?;
         total += tombstone.payable.iter().map(|row| &row.amount).sum::<TokenAmount>();
     }
-    Ok(total)
+    total
 }
