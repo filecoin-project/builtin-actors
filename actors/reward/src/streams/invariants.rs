@@ -17,7 +17,7 @@
 //! |---|---|---|---|
 //! | explicit method, at load | abort | abort | not required (2.4.8) |
 //! | admission of a queued call | held | held | required on the projection; `SetWeightRecords` may repair |
-//! | award | gas only | `allocate_without_explicit` | gas only |
+//! | award | gas only | gas only | gas only |
 //! | invariant checker | reported | reported | reported |
 //!
 //! The functions here cover the first two tiers in combinations rather than one function per

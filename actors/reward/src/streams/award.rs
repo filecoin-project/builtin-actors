@@ -10,15 +10,13 @@
 //!     if the block is undecodable, or its stream, tombstone or queue
 //!        structure is invalid:
 //!         no_award()
-//!     if current explicit liability is uncomputable:
-//!         award_without_service()
 //!     projection = project valid due writes and cancellation-stranded drops
 //!     fold_dust = projection's fold dust
 //!     liability =
 //!         sum projected live (accrued - sum claimed_period + sum payable)
 //!         + sum projected tombstone payable
-//!     if liability is uncomputable:
-//!         award_without_service()
+//!     if the projection or the liability is uncomputable:
+//!         no_award()
 //!     if balance <= gas_reward + liability + fold_dust:
 //!         no_award()
 //!     BR = min(computed_BR, balance - gas_reward - liability - fold_dust)
@@ -48,26 +46,12 @@
 //!
 //! no_award():
 //!     pay gas_reward and apply penalty as today; return without state change
-//!
-//! award_without_service():          // stored state, never the projection
-//!     ceiling = min(STORAGE_MINING_ALLOCATION - total_minted_reward,
-//!                   balance - gas_reward)
-//!     evaluated = ComputeWeight for every active stream
-//!     if ceiling <= 0
-//!        or any record violates 0 <= floor <= v_start <= cap <= DENOM
-//!        or sum evaluated > DENOM:
-//!         no_award()
-//!     BR = min(computed_BR, ceiling)
-//!     miner_reward = sum over IMPLICIT s of floor(evaluated[s] * BR / DENOM)
-//!     burn = BR - miner_reward
-//!     send(f099, burn); total_burn_minted += burn
-//!     total_minted_reward += BR
-//!     pay miner_reward + gas_reward to winning miner; penalties as today
 //! ```
 //!
-//! `Actor::award_block_reward` drives the above sequence and performs the reserve check
-//! and the sends, it also implements the degraded arm as `allocate_without_explicit`.
-//! This module has the other pieces it calls:
+//! Every award is one of those two outcomes: `no_award`, which pays the gas reward alone and
+//! leaves the state as it stands, or the full split above.
+//! `Actor::award_block_reward` drives the sequence and performs the reserve check and the
+//! sends. This module has the other pieces it calls:
 //! - `allocate_reward` is the per-stream loop
 //! - `accrue_explicit` adds the resulting portions to the inline accrual rows
 //! - `explicit_liability` is the `liability` sum the reserve check subtracts, and the balance

@@ -5,9 +5,9 @@ use fil_actor_reward::{
     Actor as RewardActor, AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn,
     DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, Method, PENALTY_MULTIPLIER,
     PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare, RecipientTable,
-    RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, STORAGE_MINING_ALLOCATION,
-    SetDistributionParams, SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State,
-    Stream, StreamAccrual, StreamsState, WeightRecord, WeightRecordUpdate, explicit_liability, ext,
+    RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, SetDistributionParams,
+    SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State, Stream, StreamAccrual,
+    StreamsState, WeightRecord, WeightRecordUpdate, explicit_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
     ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
@@ -1417,10 +1417,9 @@ fn award_reserves_existing_explicit_liabilities_when_reward_balance_is_low() {
 }
 
 #[test]
-fn award_uses_allocation_remainder_until_invalid_explicit_accounting_is_repaired() {
+fn award_pays_only_gas_until_invalid_explicit_accounting_is_repaired() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
-    let supply_total = STORAGE_MINING_ALLOCATION.clone();
     let mut streams = load_streams(&rt);
     let pending = PendingWrite {
         id: None,
@@ -1434,31 +1433,31 @@ fn award_uses_allocation_remainder_until_invalid_explicit_accounting_is_repaired
     streams.pending_writes = vec![pending.clone()];
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     state.this_epoch_reward = TokenAmount::from_atto(25);
-    state.total_minted_reward = &supply_total - TokenAmount::from_atto(3);
+    state.total_minted_reward = TokenAmount::from_atto(40);
     state.total_burn_minted = TokenAmount::from_atto(2);
     state.total_explicit_minted = TokenAmount::from_atto(10);
     state.accrued[0].amount = TokenAmount::from_atto(-1);
     let before = state.clone();
     rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(15));
+    rt.set_balance(TokenAmount::from_atto(100));
 
     let gas = TokenAmount::from_atto(2);
     let penalty = TokenAmount::from_atto(3);
-    expect_miner_reward(&rt, TokenAmount::from_atto(3), penalty.clone(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
+    expect_miner_reward(&rt, gas.clone(), penalty.clone(), ExitCode::OK);
     award(&rt, gas.clone(), penalty, 1).unwrap();
     rt.verify();
 
     let state: State = rt.get_state();
     assert_eq!(before.streams_root, state.streams_root);
-    assert_eq!(supply_total, state.total_minted_reward);
-    assert_eq!(TokenAmount::from_atto(4), state.total_burn_minted);
+    assert_eq!(before.total_minted_reward, state.total_minted_reward);
+    assert_eq!(before.total_burn_minted, state.total_burn_minted);
     assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
     assert_eq!(before.accrued, state.accrued);
-    assert_eq!(TokenAmount::from_atto(10), *rt.balance.borrow());
+    // The projection is discarded, so the due write is still queued for the next award.
+    assert_eq!(vec![pending.clone()], load_streams(&rt).pending_writes);
+    assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
 
     let mut repaired = state;
-    repaired.total_minted_reward = &*STORAGE_MINING_ALLOCATION - TokenAmount::from_atto(5);
     repaired.accrued[0].amount = TokenAmount::from_atto(10);
     rt.replace_state(&repaired);
     rt.set_balance(TokenAmount::from_atto(100));
@@ -1469,20 +1468,20 @@ fn award_uses_allocation_remainder_until_invalid_explicit_accounting_is_repaired
     rt.verify();
 
     let state: State = rt.get_state();
-    assert_eq!(*STORAGE_MINING_ALLOCATION, state.total_minted_reward);
-    assert_eq!(TokenAmount::from_atto(5), state.total_burn_minted);
+    assert_eq!(TokenAmount::from_atto(45), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(3), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(11), state.total_explicit_minted);
     assert_eq!(TokenAmount::from_atto(11), state.accrued[0].amount);
+    assert!(load_streams(&rt).pending_writes.is_empty());
 }
 
 #[test]
-fn award_uses_allocation_remainder_when_a_claimed_recipient_is_absent_from_shares() {
+fn award_pays_only_gas_when_a_claimed_recipient_is_absent_from_shares() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
-    let supply_total = STORAGE_MINING_ALLOCATION.clone();
     let mut streams = load_streams(&rt);
     state.this_epoch_reward = TokenAmount::from_atto(25);
-    state.total_minted_reward = &supply_total - TokenAmount::from_atto(5);
+    state.total_minted_reward = TokenAmount::from_atto(40);
     state.total_burn_minted = TokenAmount::from_atto(2);
     state.total_explicit_minted = TokenAmount::from_atto(99);
     state.accrued[0].amount = TokenAmount::from_atto(10);
@@ -1497,28 +1496,26 @@ fn award_uses_allocation_remainder_when_a_claimed_recipient_is_absent_from_share
     rt.set_balance(TokenAmount::from_atto(100));
 
     let gas = TokenAmount::from_atto(2);
-    expect_miner_reward(&rt, TokenAmount::from_atto(5), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
+    expect_miner_reward(&rt, gas.clone(), TokenAmount::zero(), ExitCode::OK);
     award(&rt, gas, TokenAmount::zero(), 1).unwrap();
     rt.verify();
 
     let state: State = rt.get_state();
     assert_eq!(before.streams_root, state.streams_root);
-    assert_eq!(supply_total, state.total_minted_reward);
-    assert_eq!(TokenAmount::from_atto(4), state.total_burn_minted);
+    assert_eq!(before.total_minted_reward, state.total_minted_reward);
+    assert_eq!(before.total_burn_minted, state.total_burn_minted);
     assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
     assert_eq!(before.accrued, state.accrued);
-    assert_eq!(TokenAmount::from_atto(93), *rt.balance.borrow());
+    assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
 }
 
 #[test]
 fn award_pays_only_gas_when_accounting_and_weights_are_invalid() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
-    let supply_total = STORAGE_MINING_ALLOCATION.clone();
     let mut streams = load_streams(&rt);
     state.this_epoch_reward = TokenAmount::from_atto(25);
-    state.total_minted_reward = &supply_total - TokenAmount::from_atto(5);
+    state.total_minted_reward = TokenAmount::from_atto(40);
     state.total_burn_minted = TokenAmount::from_atto(2);
     state.total_explicit_minted = TokenAmount::from_atto(10);
     state.accrued[0].amount = TokenAmount::from_atto(-1);
@@ -1539,34 +1536,6 @@ fn award_pays_only_gas_when_accounting_and_weights_are_invalid() {
     assert_eq!(before.total_burn_minted, state.total_burn_minted);
     assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
     assert_eq!(before.accrued, state.accrued);
-}
-
-#[test]
-fn award_pays_only_gas_when_the_allocation_remainder_is_zero() {
-    let rt = base_runtime();
-    let mut state: State = rt.get_state();
-    let supply_total = STORAGE_MINING_ALLOCATION.clone();
-    state.this_epoch_reward = TokenAmount::from_atto(25);
-    state.total_minted_reward = supply_total;
-    state.total_burn_minted = TokenAmount::from_atto(5);
-    state.total_explicit_minted = TokenAmount::from_atto(30);
-    state.accrued[0].amount = TokenAmount::from_atto(-1);
-    let before = state.clone();
-    rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(100));
-
-    let gas = TokenAmount::from_atto(2);
-    expect_miner_reward(&rt, gas.clone(), TokenAmount::zero(), ExitCode::OK);
-    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
-    rt.verify();
-
-    let state: State = rt.get_state();
-    assert_eq!(before.streams_root, state.streams_root);
-    assert_eq!(before.total_minted_reward, state.total_minted_reward);
-    assert_eq!(before.total_burn_minted, state.total_burn_minted);
-    assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
-    assert_eq!(before.accrued, state.accrued);
-    assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
 }
 
 #[test]

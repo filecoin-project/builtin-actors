@@ -10,7 +10,6 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{CborStore, from_slice, ipld_block::IpldBlock};
 use fvm_shared::address::Address;
-use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
@@ -376,7 +375,7 @@ impl Actor {
                         st.streams_root
                     )
                 })?;
-            let streams: StreamsState = match from_slice(&stream_bytes) {
+            let mut streams: StreamsState = match from_slice(&stream_bytes) {
                 Ok(streams) => streams,
                 Err(error) => {
                     error!(
@@ -401,96 +400,50 @@ impl Actor {
             }
             let expected_block_reward: TokenAmount =
                 (&st.this_epoch_reward * params.win_count).div_floor(EXPECTED_LEADERS_PER_EPOCH);
-            let current_liabilities =
-                match explicit_liability(&streams, &st.accrued) {
-                    Ok(liabilities) => liabilities,
+
+            // Due writes are projected here and stored only for a full award, so a gas-only
+            // fallback award doesn't commit a stream or accrual change.
+            let mut next_accrued = st.accrued.clone();
+            let apply_result = if streams
+                .pending_writes
+                .first()
+                .is_some_and(|write| write.effective_epoch <= rt.curr_epoch())
+            {
+                match apply_due_writes(&mut streams, &mut next_accrued, rt.curr_epoch()) {
+                    Ok(result) => result,
                     Err(error) => {
                         error!(
-                            "invalid explicit-stream accounting at epoch {}: {};\
-                            suspending explicit accrual",
+                            "failed to apply due writes at epoch {}: {}; paying gas reward only",
                             rt.curr_epoch(),
                             error
                         );
-                        return allocate_without_explicit(
-                            st,
-                            &streams,
-                            rt.curr_epoch(),
-                            &prior_balance,
-                            &params.gas_reward,
-                            &expected_block_reward,
-                        );
+                        return Ok((
+                            params.gas_reward.clone(),
+                            TokenAmount::zero(),
+                            ApplyResult::default(),
+                        ));
                     }
-                };
-
-            // Project due writes separately so a degraded award commits no stream or accrual change.
-            let transition_due = streams
-                .pending_writes
-                .first()
-                .is_some_and(|write| write.effective_epoch <= rt.curr_epoch());
-            let (next_streams, mut next_accrued, apply_result, liabilities, prior_streams) =
-                if transition_due {
-                    let current_streams = streams.clone();
-                    let mut next_streams = streams;
-                    let mut next_accrued = st.accrued.clone();
-                    let apply_result =
-                        match apply_due_writes(&mut next_streams, &mut next_accrued, rt.curr_epoch())
-                        {
-                            Ok(result) => result,
-                            Err(error) => {
-                                error!(
-                                    "failed to apply due writes at epoch {}: {};\
-                                    suspending explicit accrual",
-                                    rt.curr_epoch(),
-                                    error
-                                );
-                                return allocate_without_explicit(
-                                    st,
-                                    &current_streams,
-                                    rt.curr_epoch(),
-                                    &prior_balance,
-                                    &params.gas_reward,
-                                    &expected_block_reward,
-                                );
-                            }
-                        };
-                    let liabilities =
-                        match explicit_liability(&next_streams, &next_accrued) {
-                            Ok(liabilities) => liabilities,
-                            Err(error) => {
-                                error!(
-                                    "due writes produced invalid explicit-stream accounting at epoch {}: {};\
-                                    suspending explicit accrual",
-                                    rt.curr_epoch(),
-                                    error
-                                );
-                                return allocate_without_explicit(
-                                    st,
-                                    &current_streams,
-                                    rt.curr_epoch(),
-                                    &prior_balance,
-                                    &params.gas_reward,
-                                    &expected_block_reward,
-                                );
-                            }
-                        };
-                    (
-                        next_streams,
-                        next_accrued,
-                        apply_result,
-                        liabilities,
-                        Some(current_streams),
-                    )
-                } else {
-                    (
-                        streams,
-                        st.accrued.clone(),
+                }
+            } else {
+                ApplyResult::default()
+            };
+            let liabilities = match explicit_liability(&streams, &next_accrued) {
+                Ok(liabilities) => liabilities,
+                Err(error) => {
+                    error!(
+                        "invalid explicit-stream accounting at epoch {}: {}; paying gas reward only",
+                        rt.curr_epoch(),
+                        error
+                    );
+                    return Ok((
+                        params.gas_reward.clone(),
+                        TokenAmount::zero(),
                         ApplyResult::default(),
-                        current_liabilities,
-                        None,
-                    )
-                };
+                    ));
+                }
+            };
 
-            let mut block_reward = expected_block_reward.clone();
+            let mut block_reward = expected_block_reward;
             // Due folds leave dust out of the derived liability before its post-transaction
             // burn send, so it remains reserved until that send executes.
             let reserved = &params.gas_reward + &liabilities + &apply_result.fold_dust;
@@ -517,7 +470,7 @@ impl Actor {
             }
 
             let allocation =
-                match allocate_reward(&next_streams.streams, rt.curr_epoch(), &block_reward) {
+                match allocate_reward(&streams.streams, rt.curr_epoch(), &block_reward) {
                     Ok(allocation) => allocation,
                     Err(error) => {
                         error!("failed to allocate reward at epoch {}: {}", rt.curr_epoch(), error);
@@ -541,19 +494,15 @@ impl Actor {
             }
             if let Err(error) = accrue_explicit(&mut next_accrued, &allocation.portions) {
                 error!(
-                    "failed to accrue explicit-stream reward at epoch {}: {};\
-                    suspending explicit accrual",
+                    "failed to accrue explicit-stream reward at epoch {}: {}; paying gas reward only",
                     rt.curr_epoch(),
                     error
                 );
-                return allocate_without_explicit(
-                    st,
-                    prior_streams.as_ref().unwrap_or(&next_streams),
-                    rt.curr_epoch(),
-                    &prior_balance,
-                    &params.gas_reward,
-                    &expected_block_reward,
-                );
+                return Ok((
+                    params.gas_reward.clone(),
+                    TokenAmount::zero(),
+                    ApplyResult::default(),
+                ));
             }
             let explicit = allocation
                 .portions
@@ -565,7 +514,7 @@ impl Actor {
             st.total_burn_minted += &allocation.burn;
             st.total_explicit_minted += explicit;
             if !(apply_result.applied.is_empty() && apply_result.dropped.is_empty()) {
-                store_streams(rt, st, &next_streams)?;
+                store_streams(rt, st, &streams)?;
             }
 
             Ok((
@@ -676,56 +625,6 @@ impl Actor {
         Ok(())
     }
 }
-fn allocate_without_explicit(
-    state: &mut State,
-    streams: &StreamsState,
-    epoch: ChainEpoch,
-    prior_balance: &TokenAmount,
-    gas_reward: &TokenAmount,
-    block_reward: &TokenAmount,
-) -> Result<(TokenAmount, TokenAmount, ApplyResult), ActorError> {
-    let mut block_reward = block_reward.clone();
-    let supply_remaining = &*STORAGE_MINING_ALLOCATION - &state.total_minted_reward;
-    let available_reward = prior_balance - gas_reward;
-    if supply_remaining <= TokenAmount::zero() || available_reward <= TokenAmount::zero() {
-        warn!(
-            "reward allocation remainder {} or post-gas balance {} is non-positive;\
-            paying gas reward only",
-            supply_remaining, available_reward
-        );
-        return Ok((gas_reward.clone(), TokenAmount::zero(), ApplyResult::default()));
-    }
-
-    if block_reward > supply_remaining {
-        block_reward = supply_remaining;
-    }
-    if block_reward > available_reward {
-        warn!(
-            "reward actor post-gas balance {} below capped block reward {},\
-            paying out post-gas balance",
-            available_reward, block_reward
-        );
-        block_reward = available_reward;
-    }
-    let allocation = match allocate_reward(&streams.streams, epoch, &block_reward) {
-        Ok(allocation) => allocation,
-        Err(error) => {
-            error!("failed to allocate degraded reward at epoch {epoch}: {error}");
-            return Ok((gas_reward.clone(), TokenAmount::zero(), ApplyResult::default()));
-        }
-    };
-    if !allocation.schedule_valid {
-        warn!("invalid stream weights at epoch {epoch}; paying gas reward only");
-        return Ok((gas_reward.clone(), TokenAmount::zero(), ApplyResult::default()));
-    }
-    let miner = allocation.miner;
-    let burn = &block_reward - &miner;
-    state.total_minted_reward += &block_reward;
-    state.total_burn_minted += &burn;
-
-    Ok((gas_reward + miner, burn, ApplyResult::default()))
-}
-
 fn validate_swa(rt: &impl Runtime) -> Result<(), ActorError> {
     let state: State = rt.state()?;
     rt.validate_immediate_caller_is(std::iter::once(&state.swa_actor))
