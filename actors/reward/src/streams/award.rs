@@ -57,15 +57,13 @@
 //! - `explicit_liability` is the `liability` sum the reserve check subtracts, and the balance
 //!   cover 2.5 requires of the counters this award moves
 
-use std::collections::BTreeSet;
-
 use anyhow::{Result, ensure};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
-use super::distribution::{stored_share_total, validate_amount_rows, validate_period_claims};
+use super::distribution::{validate_amount_rows, validate_period_claims};
 use super::weights::{compute_weight, validate_weight_record};
 use super::{DENOM, Stream, StreamAccrual, StreamsState};
 
@@ -102,8 +100,7 @@ pub(crate) fn allocate_reward(
         let mut portion = TokenAmount::from_atto(block_reward.atto() * weight / &denom);
         allocated += &portion;
         if let Some(distribution) = stream.explicit() {
-            let share_total = stored_share_total(&distribution.shares)?;
-            ensure!(share_total <= DENOM, "stored shares sum to {share_total}, exceeds {DENOM}");
+            let share_total = distribution.share_total();
             if share_total != DENOM {
                 let explicit_portion =
                     TokenAmount::from_atto(portion.atto() * share_total / &denom);
@@ -132,29 +129,17 @@ pub(crate) fn allocate_reward(
 }
 
 /// Adds this award's explicit-stream portions to their matching inline accruals.
-pub(crate) fn accrue_explicit(
-    accruals: &mut [StreamAccrual],
-    portions: &[StreamAccrual],
-) -> Result<()> {
-    let mut seen = BTreeSet::new();
-    for portion in portions {
-        ensure!(!portion.amount.is_negative(), "explicit portion is negative");
-        ensure!(seen.insert(portion.id), "duplicate explicit portion for stream {}", portion.id);
-        ensure!(
-            accruals.iter().any(|row| row.id == portion.id),
-            "missing accrual for stream {}",
-            portion.id
-        );
-    }
-    // The preflight above proves every lookup in this mutation pass succeeds.
+///
+/// The portions are one per explicit stream in the state the accruals came from, which the
+/// accounting invariants pairs one to one; a projected registration or removal moves both together.
+pub(crate) fn accrue_explicit(accruals: &mut [StreamAccrual], portions: &[StreamAccrual]) {
     for portion in portions {
         let row = accruals
             .iter_mut()
             .find(|row| row.id == portion.id)
-            .expect("explicit-stream accrual presence validated");
+            .expect("accounting invariant: every explicit stream has an accrual row");
         row.amount += &portion.amount;
     }
-    Ok(())
 }
 
 /// Computes explicit-stream funds still held by f02.

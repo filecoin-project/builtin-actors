@@ -86,13 +86,10 @@ use super::distribution::{
     DistributionInit, ExplicitDistribution, RecipientTable, fold, validate_distribution_init,
     validate_id_address,
 };
-use super::invariants::{
-    validate_mutation_state, validate_stream_configuration,
-    validate_stream_configuration_without_weights, validate_tombstone_capacity,
-};
+use super::invariants::{schedule, stream_table, validate_tombstone_capacity};
 use super::weights::{
     WeightRecord, WeightRecordUpdate, WeightRecordsPayload, validate_weight_record,
-    validate_weight_schedule, validate_weight_updates,
+    validate_weight_updates,
 };
 use super::{MAX_PENDING_WRITES, Stream, StreamAccrual, StreamId, StreamsState, Tombstone};
 
@@ -427,7 +424,6 @@ pub(crate) fn apply_due_writes_and_cancel(
     epoch: ChainEpoch,
     slot: Slot,
 ) -> Result<CancelResult> {
-    validate_mutation_state(streams, accruals)?;
     let mut projected = project_due_writes(streams, accruals, epoch)?;
     let removed = cancel_pending(&mut projected.streams, slot);
     *streams = projected.streams;
@@ -443,7 +439,6 @@ pub(crate) fn apply_due_writes(
     accruals: &mut Vec<StreamAccrual>,
     epoch: ChainEpoch,
 ) -> Result<ApplyResult> {
-    validate_mutation_state(streams, accruals)?;
     if streams.pending_writes.first().is_none_or(|write| write.effective_epoch > epoch) {
         return Ok(ApplyResult::default());
     }
@@ -555,6 +550,13 @@ fn validate_new_pending(
     current_epoch: ChainEpoch,
     new_slot: Slot,
 ) -> Result<()> {
+    // Admission is the only thing that lengthens the queue, so this is the point where we need to
+    // do the bounds check.
+    ensure!(
+        proposed.pending_writes.len() <= MAX_PENDING_WRITES,
+        "pending write count {} exceeds maximum {MAX_PENDING_WRITES}",
+        proposed.pending_writes.len()
+    );
     // From an invalid schedule, a SetWeightRecords batch is the one admissible repair (2.4.8).
     let repairing = new_slot == Slot::ScheduleWide(PendingWriteOp::SetWeightRecords);
     let accepted_before = match validate_projected_queue(current, current_epoch, None) {
@@ -610,12 +612,17 @@ pub(super) fn validate_projected_queue_inner(
     allow_invalid_initial_schedule: bool,
     minimum_epoch: Option<ChainEpoch>,
 ) -> Result<BTreeSet<Slot>> {
-    validate_pending_queue(&streams.pending_writes, minimum_epoch)?;
-    if allow_invalid_initial_schedule {
-        validate_stream_configuration_without_weights(&streams.streams)?;
-    } else {
-        validate_stream_configuration(&streams.streams)?;
-        validate_weight_schedule(&streams.streams, current_epoch)?;
+    // Admission projects a queue that is entirely ahead of it, due writes having applied first.
+    if let Some(epoch) = minimum_epoch {
+        for write in &streams.pending_writes {
+            if write.effective_epoch < epoch {
+                let slot = write.slot()?;
+                return Err(anyhow::anyhow!("pending write {slot:?} is in the past"));
+            }
+        }
+    }
+    if !allow_invalid_initial_schedule {
+        schedule(&streams.streams, current_epoch)?;
     }
     let mut projected = streams.clone();
     let mut accepted = BTreeSet::new();
@@ -644,15 +651,14 @@ pub(super) fn validate_projected_queue_inner(
 }
 
 fn validate_transition_state(streams: &StreamsState, start_epoch: ChainEpoch) -> Result<()> {
-    validate_stream_configuration(&streams.streams)?;
-    validate_weight_schedule(&streams.streams, start_epoch)?;
+    stream_table(&streams.streams)?;
+    schedule(&streams.streams, start_epoch)?;
     validate_tombstone_capacity(streams)
 }
 
-pub(super) fn validate_pending_queue(
-    writes: &[PendingWrite],
-    minimum_epoch: Option<ChainEpoch>,
-) -> Result<()> {
+/// Check the queue according to the structure invariants: ordered, bounded, one write per slot, and
+/// every payload decodable.
+pub(super) fn validate_pending_queue(writes: &[PendingWrite]) -> Result<()> {
     ensure!(
         writes.is_sorted_by_key(|write| write.effective_epoch),
         "pending writes are not ordered"
@@ -666,11 +672,6 @@ pub(super) fn validate_pending_queue(
     for write in writes {
         let slot = QueuedCall::decode(write)?.slot();
         ensure!(slots.insert(slot), "duplicate pending slot {slot:?}");
-        if let Some(epoch) = minimum_epoch
-            && write.effective_epoch < epoch
-        {
-            return Err(anyhow::anyhow!("pending write {slot:?} is in the past"));
-        }
     }
     Ok(())
 }
@@ -782,7 +783,7 @@ pub(super) fn remove_stream(
         .position(|row| row.id == id)
         .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?;
     let accrual = accruals.remove(accrual_idx);
-    let burn = fold(distribution, &accrual.amount)?;
+    let burn = fold(distribution, &accrual.amount);
     if !distribution.payable.is_empty() {
         ensure!(
             !tombstones.iter().any(|tombstone| tombstone.id == id),
@@ -811,7 +812,7 @@ pub(super) fn replace_writer(
         .iter_mut()
         .find(|row| row.id == id)
         .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?;
-    let burn = fold(distribution, &accrual.amount)?;
+    let burn = fold(distribution, &accrual.amount);
     accrual.amount = TokenAmount::zero();
     distribution.writer = writer;
     Ok(burn)

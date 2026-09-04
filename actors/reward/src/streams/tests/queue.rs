@@ -6,8 +6,10 @@ use hex_literal::hex;
 use num_traits::Zero;
 
 use super::*;
+use crate::streams::invariants::structure;
 use crate::streams::queue::{
-    project_due_writes, remove_stream, replace_writer, validate_pending_queue,
+    apply_due_writes, apply_due_writes_and_cancel, project_due_writes, remove_stream,
+    replace_writer,
 };
 use crate::streams::weights::{WeightRecordsPayload, compute_weight};
 
@@ -203,7 +205,7 @@ fn burns_sentinel_share_without_accruing_or_tombstoning_it() {
     assert_eq!(TokenAmount::from_atto(10), partial.portions[0].amount);
     assert_eq!(TokenAmount::from_atto(30), partial.burn);
     assert_eq!(reward, &partial.miner + &partial.portions[0].amount + &partial.burn);
-    accrue_explicit(&mut accruals, &partial.portions).unwrap();
+    accrue_explicit(&mut accruals, &partial.portions);
 
     // f099 is included to prove the sentinel has no claimable balance. Recipient 102 is omitted
     // so its entitlement is folded into payable below.
@@ -228,7 +230,7 @@ fn burns_sentinel_share_without_accruing_or_tombstoning_it() {
     assert_eq!(TokenAmount::zero(), removed.portions[0].amount);
     assert_eq!(TokenAmount::from_atto(40), removed.burn);
     assert_eq!(reward, &removed.miner + &removed.portions[0].amount + &removed.burn);
-    accrue_explicit(&mut accruals, &removed.portions).unwrap();
+    accrue_explicit(&mut accruals, &removed.portions);
 
     queue_remove_stream(&mut streams, 0, 1, 2).unwrap();
     apply_due_writes(&mut streams, &mut accruals, 1).unwrap();
@@ -744,13 +746,67 @@ fn bounds_the_pending_queue() {
             effective_epoch: idx as i64 + 1,
         })
         .collect::<Vec<_>>();
+    let streams = StreamsState { pending_writes: writes, ..Default::default() };
 
-    assert!(validate_pending_queue(&writes, None).is_err());
+    let error = structure(&streams).unwrap_err();
+    assert!(error.to_string().contains("pending write count"), "{error}");
+}
+
+// Admission is where the queue grows, and the slot, ordering and payload guards around it leave
+// only its length for this one to hold.
+#[test]
+fn admission_bounds_the_pending_queue() {
+    let mut streams = StreamsState::default();
+    let register = |streams: &mut StreamsState, id: StreamId| {
+        queue_register_stream(
+            streams,
+            0,
+            1,
+            stream(id, 0, Some(explicit(200 + id, shares(&[(100 + id, DENOM)])))),
+            1,
+        )
+        .unwrap();
+    };
+    for id in 3..=10 {
+        register(&mut streams, id);
+    }
+    // Each removal frees a table slot for one more registration, and reserves 64 tombstone rows.
+    for (idx, id) in (3..=6_u64).enumerate() {
+        queue_set_distribution(&mut streams, 0, 1, id, Address::new_id(300 + id)).unwrap();
+        queue_remove_stream(&mut streams, 0, 1, id).unwrap();
+        register(&mut streams, 11 + idx as u64);
+    }
+    for op in [PendingWriteOp::SetWeightRecords, PendingWriteOp::StepWeightRecords] {
+        queue_weight_records(
+            &mut streams,
+            0,
+            1,
+            op,
+            &[WeightRecordUpdate { id: 14, weight: constant_weight(0) }],
+        )
+        .unwrap();
+    }
+    for id in 7..=10_u64 {
+        queue_set_distribution(&mut streams, 0, 1, id, Address::new_id(300 + id)).unwrap();
+    }
+    assert_eq!(MAX_PENDING_WRITES, streams.pending_writes.len());
+    structure(&streams).unwrap();
+
+    // Stream 11 is live with its writer slot free, so only the bound stands in the way.
+    let error = queue_set_distribution(&mut streams, 0, 1, 11, Address::new_id(311)).unwrap_err();
+    assert_eq!(
+        format!(
+            "pending write count {} exceeds maximum {MAX_PENDING_WRITES}",
+            MAX_PENDING_WRITES + 1
+        ),
+        error.to_string()
+    );
+    assert_eq!(MAX_PENDING_WRITES, streams.pending_writes.len());
 }
 
 #[test]
-fn rejects_malformed_pending_order_without_mutation() {
-    let (mut streams, mut accruals) = base_state();
+fn structure_rejects_unordered_pending_writes() {
+    let (mut streams, _) = base_state();
     streams.pending_writes = vec![
         PendingWrite {
             id: Some(1),
@@ -765,44 +821,22 @@ fn rejects_malformed_pending_order_without_mutation() {
             effective_epoch: 1,
         },
     ];
-    let before_streams = streams.clone();
-    let before_accruals = accruals.clone();
 
-    assert!(apply_due_writes(&mut streams, &mut accruals, 2).is_err());
-    assert_eq!(before_streams, streams);
-    assert_eq!(before_accruals, accruals);
-    assert_eq!(2, next_epoch(&streams));
+    let error = structure(&streams).unwrap_err();
+    assert_eq!("pending writes are not ordered", error.to_string());
 }
 
 #[test]
-fn rejects_malformed_pending_payload_without_mutation() {
-    let (mut streams, mut accruals) = base_state();
+fn structure_rejects_an_undecodable_pending_payload() {
+    let (mut streams, _) = base_state();
     streams.pending_writes.push(PendingWrite {
         id: None,
         op: PendingWriteOp::SetWeightRecords,
         payload: fvm_ipld_encoding::RawBytes::new(vec![0xff]),
         effective_epoch: 1,
     });
-    let before_streams = streams.clone();
-    let before_accruals = accruals.clone();
 
-    assert!(apply_due_writes(&mut streams, &mut accruals, 1).is_err());
-    assert_eq!(before_streams, streams);
-    assert_eq!(before_accruals, accruals);
-    assert_eq!(1, next_epoch(&streams));
-}
-
-#[test]
-fn rejects_missing_accrual_state_without_dropping_the_call() {
-    let (mut streams, mut accruals) = base_state();
-    queue_remove_stream(&mut streams, 0, 1, 2).unwrap();
-    accruals.clear();
-    let before_streams = streams.clone();
-
-    assert!(apply_due_writes(&mut streams, &mut accruals, 1).is_err());
-    assert_eq!(before_streams, streams);
-    assert!(accruals.is_empty());
-    assert_eq!(1, next_epoch(&streams));
+    assert!(structure(&streams).is_err());
 }
 
 #[test]

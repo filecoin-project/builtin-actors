@@ -3,6 +3,7 @@ use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
 use super::*;
+use crate::streams::invariants::accounting;
 
 #[test]
 fn allocates_reward_in_stream_order_and_conserves_attos() {
@@ -31,22 +32,14 @@ fn allocates_reward_in_stream_order_and_conserves_attos() {
         StreamAccrual { id: 2, amount: TokenAmount::from_atto(4) },
         StreamAccrual { id: 3, amount: TokenAmount::from_atto(5) },
     ];
-    accrue_explicit(&mut accruals, &allocation.portions).unwrap();
+    accrue_explicit(&mut accruals, &allocation.portions);
     assert_eq!(TokenAmount::from_atto(5), accruals[0].amount);
     assert_eq!(TokenAmount::from_atto(5), accruals[1].amount);
 
-    let before = accruals.clone();
-    assert!(
-        accrue_explicit(
-            &mut accruals,
-            &[
-                StreamAccrual { id: 2, amount: TokenAmount::from_atto(1) },
-                StreamAccrual { id: 99, amount: TokenAmount::from_atto(1) },
-            ],
-        )
-        .is_err()
-    );
-    assert_eq!(before, accruals);
+    // The row per explicit stream that accrue_explicit credits is the accounting invariants.
+    let state = StreamsState { streams, ..Default::default() };
+    let error = accounting(&state, &accruals[..1]).unwrap_err();
+    assert_eq!("explicit-stream accrual IDs do not match live explicit streams", error.to_string());
 }
 
 #[test]
@@ -96,13 +89,11 @@ fn indivisible_sentinel_portion_preserves_survivor_entitlements() {
     accrue_explicit(
         &mut ordinary_accruals,
         &allocate_reward(&ordinary.streams, 0, &reward).unwrap().portions,
-    )
-    .unwrap();
+    );
     accrue_explicit(
         &mut sentinel_accruals,
         &allocate_reward(&sentinel.streams, 0, &reward).unwrap().portions,
-    )
-    .unwrap();
+    );
     let ordinary_claims =
         claim(&mut ordinary, &ordinary_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
             .unwrap();

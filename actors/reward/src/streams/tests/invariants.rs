@@ -3,6 +3,7 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 
 use super::*;
+use crate::streams::invariants::{accounting, structure};
 
 fn delegated_address() -> Address {
     Address::new_delegated(10, &[1; 20]).unwrap()
@@ -91,13 +92,13 @@ fn structural_validation_rejects_unordered_stored_shares() {
         streams: vec![stream(2, pct(20), Some(ordered.clone()))],
         ..Default::default()
     };
-    validate_award_state_structure(&streams).unwrap();
+    structure(&streams).unwrap();
 
     let mut unordered = ordered;
     unordered.shares.swap(0, 1);
     let streams =
         StreamsState { streams: vec![stream(2, pct(20), Some(unordered))], ..Default::default() };
-    let error = validate_award_state_structure(&streams).unwrap_err();
+    let error = structure(&streams).unwrap_err();
     assert_eq!("stored share recipients are not ordered", error.to_string());
 
     // The same rule gates the initial map carried by a pending registration.
@@ -117,7 +118,7 @@ fn structural_validation_rejects_unordered_stored_shares() {
         }],
         ..Default::default()
     };
-    let error = validate_award_state_structure(&streams).unwrap_err();
+    let error = structure(&streams).unwrap_err();
     assert!(error.to_string().contains("stored share recipients are not ordered"), "{error}");
 }
 
@@ -136,7 +137,7 @@ fn structural_validation_rejects_payable_reservation_over_cap() {
         ..Default::default()
     };
 
-    let error = validate_award_state_structure(&streams).unwrap_err();
+    let error = structure(&streams).unwrap_err();
     assert_eq!(
         format!(
             "stream 2 payable row reservation {} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}",
@@ -144,4 +145,13 @@ fn structural_validation_rejects_payable_reservation_over_cap() {
         ),
         error.to_string()
     );
+}
+
+// Every explicit stream carries an accrual row, so a method aborts on a missing one rather than
+// dropping the queued call that would have needed it.
+#[test]
+fn accounting_rejects_a_missing_accrual_row() {
+    let (streams, _) = base_state();
+    let error = accounting(&streams, &[]).unwrap_err();
+    assert_eq!("explicit-stream accrual IDs do not match live explicit streams", error.to_string());
 }

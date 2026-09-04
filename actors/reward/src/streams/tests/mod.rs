@@ -127,7 +127,7 @@ impl SupplyTracker {
         assert!(allocation.schedule_valid, "valid randomized state entered degradation");
         let explicit =
             allocation.portions.iter().fold(TokenAmount::zero(), |total, row| total + &row.amount);
-        accrue_explicit(accruals, &allocation.portions).unwrap();
+        accrue_explicit(accruals, &allocation.portions);
         self.total_minted += &reward;
         self.total_burn += &allocation.burn;
         self.total_explicit += &explicit;

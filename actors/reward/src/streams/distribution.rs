@@ -85,6 +85,13 @@ pub struct ExplicitDistribution {
     pub claimed_period: RecipientTable,
 }
 
+impl ExplicitDistribution {
+    /// The stored shares' total, which the structure invariant holds within `DENOM`.
+    pub(super) fn share_total(&self) -> u64 {
+        self.shares.iter().map(|row| row.share).sum()
+    }
+}
+
 /// Persisted recipient balance in a live distribution or tombstone.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RecipientAmount {
@@ -225,10 +232,10 @@ pub(super) fn validate_shares(shares: &[RecipientShare]) -> Result<()> {
 }
 
 /// Validates a persisted map whose sentinel-free shares may sum below `DENOM`.
-pub(super) fn validate_stored_shares(shares: &[RecipientShare]) -> Result<u64> {
+pub(super) fn validate_stored_shares(shares: &[RecipientShare]) -> Result<()> {
     let total = validate_share_rows(shares, ShareForm::Stored)?;
     ensure!(total <= u128::from(DENOM), "stored shares sum to {total}, exceeds {DENOM}");
-    Ok(total as u64)
+    Ok(())
 }
 
 /// Validates wire shares, strips burn sentinels, and orders persisted recipients.
@@ -237,12 +244,6 @@ pub(crate) fn normalize_shares(mut shares: Vec<RecipientShare>) -> Result<Vec<Re
     shares.retain(|row| row.recipient != BURNT_FUNDS_ACTOR_ADDR);
     shares.sort_by_key(|row| row.recipient);
     Ok(shares)
-}
-
-pub(super) fn stored_share_total(shares: &[RecipientShare]) -> Result<u64> {
-    shares.iter().try_fold(0_u64, |total, row| {
-        total.checked_add(row.share).ok_or_else(|| anyhow::anyhow!("stored shares overflow"))
-    })
 }
 
 /// Closes the current period, preserves unclaimed earnings, and installs new shares.
@@ -287,7 +288,7 @@ fn set_shares_inner(
         .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?;
 
     let mut next_distribution = distribution.clone();
-    let burn = fold(&mut next_distribution, &accrual.amount)?;
+    let burn = fold(&mut next_distribution, &accrual.amount);
     let reserved_rows = next_distribution.payable.union_len(&shares);
     ensure!(
         reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
@@ -316,11 +317,11 @@ pub(crate) fn claim(
             .find(|row| row.id == id)
             .ok_or_else(|| anyhow::anyhow!("missing accrual for stream {id}"))?
             .amount;
-        claim_live(distribution, pool, wallets)
+        Ok(claim_live(distribution, pool, wallets))
     } else if let Some(tombstone_idx) =
         streams.tombstones.iter().position(|tombstone| tombstone.id == id)
     {
-        let result = claim_payable(&mut streams.tombstones[tombstone_idx].payable, wallets)?;
+        let result = claim_payable(&mut streams.tombstones[tombstone_idx].payable, wallets);
         if streams.tombstones[tombstone_idx].payable.is_empty() {
             streams.tombstones.remove(tombstone_idx);
         }
@@ -331,14 +332,10 @@ pub(crate) fn claim(
 }
 
 /// Carries current-period earnings into payable balances and returns rounding dust.
-pub(super) fn fold(
-    distribution: &mut ExplicitDistribution,
-    pool: &TokenAmount,
-) -> Result<TokenAmount> {
-    ensure!(!pool.is_negative(), "explicit-stream accrual is negative");
-    let share_total = validate_period_claims(distribution, pool)?;
-
-    let denom = BigInt::from(share_total);
+pub(super) fn fold(distribution: &mut ExplicitDistribution, pool: &TokenAmount) -> TokenAmount {
+    // Structure invariant: no stored share is zero, so a zero total means an empty map and no
+    // division below.
+    let denom = BigInt::from(distribution.share_total());
     let mut allocated = TokenAmount::zero();
     for share in &distribution.shares {
         let earned = TokenAmount::from_atto(pool.atto() * share.share / &denom);
@@ -347,16 +344,15 @@ pub(super) fn fold(
         distribution.payable.add(share.recipient, earned - claimed);
     }
     distribution.claimed_period.clear();
-    Ok(pool - allocated)
+    pool - allocated
 }
 
 fn claim_live(
     distribution: &mut ExplicitDistribution,
     pool: &TokenAmount,
     wallets: &[Address],
-) -> Result<ClaimResult> {
-    ensure!(!pool.is_negative(), "explicit-stream accrual is negative");
-    let share_total = validate_period_claims(distribution, pool)?;
+) -> ClaimResult {
+    let share_total = distribution.share_total();
     let denom = BigInt::from(share_total);
     let mut amounts = Vec::with_capacity(wallets.len());
 
@@ -372,7 +368,7 @@ fn claim_live(
             TokenAmount::from_atto(pool.atto() * share / &denom)
         };
         let claimed = distribution.claimed_period.get(wallet);
-        // validate_period_claims established this relation for every stored recipient.
+        // Accounting invariant: every claimed-period row is within its recipient's earnings.
         debug_assert!(claimed <= earned);
         let live = earned - claimed;
         let payable = distribution.payable.get(wallet);
@@ -387,27 +383,22 @@ fn claim_live(
         amounts.push(entitlement);
     }
 
-    Ok(amounts)
+    amounts
 }
 
-fn claim_payable(payable: &mut RecipientTable, wallets: &[Address]) -> Result<ClaimResult> {
-    validate_amount_rows(payable, "tombstone payable")?;
-    let mut amounts = Vec::with_capacity(wallets.len());
-
-    for wallet in wallets {
-        let entitlement = payable.take(wallet);
-        amounts.push(entitlement);
-    }
-    Ok(amounts)
+fn claim_payable(payable: &mut RecipientTable, wallets: &[Address]) -> ClaimResult {
+    wallets.iter().map(|wallet| payable.take(wallet)).collect()
 }
 
+/// The relation between a stream's stored shares, its pool and what its recipients have already
+/// claimed this period. The accounting invariant's per-stream half.
 pub(super) fn validate_period_claims(
     distribution: &ExplicitDistribution,
     pool: &TokenAmount,
-) -> Result<u64> {
-    validate_amount_rows(&distribution.payable, "payable")?;
-    validate_amount_rows(&distribution.claimed_period, "claimed-period")?;
-    let share_total = validate_stored_shares(&distribution.shares)?;
+) -> Result<()> {
+    // No stored share is zero, which makes the total a safe divisor below.
+    validate_stored_shares(&distribution.shares)?;
+    let share_total = distribution.share_total();
     ensure!(share_total != 0 || pool.is_zero(), "zero-share distribution has non-zero accrual");
     let denom = BigInt::from(share_total);
     for claimed in distribution.claimed_period.iter() {
@@ -424,7 +415,7 @@ pub(super) fn validate_period_claims(
             claimed.recipient
         );
     }
-    Ok(share_total)
+    Ok(())
 }
 
 pub(super) fn validate_amount_rows(rows: &RecipientTable, label: &str) -> Result<()> {
