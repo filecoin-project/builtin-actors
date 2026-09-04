@@ -7,7 +7,7 @@ use num_traits::Zero;
 
 use super::*;
 use crate::streams::invariants::structure;
-use crate::streams::weights::{WeightRecordsPayload, compute_weight};
+use crate::streams::weights::compute_weight;
 
 fn next_epoch(streams: &StreamsState) -> ChainEpoch {
     streams.pending_writes.first().map_or(EPOCH_UNDEFINED, |write| write.effective_epoch)

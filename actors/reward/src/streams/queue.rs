@@ -1,9 +1,10 @@
 //! The pending-write queue: the SWA timelock, admission, cancellation, and application.
 //!
-//! Field order and enum discriminants are wire format for the types declared here.
+//! The entry shape is [`PendingWrite`] and its [`PendingWriteOp`] tag, both in
+//! [`crate::state`]; the payload tuple each op carries is in [`crate::types`].
 //!
 //! Every SWA write lands here first as a `PendingWrite` containing the op, its encoded params,
-//! and the  epoch it becomes due. Each one sits in a [`Slot`]. Per-stream ops key by `(id, op)`;
+//! and the epoch it becomes due. Each one sits in a [`Slot`]. Per-stream ops key by `(id, op)`;
 //! the two weight ops are schedule-wide and key by `op` alone (i.e. null id). One write per slot,
 //! and an occupied slot means a new write for that slot will be rejected, so changing your mind
 //! means a cancel plus requeue and the timelock starts again. `CancelPending` has to name the slot
@@ -76,45 +77,26 @@ use std::fmt;
 
 use anyhow::{Result, ensure};
 use fvm_ipld_encoding::RawBytes;
-use fvm_ipld_encoding::repr::*;
-use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use log::info;
 use num_traits::Zero;
 
-use super::distribution::{
-    DistributionInit, ExplicitDistribution, RecipientTable, fold, validate_distribution_init,
-    validate_id_address,
-};
+use super::Ledger;
+use super::distribution::{fold, validate_distribution_init, validate_id_address};
 use super::invariants::{schedule, validate_tombstone_capacity};
-use super::weights::{
-    WeightRecord, WeightRecordUpdate, WeightRecordsPayload, validate_weight_record,
-    validate_weight_updates,
+use super::weights::{validate_weight_record, validate_weight_updates};
+use crate::state::{
+    ExplicitDistribution, MAX_PENDING_WRITES, MAX_STREAMS, PendingWrite, PendingWriteOp,
+    RecipientTable, Stream, StreamId, StreamsState, WeightRecord,
 };
-use super::{Ledger, MAX_PENDING_WRITES, MAX_STREAMS, Stream, StreamId, StreamsState};
+use crate::types::{
+    DistributionInit, RegisterStreamPayload, SetDistributionPayload, WeightRecordUpdate,
+    WeightRecordsPayload,
+};
 
 const EMPTY_TUPLE_CBOR: &[u8] = &[0x80];
-
-/// Stable operation tag persisted in `PendingWrite` and exposed by `CancelPending`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize_repr, Deserialize_repr)]
-#[repr(u8)]
-pub enum PendingWriteOp {
-    SetWeightRecords = 0,
-    /// Gate-originated weight update; unlike other operations, it cannot be cancelled.
-    StepWeightRecords = 1,
-    RegisterStream = 2,
-    RemoveStream = 3,
-    SetDistribution = 4,
-}
-
-impl PendingWriteOp {
-    /// Schedule-wide operations act on the whole weight schedule and carry no stream ID.
-    fn is_schedule_wide(self) -> bool {
-        matches!(self, PendingWriteOp::SetWeightRecords | PendingWriteOp::StepWeightRecords)
-    }
-}
 
 /// The queue position that a single pending write occupies (one write per slot).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -140,17 +122,6 @@ impl Slot {
         ensure!(op != PendingWriteOp::StepWeightRecords, "StepWeightRecords cannot be cancelled");
         Slot::for_target(id, op)
     }
-}
-
-/// A deferred SWA operation persisted in `StreamsState`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct PendingWrite {
-    /// Per-stream target, or `None` for a schedule-wide call.
-    pub id: Option<StreamId>,
-    pub op: PendingWriteOp,
-    /// Operation-specific CBOR tuple.
-    pub payload: RawBytes,
-    pub effective_epoch: ChainEpoch,
 }
 
 impl PendingWrite {
@@ -326,23 +297,6 @@ impl QueuedCall {
     }
 }
 
-/// The tuple stored in `PendingWrite.payload` for `RegisterStream`.
-///
-/// This is the deferred call's own payload, not the `RegisterStream` method parameter tuple.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct RegisterStreamPayload {
-    pub weight: WeightRecord,
-    pub distribution: Option<DistributionInit>,
-}
-
-/// The tuple stored in `PendingWrite.payload` for `SetDistribution`.
-///
-/// This is the deferred call's own payload, not the `SetDistribution` method parameter tuple.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct SetDistributionPayload {
-    pub writer: Address,
-}
-
 /// The effects of applying due writes, for the actor layer to settle after the transaction.
 ///
 /// This crosses Rust call boundaries only so doesn't need to be encodable.
@@ -438,12 +392,12 @@ impl Ledger {
         if !self.streams.has_stream(id) {
             return Err(Stranded::MissingStream(id));
         }
-        let Some((distribution, accrual)) = self.explicit_and_accrual_mut(id) else {
+        let Some(period) = self.period_mut(id) else {
             return Err(Stranded::NotExplicit(id));
         };
-        let burn = fold(distribution, accrual);
-        *accrual = TokenAmount::zero();
-        distribution.writer = writer;
+        let burn = fold(period.distribution, period.pool);
+        *period.pool = TokenAmount::zero();
+        period.distribution.writer = writer;
         Ok(burn)
     }
 

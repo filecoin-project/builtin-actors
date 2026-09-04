@@ -63,10 +63,11 @@ use fvm_shared::econ::TokenAmount;
 use log::{error, warn};
 use num_traits::Zero;
 
+use super::Ledger;
 use super::invariants::schedule_at;
 use super::queue::ApplyResult;
 use super::weights::compute_weight;
-use super::{DENOM, Ledger, StreamAccrual, StreamId, StreamsState};
+use crate::state::{DENOM, StreamAccrual, StreamId, StreamsState};
 
 /// One block reward split into its destinations.
 ///

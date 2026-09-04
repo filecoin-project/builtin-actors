@@ -1,6 +1,7 @@
 //! Explicit-stream recipient accounting: the share map, the period fold, and claims.
 //!
-//! Field order and enum discriminants are wire format for the types declared here.
+//! The shapes it reads and writes are in [`crate::state`]: [`ExplicitDistribution`], its
+//! [`RecipientShare`] map, and its [`RecipientTable`] balances.
 //!
 //! A period is the interval between two `SetShares` calls on one stream. f02 knows nothing of
 //! quarters and imposes no cadence; installing a new map first closes the current period under
@@ -43,7 +44,7 @@
 //! `fold` is the loop of the first block and returns the residue for the caller to burn;
 //! [`Ledger::set_shares`] wraps it with admission of the incoming map, and the queue calls it
 //! again for removal and writer replacement (2.4.6). [`Ledger::claim`] selects the live or
-//! tombstone arm of the second block. The pool either divides is the stream's `StreamAccrual`
+//! tombstone arm of the second block. Both divide the same pool, the stream's `StreamAccrual`
 //! row, which the ledger carries beside the streams block because accruals live inline in root
 //! state rather than behind `streams_root`.
 
@@ -51,136 +52,18 @@ use std::collections::BTreeSet;
 
 use anyhow::{Result, ensure};
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
-use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
-use serde::{Deserialize, Serialize};
 
+use super::Ledger;
 use super::invariants::validate_tombstone_capacity;
-use super::queue::PendingWriteOp;
-use super::{DENOM, Ledger, MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, StreamId};
-
-/// One recipient entry in a share-map message and in persisted distribution state.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct RecipientShare {
-    pub recipient: Address,
-    pub share: u64,
-}
-
-/// Persisted allocation state for an explicit stream.
-///
-/// The accounting rows are actor-owned state, not caller-supplied share-map fields.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ExplicitDistribution {
-    /// Designated share writer, not a payee.
-    pub writer: Address,
-    /// Current recipient fractions for the open share period.
-    pub shares: Vec<RecipientShare>,
-    /// Unclaimed allocations carried from closed share periods.
-    pub payable: RecipientTable,
-    /// Amounts already claimed against the current period's gross accrual.
-    pub claimed_period: RecipientTable,
-}
-
-impl ExplicitDistribution {
-    /// The stored shares' total, which the structure invariant holds within `DENOM`.
-    pub(super) fn share_total(&self) -> u64 {
-        self.shares.iter().map(|row| row.share).sum()
-    }
-}
-
-/// Persisted recipient balance in a live distribution or tombstone.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct RecipientAmount {
-    pub recipient: Address,
-    pub amount: TokenAmount,
-}
-
-/// A wallet-keyed balance table. Rows ascending by recipient, where none are zero.
-///
-/// The methods maintain that shape, which is the ordering 2.4.2 requires. `From` and
-/// deserialization take whatever rows they are given, and persisted rows are checked by
-/// `validate_amount_rows`. The encoded wire form is just the bare row array.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct RecipientTable(Vec<RecipientAmount>);
-
-impl RecipientTable {
-    /// The recipient's balance, or zero when it holds no row.
-    pub fn get(&self, recipient: &Address) -> TokenAmount {
-        self.0
-            .binary_search_by(|row| row.recipient.cmp(recipient))
-            .map_or_else(|_| TokenAmount::zero(), |idx| self.0[idx].amount.clone())
-    }
-
-    /// Credits the recipient, inserting a row in order or accumulating onto its existing one.
-    pub(super) fn add(&mut self, recipient: Address, amount: TokenAmount) {
-        if amount.is_zero() {
-            return;
-        }
-        match self.0.binary_search_by(|row| row.recipient.cmp(&recipient)) {
-            Ok(idx) => self.0[idx].amount += amount,
-            Err(idx) => self.0.insert(idx, RecipientAmount { recipient, amount }),
-        }
-    }
-
-    /// Removes the recipient's row and returns its balance, or zero when it holds none.
-    pub(super) fn take(&mut self, recipient: &Address) -> TokenAmount {
-        self.0
-            .binary_search_by(|row| row.recipient.cmp(recipient))
-            .map_or_else(|_| TokenAmount::zero(), |idx| self.0.remove(idx).amount)
-    }
-
-    /// The number of rows this table would hold after folding a period under `shares`.
-    pub(super) fn union_len(&self, shares: &[RecipientShare]) -> usize {
-        let mut row_idx = 0;
-        let mut share_idx = 0;
-        let mut count = 0;
-        while row_idx < self.0.len() && share_idx < shares.len() {
-            count += 1;
-            match self.0[row_idx].recipient.cmp(&shares[share_idx].recipient) {
-                std::cmp::Ordering::Less => row_idx += 1,
-                std::cmp::Ordering::Equal => {
-                    row_idx += 1;
-                    share_idx += 1;
-                }
-                std::cmp::Ordering::Greater => share_idx += 1,
-            }
-        }
-        count + self.0.len() - row_idx + shares.len() - share_idx
-    }
-
-    pub(super) fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn iter(&self) -> std::slice::Iter<'_, RecipientAmount> {
-        self.0.iter()
-    }
-
-    pub(super) fn clear(&mut self) {
-        self.0.clear();
-    }
-}
-
-impl From<Vec<RecipientAmount>> for RecipientTable {
-    fn from(rows: Vec<RecipientAmount>) -> Self {
-        RecipientTable(rows)
-    }
-}
-
-/// Caller-supplied subset of a new explicit distribution.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct DistributionInit {
-    pub writer: Address,
-    pub shares: Vec<RecipientShare>,
-}
+use crate::state::{
+    DENOM, ExplicitDistribution, MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, PendingWriteOp,
+    RecipientShare, RecipientTable, StreamId,
+};
+use crate::types::DistributionInit;
 
 /// One claimed amount for each requested wallet, preserving request order.
 pub(crate) type ClaimResult = Vec<TokenAmount>;
@@ -261,12 +144,12 @@ impl Ledger {
             .iter()
             .any(|write| write.op == PendingWriteOp::RemoveStream);
         ensure!(self.streams.has_stream(id), "stream {id} not found");
-        let Some((distribution, accrual)) = self.explicit_and_accrual_mut(id) else {
+        let Some(period) = self.period_mut(id) else {
             return Err(anyhow::anyhow!("stream {id} is implicit"));
         };
 
-        let mut next_distribution = distribution.clone();
-        let burn = fold(&mut next_distribution, accrual);
+        let mut next_distribution = period.distribution.clone();
+        let burn = fold(&mut next_distribution, period.pool);
         let reserved_rows = next_distribution.payable.union_len(&shares);
         ensure!(
             reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
@@ -274,8 +157,8 @@ impl Ledger {
         );
         next_distribution.shares = shares;
 
-        *distribution = next_distribution;
-        *accrual = TokenAmount::zero();
+        *period.distribution = next_distribution;
+        *period.pool = TokenAmount::zero();
         // A pending removal has reserved tombstone rows for the map this fold leaves behind.
         if removal_pending {
             validate_tombstone_capacity(&self.streams)?;
@@ -300,10 +183,10 @@ impl Ledger {
     ) -> Result<ClaimResult> {
         self.streams_dirty = true;
         if self.streams.has_stream(id) {
-            let Some((distribution, accrual)) = self.explicit_and_accrual_mut(id) else {
+            let Some(period) = self.period_mut(id) else {
                 return Err(anyhow::anyhow!("stream {id} is implicit"));
             };
-            Ok(claim_live(distribution, accrual, wallets))
+            Ok(claim_live(period.distribution, period.pool, wallets))
         } else if let Some(tombstone) = self.streams.tombstone_mut(id) {
             // A tombstone holds payable rows and nothing else, so a claim against it is a drain.
             let result: ClaimResult = wallets

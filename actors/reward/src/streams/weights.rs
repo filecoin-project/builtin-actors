@@ -43,43 +43,17 @@
 //! - `weight_breakpoints` enumerates that epoch list for one record, bracketing each crossing so
 //!   integer division can't step over a one-epoch violation.
 //! - `invariants::schedule` sums every stream at every breakpoint from a start epoch onward.
+//!
+//! The record a stream persists is [`WeightRecord`], in [`crate::state`]; the update and payload
+//! shapes an SWA call carries it in are in [`crate::types`].
 
 use std::collections::BTreeSet;
 
 use anyhow::{Result, ensure};
-use fvm_ipld_encoding::tuple::*;
 use fvm_shared::clock::ChainEpoch;
 
-use super::{DENOM, StreamId};
-
-/// A clamped linear weight in `DENOM` fixed point.
-///
-/// Persisted in `Stream` and encoded in weight-management messages and deferred payloads.
-/// Admitted records satisfy `floor <= v_start <= cap <= DENOM`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct WeightRecord {
-    pub v_start: u64,
-    pub slope: i64,
-    pub t_start: ChainEpoch,
-    pub floor: u64,
-    pub cap: u64,
-}
-
-/// One stream update in `SetWeightRecords` and `StepWeightRecords` parameters.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct WeightRecordUpdate {
-    pub id: StreamId,
-    pub weight: WeightRecord,
-}
-
-/// The tuple stored in `PendingWrite.payload` for `SetWeightRecords` and `StepWeightRecords`.
-///
-/// This is the deferred call's own payload, not the weight-management parameter tuples, which
-/// carry the same updates in their own shape.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct WeightRecordsPayload {
-    pub updates: Vec<WeightRecordUpdate>,
-}
+use crate::state::{DENOM, WeightRecord};
+use crate::types::WeightRecordUpdate;
 
 /// Evaluates a weight at `epoch`, clamped to its inclusive floor and cap.
 pub(super) fn compute_weight(record: &WeightRecord, epoch: ChainEpoch) -> u64 {

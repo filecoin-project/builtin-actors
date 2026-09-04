@@ -33,11 +33,11 @@ use fvm_shared::clock::ChainEpoch;
 use super::distribution::{
     validate_amount_rows, validate_id_address, validate_period_claims, validate_stored_shares,
 };
-use super::queue::{PendingWriteOp, validate_pending_queue};
+use super::queue::validate_pending_queue;
 use super::weights::{compute_weight, validate_weight_record, weight_breakpoints};
-use super::{
-    DENOM, MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, MAX_STREAMS, MAX_TOMBSTONE_ROWS, Stream,
-    StreamAccrual, StreamsState,
+use crate::state::{
+    DENOM, MAX_PAYABLE_ROWS_PER_STREAM, MAX_RECIPIENTS, MAX_STREAMS, MAX_TOMBSTONE_ROWS,
+    PendingWriteOp, Stream, StreamAccrual, StreamsState,
 };
 
 /// The structure invariants: the shape of the streams block, independent of accounting and

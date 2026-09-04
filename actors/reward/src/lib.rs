@@ -19,7 +19,11 @@ use num_derive::FromPrimitive;
 use num_traits::Zero;
 
 pub use self::logic::*;
-pub use self::state::State;
+pub use self::state::{
+    DENOM, ExplicitDistribution, MAX_PAYABLE_ROWS_PER_STREAM, MAX_PENDING_WRITES, MAX_RECIPIENTS,
+    MAX_STREAMS, MAX_TOMBSTONE_ROWS, PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare,
+    RecipientTable, State, Stream, StreamAccrual, StreamId, StreamsState, Tombstone, WeightRecord,
+};
 pub use self::streams::*;
 pub use self::types::*;
 
@@ -342,8 +346,8 @@ impl Actor {
             let expected_block_reward: TokenAmount =
                 (&st.this_epoch_reward * params.win_count).div_floor(EXPECTED_LEADERS_PER_EPOCH);
 
-            // The plan owns the ledger it applied due writes into, so a gas-only award drops that
-            // work rather than storing it and commits no stream, accrual or counter change.
+            // plan_award takes the ledger by value. On None it's dropped here, due writes and
+            // all, so a gas-only award stores nothing and doesn't move a counter.
             let Some((ledger, award)) = plan_award(
                 ledger,
                 rt.curr_epoch(),
@@ -379,7 +383,7 @@ impl Actor {
             ));
         }
 
-        // Implicit-message events are best-effort and require FIP-0107 for chain visibility.
+        // Implicit-message events are best-effort and would require FIP-0107 for chain visibility.
         if let Err(error) = emit_apply(rt, &applied) {
             warn!("failed to emit implicit award events: {error}");
         }
