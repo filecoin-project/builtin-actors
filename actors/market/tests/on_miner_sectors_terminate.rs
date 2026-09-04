@@ -9,9 +9,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use num_traits::Zero;
 
 mod harness;
 
@@ -119,7 +117,7 @@ fn ignore_sector_that_does_not_exist() {
         start_epoch,
         end_epoch,
     );
-    let ret = activate_deals_legacy(
+    activate_deals_legacy(
         &rt,
         sector_expiry,
         PROVIDER_ADDR,
@@ -127,7 +125,6 @@ fn ignore_sector_that_does_not_exist() {
         sector_number,
         &[deal1],
     );
-    assert!(ret.activation_results.all_ok());
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number + 1], &[]);
 
     let s = get_deal_state(&rt, deal1);
@@ -168,7 +165,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
         end_epoch - 1, // Ends before termination.
     );
     let sector_number = 7;
-    let ret = activate_deals_legacy(
+    activate_deals_legacy(
         &rt,
         sector_expiry,
         PROVIDER_ADDR,
@@ -176,7 +173,6 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
         sector_number,
         &[id0, id1, id2],
     );
-    assert!(ret.activation_results.all_ok());
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
@@ -223,16 +219,10 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal1.clone(), deal2.clone()],
-        TokenAmount::zero(),
-        1,
-    );
+    let deal_ids = publish_deals(&rt, &MinerAddresses::default(), &[deal1.clone(), deal2.clone()]);
     assert_eq!(2, deal_ids.len());
     let sector_number = 7;
-    let ret = activate_deals_legacy(
+    activate_deals_legacy(
         &rt,
         sector_expiry,
         PROVIDER_ADDR,
@@ -240,7 +230,6 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
         sector_number,
         &deal_ids,
     );
-    assert!(ret.activation_results.all_ok());
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
@@ -291,7 +280,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         end_epoch,
     );
     let sector_number = 7;
-    let ret = activate_deals_legacy(
+    activate_deals_legacy(
         &rt,
         sector_expiry,
         PROVIDER_ADDR,
@@ -299,7 +288,6 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         sector_number,
         &[deal1],
     );
-    assert!(ret.activation_results.all_ok());
     rt.set_epoch(end_epoch);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number], &[]);
     assert_deals_not_marked_terminated(&rt, &[deal1]);
@@ -314,7 +302,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         end_epoch,
     );
     let sector_number = sector_number + 1;
-    let ret = activate_deals_legacy(
+    activate_deals_legacy(
         &rt,
         sector_expiry,
         PROVIDER_ADDR,
@@ -322,7 +310,6 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         sector_number,
         &[deal2],
     );
-    assert!(ret.activation_results.all_ok());
     rt.set_epoch(end_epoch + 1);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number], &[]);
     assert_deals_not_marked_terminated(&rt, &[deal2]);

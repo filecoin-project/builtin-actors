@@ -5,14 +5,10 @@ use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
-use num_traits::Zero;
 
-use fil_actor_market::BatchActivateDealsResult;
+use fil_actor_market::DealProposal;
 use fil_actor_market::ext::miner::{PieceReturn, SectorChanges};
-use fil_actor_market::{DealProposal, EX_DEAL_EXPIRED, NO_ALLOCATION_ID, SectorDeals};
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
@@ -31,15 +27,9 @@ fn reject_caller_not_provider() {
     let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
     let deal = generate_deal_and_add_funds(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_id = publish_deals(
-        &rt,
-        &addrs,
-        std::slice::from_ref(&deal),
-        TokenAmount::zero(),
-        NO_ALLOCATION_ID,
-    )[0];
+    let deal_id = publish_deals(&rt, &addrs, std::slice::from_ref(&deal))[0];
 
-    assert_activation_failure(&rt, deal_id, &deal, 1, sector_expiry, ExitCode::USR_FORBIDDEN);
+    assert_activation_failure(&rt, deal_id, &deal, sector_expiry);
     rt.verify();
     check_state(&rt);
 }
@@ -52,7 +42,7 @@ fn reject_unknown_deal() {
 
     let rt = setup();
     let deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
-    assert_activation_failure(&rt, 1234, &deal, 1, sector_expiry, ExitCode::USR_NOT_FOUND);
+    assert_activation_failure(&rt, 1234, &deal, sector_expiry);
     rt.verify();
     check_state(&rt);
 }
@@ -67,24 +57,11 @@ fn reject_deal_already_active() {
     let addrs = MinerAddresses::default();
     let deal = generate_deal_and_add_funds(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_id = publish_deals(
-        &rt,
-        &addrs,
-        std::slice::from_ref(&deal),
-        TokenAmount::zero(),
-        NO_ALLOCATION_ID,
-    )[0];
+    let deal_id = publish_deals(&rt, &addrs, std::slice::from_ref(&deal))[0];
     let sno = 7;
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, sno, &[deal_id]);
 
-    assert_activation_failure(
-        &rt,
-        deal_id,
-        &deal,
-        sno,
-        sector_expiry,
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-    );
+    assert_activation_failure(&rt, deal_id, &deal, sector_expiry);
 
     rt.verify();
     check_state(&rt);
@@ -100,17 +77,11 @@ fn reject_proposal_expired() {
     let addrs = MinerAddresses::default();
     let deal = generate_deal_and_add_funds(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_id = publish_deals(
-        &rt,
-        &addrs,
-        std::slice::from_ref(&deal),
-        TokenAmount::zero(),
-        NO_ALLOCATION_ID,
-    )[0];
+    let deal_id = publish_deals(&rt, &addrs, std::slice::from_ref(&deal))[0];
 
     let current = end_epoch + 25;
     rt.set_epoch(current);
-    assert_activation_failure(&rt, deal_id, &deal, 1, sector_expiry, EX_DEAL_EXPIRED);
+    assert_activation_failure(&rt, deal_id, &deal, sector_expiry);
 
     // Show the same behaviour after the deal is cleaned up from state.
     rt.expect_send_simple(
@@ -124,35 +95,16 @@ fn reject_proposal_expired() {
     cron_tick(&rt);
     assert_deal_deleted(&rt, deal_id, &deal, 0, true);
 
-    assert_activation_failure(&rt, deal_id, &deal, 1, sector_expiry, EX_DEAL_EXPIRED);
+    assert_activation_failure(&rt, deal_id, &deal, sector_expiry);
 }
 
-// Verifies that a deal cannot be activated via either BatchActivateDeals or SectorContentChanged.
+// Verifies that the deal cannot be activated through SectorContentChanged.
 fn assert_activation_failure(
     rt: &MockRuntime,
     deal_id: DealID,
     deal: &DealProposal,
-    sector_number: SectorNumber,
     sector_expiry: ChainEpoch,
-    exit: ExitCode,
 ) {
-    let res = batch_activate_deals_raw(
-        rt,
-        PROVIDER_ADDR,
-        vec![SectorDeals {
-            sector_number,
-            sector_expiry,
-            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-            deal_ids: vec![deal_id],
-        }],
-        false,
-        &[],
-    )
-    .unwrap();
-    let res: BatchActivateDealsResult =
-        res.unwrap().deserialize().expect("BatchActivateDealsResult failed to deserialize");
-    assert_eq!(res.activation_results.codes(), vec![exit]);
-
     let piece = piece_info_from_deal(deal_id, deal);
     let changes = vec![SectorChanges {
         sector: 1,

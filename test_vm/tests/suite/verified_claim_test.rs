@@ -1,26 +1,27 @@
 use fil_actors_integration_tests::tests::{
-    deal_passes_claim_fails_test, expired_allocations_test, verified_claim_scenario_test,
+    unactivated_verified_deal_expires_test, verified_deal_sector_lifecycle_test,
+    verified_deals_commit_without_claims_test,
 };
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]
-fn verified_claim_scenario() {
+fn verified_deal_sector_lifecycle() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
-    verified_claim_scenario_test(&v);
+    verified_deal_sector_lifecycle_test(&v);
 }
 
 #[test]
-fn expired_allocations() {
+fn unactivated_verified_deal_expires() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
-    expired_allocations_test(&v);
+    unactivated_verified_deal_expires_test(&v);
 }
 
 #[test]
-fn deal_passes_claim_fails() {
+fn verified_deals_commit_without_claims() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
-    deal_passes_claim_fails_test(&v);
+    verified_deals_commit_without_claims_test(&v);
 }

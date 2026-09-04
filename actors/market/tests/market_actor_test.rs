@@ -4,7 +4,6 @@
 use std::cell::RefCell;
 use std::ops::Add;
 
-use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{RawBytes, to_vec};
@@ -15,7 +14,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use fvm_shared::sector::StoragePower;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND, MethodNum};
 use num_traits::{FromPrimitive, Zero};
@@ -23,23 +22,23 @@ use regex::Regex;
 
 use fil_actor_market::balance_table::BalanceTable;
 use fil_actor_market::ext::account::{AUTHENTICATE_MESSAGE_METHOD, AuthenticateMessageParams};
-use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationsResponse};
+use fil_actor_market::ext::miner::PieceReturn;
+
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
-    Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal, DEAL_OPS_BY_EPOCH_CONFIG,
-    DealArray, DealMetaArray, DealOpsByEpoch, EX_DEAL_EXPIRED, Label, MARKET_NOTIFY_DEAL_METHOD,
-    MarketNotifyDealParams, Method, PENDING_ALLOCATIONS_CONFIG, PENDING_PROPOSALS_CONFIG,
-    PROPOSALS_AMT_BITWIDTH, PendingDealAllocationsMap, PendingProposalsSet,
-    PublishStorageDealsParams, PublishStorageDealsReturn, STATES_AMT_BITWIDTH, SectorDeals, State,
-    WithdrawBalanceParams, ext,
+    Actor as MarketActor, ClientDealProposal, DEAL_OPS_BY_EPOCH_CONFIG, DealArray, DealMetaArray,
+    DealOpsByEpoch, Label, MARKET_NOTIFY_DEAL_METHOD, MarketNotifyDealParams, Method,
+    PENDING_PROPOSALS_CONFIG, PROPOSALS_AMT_BITWIDTH, PendingProposalsSet,
+    PublishStorageDealsParams, PublishStorageDealsReturn, STATES_AMT_BITWIDTH, State,
+    WithdrawBalanceParams,
 };
-use fil_actors_runtime::cbor::{deserialize, serialize};
+use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, DEFAULT_HAMT_CONFIG,
-    SYSTEM_ACTOR_ADDR, SetMultimap, SetMultimapConfig, VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, DEFAULT_HAMT_CONFIG, SYSTEM_ACTOR_ADDR, SetMultimap,
+    SetMultimapConfig,
 };
 use harness::*;
 
@@ -668,7 +667,6 @@ fn simple_deal() {
 
     let rt = setup();
     rt.set_epoch(publish_epoch);
-    let next_allocation_id = 1;
 
     // Publish from miner worker.
     let mut deal1 = generate_deal_and_add_funds(
@@ -680,13 +678,7 @@ fn simple_deal() {
     );
     deal1.verified_deal = false;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal1_id = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal1],
-        TokenAmount::zero(),
-        next_allocation_id,
-    )[0];
+    let deal1_id = publish_deals(&rt, &MinerAddresses::default(), &[deal1])[0];
 
     // Publish from miner control address.
     let mut deal2 = generate_deal_and_add_funds(
@@ -698,13 +690,7 @@ fn simple_deal() {
     );
     deal2.verified_deal = true;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, CONTROL_ADDR);
-    let deal2_id = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal2.clone()],
-        TokenAmount::from_whole(deal2.piece_size.0),
-        next_allocation_id,
-    )[0];
+    let deal2_id = publish_deals(&rt, &MinerAddresses::default(), &[deal2.clone()])[0];
 
     // activate the deal
     activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, 1, &[deal1_id, deal2_id]);
@@ -725,7 +711,6 @@ fn deal_expires() {
 
     let rt = setup();
     rt.set_epoch(publish_epoch);
-    let next_allocation_id = 1;
 
     // Publish from miner worker.
     let mut deal = generate_deal_and_add_funds(
@@ -737,13 +722,7 @@ fn deal_expires() {
     );
     deal.verified_deal = true;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_id = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal.clone()],
-        TokenAmount::from_whole(deal.piece_size.0),
-        next_allocation_id,
-    )[0];
+    let deal_id = publish_deals(&rt, &MinerAddresses::default(), &[deal.clone()])[0];
 
     rt.set_epoch(start_epoch + Policy::default().deal_updates_interval + 1);
     rt.expect_send_simple(
@@ -763,16 +742,6 @@ fn deal_expires() {
 
     // The proposal is gone
     assert!(DealArray::load(&st.proposals, &rt.store).unwrap().get(deal_id).unwrap().is_none());
-
-    // Pending allocation ID is gone
-    let pending_allocs = PendingDealAllocationsMap::load(
-        &rt.store,
-        &st.pending_deal_allocation_ids,
-        PENDING_ALLOCATIONS_CONFIG,
-        "pending allocations",
-    )
-    .unwrap();
-    assert!(pending_allocs.get(&deal_id).unwrap().is_none());
 
     check_state(&rt);
 }
@@ -877,58 +846,6 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         None,
     );
 
-    // Data cap transfer is requested using the resolved address (not that it matters).
-    let alloc_req = ext::verifreg::AllocationRequests {
-        allocations: vec![AllocationRequest {
-            provider: provider_resolved.id().unwrap(),
-            data: deal.piece_cid,
-            size: deal.piece_size,
-            term_min: deal.end_epoch - deal.start_epoch,
-            term_max: (deal.end_epoch - deal.start_epoch) + 90 * EPOCHS_IN_DAY,
-            expiration: deal.start_epoch,
-        }],
-        extensions: vec![],
-    };
-    let balance_of_params = client_resolved;
-    let balance_of_return = TokenAmount::from_whole(2048);
-    rt.expect_send_simple(
-        DATACAP_TOKEN_ACTOR_ADDR,
-        ext::datacap::BALANCE_OF_METHOD,
-        IpldBlock::serialize_cbor(&balance_of_params).unwrap(),
-        TokenAmount::zero(),
-        IpldBlock::serialize_cbor(&balance_of_return).unwrap(),
-        ExitCode::OK,
-    );
-
-    let datacap_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
-    let transfer_params = TransferFromParams {
-        from: client_resolved,
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        amount: datacap_amount.clone(),
-        operator_data: serialize(&alloc_req, "allocation requests").unwrap(),
-    };
-    let transfer_return = TransferFromReturn {
-        from_balance: TokenAmount::zero(),
-        to_balance: datacap_amount,
-        allowance: TokenAmount::zero(),
-        recipient_data: serialize(
-            &AllocationsResponse {
-                allocation_results: BatchReturn::ok(1),
-                extension_results: BatchReturn::empty(),
-                new_allocations: vec![1],
-            },
-            "allocations response",
-        )
-        .unwrap(),
-    };
-    rt.expect_send_simple(
-        DATACAP_TOKEN_ACTOR_ADDR,
-        ext::datacap::TRANSFER_FROM_METHOD,
-        IpldBlock::serialize_cbor(&transfer_params).unwrap(),
-        TokenAmount::zero(),
-        IpldBlock::serialize_cbor(&transfer_return).unwrap(),
-        ExitCode::OK,
-    );
     let mut normalized_deal = deal;
     normalized_deal.provider = provider_resolved;
     normalized_deal.client = client_resolved;
@@ -977,52 +894,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
 }
 
 #[test]
-fn datacap_transfers_batched() {
-    let rt = setup();
-    let start_epoch = 42;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    rt.set_epoch(start_epoch);
-
-    let client1_addr = Address::new_id(900);
-    let client2_addr = Address::new_id(901);
-
-    // Propose two deals for client1, and one for client2.
-    let mut deal1 = generate_deal_and_add_funds(
-        &rt,
-        client1_addr,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-    );
-    let mut deal2 = generate_deal_and_add_funds(
-        &rt,
-        client1_addr,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch + 1,
-    );
-    let mut deal3 = generate_deal_and_add_funds(
-        &rt,
-        client2_addr,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-    );
-    deal1.verified_deal = true;
-    deal2.verified_deal = true;
-    deal3.verified_deal = true;
-    let datacap_balance = TokenAmount::from_whole(deal1.piece_size.0 * 10);
-
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids =
-        publish_deals(&rt, &MinerAddresses::default(), &[deal1, deal2, deal3], datacap_balance, 1);
-    assert_eq!(3, ids.len());
-
-    check_state(&rt);
-}
-
-#[test]
-fn datacap_transfer_drops_deal_when_cap_insufficient() {
+fn verified_deals_publish_without_datacap() {
     let rt = setup();
     let start_epoch = 42;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
@@ -1045,17 +917,10 @@ fn datacap_transfer_drops_deal_when_cap_insufficient() {
     );
     deal1.verified_deal = true;
     deal2.verified_deal = true;
-    let datacap_balance = TokenAmount::from_whole(deal1.piece_size.0); // Enough for 1 deal
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal1, deal2],
-        datacap_balance,
-        1, // Only 1
-    );
-    assert_eq!(1, ids.len());
+    let ids = publish_deals(&rt, &MinerAddresses::default(), &[deal1, deal2]);
+    assert_eq!(2, ids.len());
 
     check_state(&rt);
 }
@@ -1129,7 +994,7 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
     // publish the deal successfully
     rt.set_epoch(publish_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids = publish_deals(&rt, &MinerAddresses::default(), &[deal], TokenAmount::zero(), 1);
+    let ids = publish_deals(&rt, &MinerAddresses::default(), &[deal]);
     assert_eq!(1, ids.len());
     check_state(&rt);
 }
@@ -1177,8 +1042,6 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         &rt,
         &MinerAddresses::default(),
         &[deal1.clone(), deal2.clone(), deal3.clone()],
-        TokenAmount::zero(),
-        1,
     );
     assert_eq!(3, ids.len());
 
@@ -1219,13 +1082,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         100 + 200 * EPOCHS_IN_DAY,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids = publish_deals(
-        &rt,
-        &MinerAddresses::default(),
-        &[deal4.clone(), deal5.clone()],
-        TokenAmount::zero(),
-        1,
-    );
+    let ids = publish_deals(&rt, &MinerAddresses::default(), &[deal4.clone(), deal5.clone()]);
     assert_eq!(2, ids.len());
 
     // assert locked balances for clients and provider
@@ -1269,7 +1126,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
 
     // publish both the deals for the second provider
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids = publish_deals(&rt, &addrs, &[deal6.clone(), deal7.clone()], TokenAmount::zero(), 1);
+    let ids = publish_deals(&rt, &addrs, &[deal6.clone(), deal7.clone()]);
     assert_eq!(2, ids.len());
 
     // assertions
@@ -1512,46 +1369,6 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
 }
 
 #[test]
-fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
-    let start_epoch = 10;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let sector_expiry = end_epoch + 100;
-    let sector_number = 7;
-
-    let rt = setup();
-    let (deal_id, _) = generate_and_publish_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-    );
-
-    rt.set_epoch(start_epoch + 1);
-    let res = batch_activate_deals_raw(
-        &rt,
-        PROVIDER_ADDR,
-        vec![SectorDeals {
-            sector_number,
-            sector_expiry,
-            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-            deal_ids: vec![deal_id],
-        }],
-        false,
-        &[],
-    )
-    .unwrap();
-
-    let res: BatchActivateDealsResult =
-        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
-
-    assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED]);
-
-    rt.verify();
-    check_state(&rt);
-}
-
-#[test]
 fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
@@ -1566,86 +1383,11 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
         end_epoch,
     );
 
-    let res = batch_activate_deals_raw(
-        &rt,
-        PROVIDER_ADDR,
-        vec![SectorDeals {
-            sector_number,
-            sector_expiry: end_epoch - 1,
-            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-            deal_ids: vec![deal_id],
-        }],
-        false,
-        &[],
-    )
-    .unwrap();
+    // The sector commitment ends before the deal does.
+    let res =
+        activate_deals_for(&rt, end_epoch - 1, PROVIDER_ADDR, 0, sector_number, &[deal_id], &[]);
+    assert_eq!(vec![PieceReturn { accepted: false }], res.sectors[0].added);
 
-    let res: BatchActivateDealsResult =
-        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
-
-    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
-
-    rt.verify();
-    check_state(&rt);
-}
-
-#[test]
-fn fail_to_activate_all_deals_if_one_deal_fails() {
-    let start_epoch = 10;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let sector_expiry = end_epoch + 100;
-    let sector_number = 7;
-
-    let rt = setup();
-    // activate deal1 so it fails later
-    let (deal_id1, _) = generate_and_publish_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-    );
-    batch_activate_deals(
-        &rt,
-        PROVIDER_ADDR,
-        &[(sector_number, sector_expiry, vec![deal_id1])],
-        false,
-    );
-
-    let (deal_id2, _) = generate_and_publish_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch + 1,
-    );
-
-    let res = batch_activate_deals_raw(
-        &rt,
-        PROVIDER_ADDR,
-        vec![SectorDeals {
-            sector_number,
-            sector_expiry,
-            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-            deal_ids: vec![deal_id1, deal_id2],
-        }],
-        false,
-        &[],
-    )
-    .unwrap();
-    let res: BatchActivateDealsResult =
-        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
-
-    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
-    rt.verify();
-
-    // no state for deal2 means deal2 activation has failed
-    let st: State = rt.get_state();
-
-    let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
-
-    let s = states.get(deal_id2).unwrap();
-    assert!(s.is_none());
     check_state(&rt);
 }
 
@@ -1789,8 +1531,7 @@ fn market_actor_deals() {
 
     // First attempt at publishing the deal should work
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids =
-        publish_deals(&rt, &miner_addresses, &[deal_proposal.clone()], TokenAmount::zero(), 1);
+    let ids = publish_deals(&rt, &miner_addresses, &[deal_proposal.clone()]);
     assert_eq!(1, ids.len());
 
     // Second attempt at publishing the same deal should fail
@@ -1804,7 +1545,7 @@ fn market_actor_deals() {
     // Same deal with a different label should work
     deal_proposal.label = Label::String("Cthulhu".to_owned());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids = publish_deals(&rt, &miner_addresses, &[deal_proposal], TokenAmount::zero(), 1);
+    let ids = publish_deals(&rt, &miner_addresses, &[deal_proposal]);
     assert_eq!(1, ids.len());
     check_state(&rt);
 }
@@ -1831,8 +1572,7 @@ fn max_deal_label_size() {
     // DealLabel at max size should work.
     deal_proposal.label = Label::String("s".repeat(DEAL_MAX_LABEL_SIZE));
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let ids =
-        publish_deals(&rt, &miner_addresses, &[deal_proposal.clone()], TokenAmount::zero(), 1);
+    let ids = publish_deals(&rt, &miner_addresses, &[deal_proposal.clone()]);
     assert_eq!(1, ids.len());
 
     // over max should fail

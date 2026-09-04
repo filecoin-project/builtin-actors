@@ -24,8 +24,6 @@ use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::{BatchReturn, DealWeight};
 
 use crate::commd::CompactCommD;
-use crate::ext::verifreg::AllocationID;
-use crate::ext::verifreg::ClaimID;
 
 use super::beneficiary::*;
 
@@ -197,7 +195,7 @@ pub struct PieceActivationManifest {
     pub cid: Cid,
     // Piece size.
     pub size: PaddedPieceSize,
-    // Identifies a verified allocation to be claimed.
+    // Accepted and ignored since FIP-0118 removed allocations; QA power comes from the flag.
     pub verified_allocation_key: Option<VerifiedAllocationKey>,
     // Synchronous notifications to be sent to other actors after activation.
     pub notify: Vec<DataActivationNotification>,
@@ -206,7 +204,7 @@ pub struct PieceActivationManifest {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifiedAllocationKey {
     pub client: ActorID,
-    pub id: AllocationID,
+    pub id: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
@@ -242,18 +240,38 @@ pub struct ExtendSectorExpiration2Params {
 #[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorClaim {
     pub sector_number: SectorNumber,
-    pub maintain_claims: Vec<ClaimID>,
-    pub drop_claims: Vec<ClaimID>,
+    // Claim instructions, accepted and ignored since FIP-0118 removed claim validation.
+    pub maintain_claims: Vec<u64>,
+    pub drop_claims: Vec<u64>,
 }
 
 #[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ExpirationExtension2 {
     pub deadline: u64,
     pub partition: u64,
-    // IDs of sectors without FIL+ claims
+    // Sectors to extend. Originally those without FIL+ claims.
     pub sectors: BitField,
+    // Also sectors to extend. FIP-0118 removed claim validation, so these extend exactly as
+    // `sectors` does; retained for callers that still populate it.
     pub sectors_with_claims: Vec<SectorClaim>,
     pub new_expiration: ChainEpoch,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct UpgradeSectorQualityParams {
+    pub upgrades: Vec<UpgradeSectorQuality>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct UpgradeSectorQuality {
+    pub deadline: u64,
+    pub partition: u64,
+    /// Sectors to upgrade to full quality-adjusted power (FIP-0118).
+    pub sectors: BitField,
+    /// Unset means upgrade only: every selected sector keeps its own expiration.
+    /// Otherwise the absolute epoch to extend all selected sectors to; it must be
+    /// after the current epoch and at or beyond each sector's current expiration.
+    pub new_expiration: Option<ChainEpoch>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -410,10 +428,13 @@ pub struct SectorOnChainInfo {
     pub activation: ChainEpoch,
     /// Epoch during which the sector expires
     pub expiration: ChainEpoch,
-    /// Integral of active deals over sector lifetime
+    /// Spacetime of legacy unverified deals. Zero for sectors activated since FIP-0118, which
+    /// record piece spacetime in `verified_deal_weight`; legacy sectors keep theirs and carry
+    /// it across extensions, because the data-presence checks read both fields.
     #[serde(with = "bigint_ser")]
     pub deal_weight: DealWeight,
-    /// Integral of active verified deals over sector lifetime
+    /// Spacetime of the sector's pieces, restated across extensions so quality is unchanged.
+    /// Nothing is verified since FIP-0118; directly onboarded data lands here too.
     #[serde(with = "bigint_ser")]
     pub verified_deal_weight: DealWeight,
     /// Pledge collected to commit this sector
@@ -454,6 +475,9 @@ bitflags::bitflags! {
     pub struct SectorOnChainInfoFlags: u32 {
         /// QA power mechanism introduced in FIP-0045
         const SIMPLE_QA_POWER = 0x1;
+        /// Sector always receives maximum QA power (10x), regardless of deal content.
+        /// Introduced by FIP-0118 (deprecate FIL+).
+        const FULL_QA_POWER = 0x2;
     }
 }
 

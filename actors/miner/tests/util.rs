@@ -42,11 +42,7 @@ use multihash_codetable::MultihashDigest;
 use num_traits::Signed;
 
 use fil_actor_account::Method as AccountMethod;
-use fil_actor_market::{
-    ActivatedDeal, BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod,
-    NO_ALLOCATION_ID, OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
-};
+use fil_actor_market::{NO_ALLOCATION_ID, OnMinerSectorsTerminateParams};
 use fil_actor_miner::{
     ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
     CRON_EVENT_PROVING_DEADLINE, ChangeBeneficiaryParams, ChangeMultiaddrsParams,
@@ -57,33 +53,29 @@ use fil_actor_miner::{
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, FaultDeclaration,
     GenerateSectorLocationParams, GenerateSectorLocationReturn, GetAvailableBalanceReturn,
     GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn,
-    GetNominalSectorExpirationReturn, GetPeerIDReturn, Method, Method as MinerMethod,
-    MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION, Partition,
-    PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
-    PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitSectorParams, ProveCommitSectors3Params, ProveCommitSectors3Return, QuantSpec,
-    RecoveryDeclaration, ReportConsensusFaultParams, SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH,
-    SectorActivationManifest, SectorChanges, SectorContentChangedParams,
-    SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    SectorReturn, SectorStatusCode, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
-    TerminateSectorsParams, TerminationDeclaration, ValidateSectorStatusParams,
-    ValidateSectorStatusReturn, VerifiedAllocationKey, WindowedPoSt, WithdrawBalanceParams,
-    WithdrawBalanceReturn, consensus_fault_penalty, ext,
+    GetNominalSectorExpirationReturn, GetPeerIDReturn, InternalSectorSetupForPresealParams, Method,
+    Method as MinerMethod, MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION,
+    Partition, PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn,
+    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
+    PreCommitSectorParams, ProveCommitSectorParams, ProveCommitSectors3Params,
+    ProveCommitSectors3Return, QuantSpec, RecoveryDeclaration, ReportConsensusFaultParams,
+    SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH, SectorActivationManifest, SectorChanges,
+    SectorContentChangedParams, SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, SectorReturn, SectorStatusCode, SectorUpdateManifest, Sectors,
+    State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
+    UpgradeSectorQualityParams, ValidateSectorStatusParams, ValidateSectorStatusReturn,
+    VerifiedAllocationKey, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
+    consensus_fault_penalty, ext,
     ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
     ext::power::UPDATE_CLAIMED_POWER_METHOD,
-    ext::verifreg::{
-        AllocationClaim, AllocationID, CLAIM_ALLOCATIONS_METHOD, ClaimAllocationsParams,
-        ClaimAllocationsReturn, SectorAllocationClaims, SectorClaimSummary,
-    },
-    ext::verifreg::{Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn},
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
-    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report,
+    qa_power_for_sector, qa_power_max, reward_for_consensus_slash_report,
     testing::{DeadlineStateSummary, check_deadline_state_invariants, check_state_invariants},
 };
 use fil_actor_miner::{
     ProveCommitSectorsNIParams, ProveCommitSectorsNIReturn, ProveReplicaUpdates3Params,
-    ProveReplicaUpdates3Return, SectorNIActivationInfo, raw_power_for_sector,
+    ProveReplicaUpdates3Return, SectorNIActivationInfo,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -95,9 +87,9 @@ use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, BURNT_FUNDS_ACTOR_ADDR, DealWeight, INIT_ACTOR_ADDR,
     MessageAccumulator, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
-use fil_actors_runtime::{BatchReturn, BatchReturnGen, EventBuilder, test_utils::*};
+use fil_actors_runtime::{EventBuilder, test_utils::*};
 
 const DEFAULT_PIECE_SIZE: u64 = 128;
 
@@ -676,34 +668,6 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
 
         self.expect_query_network_info(rt);
-        let mut sector_deals = Vec::new();
-        let mut sector_deal_data = Vec::new();
-        let mut any_deals = false;
-        for sector in sectors.iter() {
-            sector_deals.push(SectorDeals {
-                sector_number: sector.sector_number,
-                sector_type: sector.seal_proof,
-                sector_expiry: sector.expiration,
-                deal_ids: sector.deal_ids.clone(),
-            });
-
-            sector_deal_data.push(sector.unsealed_cid.0);
-            // Sanity check on expectations
-            let sector_has_deals = !sector.deal_ids.is_empty();
-            any_deals |= sector_has_deals;
-        }
-        if any_deals {
-            let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
-            let vdreturn = VerifyDealsForActivationReturn { unsealed_cids: sector_deal_data };
-            rt.expect_send_simple(
-                STORAGE_MARKET_ACTOR_ADDR,
-                MarketMethod::VerifyDealsForActivation as u64,
-                IpldBlock::serialize_cbor(&vdparams).unwrap(),
-                TokenAmount::zero(),
-                IpldBlock::serialize_cbor(&vdreturn).unwrap(),
-                ExitCode::OK,
-            );
-        }
 
         let state = self.get_state(rt);
 
@@ -962,7 +926,8 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
 
-        let qa_sector_power = raw_power_for_sector(self.sector_size);
+        // FIP-0118: NI sectors get FULL_QA_POWER (10x)
+        let qa_sector_power = qa_power_max(self.sector_size);
         let sector_pledge = self.initial_pledge_for_power(rt, &qa_sector_power);
         let total_pledge = BigInt::from(expected_success_count) * sector_pledge;
 
@@ -1023,171 +988,42 @@ impl ActorHarness {
         Ok(result)
     }
 
-    // Check that sectors are activating
-    // This is a separate method because historically this functionality was shared between various commitment entrypoints
-    fn expect_sectors_activated(
+    /// Drives `InternalSectorSetupForPreseal`, which activates whichever of the named
+    /// `sectors` have a pre-commit; the expectations cover exactly `pcs`.
+    pub fn internal_sector_setup_for_preseal(
         &self,
         rt: &MockRuntime,
-        cfg: ProveCommitConfig,
-        pcs: &[SectorPreCommitOnChainInfo],
-    ) -> HashMap<SectorNumber, Vec<(Cid, u64)>> {
-        let mut valid_pcs = Vec::new();
+        sectors: Vec<SectorNumber>,
+        pcs: Vec<SectorPreCommitOnChainInfo>,
+    ) -> Result<(), ActorError> {
+        let expected_pledge =
+            self.initial_pledge_for_power(rt, &qa_power_max(self.sector_size)) * pcs.len();
+        expect_update_pledge(rt, &expected_pledge);
 
-        // claim FIL+ allocations
-        let mut sectors_claims: Vec<ext::verifreg::SectorAllocationClaims> = Vec::new();
-
-        // build expectations per sector
-        let mut sector_activation_params: Vec<SectorDeals> = Vec::new();
-        let mut sector_activations: Vec<SectorDealActivation> = Vec::new();
-        let mut sector_activation_results = BatchReturnGen::new(pcs.len());
-        let mut pieces: HashMap<SectorNumber, Vec<(Cid, u64)>> = HashMap::new();
-
-        for pc in pcs {
-            pieces.insert(pc.info.sector_number, Vec::new());
-
-            if !pc.info.deal_ids.is_empty() {
-                let activate_params = SectorDeals {
-                    sector_number: pc.info.sector_number,
-                    deal_ids: pc.info.deal_ids.clone(),
-                    sector_expiry: pc.info.expiration,
-                    sector_type: pc.info.seal_proof,
-                };
-                sector_activation_params.push(activate_params);
-
-                let ret = SectorDealActivation {
-                    activated: cfg
-                        .activated_deals
-                        .get(&pc.info.sector_number)
-                        .cloned()
-                        .unwrap_or_default(),
-                    unsealed_cid: None,
-                };
-
-                for info in &ret.activated {
-                    pieces.get_mut(&pc.info.sector_number).unwrap().push((info.data, info.size.0));
-                }
-
-                let mut activate_deals_exit = ExitCode::OK;
-                match cfg.verify_deals_exit.get(&pc.info.sector_number) {
-                    Some(exit_code) => {
-                        activate_deals_exit = *exit_code;
-                        sector_activation_results.add_fail(*exit_code);
-                    }
-                    None => {
-                        sector_activations.push(ret.clone());
-                        sector_activation_results.add_success();
-                    }
-                }
-
-                if activate_deals_exit == ExitCode::OK {
-                    valid_pcs.push(pc);
-                    let sector_claims = ret
-                        .activated
-                        .iter()
-                        .filter(|info| info.allocation_id != NO_ALLOCATION_ID)
-                        .map(|info| ext::verifreg::AllocationClaim {
-                            client: info.client,
-                            allocation_id: info.allocation_id,
-                            data: info.data,
-                            size: info.size,
-                        })
-                        .collect();
-                    sectors_claims.push(ext::verifreg::SectorAllocationClaims {
-                        sector: pc.info.sector_number,
-                        expiry: pc.info.expiration,
-                        claims: sector_claims,
-                    });
-                }
-            } else {
-                // empty deal ids
-                sector_activation_params.push(SectorDeals {
-                    sector_number: pc.info.sector_number,
-                    deal_ids: vec![],
-                    sector_expiry: pc.info.expiration,
-                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-                });
-                sector_activations
-                    .push(SectorDealActivation { activated: vec![], unsealed_cid: None });
-                sector_activation_results.add_success();
-                sectors_claims.push(ext::verifreg::SectorAllocationClaims {
-                    sector: pc.info.sector_number,
-                    expiry: pc.info.expiration,
-                    claims: vec![],
-                });
-                valid_pcs.push(pc);
-            }
-        }
-
-        if !sector_activation_params.iter().all(|p| p.deal_ids.is_empty()) {
-            rt.expect_send_simple(
-                STORAGE_MARKET_ACTOR_ADDR,
-                MarketMethod::BatchActivateDeals as u64,
-                IpldBlock::serialize_cbor(&BatchActivateDealsParams {
-                    sectors: sector_activation_params,
-                    compute_cid: false,
-                })
-                .unwrap(),
-                TokenAmount::zero(),
-                IpldBlock::serialize_cbor(&BatchActivateDealsResult {
-                    activations: sector_activations,
-                    activation_results: sector_activation_results.generate(),
-                })
-                .unwrap(),
-                ExitCode::OK,
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
+        for pc in pcs.iter() {
+            expect_sector_event(
+                rt,
+                "sector-activated",
+                &pc.info.sector_number,
+                pc.info.unsealed_cid.0,
+                &vec![],
             );
         }
 
-        if !sectors_claims.iter().all(|c| c.claims.is_empty()) {
-            let claim_allocation_params = ext::verifreg::ClaimAllocationsParams {
-                sectors: sectors_claims.clone(),
-                all_or_nothing: true,
-            };
-
-            // TODO handle failures of claim allocations
-            // use exit code map for claim allocations in config
-            let claim_allocs_ret = ext::verifreg::ClaimAllocationsReturn {
-                sector_results: BatchReturn::ok(sectors_claims.len() as u32),
-                sector_claims: sectors_claims
-                    .iter()
-                    .map(|sector| ext::verifreg::SectorClaimSummary {
-                        claimed_space: BigInt::from(
-                            sector.claims.iter().map(|c| c.size.0).sum::<u64>(),
-                        ),
-                    })
-                    .collect(),
-            };
-            rt.expect_send_simple(
-                VERIFIED_REGISTRY_ACTOR_ADDR,
-                CLAIM_ALLOCATIONS_METHOD as u64,
-                IpldBlock::serialize_cbor(&claim_allocation_params).unwrap(),
-                TokenAmount::zero(),
-                IpldBlock::serialize_cbor(&claim_allocs_ret).unwrap(),
-                ExitCode::OK,
-            );
-        }
-
-        if !valid_pcs.is_empty() {
-            let mut expected_pledge = TokenAmount::zero();
-            let mut expected_qa_power = BigInt::from(0);
-            let mut expected_raw_power = BigInt::from(0);
-
-            for pc in valid_pcs {
-                let verified_deal_space = cfg.verified_deal_space(pc.info.sector_number);
-                let duration = pc.info.expiration - *rt.epoch.borrow();
-                let verified_deal_weight = verified_deal_space * duration;
-                if duration >= rt.policy.min_sector_expiration {
-                    let qa_power_delta =
-                        qa_power_for_weight(self.sector_size, duration, &verified_deal_weight);
-                    expected_qa_power += &qa_power_delta;
-                    expected_raw_power += self.sector_size as u64;
-                    expected_pledge += self.initial_pledge_for_power(rt, &qa_power_delta);
-                }
-            }
-
-            expect_update_pledge(rt, &expected_pledge);
-        }
-
-        pieces
+        let params = InternalSectorSetupForPresealParams {
+            sectors,
+            reward_smoothed: self.epoch_reward_smooth.clone(),
+            reward_baseline_power: self.baseline_power.clone(),
+            quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),
+        };
+        rt.call::<Actor>(
+            Method::InternalSectorSetupForPreseal as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        rt.verify();
+        Ok(())
     }
 
     pub fn prove_commit_sectors3(
@@ -1198,10 +1034,7 @@ impl ActorHarness {
         require_notification_success: bool,
         aggregate: bool,
         cfg: ProveCommitSectors3Config,
-    ) -> Result<
-        (ProveCommitSectors3Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
-        ActorError,
-    > {
+    ) -> Result<(ProveCommitSectors3Return, Vec<SectorChanges>), ActorError> {
         fn make_proof(i: u8) -> RawBytes {
             RawBytes::new(vec![i, i, i, i])
         }
@@ -1292,8 +1125,6 @@ impl ActorHarness {
             rt.expect_batch_verify_seals(svis, Ok(result))
         }
 
-        let mut sector_allocation_claims = Vec::new();
-        let mut sector_claimed_space = Vec::new();
         let mut expected_pledge = TokenAmount::zero();
         let mut expected_qa_power = StoragePower::zero();
         let mut expected_sector_notifications = Vec::new(); // Assuming all to f05
@@ -1308,24 +1139,11 @@ impl ActorHarness {
             let unsealed_cid = comm_d.0;
             unsealed_cids.insert(sa.sector_number, unsealed_cid);
 
-            let precommit = self.get_precommit(rt, sa.sector_number);
-            sector_allocation_claims.push(SectorAllocationClaims {
-                sector: sa.sector_number,
-                expiry: precommit.info.expiration,
-                claims: claims_from_pieces(&sa.pieces),
-            });
             if cfg.claim_failure.contains(&i) {
                 continue;
             }
-            let claimed_space = sector_allocation_claims
-                .last()
-                .unwrap()
-                .claims
-                .iter()
-                .map(|c| c.size.0)
-                .sum::<u64>();
-            sector_claimed_space.push(SectorClaimSummary { claimed_space: claimed_space.into() });
 
+            let precommit = self.get_precommit(rt, sa.sector_number);
             let notifications = notifications_from_pieces(&sa.pieces);
             if !notifications.is_empty() {
                 expected_sector_notifications.push(SectorChanges {
@@ -1334,53 +1152,13 @@ impl ActorHarness {
                     added: notifications,
                 });
             }
-            let duration = precommit.info.expiration - *rt.epoch.borrow();
-            let mut deal_size = DealWeight::zero();
-            let mut verified_size = DealWeight::zero();
-            for piece in &sa.pieces {
-                if piece.verified_allocation_key.is_some() {
-                    verified_size += piece.size.0 * duration as u64;
-                } else {
-                    deal_size += piece.size.0 * duration as u64;
-                }
-            }
-            let qa_power_delta = qa_power_for_weight(self.sector_size, duration, &verified_size);
+            // FIP-0118: all new sectors get FULL_QA_POWER flag -> qa_power_max (10x)
+            let qa_power_delta = qa_power_max(self.sector_size);
             expected_qa_power += &qa_power_delta;
             expected_pledge += self.initial_pledge_for_power(rt, &qa_power_delta);
         }
 
-        // Expect claiming of verified space for each piece that specified an allocation ID.
-        if !sector_allocation_claims.iter().all(|sector| sector.claims.is_empty()) {
-            let claim_count = sector_allocation_claims.len();
-            let mut claim_result = BatchReturnGen::new(claim_count);
-            let mut claim_code = ExitCode::OK;
-            for i in 0..claim_count {
-                if cfg.claim_failure.contains(&i) {
-                    claim_result.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
-                    if require_activation_success {
-                        claim_code = ExitCode::USR_ILLEGAL_ARGUMENT;
-                    }
-                } else {
-                    claim_result.add_success();
-                }
-            }
-            rt.expect_send_simple(
-                VERIFIED_REGISTRY_ACTOR_ADDR,
-                CLAIM_ALLOCATIONS_METHOD,
-                IpldBlock::serialize_cbor(&ClaimAllocationsParams {
-                    sectors: sector_allocation_claims.clone(),
-                    all_or_nothing: require_activation_success,
-                })
-                .unwrap(),
-                TokenAmount::zero(),
-                IpldBlock::serialize_cbor(&ClaimAllocationsReturn {
-                    sector_results: claim_result.generate(),
-                    sector_claims: sector_claimed_space,
-                })
-                .unwrap(),
-                claim_code,
-            );
-        }
+        // No verifreg claim allocations call (FIP-0118).
 
         // Expect pledge & power updates.
         self.expect_query_network_info(rt);
@@ -1442,12 +1220,12 @@ impl ActorHarness {
                 Err(e)
             })?;
         rt.verify();
-        Ok((result, sector_allocation_claims, expected_sector_notifications))
+        Ok((result, expected_sector_notifications))
     }
 
     // Invokes prove_replica_updates3 with a batch of sector updates, and
     // sets and checks mock expectations for the expected interactions.
-    // Returns the result of the invocation along with the expected sector claims and notifications
+    // Returns the result of the invocation along with the expected notifications
     // (which match the actual, if mock verification succeeded).
     pub fn prove_replica_updates3_batch(
         &self,
@@ -1456,10 +1234,7 @@ impl ActorHarness {
         require_activation_success: bool,
         require_notification_success: bool,
         cfg: ProveReplicaUpdatesConfig,
-    ) -> Result<
-        (ProveReplicaUpdates3Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
-        ActorError,
-    > {
+    ) -> Result<(ProveReplicaUpdates3Return, Vec<SectorChanges>), ActorError> {
         fn make_proof(i: u8) -> RawBytes {
             RawBytes::new(vec![i, i, i, i])
         }
@@ -1479,8 +1254,6 @@ impl ActorHarness {
             param_twiddle(&mut params);
         }
 
-        let mut expected_sector_claims = Vec::new();
-        let mut sector_claimed_space = Vec::new();
         let mut expected_pledge = TokenAmount::zero();
         let mut expected_qa_power = StoragePower::zero();
         let mut expected_sector_notifications = Vec::new(); // Assuming all to f05
@@ -1511,17 +1284,9 @@ impl ActorHarness {
                 continue;
             }
 
-            expected_sector_claims.push(SectorAllocationClaims {
-                sector: sup.sector,
-                expiry: sector.expiration,
-                claims: claims_from_pieces(&sup.pieces),
-            });
             if cfg.claim_failure.contains(&i) {
                 continue;
             }
-            let claimed_space =
-                expected_sector_claims.last().unwrap().claims.iter().map(|c| c.size.0).sum::<u64>();
-            sector_claimed_space.push(SectorClaimSummary { claimed_space: claimed_space.into() });
 
             let notifications = notifications_from_pieces(&sup.pieces);
             if !notifications.is_empty() {
@@ -1532,55 +1297,17 @@ impl ActorHarness {
                 });
             }
 
-            let duration = sector.expiration - *rt.epoch.borrow();
-            let mut deal_size = DealWeight::zero();
-            let mut verified_size = DealWeight::zero();
-            for piece in &sup.pieces {
-                if piece.verified_allocation_key.is_some() {
-                    verified_size += piece.size.0 * duration as u64;
-                } else {
-                    deal_size += piece.size.0 * duration as u64;
-                }
-            }
-
-            let qa_power_delta = qa_power_for_weight(self.sector_size, duration, &verified_size)
-                - qa_power_for_sector(self.sector_size, &sector);
+            // FIP-0118: replica updates get FULL_QA_POWER (10x), same as initial activation
+            let new_qa_power = qa_power_max(self.sector_size);
+            let old_qa_power = qa_power_for_sector(self.sector_size, &sector);
+            let qa_power_delta = &new_qa_power - &old_qa_power;
             expected_qa_power += &qa_power_delta;
-            expected_pledge += self.initial_pledge_for_power(rt, &qa_power_delta);
+            if qa_power_delta > BigInt::zero() {
+                expected_pledge += self.initial_pledge_for_power(rt, &qa_power_delta);
+            }
         }
 
-        // Expect claiming of verified space for each piece that specified an allocation ID.
-        if !expected_sector_claims.iter().all(|sector| sector.claims.is_empty()) {
-            let claim_count = expected_sector_claims.len();
-            let mut claim_result = BatchReturnGen::new(claim_count);
-            let mut claim_code = ExitCode::OK;
-            for i in 0..claim_count {
-                if cfg.claim_failure.contains(&i) {
-                    claim_result.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
-                    if require_activation_success {
-                        claim_code = ExitCode::USR_ILLEGAL_ARGUMENT;
-                    }
-                } else {
-                    claim_result.add_success();
-                }
-            }
-            rt.expect_send_simple(
-                VERIFIED_REGISTRY_ACTOR_ADDR,
-                CLAIM_ALLOCATIONS_METHOD,
-                IpldBlock::serialize_cbor(&ClaimAllocationsParams {
-                    sectors: expected_sector_claims.clone(),
-                    all_or_nothing: require_activation_success,
-                })
-                .unwrap(),
-                TokenAmount::zero(),
-                IpldBlock::serialize_cbor(&ClaimAllocationsReturn {
-                    sector_results: claim_result.generate(),
-                    sector_claims: sector_claimed_space,
-                })
-                .unwrap(),
-                claim_code,
-            );
-        }
+        // No verifreg claim allocations call (FIP-0118).
 
         // Expect pledge & power updates.
         self.expect_query_network_info(rt);
@@ -1648,7 +1375,7 @@ impl ActorHarness {
                 Err(e)
             })?;
         rt.verify();
-        Ok((result, expected_sector_claims, expected_sector_notifications))
+        Ok((result, expected_sector_notifications))
     }
 
     pub fn get_sector(&self, rt: &MockRuntime, sector_number: SectorNumber) -> SectorOnChainInfo {
@@ -2687,51 +2414,14 @@ impl ActorHarness {
         &self,
         rt: &MockRuntime,
         mut params: ExtendSectorExpiration2Params,
-        expected_claims: HashMap<ClaimID, Result<FILPlusClaim, ActorError>>,
     ) -> Result<Option<IpldBlock>, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let mut qa_delta = BigInt::zero();
-        for extension in params.extensions.iter_mut() {
-            for sc in &extension.sectors_with_claims {
-                // construct expected return value
-                let mut claims = Vec::new();
-                let mut all_claim_ids = sc.maintain_claims.clone();
-                all_claim_ids.append(&mut sc.drop_claims.clone());
-                let mut batch_gen = BatchReturnGen::new(all_claim_ids.len());
-                for claim_id in &all_claim_ids {
-                    match expected_claims.get(&claim_id).unwrap().clone() {
-                        Ok(claim) => {
-                            batch_gen.add_success();
-                            claims.push(claim);
-                        }
-                        Err(ae) => {
-                            batch_gen.add_fail(ae.exit_code());
-                        }
-                    }
-                }
-
-                rt.expect_send_simple(
-                    VERIFIED_REGISTRY_ACTOR_ADDR,
-                    fil_actor_miner::ext::verifreg::GET_CLAIMS_METHOD as u64,
-                    IpldBlock::serialize_cbor(&GetClaimsParams {
-                        provider: self.receiver.id().unwrap(),
-                        claim_ids: all_claim_ids,
-                    })
-                    .unwrap(),
-                    TokenAmount::zero(),
-                    IpldBlock::serialize_cbor(&GetClaimsReturn {
-                        batch_info: batch_gen.generate(),
-                        claims,
-                    })
-                    .unwrap(),
-                    ExitCode::OK,
-                );
-            }
-        }
+        // No verifreg GetClaims call (FIP-0118: claim validation removed from extensions).
 
         // Handle QA power updates
+        let mut qa_delta = BigInt::zero();
         for extension in params.extensions.iter_mut() {
             for sector_nr in extension.sectors.validate().unwrap().iter() {
                 let sector = self.get_sector(&rt, sector_nr);
@@ -2742,22 +2432,15 @@ impl ActorHarness {
                     - qa_power_for_sector(self.sector_size, &sector);
             }
             for sector_claim in &extension.sectors_with_claims {
-                let mut dropped_space = BigInt::zero();
-                for drop in &sector_claim.drop_claims {
-                    dropped_space += match expected_claims.get(&drop).unwrap() {
-                        Ok(claim) => BigInt::from(claim.size.0),
-                        Err(_) => BigInt::zero(),
-                    }
-                }
                 let sector = self.get_sector(&rt, sector_claim.sector_number);
-                let old_duration = sector.expiration - sector.power_base_epoch;
-                let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
-                let new_verified_deal_space = old_verified_deal_space - dropped_space;
                 let mut new_sector = sector.clone();
                 new_sector.expiration = extension.new_expiration;
                 new_sector.power_base_epoch = *rt.epoch.borrow();
-                new_sector.verified_deal_weight = BigInt::from(new_verified_deal_space)
-                    * (new_sector.expiration - new_sector.power_base_epoch);
+                // Proportional reduction of verified deal weight (no claims needed)
+                let old_duration = sector.expiration - sector.power_base_epoch;
+                let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
+                new_sector.verified_deal_weight =
+                    old_verified_deal_space * (new_sector.expiration - new_sector.power_base_epoch);
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }
@@ -2772,6 +2455,86 @@ impl ActorHarness {
 
         rt.verify();
         Ok(ret)
+    }
+
+    /// Calls `UpgradeSectorQuality` as the worker, expecting the pledge-input
+    /// queries, a burn of any outstanding fee debt, and the given power and
+    /// pledge deltas (no sends for zero deltas).
+    pub fn upgrade_sector_quality(
+        &self,
+        rt: &MockRuntime,
+        params: UpgradeSectorQualityParams,
+        expected_power_delta: PowerPair,
+        expected_pledge_delta: TokenAmount,
+    ) -> Result<Option<IpldBlock>, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        self.expect_query_network_info(rt);
+        expect_burn(rt, self.get_state(rt).fee_debt);
+        expect_update_power(rt, expected_power_delta);
+        expect_update_pledge(rt, &expected_pledge_delta);
+
+        let ret = rt.call::<Actor>(
+            Method::UpgradeSectorQuality as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+
+        rt.verify();
+        Ok(ret)
+    }
+
+    /// Rewrites the given sectors' on-chain records with `edit`, moving the
+    /// partition expiration queue, deadline power and fee books, and the miner's
+    /// pledge total along with the change. Simulates cohorts no onboarding path
+    /// can produce anymore, e.g. pre-FIP-0118 sectors without `FULL_QA_POWER`.
+    pub fn rewrite_sectors(
+        &self,
+        rt: &MockRuntime,
+        sector_numbers: &[SectorNumber],
+        edit: impl Fn(&mut SectorOnChainInfo),
+    ) {
+        let mut state: State = rt.get_state();
+        let store = rt.store();
+
+        let mut sectors = Sectors::load(store, &state.sectors).unwrap();
+        let mut deadlines = state.load_deadlines(store).unwrap();
+
+        let mut pledge_delta = TokenAmount::zero();
+        for &sector_number in sector_numbers {
+            let (dl_idx, p_idx) = state.find_sector(store, sector_number).unwrap();
+            let mut deadline = deadlines.load_deadline(store, dl_idx).unwrap();
+            let mut partitions = deadline.partitions_amt(store).unwrap();
+            let mut partition = partitions.get(p_idx).unwrap().cloned().unwrap();
+
+            let old_sector = sectors.must_get(sector_number).unwrap();
+            let mut new_sector = old_sector.clone();
+            edit(&mut new_sector);
+
+            let quant = state.quant_spec_for_deadline(&rt.policy, dl_idx);
+            let (power_delta, partition_pledge_delta, fee_delta) = partition
+                .replace_sectors(
+                    store,
+                    std::slice::from_ref(&old_sector),
+                    std::slice::from_ref(&new_sector),
+                    self.sector_size,
+                    quant,
+                )
+                .unwrap();
+            deadline.live_power += &power_delta;
+            deadline.daily_fee += &fee_delta;
+            pledge_delta += partition_pledge_delta;
+
+            sectors.store(vec![new_sector]).unwrap();
+            partitions.set(p_idx, partition).unwrap();
+            deadline.partitions = partitions.flush().unwrap();
+            deadlines.update_deadline(&rt.policy, store, dl_idx, &deadline).unwrap();
+        }
+
+        state.sectors = sectors.amt.flush().unwrap();
+        state.save_deadlines(store, deadlines).unwrap();
+        state.add_initial_pledge(&pledge_delta).unwrap();
+        rt.replace_state(&state);
     }
 
     pub fn compact_partitions(
@@ -2968,17 +2731,14 @@ impl PreCommitConfig {
 pub struct ProveCommitConfig {
     pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
     pub claim_allocs_exit: HashMap<SectorNumber, ExitCode>,
-    pub activated_deals: HashMap<SectorNumber, Vec<ActivatedDeal>>,
+    pub activated_deals: HashMap<SectorNumber, Vec<PieceInfo>>,
 }
 
 #[allow(dead_code)]
-pub fn test_activated_deal(space: u64, alloc: AllocationID) -> ActivatedDeal {
-    // only set size for testing and zero out remaining fields
-    ActivatedDeal {
-        client: 0,
-        allocation_id: alloc,
-        data: make_unsealed_cid("test activated deal".as_bytes()),
+pub fn test_activated_deal(space: u64) -> PieceInfo {
+    PieceInfo {
         size: PaddedPieceSize(space),
+        cid: make_unsealed_cid("test activated deal".as_bytes()),
     }
 }
 
@@ -2992,7 +2752,7 @@ impl ProveCommitConfig {
         }
     }
 
-    pub fn add_activated_deals(&mut self, sector: SectorNumber, deals: Vec<ActivatedDeal>) {
+    pub fn add_activated_deals(&mut self, sector: SectorNumber, deals: Vec<PieceInfo>) {
         self.activated_deals.insert(sector, deals);
     }
 
@@ -3001,19 +2761,6 @@ impl ProveCommitConfig {
             None => BigInt::zero(),
             Some(infos) => infos
                 .iter()
-                .filter(|info| info.allocation_id == NO_ALLOCATION_ID)
-                .map(|info| BigInt::from(info.size.0))
-                .reduce(|x, a| x + a)
-                .unwrap_or_default(),
-        }
-    }
-
-    pub fn verified_deal_space(&self, sector: SectorNumber) -> BigInt {
-        match self.activated_deals.get(&sector) {
-            None => BigInt::zero(),
-            Some(infos) => infos
-                .iter()
-                .filter(|info| info.allocation_id != NO_ALLOCATION_ID)
                 .map(|info| BigInt::from(info.size.0))
                 .reduce(|x, a| x + a)
                 .unwrap_or_default(),
@@ -3303,7 +3050,7 @@ pub fn sector_commd_from_pieces(pieces: &[Cid]) -> CompactCommD {
 #[allow(dead_code)]
 pub fn make_activation_manifest(
     sector_number: SectorNumber,
-    piece_specs: &[(u64, ActorID, AllocationID, DealID)], // (size, client, allocation, deal)
+    piece_specs: &[(u64, ActorID, u64, DealID)], // (size, client, allocation, deal)
 ) -> SectorActivationManifest {
     let pieces: Vec<PieceActivationManifest> = piece_specs
         .iter()
@@ -3320,7 +3067,7 @@ pub fn make_update_manifest(
     st: &State,
     store: &impl Blockstore,
     sector: SectorNumber,
-    piece_specs: &[(u64, ActorID, AllocationID, DealID)], // (size, client, allocation, deal)
+    piece_specs: &[(u64, ActorID, u64, DealID)], // (size, client, allocation, deal)
 ) -> SectorUpdateManifest {
     let (deadline, partition) = st.find_sector(store, sector).unwrap();
     let new_sealed_cid = make_sector_commr(sector);
@@ -3340,7 +3087,7 @@ pub fn make_piece_manifest(
     seq: usize,
     size: u64,
     alloc_client: ActorID,
-    alloc_id: AllocationID,
+    alloc_id: u64,
     deal: DealID,
 ) -> PieceActivationManifest {
     PieceActivationManifest {
@@ -3366,8 +3113,8 @@ pub fn make_piece_specs_from_configs(
     sector_number: u64,
     deal_ids: &Vec<DealID>,
     prove_cfg: &ProveCommitConfig,
-) -> Vec<(u64, ActorID, AllocationID, DealID)> {
-    static EMPTY_VEC: Vec<ActivatedDeal> = Vec::new();
+) -> Vec<(u64, ActorID, u64, DealID)> {
+    static EMPTY_VEC: Vec<PieceInfo> = Vec::new();
     let configured_deals = prove_cfg.activated_deals.get(&sector_number).unwrap_or(&EMPTY_VEC);
     // The old configuration system had duplicated information between cfg and precommit inputs
     // To ensure passed in configuration is internally consistent check that cfg deals are a subset
@@ -3381,7 +3128,7 @@ pub fn make_piece_specs_from_configs(
             let deal = configured_deals.get(i).unwrap();
             // Configured deals don't specify deal_id use deal_ids configuration info
             // Piece specs don't specify piece cid but deterministically derive it so ignore deal.Cid
-            piece_specs.push((deal.size.0, deal.client, deal.allocation_id, deal_id.clone()));
+            piece_specs.push((deal.size.0, DEFAULT_CLIENT_ID, NO_ALLOCATION_ID, deal_id.clone()));
         } else {
             piece_specs.push((
                 DEFAULT_PIECE_SIZE,
@@ -3393,20 +3140,6 @@ pub fn make_piece_specs_from_configs(
     }
 
     piece_specs
-}
-
-pub fn claims_from_pieces(pieces: &[PieceActivationManifest]) -> Vec<AllocationClaim> {
-    pieces
-        .iter()
-        .filter_map(|p| {
-            p.verified_allocation_key.as_ref().map(|a| AllocationClaim {
-                client: a.client,
-                allocation_id: a.id,
-                data: p.cid,
-                size: p.size,
-            })
-        })
-        .collect()
 }
 
 pub fn notifications_from_pieces(pieces: &[PieceActivationManifest]) -> Vec<PieceChange> {
@@ -3667,6 +3400,8 @@ fn expect_update_power(rt: &MockRuntime, delta: PowerPair) {
 }
 
 // Verifies a sector's deal weights and pledge given the size of unverified and verified data.
+// FIP-0118: all data is treated as unverified; verified_deal_weight is always 0;
+// power is always qa_power_max (10x).
 #[allow(dead_code)]
 pub fn verify_weights(
     rt: &MockRuntime,
@@ -3677,14 +3412,15 @@ pub fn verify_weights(
 ) {
     let s = h.get_sector(rt, sno);
     let duration = s.expiration - s.power_base_epoch;
-    let power =
-        StoragePower::from(h.sector_size as u64) + 9 * StoragePower::from(verified_data_size);
+    // FIP-0118: all sectors get 10x QA power
+    let power = qa_power_max(h.sector_size);
     let pledge = h.initial_pledge_for_power(&rt, &power);
 
     // Deal IDs are deprecated and never set.
     assert!(s.deprecated_deal_ids.is_empty());
-    assert_eq!(DealWeight::from(unverified_data_size) * duration, s.deal_weight);
-    assert_eq!(DealWeight::from(verified_data_size) * duration, s.verified_deal_weight);
+    let total_data_size = unverified_data_size + verified_data_size;
+    assert_eq!(DealWeight::zero(), s.deal_weight);
+    assert_eq!(DealWeight::from(total_data_size) * duration, s.verified_deal_weight);
     assert_eq!(pledge, s.initial_pledge);
 }
 

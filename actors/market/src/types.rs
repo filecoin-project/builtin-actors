@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use super::ext::verifreg::AllocationID;
 use cid::Cid;
 use fil_actors_runtime::Array;
 use fil_actors_runtime::BatchReturn;
@@ -10,14 +9,13 @@ use fvm_ipld_encoding::strict_bytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::ActorID;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{BigInt, bigint_ser};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 
 use crate::Label;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
+use fvm_shared::sector::SectorNumber;
 
 use super::deal::{ClientDealProposal, DealProposal, DealState};
 
@@ -71,83 +69,11 @@ pub struct PublishStorageDealsReturn {
     pub valid_deals: BitField,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct VerifyDealsForActivationParams {
-    /// Deals to verify, grouped by sector.
-    pub sectors: Vec<SectorDeals>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct SectorDeals {
-    pub sector_number: SectorNumber,
-    pub sector_type: RegisteredSealProof,
-    pub sector_expiry: ChainEpoch,
-    pub deal_ids: Vec<DealID>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct VerifyDealsForActivationReturn {
-    // The unsealed CID computed from the deals specified for each sector.
-    // A None indicates no deals were specified.
-    pub unsealed_cids: Vec<Option<Cid>>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct BatchActivateDealsParams {
-    /// Deals to activate, grouped by sector.
-    /// A failed deal activation will cause other deals in the same sector group to also fail,
-    /// but allow other sectors to proceed.
-    pub sectors: Vec<SectorDeals>,
-    /// Requests computation of an unsealed CID for each sector from the provided deals.
-    pub compute_cid: bool,
-}
-
-// Information about a deal that has been activated.
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ActivatedDeal {
-    pub client: ActorID,
-    pub allocation_id: AllocationID, // NO_ALLOCATION_ID for unverified deals.
-    pub data: Cid,
-    pub size: PaddedPieceSize,
-}
-
-// Information about a sector-grouping of deals that have been activated.
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct SectorDealActivation {
-    /// Information about each deal activated.
-    pub activated: Vec<ActivatedDeal>,
-    /// Unsealed CID computed from the deals specified for the sector.
-    /// A None indicates no deals were specified, or the computation was not requested.
-    pub unsealed_cid: Option<Cid>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct BatchActivateDealsResult {
-    /// Status of each sector grouping of deals.
-    pub activation_results: BatchReturn,
-    /// Activation information for the sector groups that were activated.
-    pub activations: Vec<SectorDealActivation>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct DealSpaces {
-    #[serde(with = "bigint_ser")]
-    pub deal_space: BigInt,
-    #[serde(with = "bigint_ser")]
-    pub verified_deal_space: BigInt,
-}
-
 /// A specialization of a array to deals.
 pub type DealArray<'bs, BS> = Array<'bs, DealProposal, BS>;
 
 /// A specialization of a array to deals.
 pub type DealMetaArray<'bs, BS> = Array<'bs, DealState, BS>;
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct SectorDataSpec {
-    pub deal_ids: Vec<DealID>,
-    pub sector_type: RegisteredSealProof,
-}
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]

@@ -16,17 +16,12 @@ use fvm_shared::{
     deal::DealID,
     econ::TokenAmount,
 };
-use integer_encoding::VarInt;
 use multihash_codetable::{Code, MultihashDigest};
 use num_traits::Zero;
 
-use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::{
-    ActorError, AsActorError, MessageAccumulator, make_map_with_root_and_bitwidth,
-};
+use fil_actors_runtime::{ActorError, AsActorError, MessageAccumulator};
 
-use crate::ext::verifreg::AllocationID;
 use crate::{
     DEAL_OPS_BY_EPOCH_CONFIG, DealArray, DealMetaArray, DealOpsByEpoch, DealProposal,
     PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, PendingProposalsSet, ProviderSectorsMap,
@@ -64,7 +59,6 @@ impl Default for DealSummary {
 pub struct StateSummary {
     pub deals: BTreeMap<DealID, DealSummary>,
     pub provider_sector_deals: HashMap<ActorID, HashMap<SectorNumber, Vec<DealID>>>,
-    pub alloc_id_to_deal_id: BTreeMap<u64, DealID>,
     pub pending_proposal_count: u64,
     pub deal_state_count: u64,
     pub lock_table_count: u64,
@@ -158,28 +152,6 @@ pub fn check_state_invariants<BS: Blockstore>(
         ),
     );
 
-    let mut pending_allocations = BTreeMap::<DealID, AllocationID>::new();
-    let mut alloc_id_to_deal_id = BTreeMap::<AllocationID, DealID>::new();
-    match make_map_with_root_and_bitwidth(&state.pending_deal_allocation_ids, store, HAMT_BIT_WIDTH)
-    {
-        Ok(pending_allocations_hamt) => {
-            let ret = pending_allocations_hamt.for_each(|key, allocation_id| {
-                let deal_id: u64 = u64::decode_var(key.0.as_slice()).unwrap().0;
-
-                acc.require(
-                    proposal_stats.contains_key(&deal_id),
-                    format!("pending deal allocation {} not found in proposals", deal_id),
-                );
-
-                pending_allocations.insert(deal_id, *allocation_id);
-                alloc_id_to_deal_id.insert(*allocation_id, deal_id);
-                Ok(())
-            });
-            acc.require_no_error(ret, "error iterating pending allocations");
-        }
-        Err(e) => acc.add(format!("error loading pending allocations: {e}")),
-    };
-
     // deal states
     let mut deal_state_count = 0;
     match DealMetaArray::load(&state.states, store) {
@@ -215,8 +187,6 @@ pub fn check_state_invariants<BS: Blockstore>(
                 } else {
                     acc.add(format!("no deal proposal for deal state {deal_id}"));
                 }
-                acc.require(!pending_allocations.contains_key(&deal_id), format!("deal {deal_id} has pending allocation"));
-
                 deal_state_count += 1;
                 Ok(())
             });
@@ -401,7 +371,6 @@ pub fn check_state_invariants<BS: Blockstore>(
             lock_table_count,
             deal_op_epoch_count,
             deal_op_count,
-            alloc_id_to_deal_id,
         },
         acc,
     )

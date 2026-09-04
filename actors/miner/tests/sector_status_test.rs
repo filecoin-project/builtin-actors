@@ -52,7 +52,8 @@ fn generate_sector_location_terminated_not_compacted() {
 
     let mut sectors = BitField::new();
     sectors.set(sector_number);
-    let expected_fee = TokenAmount::from_atto(3238952636718750000u128); // 3.23895263671875FIL
+    // FIP-0118: 10x QA power -> 10x termination fee
+    let expected_fee = TokenAmount::from_atto(32389526367187500000u128); // 32.3895263671875FIL
     let (_, _) = h.terminate_sectors(&rt, &sectors, expected_fee);
 
     let (status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
@@ -159,7 +160,8 @@ fn validate_detects_swapped_sector_number() {
     // Terminate sector 2 to create different status
     let mut terminate_bf = BitField::new();
     terminate_bf.set(sector2);
-    let expected_fee = TokenAmount::from_atto(3238952636718750000u128);
+    // FIP-0118: 10x QA power -> 10x termination fee
+    let expected_fee = TokenAmount::from_atto(32389526367187500000u128);
     let (_, _) = h.terminate_sectors(&rt, &terminate_bf, expected_fee);
 
     // Test 9a: Try to validate sector 2 with sector 1's status
@@ -303,7 +305,8 @@ fn validate_dead_sector_as_live_or_faulty_returns_false() {
 
     let mut sectors = BitField::new();
     sectors.set(sector_number);
-    let expected_fee = TokenAmount::from_atto(3238952636718750000u128); // 3.23895263671875FIL
+    // FIP-0118: 10x QA power -> 10x termination fee
+    let expected_fee = TokenAmount::from_atto(32389526367187500000u128); // 32.3895263671875FIL
     let (_, _) = h.terminate_sectors(&rt, &sectors, expected_fee);
 
     let (_status, aux_data) = h.generate_sector_location(&rt, sector_number).unwrap();
@@ -425,7 +428,8 @@ fn get_nominal_sector_expiration_after_early_termination() {
 
     let mut sectors = BitField::new();
     sectors.set(sector_number);
-    let expected_fee = TokenAmount::from_atto(3238952636718750000u128); // 3.23895263671875FIL
+    // FIP-0118: 10x QA power -> 10x termination fee
+    let expected_fee = TokenAmount::from_atto(32389526367187500000u128); // 32.3895263671875FIL
     let (_, _) = h.terminate_sectors(&rt, &sectors, expected_fee);
 
     // Sector is terminated but still in AMT — returns the nominal (stale) value

@@ -22,7 +22,6 @@ use fil_actors_runtime::{
 };
 
 use crate::balance_table::BalanceTable;
-use crate::ext::verifreg::AllocationID;
 
 use super::policy::*;
 use super::types::*;
@@ -75,10 +74,6 @@ pub struct State {
     /// Total storage fee that is locked in escrow -> unlocked when payments are made
     pub total_client_storage_fee: TokenAmount,
 
-    /// Verified registry allocation IDs for deals that are not yet activated.
-    // HAMT[DealID]AllocationID
-    pub pending_deal_allocation_ids: Cid,
-
     /// Maps providers to their sector IDs to deal IDs.
     /// This supports finding affected deals when a sector is terminated early
     /// or has data replaced.
@@ -94,10 +89,6 @@ pub const PENDING_PROPOSALS_CONFIG: Config = DEFAULT_HAMT_CONFIG;
 pub type DealOpsByEpoch<BS> = SetMultimap<BS, ChainEpoch, DealID>;
 pub const DEAL_OPS_BY_EPOCH_CONFIG: SetMultimapConfig =
     SetMultimapConfig { outer: DEFAULT_HAMT_CONFIG, inner: DEFAULT_HAMT_CONFIG };
-
-pub type PendingDealAllocationsMap<BS> = Map2<BS, DealID, AllocationID>;
-pub const PENDING_ALLOCATIONS_CONFIG: Config =
-    Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
 pub type ProviderSectorsMap<BS> = Map2<BS, ActorID, Cid>;
 pub const PROVIDER_SECTORS_CONFIG: Config =
@@ -127,13 +118,6 @@ impl State {
         let empty_deal_ops =
             DealOpsByEpoch::empty(store, DEAL_OPS_BY_EPOCH_CONFIG, "deal ops").flush()?;
 
-        let empty_pending_deal_allocation_map = PendingDealAllocationsMap::empty(
-            store,
-            PENDING_ALLOCATIONS_CONFIG,
-            "pending deal allocations",
-        )
-        .flush()?;
-
         let empty_sector_deals_hamt =
             ProviderSectorsMap::empty(store, PROVIDER_SECTORS_CONFIG, "sector deals").flush()?;
 
@@ -150,7 +134,6 @@ impl State {
             total_client_locked_collateral: TokenAmount::default(),
             total_provider_locked_collateral: TokenAmount::default(),
             total_client_storage_fee: TokenAmount::default(),
-            pending_deal_allocation_ids: empty_pending_deal_allocation_map,
             provider_sectors: empty_sector_deals_hamt,
         })
     }
@@ -302,87 +285,6 @@ impl State {
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal proposals")?;
 
         Ok(())
-    }
-
-    pub fn load_pending_deal_allocation_ids<BS>(
-        &mut self,
-        store: BS,
-    ) -> Result<PendingDealAllocationsMap<BS>, ActorError>
-    where
-        BS: Blockstore,
-    {
-        PendingDealAllocationsMap::load(
-            store,
-            &self.pending_deal_allocation_ids,
-            PENDING_ALLOCATIONS_CONFIG,
-            "pending deal allocations",
-        )
-    }
-
-    pub fn save_pending_deal_allocation_ids<BS>(
-        &mut self,
-        pending_deal_allocation_ids: &mut PendingDealAllocationsMap<BS>,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-    {
-        self.pending_deal_allocation_ids = pending_deal_allocation_ids.flush()?;
-        Ok(())
-    }
-
-    pub fn put_pending_deal_allocation_ids<BS>(
-        &mut self,
-        store: &BS,
-        new_pending_deal_allocation_ids: &[(DealID, AllocationID)],
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-    {
-        let mut pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
-        new_pending_deal_allocation_ids.iter().try_for_each(
-            |(deal_id, allocation_id)| -> Result<(), ActorError> {
-                pending_deal_allocation_ids.set(deal_id, *allocation_id)?;
-                Ok(())
-            },
-        )?;
-        self.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
-        Ok(())
-    }
-
-    pub fn get_pending_deal_allocation_ids<BS>(
-        &mut self,
-        store: &BS,
-        deal_id_keys: &[DealID],
-    ) -> Result<Vec<AllocationID>, ActorError>
-    where
-        BS: Blockstore,
-    {
-        let pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
-
-        let mut allocation_ids: Vec<AllocationID> = vec![];
-        deal_id_keys.iter().try_for_each(|deal_id| -> Result<(), ActorError> {
-            let allocation_id = pending_deal_allocation_ids.get(&deal_id.clone())?;
-            allocation_ids.push(
-                *allocation_id.ok_or(ActorError::not_found("no such deal proposal".to_string()))?,
-            );
-            Ok(())
-        })?;
-
-        Ok(allocation_ids)
-    }
-
-    pub fn remove_pending_deal_allocation_id<BS>(
-        &mut self,
-        store: &BS,
-        deal_id: DealID,
-    ) -> Result<Option<AllocationID>, ActorError>
-    where
-        BS: Blockstore,
-    {
-        let mut pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
-        let maybe_alloc_id = pending_deal_allocation_ids.delete(&deal_id)?;
-        self.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
-        Ok(maybe_alloc_id)
     }
 
     pub fn load_deal_ops<BS>(
@@ -787,9 +689,6 @@ impl State {
                     )
                 })?;
 
-                // delete pending deal allocation id (if present)
-                self.remove_pending_deal_allocation_id(store, deal_id)?;
-
                 Ok(LoadDealState::ProposalExpired(slashed))
             }
         }
@@ -1028,24 +927,6 @@ impl State {
         let ret = self.next_id;
         self.next_id += 1;
         ret
-    }
-
-    // Return true when the funds in escrow for the input address can cover an additional lockup of amountToLock
-    pub fn balance_covered<BS>(
-        &self,
-        store: &BS,
-        addr: Address,
-        amount_to_lock: &TokenAmount,
-    ) -> Result<bool, ActorError>
-    where
-        BS: Blockstore,
-    {
-        let escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
-        let locked_table = BalanceTable::from_root(store, &self.locked_table, "locked table")?;
-
-        let escrow_balance = escrow_table.get(&addr)?;
-        let prev_locked = locked_table.get(&addr)?;
-        Ok((prev_locked + amount_to_lock) <= escrow_balance)
     }
 
     fn maybe_lock_balance<BS>(

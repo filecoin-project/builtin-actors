@@ -15,6 +15,7 @@ use fil_actors_runtime::{
     test_utils::{ACCOUNT_ACTOR_CODE_ID, MockRuntime, expect_abort_contains_message},
 };
 use fvm_ipld_bitfield::BitField;
+use fvm_shared::piece::PieceInfo;
 use fvm_shared::{
     METHOD_SEND, MethodNum, bigint::BigInt, econ::TokenAmount, error::ExitCode,
     sector::StoragePower,
@@ -23,7 +24,6 @@ use std::collections::HashMap;
 
 mod util;
 
-use fil_actor_market::{ActivatedDeal, NO_ALLOCATION_ID};
 use fil_actor_miner::ext::market::{
     ON_MINER_SECTORS_TERMINATE_METHOD, OnMinerSectorsTerminateParams,
 };
@@ -33,7 +33,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 use util::*;
 
 fn setup() -> (ActorHarness, MockRuntime) {
@@ -84,11 +84,11 @@ fn removes_sectors_with_correct_accounting() {
             new_expiration,
         }],
     };
-    h.extend_sectors2(&rt, params, HashMap::new()).unwrap();
+    h.extend_sectors2(&rt, params).unwrap();
 
     // update the third sector with no pieces, should not affect the termination fee
     let updates = make_update_manifest(&rt.get_state(), rt.store(), sectors[2].sector_number, &[]); // No pieces
-    let (result, _, _) = h
+    let (result, _) = h
         .prove_replica_updates3_batch(
             &rt,
             &[updates],
@@ -144,31 +144,17 @@ fn removes_sector_with_without_deals() {
             verify_deals_exit: Default::default(),
             claim_allocs_exit: Default::default(),
             activated_deals: HashMap::from_iter(vec![
-                (
-                    1,
-                    vec![ActivatedDeal {
-                        client: 0,
-                        allocation_id: NO_ALLOCATION_ID,
-                        data: Default::default(),
-                        size: PaddedPieceSize(1024),
-                    }],
-                ),
-                (
-                    2,
-                    vec![ActivatedDeal {
-                        client: 0,
-                        allocation_id: 1,
-                        data: Default::default(),
-                        size: PaddedPieceSize(1024),
-                    }],
-                ),
+                (1, vec![PieceInfo { size: PaddedPieceSize(1024), cid: Default::default() }]),
+                (2, vec![PieceInfo { size: PaddedPieceSize(1024), cid: Default::default() }]),
             ]),
         },
     );
     let snos: Vec<SectorNumber> = sectors.iter().map(|s| s.sector_number).collect();
-    assert!(sectors[0].deal_weight.is_zero());
-    assert!(sectors[1].deal_weight.is_positive());
-    assert!(sectors[2].verified_deal_weight.is_positive());
+    // Piece spacetime is recorded in verified_deal_weight; deal_weight stays zero.
+    assert!(sectors[0].verified_deal_weight.is_zero());
+    assert!(!sectors[1].verified_deal_weight.is_zero());
+    assert!(!sectors[2].verified_deal_weight.is_zero());
+    assert!(sectors[2].deal_weight.is_zero());
 
     h.advance_and_submit_posts(&rt, &sectors);
     // Add locked funds to ensure correct fee calculation is used.
@@ -241,12 +227,7 @@ fn owner_cannot_terminate_if_market_fails() {
             claim_allocs_exit: Default::default(),
             activated_deals: HashMap::from_iter(vec![(
                 0,
-                vec![ActivatedDeal {
-                    client: 0,
-                    allocation_id: NO_ALLOCATION_ID,
-                    data: Default::default(),
-                    size: PaddedPieceSize(1024),
-                }],
+                vec![PieceInfo { size: PaddedPieceSize(1024), cid: Default::default() }],
             )]),
         },
     );

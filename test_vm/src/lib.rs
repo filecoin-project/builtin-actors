@@ -32,6 +32,7 @@ use fvm_shared::sector::StoragePower;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{METHOD_SEND, MethodNum};
 use multihash_codetable::Code;
+
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
@@ -45,6 +46,8 @@ mod constants;
 pub use constants::*;
 mod messaging;
 pub use messaging::*;
+/// Test-network SWA identity installed in reward state in place of an activation migration.
+pub const TEST_SWA_ACTOR_ID: u64 = 1001;
 
 /// An in-memory rust-execution VM for testing builtin-actors that yields sensible stack traces and debug info
 pub struct TestVM {
@@ -114,10 +117,20 @@ impl TestVM {
 
         // reward
 
-        let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
+        let mut reward_state = RewardState::new(&store, StoragePower::zero()).unwrap();
+        reward_state.swa_actor = Address::new_id(TEST_SWA_ACTOR_ID);
+        let reward_head = v.put_store(&reward_state);
         v.set_actor(
             &REWARD_ACTOR_ADDR,
             new_actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),
+        );
+
+        // test-network SWA
+        let swa_head =
+            v.put_store(&AccountState { address: Address::new_bls(TEST_SWA_KEY).unwrap() });
+        v.set_actor(
+            &Address::new_id(TEST_SWA_ACTOR_ID),
+            new_actor(*ACCOUNT_ACTOR_CODE_ID, swa_head, 0, TokenAmount::zero(), None),
         );
 
         // cron

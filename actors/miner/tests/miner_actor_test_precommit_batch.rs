@@ -1,9 +1,7 @@
-use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     PreCommitSectorBatchParams, PreCommitSectorParams, State, max_prove_commit_duration,
     pre_commit_deposit_for_power, qa_power_max,
 };
-use fil_actor_power::Method as PowerMethod;
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
@@ -134,15 +132,6 @@ fn assert_simple_batch(
 
 mod miner_actor_precommit_batch {
     use super::*;
-    use fil_actor_market::{
-        SectorDeals, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
-    };
-    use fil_actor_miner::{
-        Actor, CompactCommD, Method, PreCommitSectorBatchParams2,
-        new_deadline_info_from_offset_and_epoch,
-    };
-    use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
 
     #[test]
     fn one_sector() {
@@ -160,27 +149,13 @@ mod miner_actor_precommit_batch {
     }
 
     #[test]
-    fn one_deal() {
+    fn deals_rejected() {
         assert_simple_batch(
-            3,
+            1,
             TokenAmount::zero(),
-            &[DealSpec { ids: vec![1], commd: Some(make_piece_cid("1".as_bytes())) }],
-            ExitCode::OK,
-            "",
-        );
-    }
-    #[test]
-    fn many_deals() {
-        assert_simple_batch(
-            3,
-            TokenAmount::zero(),
-            &[
-                DealSpec { ids: vec![1], commd: Some(make_piece_cid("1".as_bytes())) },
-                DealSpec { ids: vec![2], commd: Some(make_piece_cid("2".as_bytes())) },
-                DealSpec { ids: vec![1, 2], commd: Some(make_piece_cid("1|2".as_bytes())) },
-            ],
-            ExitCode::OK,
-            "",
+            &[DealSpec { ids: vec![1], commd: None }],
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "pre-committed deals are no longer supported",
         );
     }
 
@@ -281,92 +256,5 @@ mod miner_actor_precommit_batch {
             ),
         );
         rt.reset();
-    }
-
-    #[test]
-    fn mismatch_of_commd() {
-        let period_offset = ChainEpoch::from(100);
-
-        let h =
-            ActorHarness::new_with_options(HarnessOptions { proving_period_offset: period_offset });
-        let rt = h.new_runtime();
-
-        rt.set_balance(BIG_BALANCE.clone());
-        rt.set_received(TokenAmount::zero());
-
-        let precommit_epoch = period_offset + 1;
-        rt.set_epoch(precommit_epoch);
-        h.construct_and_verify(&rt);
-        let dl_info = h.deadline(&rt);
-
-        let sector_expiration =
-            dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
-        let sector = h.make_pre_commit_params_v2(
-            100,
-            precommit_epoch - 1,
-            sector_expiration,
-            vec![1],
-            CompactCommD::new(Some(make_piece_cid(&[1]))),
-        );
-        let sectors = vec![sector];
-        {
-            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
-            rt.expect_validate_caller_addr(h.caller_addrs());
-
-            h.expect_query_network_info(&rt);
-            let mut sector_deals = Vec::new();
-            let mut sector_deal_data = Vec::new();
-            for sector in &sectors {
-                sector_deals.push(SectorDeals {
-                    sector_number: sector.sector_number,
-                    sector_type: sector.seal_proof,
-                    sector_expiry: sector.expiration,
-                    deal_ids: sector.deal_ids.clone(),
-                });
-
-                //mismatch here
-                sector_deal_data.push(Some(make_piece_cid(&[2])));
-            }
-
-            let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
-            let vdreturn = VerifyDealsForActivationReturn { unsealed_cids: sector_deal_data };
-            rt.expect_send_simple(
-                STORAGE_MARKET_ACTOR_ADDR,
-                MarketMethod::VerifyDealsForActivation as u64,
-                IpldBlock::serialize_cbor(&vdparams).unwrap(),
-                TokenAmount::zero(),
-                IpldBlock::serialize_cbor(&vdreturn).unwrap(),
-                ExitCode::OK,
-            );
-
-            let state = h.get_state(&rt);
-
-            let dlinfo = new_deadline_info_from_offset_and_epoch(
-                &rt.policy,
-                state.proving_period_start,
-                *rt.epoch.borrow(),
-            );
-            let cron_params = make_deadline_cron_event_params(dlinfo.last());
-            rt.expect_send_simple(
-                STORAGE_POWER_ACTOR_ADDR,
-                PowerMethod::EnrollCronEvent as u64,
-                IpldBlock::serialize_cbor(&cron_params).unwrap(),
-                TokenAmount::zero(),
-                None,
-                ExitCode::OK,
-            );
-
-            let result = rt.call::<Actor>(
-                Method::PreCommitSectorBatch2 as u64,
-                IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 { sectors }).unwrap(),
-            );
-
-            expect_abort_contains_message(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                "and passed CompactCommD",
-                result,
-            );
-            rt.reset();
-        }
     }
 }

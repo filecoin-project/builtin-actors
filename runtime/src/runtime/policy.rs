@@ -109,10 +109,6 @@ pub struct Policy {
     /// and sector.ActivationEpoch+sealProof.SectorMaximumLifetime()
     pub max_sector_expiration_extension: i64,
 
-    /// Ratio of sector size to maximum deals per sector.
-    /// The maximum number of deals is the sector size divided by this number.
-    pub deal_limit_denominator: u64,
-
     /// Number of epochs after a consensus fault for which a miner is ineligible
     /// for permissioned actor methods and winning block elections.
     pub consensus_fault_ineligibility_duration: ChainEpoch,
@@ -143,21 +139,6 @@ pub struct Policy {
     pub daily_fee_block_reward_cap_denom: i64,
 
     //
-    // --- verifreg policy ---
-    //
-    /// Minimum verified deal size
-    pub minimum_verified_allocation_size: StoragePower,
-    /// Minimum term for a verified data allocation (epochs)
-    pub minimum_verified_allocation_term: i64,
-    /// Maximum term for a verified data allocaion (epochs)
-    pub maximum_verified_allocation_term: i64,
-    /// Maximum time a verified allocation can be active without being claimed (epochs).
-    /// Supports recovery of erroneous allocations and prevents indefinite squatting on datacap.
-    pub maximum_verified_allocation_expiration: i64,
-    // Period of time at the end of a sector's life during which claims can be dropped
-    pub end_of_life_claim_drop_period: ChainEpoch,
-
-    //
     //  --- market policy ---
     //
     /// The number of blocks between payouts for deals
@@ -170,10 +151,6 @@ pub struct Policy {
     /// Denominator of the percentage of normalized cirulating
     /// supply that must be covered by provider collateral
     pub prov_collateral_percent_supply_denom: i64,
-
-    /// The default duration after a verified deal's nominal term to set for the corresponding
-    /// allocation's maximum term.
-    pub market_default_allocation_term_buffer: i64,
 
     //
     // --- power policy ---
@@ -216,7 +193,6 @@ impl Default for Policy {
             worker_key_change_delay: policy_constants::WORKER_KEY_CHANGE_DELAY,
             min_sector_expiration: policy_constants::MIN_SECTOR_EXPIRATION,
             max_sector_expiration_extension: policy_constants::MAX_SECTOR_EXPIRATION_EXTENSION,
-            deal_limit_denominator: policy_constants::DEAL_LIMIT_DENOMINATOR,
             consensus_fault_ineligibility_duration:
                 policy_constants::CONSENSUS_FAULT_INELIGIBILITY_DURATION,
             new_sectors_per_period_max: policy_constants::NEW_SECTORS_PER_PERIOD_MAX,
@@ -233,22 +209,11 @@ impl Default for Policy {
 
             valid_post_proof_type: ProofSet::default_post_proofs(),
             valid_pre_commit_proof_type: ProofSet::default_precommit_seal_proofs(),
-            minimum_verified_allocation_size: StoragePower::from_i32(
-                policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE,
-            )
-            .unwrap(),
-            minimum_verified_allocation_term: policy_constants::MINIMUM_VERIFIED_ALLOCATION_TERM,
-            maximum_verified_allocation_term: policy_constants::MAXIMUM_VERIFIED_ALLOCATION_TERM,
-            maximum_verified_allocation_expiration:
-                policy_constants::MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
-            end_of_life_claim_drop_period: policy_constants::END_OF_LIFE_CLAIM_DROP_PERIOD,
             deal_updates_interval: policy_constants::DEAL_UPDATES_INTERVAL,
             prov_collateral_percent_supply_num:
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
             prov_collateral_percent_supply_denom:
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_DENOM,
-            market_default_allocation_term_buffer:
-                policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
 
             minimum_consensus_power: StoragePower::from(policy_constants::MINIMUM_CONSENSUS_POWER),
         }
@@ -353,9 +318,6 @@ pub mod policy_constants {
 
     pub const MAX_SECTOR_EXPIRATION_EXTENSION: i64 = 1278 * EPOCHS_IN_DAY;
 
-    /// A value (2^27) limits 32GiB sectors to 256 deals and 64GiB sectors to 512.
-    pub const DEAL_LIMIT_DENOMINATOR: u64 = 134217728;
-
     pub const CONSENSUS_FAULT_INELIGIBILITY_DURATION: ChainEpoch = CHAIN_FINALITY;
 
     pub const NEW_SECTORS_PER_PERIOD_MAX: usize = 128 << 10;
@@ -387,7 +349,6 @@ pub mod policy_constants {
     pub const MINIMUM_VERIFIED_ALLOCATION_TERM: i64 = 180 * EPOCHS_IN_DAY;
     pub const MAXIMUM_VERIFIED_ALLOCATION_TERM: i64 = 5 * EPOCHS_IN_YEAR;
     pub const MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION: i64 = 60 * EPOCHS_IN_DAY;
-    pub const END_OF_LIFE_CLAIM_DROP_PERIOD: ChainEpoch = 30 * EPOCHS_IN_DAY;
 
     //
     // --- market policy ---

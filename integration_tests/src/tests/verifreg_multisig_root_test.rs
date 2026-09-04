@@ -45,6 +45,8 @@ fn create_msig(v: &dyn VM, signers: &[Address], threshold: u64) -> Address {
     msig_ctor_ret.id_address
 }
 
+/// FIP-0118: AddVerifier is now deprecated and returns USR_FORBIDDEN.
+/// This test verifies that even with a valid multisig root key, AddVerifier fails.
 #[vm_test]
 pub fn test_multisig_as_verifreg_root_addverifier(v: &dyn VM) {
     // Create regular accounts for signers
@@ -55,7 +57,6 @@ pub fn test_multisig_as_verifreg_root_addverifier(v: &dyn VM) {
     let verifier_to_add = addrs[3];
 
     // Create a multisig with Alice and Bob as signers, threshold 2
-    // This multisig will be the f080 root key holder
     let root_multisig_addr = create_msig(v, &[alice, bob], 2);
 
     // Update the existing verifreg actor's root key to our multisig
@@ -67,7 +68,7 @@ pub fn test_multisig_as_verifreg_root_addverifier(v: &dyn VM) {
     let updated_verifreg_st: VerifrregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     assert_eq!(root_multisig_addr, updated_verifreg_st.root_key);
 
-    // Define the verifier allowance (must be >= minimum_verified_allocation_size)
+    // Define the verifier allowance
     let verifier_allowance = DataCap::from(1048576_u64); // 1 MiB
 
     // Prepare the addverifier call parameters
@@ -91,7 +92,7 @@ pub fn test_multisig_as_verifreg_root_addverifier(v: &dyn VM) {
         Some(propose_addverifier_params),
     );
 
-    // Step 2: Bob approves the proposal (this should execute the addverifier call)
+    // Step 2: Bob approves the proposal (this executes the addverifier call, which now fails)
     let approve_params = TxnIDParams {
         id: fil_actor_multisig::TxnID(0),
         proposal_hash: vec![], // hash optional
@@ -106,17 +107,20 @@ pub fn test_multisig_as_verifreg_root_addverifier(v: &dyn VM) {
         Some(approve_params),
     );
 
-    // Verify that the verifier was successfully added to the verifreg actor
-    // We can verify this by checking the verifreg state for the verifier
+    // FIP-0118: Verify that the verifier was NOT added (AddVerifier returns USR_FORBIDDEN)
     let final_verifreg_st: VerifrregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
     let verifier_cap = final_verifreg_st.get_verifier_cap(&store, &verifier_to_add).unwrap();
-    assert!(verifier_cap.is_some(), "Verifier should have been added");
-    assert_eq!(verifier_allowance, verifier_cap.unwrap(), "Verifier allowance should match");
+    assert!(
+        verifier_cap.is_none(),
+        "Verifier should NOT have been added (AddVerifier is deprecated)"
+    );
 
     assert_invariants(v, &Policy::default(), None);
 }
 
+/// FIP-0118: AddVerifier is now deprecated. Even with a threshold-3 multisig root,
+/// AddVerifier fails because the method returns USR_FORBIDDEN.
 #[vm_test]
 pub fn test_multisig_as_verifreg_root_addverifier_fails_without_threshold(v: &dyn VM) {
     // Create regular accounts for signers
@@ -127,7 +131,6 @@ pub fn test_multisig_as_verifreg_root_addverifier_fails_without_threshold(v: &dy
     let verifier_to_add = addrs[3];
 
     // Create a multisig with Alice, Bob, and Charlie as signers, threshold 3
-    // This requires all three to approve
     let root_multisig_addr = create_msig(v, &[alice, bob, charlie], 3);
 
     // Update the existing verifreg actor's root key to our multisig
@@ -183,7 +186,7 @@ pub fn test_multisig_as_verifreg_root_addverifier_fails_without_threshold(v: &dy
         "Verifier should NOT have been added without meeting threshold"
     );
 
-    // Step 3: Charlie approves the proposal (now threshold is met, should execute)
+    // Step 3: Charlie approves the proposal (now threshold is met, call executes but fails)
     apply_ok(
         v,
         &charlie,
@@ -193,14 +196,14 @@ pub fn test_multisig_as_verifreg_root_addverifier_fails_without_threshold(v: &dy
         Some(approve_params),
     );
 
-    // Now verify that the verifier was successfully added
+    // FIP-0118: Verify that the verifier was NOT added even after threshold met
+    // (AddVerifier returns USR_FORBIDDEN)
     let final_verifreg_st: VerifrregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let final_verifier_cap = final_verifreg_st.get_verifier_cap(&store, &verifier_to_add).unwrap();
     assert!(
-        final_verifier_cap.is_some(),
-        "Verifier should have been added after meeting threshold"
+        final_verifier_cap.is_none(),
+        "Verifier should NOT have been added (AddVerifier is deprecated)"
     );
-    assert_eq!(verifier_allowance, final_verifier_cap.unwrap(), "Verifier allowance should match");
 
     assert_invariants(v, &Policy::default(), None);
 }

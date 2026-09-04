@@ -1,5 +1,5 @@
 use fil_actors_integration_tests::tests::{
-    batch_onboarding_deals_test, pre_commit_requires_commd_test,
+    batch_onboarding_deals_test, pre_commit_rejects_deal_ids_test,
 };
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
@@ -12,8 +12,8 @@ fn batch_onboarding_deals() {
 }
 
 #[test]
-fn pre_commit_requires_commd() {
+fn pre_commit_rejects_deal_ids() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
-    pre_commit_requires_commd_test(&v);
+    pre_commit_rejects_deal_ids_test(&v);
 }

@@ -1,14 +1,14 @@
+use fvm_shared::piece::PieceInfo;
 use std::collections::HashMap;
 use std::ops::Neg;
 
 use num_traits::Signed;
 
-use fil_actor_market::{ActivatedDeal, NO_ALLOCATION_ID};
 use fil_actor_miner::{
     Actor, ApplyRewardParams, DeadlineInfo, Method, PoStPartition, SectorOnChainInfo,
     daily_fee_for_sectors, daily_proof_fee, expected_reward_for_power,
     pledge_penalty_for_continued_fault, pledge_penalty_for_termination, power_for_sectors,
-    qa_power_for_sector,
+    qa_power_for_sector, qa_power_max,
 };
 use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::test_utils::{MockRuntime, REWARD_ACTOR_CODE_ID};
@@ -19,6 +19,7 @@ use fvm_shared::METHOD_SEND;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
 
 use test_case::test_case;
@@ -41,17 +42,25 @@ fn fee_paid_at_deadline() {
     let daily_fee = daily_fee_for_sectors(&one_sector);
 
     {
+        // FIP-0118 puts every sector at 10x QAP. The metric is per byte of QAP, so the
+        // reference scales by 10, and so does the gap left by its rounding: the tolerance
+        // scales with it rather than being widened on its own.
+        let qap_factor = 10;
+        let reference_fee = reference_fee * qap_factor;
         // sanity check that we get within a reasonable distance from the reference amount using our
         // per-byte multiplier (we expect to round under the reference amount)
         let fee_ref_diff = reference_fee.atto() - daily_fee.atto();
-        // should be within 1/100th of a nanoFIL of the reference amount
-        let fee_ref_diff_tolerance = TokenAmount::from_nano(1).div_floor(100);
+        // should be within 1/100th of a nanoFIL of the reference amount, at 1x QAP
+        let fee_ref_diff_tolerance = TokenAmount::from_nano(1).div_floor(100) * qap_factor;
         assert!(
             fee_ref_diff.is_positive() && fee_ref_diff.abs() <= *fee_ref_diff_tolerance.atto(),
             "daily_fee: {} !≈ reference amount ({})",
             daily_fee.atto(),
             reference_fee.atto()
         );
+        // Shadow the approximate check with the exact value the policy ratio gives:
+        // floor(161817 * CS * qap / 10^30).
+        assert_eq!(TokenAmount::from_atto(38_736_448_821_607_u64), daily_fee);
     }
 
     // plenty of funds available to pay fees
@@ -314,14 +323,14 @@ fn test_fee_capped_by_reward(capped_upfront: bool, num_sectors: usize) {
 }
 
 #[test]
-fn fees_proportional_to_qap() {
+fn fee_independent_of_deal_content() {
     let (mut h, rt) = setup();
 
     let sectors = h.commit_and_prove_sectors_with_cfgs(
         &rt,
-        5,
+        3,
         DEFAULT_SECTOR_EXPIRATION,
-        vec![vec![], vec![1], vec![2], vec![3], vec![4]],
+        vec![vec![], vec![1], vec![2]],
         true,
         ProveCommitConfig {
             verify_deals_exit: Default::default(),
@@ -329,64 +338,57 @@ fn fees_proportional_to_qap() {
             activated_deals: HashMap::from_iter(vec![
                 (
                     1,
-                    vec![ActivatedDeal {
-                        client: 0,
-                        allocation_id: NO_ALLOCATION_ID,
-                        data: Default::default(),
+                    vec![PieceInfo {
                         size: PaddedPieceSize(h.sector_size as u64),
+                        cid: Default::default(),
                     }],
                 ),
                 (
                     2,
-                    vec![ActivatedDeal {
-                        client: 0,
-                        allocation_id: NO_ALLOCATION_ID,
-                        data: Default::default(),
+                    vec![PieceInfo {
                         size: PaddedPieceSize(h.sector_size as u64 / 2),
-                    }],
-                ),
-                (
-                    3,
-                    vec![ActivatedDeal {
-                        client: 0,
-                        allocation_id: 1,
-                        data: Default::default(),
-                        size: PaddedPieceSize(h.sector_size as u64),
-                    }],
-                ),
-                (
-                    4,
-                    vec![ActivatedDeal {
-                        client: 0,
-                        allocation_id: 2,
-                        data: Default::default(),
-                        size: PaddedPieceSize(h.sector_size as u64 / 2),
+                        cid: Default::default(),
                     }],
                 ),
             ]),
         },
     );
 
-    // for a reference we'll calculate the fee for a fully verified sector and
-    // divide as required
-    let full_verified_fee = daily_proof_fee(
-        &rt.policy,
-        &rt.circulating_supply.borrow(),
-        &BigInt::from(h.sector_size as u64 * 10),
-    );
+    // Every sector reaches 10x through FULL_QA_POWER, so an empty sector, a full one and a
+    // half-full one are all charged alike. Before FIP-0118 these were 1x, 1x and 1x-to-10x.
+    let expected =
+        daily_proof_fee(&rt.policy, &rt.circulating_supply.borrow(), &qa_power_max(h.sector_size));
+    assert_eq!(expected, sectors[0].daily_fee, "no deals");
+    assert_eq!(expected, sectors[1].daily_fee, "full piece");
+    assert_eq!(expected, sectors[2].daily_fee, "half piece");
+}
 
-    // no deals
-    assert_eq!(full_verified_fee.div_floor(10), sectors[0].daily_fee);
-    // deal, unverified
-    assert_eq!(full_verified_fee.div_floor(10), sectors[1].daily_fee);
-    // deal, half, unverified
-    assert_eq!(full_verified_fee.div_floor(10), sectors[2].daily_fee);
-    // deal, verified
-    assert_eq!(full_verified_fee.clone(), sectors[3].daily_fee);
-    // deal, half, verified
+#[test]
+fn fees_proportional_to_qap() {
+    // QAP no longer varies with deal content, but it still varies with sector size, so the
+    // fee must scale with it. 64GiB is twice 32GiB, so its fee should be twice as large.
+    let fee_for = |proof_type| {
+        let mut h = ActorHarness::new(PERIOD_OFFSET);
+        h.set_proof_type(proof_type);
+        let rt = h.new_runtime();
+        h.construct_and_verify(&rt);
+        rt.set_balance(BIG_BALANCE.clone());
+        let sectors = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+        (h.sector_size, daily_fee_for_sectors(&sectors))
+    };
+
+    let (small_size, small_fee) = fee_for(RegisteredSealProof::StackedDRG32GiBV1P1);
+    let (large_size, large_fee) = fee_for(RegisteredSealProof::StackedDRG64GiBV1P1);
+
+    assert_eq!(large_size as u64, small_size as u64 * 2);
+    // Both fees are floored independently, so doubling the smaller can land one atto short.
+    let doubled: BigInt = small_fee.atto() * 2;
+    let gap: BigInt = large_fee.atto() - &doubled;
     assert!(
-        ((full_verified_fee.clone() * 11).div_floor(20) - &sectors[4].daily_fee).atto().abs()
-            <= BigInt::from(1)
+        gap.abs() <= BigInt::from(1),
+        "fee should scale with sector size: {} vs 2 x {}",
+        large_fee.atto(),
+        small_fee.atto()
     );
 }
 

@@ -27,10 +27,14 @@ lazy_static! {
     pub static ref INIT_BASELINE_POWER: StoragePower =
     ((BASELINE_INITIAL_VALUE.clone() << (2*PRECISION)) / &*BASELINE_EXPONENT) >> PRECISION;
 
-    /// 330M for mainnet
-    pub(super) static ref SIMPLE_TOTAL: TokenAmount = TokenAmount::from_whole(330_000_000);
-    /// 770M for mainnet
-    pub(super) static ref BASELINE_TOTAL: TokenAmount = TokenAmount::from_whole(770_000_000);
+    /// 330M FIL allocated to simple minting.
+    pub static ref SIMPLE_TOTAL: TokenAmount = TokenAmount::from_whole(330_000_000);
+    /// Mainnet's baseline allocation after the actors-v2 baseline migration.
+    pub static ref BASELINE_TOTAL: TokenAmount =
+        TokenAmount::from_atto(768335872210768889362796814u128);
+    /// Nominal storage-mining allocation credited to the reward actor.
+    pub static ref STORAGE_MINING_ALLOCATION: TokenAmount =
+        TokenAmount::from_whole(1_100_000_000);
     /// expLamSubOne = e^lambda - 1
     /// for Q.128: int(expLamSubOne * 2^128)
     static ref EXP_LAM_SUB_ONE: BigInt = BigInt::from(37396273494747879394193016954629u128);
@@ -72,6 +76,14 @@ pub(crate) fn compute_r_theta(
 /// Computes a reward for all expected leaders when effective network time changes
 /// from prevTheta to currTheta. Inputs are in Q.128 format
 pub(crate) fn compute_reward(
+    epoch: ChainEpoch,
+    prev_theta: BigInt,
+    curr_theta: BigInt,
+) -> TokenAmount {
+    compute_reward_with_totals(epoch, prev_theta, curr_theta, &SIMPLE_TOTAL, &BASELINE_TOTAL)
+}
+
+fn compute_reward_with_totals(
     epoch: ChainEpoch,
     prev_theta: BigInt,
     curr_theta: BigInt,
@@ -168,26 +180,27 @@ mod tests {
     fn test_baseline_reward() {
         let step = BigInt::from(5000_i64).shl(u128::BITS) - BigInt::from(77_777_777_777_i64); // offset from full integers
         let delta = BigInt::from(1_i64).shl(u128::BITS) - BigInt::from(33_333_333_333_i64); // offset from full integers
+        let legacy_baseline_total = TokenAmount::from_whole(770_000_000);
 
         let mut prev_theta = BigInt::from(0i64);
         let mut theta = delta;
 
         let mut b = String::from("t0, t1, y\n");
-        let simple = compute_reward(
+        let simple = compute_reward_with_totals(
             0,
             BigInt::from(0i64),
             BigInt::from(0i64),
             &SIMPLE_TOTAL,
-            &BASELINE_TOTAL,
+            &legacy_baseline_total,
         );
 
         for _ in 0..512 {
-            let mut reward = compute_reward(
+            let mut reward = compute_reward_with_totals(
                 0,
                 prev_theta.clone(),
                 theta.clone(),
                 &SIMPLE_TOTAL,
-                &BASELINE_TOTAL,
+                &legacy_baseline_total,
             );
             reward -= &simple;
 
@@ -205,12 +218,62 @@ mod tests {
             theta += &step;
         }
 
-        // compare test output to golden file used for golang tests; file originally located at filecoin-project/specs-actors/actors/builtin/reward/testdata/TestBaselineReward.golden (current link: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/testdata/TestBaselineReward.golden)
+        // These original Go vectors use the nominal 330M/770M allocations. Production uses the
+        // mainnet value captured after the actors-v2/NV4 baseline migration; sampled below.
         let filename = "testdata/TestBaselineReward.golden";
         let golden_contents =
             fs::read_to_string(filename).expect("Something went wrong reading the file");
 
         assert_eq!(golden_contents, b);
+    }
+
+    #[test]
+    fn test_canonical_baseline_reward_samples() {
+        // Sparse counterparts to the indexed rows in TestBaselineReward.golden, using the
+        // production baseline allocation. Decimal strings copy directly into Go big.Int tests.
+        let samples = [
+            (0, "0", "340282366920938463463374607398434878123", "84438390138547108892"),
+            (
+                1,
+                "1701411834604692317316873037158763279502223",
+                "1701752116971613255780336411766161714380346",
+                "84392004932198966090",
+            ),
+            (
+                31,
+                "52743766872745461836823064151921661664568913",
+                "52744107155112382775286527526529060099447036",
+                "83012234798258392301",
+            ),
+            (
+                127,
+                "216079302994795924299242875719162936496782321",
+                "216079643277162845237706339093770334931660444",
+                "78746755523695153340",
+            ),
+            (
+                255,
+                "433860017824196540915802624475484636273066865",
+                "433860358106563461854266087850092034707944988",
+                "73398427218270508467",
+            ),
+            (
+                511,
+                "869421447482997774148922121988128035825635953",
+                "869421787765364695087385585362735434260514076",
+                "63766844030503804993",
+            ),
+        ];
+        let simple = compute_reward(0, BigInt::from(0i64), BigInt::from(0i64));
+
+        for (index, prev_theta, curr_theta, expected_atto) in samples {
+            let reward = compute_reward(
+                0,
+                BigInt::from_str(prev_theta).unwrap(),
+                BigInt::from_str(curr_theta).unwrap(),
+            ) - &simple;
+            assert_eq!(expected_atto, reward.atto().to_string(), "baseline reward sample {index}");
+        }
     }
 
     // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L70
@@ -219,13 +282,7 @@ mod tests {
         let mut b = String::from("x, y\n");
         for i in 0..512 {
             let x: i64 = i * 5000;
-            let reward = compute_reward(
-                x,
-                BigInt::from(0i64),
-                BigInt::from(0i64),
-                &SIMPLE_TOTAL,
-                &BASELINE_TOTAL,
-            );
+            let reward = compute_reward(x, BigInt::from(0i64), BigInt::from(0i64));
 
             let x_str = &x.to_string();
             let reward_str = &reward.atto().to_string();
