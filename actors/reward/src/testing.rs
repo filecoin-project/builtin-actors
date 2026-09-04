@@ -2,7 +2,11 @@ use std::collections::BTreeSet;
 
 use crate::{
     STORAGE_MINING_ALLOCATION, State, StreamsState,
-    streams::{compute_service_liability, validate_streams_state},
+    streams::{
+        explicit_liability,
+        invariants::{accounting, structure},
+        validate_streams_state,
+    },
 };
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
@@ -72,7 +76,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     acc.require(
         &state.total_burn_minted + &state.total_explicit_minted <= state.total_minted_reward,
         format!(
-            "burn {} + service {} exceeds total minted {}",
+            "burn {} + explicit {} exceeds total minted {}",
             state.total_burn_minted, state.total_explicit_minted, state.total_minted_reward
         ),
     );
@@ -128,7 +132,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     let explicit_stream_ids: BTreeSet<_> = streams_state
         .streams
         .iter()
-        .filter(|stream| stream.distribution.is_some())
+        .filter(|stream| !stream.is_implicit())
         .map(|stream| stream.id)
         .collect();
     let accrual_ids: BTreeSet<_> = state.accrued.iter().map(|row| row.id).collect();
@@ -161,23 +165,24 @@ pub fn check_state_invariants<BS: Blockstore>(
         "pending writes are not ordered by effective epoch",
     );
 
-    match compute_service_liability(&streams_state, &state.accrued) {
-        Ok(liabilities) => {
-            acc.require(
-                liabilities <= state.total_explicit_minted,
-                format!(
-                    "explicit-stream liabilities {liabilities} exceed total explicit minted {}",
-                    state.total_explicit_minted
-                ),
-            );
-            acc.require(
-                balance >= &liabilities,
-                format!(
-                    "reward balance {balance} does not cover explicit-stream liabilities {liabilities}"
-                ),
-            );
-        }
-        Err(error) => acc.add(format!("error computing explicit-stream liabilities: {error}")),
+    // The liability is a sum over the rows the structure and accounting invariants place, so it
+    // runs wherever those two hold. The schedule has no bearing on it: a claim stays payable
+    // while the weight schedule is invalid.
+    if structure(&streams_state).is_ok() && accounting(&streams_state, &state.accrued).is_ok() {
+        let liabilities = explicit_liability(&streams_state, &state.accrued);
+        acc.require(
+            liabilities <= state.total_explicit_minted,
+            format!(
+                "explicit-stream liabilities {liabilities} exceed total explicit minted {}",
+                state.total_explicit_minted
+            ),
+        );
+        acc.require(
+            balance >= &liabilities,
+            format!(
+                "reward balance {balance} does not cover explicit-stream liabilities {liabilities}"
+            ),
+        );
     }
 
     (summary, acc)

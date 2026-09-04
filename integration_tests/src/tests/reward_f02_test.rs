@@ -3,9 +3,9 @@ use export_macro::vm_test;
 use fil_actor_reward::{
     AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn, DENOM, DistributionInit,
     ExplicitDistribution, Method as RewardMethod, PendingWrite, PendingWriteOp, RecipientShare,
-    RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, SetDistributionParams,
-    SetDistributionPayload, SetWeightRecordsParams, State as RewardState, Stream, StreamAccrual,
-    StreamsState, WeightRecord, WeightRecordUpdate,
+    RecipientTable, RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams,
+    SetDistributionParams, SetDistributionPayload, SetWeightRecordsParams, State as RewardState,
+    Stream, StreamAccrual, StreamsState, WeightRecord, WeightRecordUpdate,
 };
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, EventBuilder, REWARD_ACTOR_ADDR, REWARD_ACTOR_ID, SYSTEM_ACTOR_ADDR,
@@ -41,8 +41,8 @@ fn install_stream_state(v: &dyn VM, swa: Address, writer: Address, recipient: Ad
                 distribution: Some(ExplicitDistribution {
                     writer,
                     shares: vec![RecipientShare { recipient, share: DENOM }],
-                    payable: Vec::new(),
-                    claimed_period: Vec::new(),
+                    payable: RecipientTable::default(),
+                    claimed_period: RecipientTable::default(),
                 }),
             },
         ],

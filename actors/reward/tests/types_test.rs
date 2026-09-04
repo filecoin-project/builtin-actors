@@ -6,10 +6,11 @@ mod serialization {
     use fil_actor_reward::{
         AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn, ConstructorParams,
         DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, PendingWrite,
-        PendingWriteOp, RecipientAmount, RecipientShare, RegisterStreamParams, RemoveStreamParams,
-        SetDistributionParams, SetSharesParams, SetWeightRecordsParams, State,
-        StepWeightRecordsParams, Stream, StreamAccrual, StreamsState, ThisEpochRewardReturn,
-        Tombstone, UpdateNetworkKPIParams, WeightRecord, WeightRecordUpdate,
+        PendingWriteOp, RecipientAmount, RecipientShare, RegisterStreamParams,
+        RegisterStreamPayload, RemoveStreamParams, SetDistributionParams, SetDistributionPayload,
+        SetSharesParams, SetWeightRecordsParams, State, StepWeightRecordsParams, Stream,
+        StreamAccrual, StreamsState, ThisEpochRewardReturn, Tombstone, UpdateNetworkKPIParams,
+        WeightRecord, WeightRecordUpdate, WeightRecordsPayload,
     };
     use fil_actors_runtime::reward::FilterEstimate;
     use fil_actors_runtime::test_blockstores::MemoryBlockstore;
@@ -191,11 +192,13 @@ mod serialization {
                         payable: vec![RecipientAmount {
                             recipient: Address::new_id(102),
                             amount: TokenAmount::from_atto(7),
-                        }],
+                        }]
+                        .into(),
                         claimed_period: vec![RecipientAmount {
                             recipient: Address::new_id(103),
                             amount: TokenAmount::from_atto(8),
-                        }],
+                        }]
+                        .into(),
                     }),
                 },
             ],
@@ -204,7 +207,8 @@ mod serialization {
                 payable: vec![RecipientAmount {
                     recipient: Address::new_id(104),
                     amount: TokenAmount::from_atto(9),
-                }],
+                }]
+                .into(),
             }],
             pending_writes: vec![PendingWrite {
                 id: Some(4),
@@ -385,6 +389,108 @@ mod serialization {
             assert_eq!(encoded.data, expected_hex);
             let decoded: StepWeightRecordsParams = IpldBlock::deserialize(&encoded).unwrap();
             assert_eq!(params, decoded);
+        }
+    }
+
+    #[test]
+    fn weight_records_payload() {
+        let test_cases = vec![
+            (
+                WeightRecordsPayload { updates: Vec::new() },
+                // [[]] encodes canonically but is rejected by payload validation.
+                &hex!("8180")[..],
+            ),
+            (
+                WeightRecordsPayload {
+                    updates: vec![
+                        WeightRecordUpdate { id: 24, weight: weight(24, -25, 256, 0, 65_536) },
+                        WeightRecordUpdate {
+                            id: 1_u64 << 32,
+                            weight: weight(1_u64 << 32, -((1_i64 << 32) + 1), 65_536, 256, DENOM),
+                        },
+                    ],
+                },
+                // [[
+                //   [24,[24,-25,256,0,65536]],
+                //   [4294967296,
+                //   [4294967296,-4294967297,65536,256,1000000000000000000]]
+                // ]]
+                &hex!(
+                    "81828218188518183818190100001a00010000821b0000000100000000"
+                    "851b00000001000000003b00000001000000001a000100001901001b0de0b6b3a7640000"
+                )[..],
+            ),
+        ];
+
+        for (payload, expected_hex) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&payload).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex);
+            let decoded: WeightRecordsPayload = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(payload, decoded);
+        }
+    }
+
+    #[test]
+    fn register_stream_payload() {
+        let test_cases = vec![
+            (
+                RegisterStreamPayload {
+                    weight: weight(24, -25, 256, 0, 65_536),
+                    distribution: None,
+                },
+                // [[24,-25,256,0,65536],null]
+                &hex!("828518183818190100001a00010000f6")[..],
+            ),
+            (
+                RegisterStreamPayload {
+                    weight: weight(1_u64 << 32, -(1_i64 << 32), 65_536, 256, DENOM),
+                    distribution: Some(DistributionInit {
+                        writer: Address::new_id(1_u64 << 32),
+                        shares: vec![RecipientShare {
+                            recipient: Address::new_id(101),
+                            share: DENOM,
+                        }],
+                    }),
+                },
+                // [
+                //   [4294967296,-4294967296,65536,256,1000000000000000000],
+                //   [byte[008080808010],[[byte[0065],1000000000000000000]]]
+                // ]
+                &hex!(
+                    "82851b00000001000000003affffffff1a000100001901001b0de0b6b3a7640000"
+                    "824600808080801081824200651b0de0b6b3a7640000"
+                )[..],
+            ),
+        ];
+
+        for (payload, expected_hex) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&payload).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex);
+            let decoded: RegisterStreamPayload = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(payload, decoded);
+        }
+    }
+
+    #[test]
+    fn set_distribution_payload() {
+        let test_cases = vec![
+            (
+                SetDistributionPayload { writer: Address::new_id(24) },
+                // [byte[0018]]
+                &hex!("81420018")[..],
+            ),
+            (
+                SetDistributionPayload { writer: Address::new_id(1_u64 << 32) },
+                // [byte[008080808010]]
+                &hex!("8146008080808010")[..],
+            ),
+        ];
+
+        for (payload, expected_hex) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&payload).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex);
+            let decoded: SetDistributionPayload = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(payload, decoded);
         }
     }
 

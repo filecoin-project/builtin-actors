@@ -6,8 +6,8 @@ use std::cell::RefCell;
 use fil_actor_reward::{
     Actor as RewardActor, AwardBlockRewardParams, BASELINE_INITIAL_VALUE, BASELINE_TOTAL, DENOM,
     ExplicitDistribution, Method, PENALTY_MULTIPLIER, PendingWrite, PendingWriteOp,
-    RecipientAmount, RecipientShare, SIMPLE_TOTAL, SetWeightRecordsParams, State, Stream,
-    StreamAccrual, StreamsState, ThisEpochRewardReturn, Tombstone, WeightRecord,
+    RecipientAmount, RecipientShare, RecipientTable, SIMPLE_TOTAL, SetWeightRecordsParams, State,
+    Stream, StreamAccrual, StreamsState, ThisEpochRewardReturn, Tombstone, WeightRecord,
     WeightRecordUpdate, ext, testing::check_state_invariants,
 };
 use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
@@ -76,7 +76,7 @@ mod construction_tests {
     }
 
     #[test]
-    fn checks_service_accounting_invariants() {
+    fn checks_explicit_accounting_invariants() {
         let rt = construct_and_verify(&StoragePower::from(0));
         let mut state: State = rt.get_state();
         let allocation = TokenAmount::from_whole(1_100_000_000);
@@ -96,8 +96,8 @@ mod construction_tests {
                 distribution: Some(ExplicitDistribution {
                     writer: Address::new_id(100),
                     shares: vec![RecipientShare { recipient: Address::new_id(101), share: DENOM }],
-                    payable: Vec::new(),
-                    claimed_period: Vec::new(),
+                    payable: RecipientTable::default(),
+                    claimed_period: RecipientTable::default(),
                 }),
             }],
             ..Default::default()
@@ -126,11 +126,7 @@ mod construction_tests {
             check_state_invariants(&state, &*rt.store, -1, 0, &TokenAmount::from_atto(10));
         let messages = acc.messages();
         assert!(messages.iter().any(|message| message.contains("explicit-stream accrual")));
-        assert!(
-            messages
-                .iter()
-                .any(|message| message.contains("error computing explicit-stream liabilities"))
-        );
+        assert!(messages.iter().any(|message| message.contains("invalid streams state")));
     }
 
     #[test]
@@ -140,8 +136,8 @@ mod construction_tests {
         let distribution = ExplicitDistribution {
             writer: Address::new_id(100),
             shares: vec![RecipientShare { recipient: Address::new_id(101), share: DENOM }],
-            payable: Vec::new(),
-            claimed_period: Vec::new(),
+            payable: RecipientTable::default(),
+            claimed_period: RecipientTable::default(),
         };
         let mut state: State = rt.get_state();
         state.total_minted_reward = allocation.clone();
@@ -202,7 +198,8 @@ mod construction_tests {
             payable: vec![RecipientAmount {
                 recipient: Address::new_id(101),
                 amount: TokenAmount::from_atto(1),
-            }],
+            }]
+            .into(),
         }];
         let mut overlap_state = state.clone();
         overlap_state.total_explicit_minted = TokenAmount::from_atto(1);
@@ -213,7 +210,8 @@ mod construction_tests {
             payable: vec![RecipientAmount {
                 recipient: Address::new_id(101),
                 amount: TokenAmount::from_atto(1),
-            }],
+            }]
+            .into(),
         };
         let mut duplicate_tombstones = streams.clone();
         duplicate_tombstones.tombstones = vec![tombstone.clone(), tombstone];
@@ -311,8 +309,8 @@ mod construction_tests {
                             recipient: Address::new_id(101),
                             share: DENOM,
                         }],
-                        payable: Vec::new(),
-                        claimed_period: Vec::new(),
+                        payable: RecipientTable::default(),
+                        claimed_period: RecipientTable::default(),
                     }),
                 },
             ],
