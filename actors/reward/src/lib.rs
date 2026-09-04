@@ -106,14 +106,14 @@ impl Actor {
         op: PendingWriteOp,
     ) -> Result<(), ActorError> {
         validate_swa(rt)?;
-        let call = QueuedCall::Weights { op, updates: params.updates };
-        let (applied, queued) = mutate(rt, |ledger, epoch, timelock| {
+        let call = QueuedCall::Weights { op, updates: params.updates }.canonical();
+        let (applied, queued) = run_mutation(rt, |ledger, epoch, timelock| {
             ledger
                 .admit(call, epoch, timelock)
                 .cloned()
                 .map_err(|e| illegal_argument(e, "failed to queue weight records"))
         })?;
-        settle(rt, &applied)?;
+        settle_applied(rt, &applied)?;
         emit::write_queued(rt, &queued)
     }
 
@@ -126,7 +126,7 @@ impl Actor {
                 let shares = resolve_shares(rt, distribution.shares)?;
                 Ok(DistributionInit {
                     writer: resolve_required(rt, &distribution.writer, "distribution writer")?,
-                    shares: streams::normalize_shares(shares)
+                    shares: streams::admit_shares(shares)
                         .map_err(|e| illegal_argument(e, "invalid initial shares"))?,
                 })
             })
@@ -136,29 +136,30 @@ impl Actor {
             weight: params.weight,
             distribution,
             activation: params.activation_epoch,
-        };
+        }
+        .canonical();
 
-        let (applied, queued) = mutate(rt, |ledger, epoch, timelock| {
+        let (applied, queued) = run_mutation(rt, |ledger, epoch, timelock| {
             ledger
                 .admit(call, epoch, timelock)
                 .cloned()
                 .map_err(|e| illegal_argument(e, "failed to queue stream registration"))
         })?;
-        settle(rt, &applied)?;
+        settle_applied(rt, &applied)?;
         emit::write_queued(rt, &queued)
     }
 
     /// Queues stream removal, preserving unpaid allocations when it applies.
     fn remove_stream(rt: &impl Runtime, params: RemoveStreamParams) -> Result<(), ActorError> {
         validate_swa(rt)?;
-        let call = QueuedCall::Remove { id: params.id };
-        let (applied, queued) = mutate(rt, |ledger, epoch, timelock| {
+        let call = QueuedCall::Remove { id: params.id }.canonical();
+        let (applied, queued) = run_mutation(rt, |ledger, epoch, timelock| {
             ledger
                 .admit(call, epoch, timelock)
                 .cloned()
                 .map_err(|e| illegal_argument(e, "failed to queue stream removal"))
         })?;
-        settle(rt, &applied)?;
+        settle_applied(rt, &applied)?;
         emit::write_queued(rt, &queued)
     }
 
@@ -169,14 +170,14 @@ impl Actor {
     ) -> Result<(), ActorError> {
         validate_swa(rt)?;
         let writer = resolve_required(rt, &params.writer, "distribution writer")?;
-        let call = QueuedCall::SetDistribution { id: params.id, writer };
-        let (applied, queued) = mutate(rt, |ledger, epoch, timelock| {
+        let call = QueuedCall::SetDistribution { id: params.id, writer }.canonical();
+        let (applied, queued) = run_mutation(rt, |ledger, epoch, timelock| {
             ledger
                 .admit(call, epoch, timelock)
                 .cloned()
                 .map_err(|e| illegal_argument(e, "failed to queue distribution writer"))
         })?;
-        settle(rt, &applied)?;
+        settle_applied(rt, &applied)?;
         emit::write_queued(rt, &queued)
     }
 
@@ -185,8 +186,8 @@ impl Actor {
         validate_swa(rt)?;
         let slot = Slot::for_cancel(params.id, params.op)
             .map_err(|e| illegal_argument(e, "invalid cancellation target"))?;
-        let (applied, cancelled) = mutate(rt, |ledger, _, _| Ok(ledger.cancel(slot)))?;
-        settle(rt, &applied)?;
+        let (applied, cancelled) = run_mutation(rt, |ledger, _, _| Ok(ledger.cancel(slot)))?;
+        settle_applied(rt, &applied)?;
         if let Some(write) = cancelled {
             emit::write_cancelled(rt, &write)?;
         }
@@ -205,7 +206,7 @@ impl Actor {
             ));
         }
         let caller = rt.message().caller();
-        let (mut applied, fold_dust) = mutate(rt, |ledger, _, _| {
+        let (mut applied, fold_dust) = run_mutation(rt, |ledger, _, _| {
             // A due SetDistribution may have replaced the writer, so the check reads the ledger
             // the due writes left rather than the one this method loaded.
             let writer = ledger
@@ -233,7 +234,7 @@ impl Actor {
         })?;
         // One burn send carries the immediate fold's dust with any the due writes left.
         applied.fold_dust += fold_dust;
-        settle(rt, &applied)
+        settle_applied(rt, &applied)
     }
 
     /// Pays the named wallets' live and carried entitlements for one explicit stream.
@@ -261,12 +262,12 @@ impl Actor {
             .map(|wallet| rt.resolve_address(wallet).map(Address::new_id))
             .collect();
 
-        let (applied, amounts) = mutate(rt, |ledger, _, _| {
+        let (applied, amounts) = run_mutation(rt, |ledger, _, _| {
             ledger
                 .claim(params.id, &wallets)
                 .map_err(|e| illegal_argument(e, "failed to claim stream funds"))
         })?;
-        settle(rt, &applied)?;
+        settle_applied(rt, &applied)?;
         for (wallet, amount) in wallets.iter().zip(&amounts) {
             if let Some(recipient) = wallet
                 && amount > &TokenAmount::zero()
@@ -347,7 +348,7 @@ impl Actor {
                 (&st.this_epoch_reward * params.win_count).div_floor(EXPECTED_LEADERS_PER_EPOCH);
 
             // plan_award takes the ledger by value. On None it's dropped here, due writes and
-            // all, so a gas-only award stores nothing and doesn't move a counter.
+            // all, so a gas-only award leaves the state exactly as it found it.
             let Some((ledger, award)) = plan_award(
                 ledger,
                 rt.curr_epoch(),
@@ -516,7 +517,7 @@ fn illegal_argument(error: anyhow::Error, context: &'static str) -> ActorError {
 ///
 /// The transaction is the atomicity boundary, so a rejection from `f` discards the whole thing,
 /// due writes included. The epochs `f` receives are the current one and the SWA timelock.
-fn mutate<T>(
+fn run_mutation<T>(
     rt: &impl Runtime,
     f: impl FnOnce(&mut Ledger, ChainEpoch, ChainEpoch) -> Result<T, ActorError>,
 ) -> Result<(ApplyResult, T), ActorError> {
@@ -529,9 +530,8 @@ fn mutate<T>(
     })
 }
 
-/// Settles what an operation's application owes. Emit an event per write that it moved, and
-/// then the fold dust left over (owed to nobody).
-fn settle(rt: &impl Runtime, applied: &ApplyResult) -> Result<(), ActorError> {
+/// Emits an event for every write, then sends the fold dust it left to f099.
+fn settle_applied(rt: &impl Runtime, applied: &ApplyResult) -> Result<(), ActorError> {
     emit_apply(rt, applied)?;
     if applied.fold_dust > TokenAmount::zero() {
         extract_send_result(rt.send_simple(
@@ -556,8 +556,8 @@ fn emit_apply(rt: &impl Runtime, result: &ApplyResult) -> Result<(), ActorError>
     Ok(())
 }
 
-/// FIP-0118 2.4.3's `no_award`: the miner is paid the gas reward, nothing is minted, and the
-/// state stands as it was.
+/// FIP-0118 2.4.3's `no_award`: the miner is paid the gas reward alone and the state stands as it
+/// was.
 fn no_award(gas_reward: &TokenAmount) -> (TokenAmount, TokenAmount, ApplyResult) {
     (gas_reward.clone(), TokenAmount::zero(), ApplyResult::default())
 }

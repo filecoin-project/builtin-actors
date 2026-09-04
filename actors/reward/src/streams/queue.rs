@@ -1,8 +1,5 @@
 //! The pending-write queue: the SWA timelock, admission, cancellation, and application.
 //!
-//! The entry shape is [`PendingWrite`] and its [`PendingWriteOp`] tag, both in
-//! [`crate::state`]; the payload tuple each op carries is in [`crate::types`].
-//!
 //! Every SWA write lands here first as a `PendingWrite` containing the op, its encoded params,
 //! and the epoch it becomes due. Each one sits in a [`Slot`]. Per-stream ops key by `(id, op)`;
 //! the two weight ops are schedule-wide and key by `op` alone (i.e. null id). One write per slot,
@@ -13,12 +10,11 @@
 //! `SetWeightRecords` can be).
 //!
 //! Three epochs matter for an entry. The queue epoch is when the SWA called. The effective epoch
-//! is queue plus `swa_timelock_epochs`, except for `RegisterStream`, which brings its own
-//! `activation_epoch` and just has to be at or past that floor. The apply epoch is whenever the
+//! is queue plus `swa_timelock_epochs` (except for `RegisterStream`, which brings its own
+//! `activation_epoch` and just has to be at or past that floor). The apply epoch is whenever the
 //! next stream-engine method runs at or after that, `AwardBlockReward` included, because every
 //! one of them applies due entries before doing its own thing. The queue is sorted by effective
-//! epoch with ties in arrival order, so the head tells you whether anything is due. The
-//! objection window is `[queue, effective)`, and a due entry applies before a same-epoch cancel.
+//! epoch with ties in arrival order, so the head tells you whether anything is due.
 //!
 //! One rule drives most of the logic in here: *cancellation is unconditional*. A compromised SWA
 //! must not be able to make a bad write uncancellable by queueing something that depends on it,
@@ -53,16 +49,10 @@
 //! | `RemoveStream(id)` | a table slot, the implicit slot, and envelope headroom for a later `Register`, `Set` or `Step` |
 //! | `SetWeightRecords` (a decrease) | envelope headroom for a later `Set`, `Step` or `Register` |
 //!
-//! So there's three providers and four things they can provide (existence, table room, the implicit
-//! slot, envelope headroom). `StepWeightRecords` can't be cancelled and `SetDistribution` provides
-//! nothing, so neither strands anything. The envelope is the piecewise-linear sum check over in
-//! `weights`, and it's the only one with (awkward) arithmetic in it.
-//!
 //! At application, due entries go in queue order, each validated from its own effective epoch
 //! rather than the current one, so a null round can't change which ones apply. A well-formed
 //! entry that's lost its prerequisite is dropped with a `write-dropped` event and we carry on;
-//! the installed config is untouched. A payload that won't decode, or a queue that isn't
-//! canonical, is corruption and explicit methods abort and the award pays gas only.
+//! the installed config is untouched.
 //!
 //! If the persisted weight records or envelope are already invalid, due entries still only
 //! apply when their result validates, and new ones are rejected, with one exception: a
@@ -84,7 +74,7 @@ use log::info;
 use num_traits::Zero;
 
 use super::Ledger;
-use super::distribution::{fold, validate_distribution_init, validate_id_address};
+use super::distribution::{validate_distribution_init, validate_id_address};
 use super::invariants::{schedule, validate_tombstone_capacity};
 use super::weights::{validate_weight_record, validate_weight_updates};
 use crate::state::{
@@ -134,8 +124,7 @@ impl PendingWrite {
 
 /// A prerequisite a queued write can lose between admission and application.
 ///
-/// Only cancellation takes one away; the module doc says which earlier write provides each. This
-/// is the complete failure set of [`Ledger::apply`], so an `Err` there is always a drop.
+/// Only cancellation takes one away (see the module doc).
 #[derive(Debug)]
 pub(super) enum Stranded {
     /// A weights update, removal or writer change names an ID that is not live.
@@ -218,10 +207,27 @@ pub(crate) enum QueuedCall {
 }
 
 impl QueuedCall {
+    /// Puts a call's weight updates in stream ID order and its share rows in recipient order.
+    ///
+    /// A caller may send those rows in any order, but the queue stores them sorted and every
+    /// validator downstream requires that, so the actor sorts each call as it builds it.
+    pub(crate) fn canonical(mut self) -> QueuedCall {
+        match &mut self {
+            QueuedCall::Weights { updates, .. } => updates.sort_by_key(|update| update.id),
+            QueuedCall::Register { distribution: Some(distribution), .. } => {
+                distribution.shares.sort_by_key(|row| row.recipient)
+            }
+            QueuedCall::Register { .. }
+            | QueuedCall::Remove { .. }
+            | QueuedCall::SetDistribution { .. } => {}
+        }
+        self
+    }
+
     /// Reads a queue entry's payload, rejecting one that disagrees with the entry's ID and
     /// operation or does not hold that operation's canonical tuple.
     fn decode(write: &PendingWrite) -> Result<QueuedCall> {
-        Ok(match Slot::for_target(write.id, write.op)? {
+        let call = match Slot::for_target(write.id, write.op)? {
             Slot::ScheduleWide(op) => {
                 let payload: WeightRecordsPayload = write.payload.deserialize()?;
                 validate_weight_updates(&payload.updates)?;
@@ -254,7 +260,14 @@ impl QueuedCall {
             Slot::PerStream(_, op) => {
                 return Err(anyhow::anyhow!("schedule-wide call {op:?} has a stream ID"));
             }
-        })
+        };
+        // The validators above accept sorted rows only, so a stored payload is already sorted.
+        debug_assert_eq!(
+            call.clone().canonical(),
+            call,
+            "structure invariants: every queued payload is sorted"
+        );
+        Ok(call)
     }
 
     /// The payload bytes a queue entry carries for this call.
@@ -303,11 +316,9 @@ impl QueuedCall {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ApplyResult {
     pub fold_dust: TokenAmount,
-    /// Successful writes for actor-layer events after a committed application. Admission-only
-    /// projections discard them.
+    /// Successful writes, for actor-layer events after a committed application.
     pub applied: Vec<PendingWrite>,
-    /// Removed writes for actor-layer events after a committed application. Admission-only
-    /// projections discard them.
+    /// Removed writes, for actor-layer events after a committed application.
     pub dropped: Vec<PendingWrite>,
 }
 
@@ -367,40 +378,6 @@ impl Ledger {
         Ok(dust)
     }
 
-    /// Removes a live stream, folding its closing period into a tombstone when anything is unpaid.
-    pub(super) fn remove_stream(&mut self, id: StreamId) -> Result<TokenAmount, Stranded> {
-        let mut stream = self.streams.take_stream(id).ok_or(Stranded::MissingStream(id))?;
-        let Some(distribution) = stream.explicit_mut() else {
-            return Ok(TokenAmount::zero());
-        };
-        let accrual = self
-            .take_accrual(id)
-            .expect("accounting invariants: every explicit stream has an accrual row");
-        let burn = fold(distribution, &accrual);
-        if !distribution.payable.is_empty() {
-            self.streams.insert_tombstone(id, std::mem::take(&mut distribution.payable));
-        }
-        Ok(burn)
-    }
-
-    /// Closes an explicit stream's period and points it at a new designated writer.
-    pub(super) fn replace_writer(
-        &mut self,
-        id: StreamId,
-        writer: Address,
-    ) -> Result<TokenAmount, Stranded> {
-        if !self.streams.has_stream(id) {
-            return Err(Stranded::MissingStream(id));
-        }
-        let Some(period) = self.period_mut(id) else {
-            return Err(Stranded::NotExplicit(id));
-        };
-        let burn = fold(period.distribution, period.pool);
-        *period.pool = TokenAmount::zero();
-        period.distribution.writer = writer;
-        Ok(burn)
-    }
-
     /// Applies every write due through `epoch`, each validated from its own effective epoch just
     /// as its admission projected. From invalid weight state, only writes that restore a valid
     /// schedule apply and the rest are dropped.
@@ -417,8 +394,8 @@ impl Ledger {
         for write in due {
             let call = QueuedCall::decode(&write)
                 .expect("structure invariants: every queued payload decodes");
-            // A drop must leave no partial mutation, so a call runs on a copy that only success
-            // commits.
+            // Each call runs on a copy of the ledger. If it applies, the copy becomes the ledger;
+            // if it's dropped, the copy is thrown away and the ledger is as the last write left it.
             let mut next = self.clone();
             match next.apply(&call, write.effective_epoch) {
                 Ok(dust) => {
@@ -441,30 +418,26 @@ impl Ledger {
         result
     }
 
-    /// Queues one SWA call, rejecting it unless it applies in the state its predecessors produce
-    /// and leaves every already-admitted call still applying.
+    /// Checks a call against the current state and returns the epoch it would become effective.
     ///
-    /// Returns the entry it inserted, for the actor layer's `write-queued` event.
-    pub(crate) fn admit(
-        &mut self,
-        mut call: QueuedCall,
+    /// This looks only at the call and the state as it is now. Checking the call against the
+    /// rest of the queue happens afterwards, in [`Ledger::admit`].
+    fn admission_preconditions(
+        &self,
+        call: &QueuedCall,
         epoch: ChainEpoch,
         timelock: ChainEpoch,
-    ) -> Result<&PendingWrite> {
-        let effective = match &mut call {
+    ) -> Result<ChainEpoch> {
+        Ok(match call {
             QueuedCall::Weights { op, updates } => {
                 ensure!(op.is_schedule_wide(), "invalid weight-record operation {op:?}");
                 let effective = timelock_epoch(epoch, timelock)?;
-                updates.sort_by_key(|update| update.id);
                 validate_weight_updates(updates)?;
                 effective
             }
             QueuedCall::Register { id, weight, distribution, activation } => {
                 ensure!(*id != 0, "stream ID 0 is reserved");
                 validate_weight_record(weight)?;
-                if let Some(distribution) = distribution.as_mut() {
-                    distribution.shares.sort_by_key(|row| row.recipient);
-                }
                 validate_distribution_init(distribution)?;
                 ensure_stream_id_available(&self.streams, *id)?;
                 let earliest = timelock_epoch(epoch, timelock)?;
@@ -479,8 +452,20 @@ impl Ledger {
                 validate_id_address(writer, "distribution writer")?;
                 timelock_epoch(epoch, timelock)?
             }
-        };
+        })
+    }
 
+    /// Queues one SWA call, rejecting it unless it applies in the state its predecessors produce
+    /// and leaves every already-admitted call still applying.
+    ///
+    /// Returns the entry it inserted, for the actor layer's `write-queued` event.
+    pub(crate) fn admit(
+        &mut self,
+        call: QueuedCall,
+        epoch: ChainEpoch,
+        timelock: ChainEpoch,
+    ) -> Result<&PendingWrite> {
+        let effective = self.admission_preconditions(&call, epoch, timelock)?;
         let slot = call.slot();
         ensure_slot_available(&self.streams, slot)?;
         // Admission is the only thing that lengthens the queue, so this is the point where we need

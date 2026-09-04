@@ -83,7 +83,7 @@ fn rejects_persisted_tombstone_rows_above_the_bound() {
     assert!(error.to_string().contains("tombstone row reservation 257"), "{error}");
 }
 
-// Wire maps arrive in any order and normalize_shares sorts them; a persisted map that is not
+// Wire maps arrive in any order and admit_shares sorts them; a persisted map that is not
 // ascending by recipient can only have been written by something other than f02.
 #[test]
 fn structural_validation_rejects_unordered_stored_shares() {

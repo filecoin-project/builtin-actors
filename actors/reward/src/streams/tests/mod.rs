@@ -8,6 +8,7 @@ use crate::state::*;
 use crate::streams::award::Allocation;
 use crate::streams::invariants::schedule_at;
 use crate::streams::queue::Stranded;
+use crate::streams::weights::compute_weight;
 use crate::types::*;
 
 mod award;
@@ -101,7 +102,7 @@ fn admit(
     timelock: ChainEpoch,
 ) -> anyhow::Result<PendingWrite> {
     let mut ledger = ledger(streams, accruals);
-    let queued = ledger.admit(call, epoch, timelock).cloned()?;
+    let queued = ledger.admit(call.canonical(), epoch, timelock).cloned()?;
     *streams = ledger.streams;
     Ok(queued)
 }
@@ -215,13 +216,17 @@ fn claim(
     Ok(amounts)
 }
 
-/// One block reward split across a bare stream table, which is all the split reads.
+/// One block reward split across a bare stream table, which is all the split reads, under the
+/// weights that table evaluates to at `epoch`.
 fn allocate(streams: &[Stream], epoch: ChainEpoch, block_reward: &TokenAmount) -> Allocation {
     let table = StreamsState { streams: streams.to_vec(), ..Default::default() };
-    ledger(&table, &[]).allocate(epoch, block_reward)
+    let evaluated: Vec<u64> =
+        streams.iter().map(|stream| compute_weight(&stream.weight, epoch)).collect();
+    ledger(&table, &[]).allocate(&evaluated, block_reward)
 }
 
-/// The award crediting its portions, which changes no row's presence and so no length.
+/// The award crediting its portions, which only adds to rows that are already there, so the row
+/// count holds.
 fn accrue(accruals: &mut [StreamAccrual], portions: &[(StreamId, TokenAmount)]) {
     let mut ledger = ledger(&StreamsState::default(), accruals);
     ledger.accrue(portions);

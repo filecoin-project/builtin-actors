@@ -75,7 +75,7 @@ pub(super) fn validate_weight_record(record: &WeightRecord) -> Result<()> {
 }
 
 pub(super) fn validate_weight_updates(updates: &[WeightRecordUpdate]) -> Result<()> {
-    ensure!(!updates.is_empty(), "weight-record update is empty");
+    ensure!(!updates.is_empty(), "weight-record batch has no updates");
     for pair in updates.windows(2) {
         ensure!(pair[0].id != pair[1].id, "duplicate weight-record stream ID {}", pair[0].id);
         ensure!(pair[0].id <= pair[1].id, "weight-record updates are not ordered");

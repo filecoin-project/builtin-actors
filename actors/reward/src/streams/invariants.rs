@@ -118,25 +118,26 @@ pub(super) fn schedule(streams: &[Stream], from: ChainEpoch) -> Result<()> {
     Ok(())
 }
 
-/// The schedule invariants at one epoch alone, which is what the award requires (FIP-0118 2.4.3).
+/// The schedule invariants at a single epoch alone, returning the weights it evaluated, one per
+/// stream in stream order.
 ///
 /// The award pays this block and nothing later, so a schedule that holds now and breaks at some
 /// future epoch still pays now. [`schedule`] is the stronger property that admission and
 /// application require, since a queued write has to hold from its effective epoch onward.
-pub(super) fn schedule_at(streams: &[Stream], epoch: ChainEpoch) -> Result<()> {
+pub(super) fn schedule_at(streams: &[Stream], epoch: ChainEpoch) -> Result<Vec<u64>> {
     for stream in streams {
         validate_weight_record(&stream.weight)?;
     }
     envelope_at(streams, epoch)
 }
 
-/// The evaluated weights at one epoch, summing within `DENOM` so the burn residual stays
-/// non-negative.
-fn envelope_at(streams: &[Stream], epoch: ChainEpoch) -> Result<()> {
-    let sum: u128 =
-        streams.iter().map(|stream| u128::from(compute_weight(&stream.weight, epoch))).sum();
+/// The weights at one epoch, summing within `DENOM` so the burn residual stays non-negative.
+fn envelope_at(streams: &[Stream], epoch: ChainEpoch) -> Result<Vec<u64>> {
+    let evaluated: Vec<u64> =
+        streams.iter().map(|stream| compute_weight(&stream.weight, epoch)).collect();
+    let sum: u128 = evaluated.iter().copied().map(u128::from).sum();
     ensure!(sum <= u128::from(DENOM), "stream weights exceed DENOM at epoch {epoch}: {sum}");
-    Ok(())
+    Ok(evaluated)
 }
 
 /// The live stream table and its stored rows.

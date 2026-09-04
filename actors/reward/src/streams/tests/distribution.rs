@@ -23,19 +23,18 @@ fn rejects_invalid_share_maps() {
 
 #[test]
 fn admits_and_strips_burn_sentinel_rows() {
-    let normalized =
-        normalize_shares(shares(&[(99, pct(20)), (101, pct(50)), (99, pct(30))])).unwrap();
+    let normalized = admit_shares(shares(&[(99, pct(20)), (101, pct(50)), (99, pct(30))])).unwrap();
     assert_eq!(shares(&[(101, pct(50))]), normalized);
 
-    assert!(normalize_shares(shares(&[(99, 0), (101, DENOM)])).is_err());
-    assert!(normalize_shares(shares(&[(99, pct(20)), (101, pct(40)), (101, pct(40)),])).is_err());
-    assert!(normalize_shares(shares(&[(99, DENOM)])).unwrap().is_empty());
+    assert!(admit_shares(shares(&[(99, 0), (101, DENOM)])).is_err());
+    assert!(admit_shares(shares(&[(99, pct(20)), (101, pct(40)), (101, pct(40)),])).is_err());
+    assert!(admit_shares(shares(&[(99, DENOM)])).unwrap().is_empty());
 
     let mut over_limit = shares(&[(101, DENOM - MAX_RECIPIENTS as u64)]);
     over_limit.extend(
         (0..MAX_RECIPIENTS).map(|_| RecipientShare { recipient: BURNT_FUNDS_ACTOR_ADDR, share: 1 }),
     );
-    assert!(normalize_shares(over_limit).is_err());
+    assert!(admit_shares(over_limit).is_err());
 }
 
 #[test]

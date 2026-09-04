@@ -1,6 +1,7 @@
 //! Dividing one block reward among the streams, and measuring what f02 still owes.
 //!
-//! FIP-0118 2.4.3, with the counters it moves specified in 2.5:
+//! FIP-0118 2.4.3, in the order [`plan_award`] runs it, with the counters it moves specified in
+//! 2.5:
 //!
 //! ```text
 //! AwardBlockReward(miner, penalty, gas_reward, win_count):
@@ -10,11 +11,11 @@
 //!     if the block is undecodable, or its stream, tombstone or queue
 //!        structure or its accounting is invalid:
 //!         no_award()
-//!     projection = project valid due writes and cancellation-stranded drops
-//!     fold_dust = projection's fold dust
+//!     apply the due writes, dropping the cancellation-stranded ones
+//!     fold_dust = the dust those folds left
 //!     liability =
-//!         sum projected live (accrued - sum claimed_period + sum payable)
-//!         + sum projected tombstone payable
+//!         sum live (accrued - sum claimed_period + sum payable)
+//!         + sum tombstone payable
 //!     if balance <= gas_reward + liability + fold_dust:
 //!         no_award()
 //!     BR = min(computed_BR, balance - gas_reward - liability - fold_dust)
@@ -24,7 +25,6 @@
 //!     if any record violates 0 <= floor <= v_start <= cap <= DENOM
 //!        or sum evaluated > DENOM:
 //!         no_award()
-//!     commit projection
 //!     miner_reward = 0
 //!     allocated = 0
 //!     burn = 0
@@ -49,10 +49,13 @@
 //! ```
 //!
 //! Every award is one of those two outcomes: `no_award`, which pays the gas reward alone and
-//! leaves the state as it stands, or the full split above.
+//! leaves the state as it stands, or the full split above. The due writes apply first and only the
+//! second outcome stores a new ledger, so `no_award` leaves them queued for the next award.
 //! [`plan_award`] chooses between them, in the order written above, and
 //! `Actor::award_block_reward` applies what it chose and performs the sends. The pieces it calls:
-//! - [`Ledger::allocate`] is the per-stream loop
+//! - [`Ledger::apply_due`] applies the due writes and reports their dust
+//! - [`schedule_at`] evaluates the weights and holds them within `DENOM`
+//! - [`Ledger::allocate`] is the per-stream loop over those weights
 //! - [`Ledger::accrue`] adds the resulting portions to the inline accrual rows
 //! - [`Ledger::liability`] is the `liability` sum the reserve check subtracts, and the balance
 //!   cover 2.5 requires of the counters this award moves
@@ -66,7 +69,6 @@ use num_traits::Zero;
 use super::Ledger;
 use super::invariants::schedule_at;
 use super::queue::ApplyResult;
-use super::weights::compute_weight;
 use crate::state::{DENOM, StreamAccrual, StreamId, StreamsState};
 
 /// One block reward split into its destinations.
@@ -94,8 +96,7 @@ pub(crate) struct FullAward {
 /// Chooses between the two outcomes of an award at `epoch`.
 ///
 /// `None` pays the gas reward alone and is for the various unexpected error cases. The ledger it
-/// consumed is dropped rather than stored, so nothing is minted and no counter, stream record or
-/// accrual moves.
+/// consumed is dropped rather than stored, so the state stands exactly as the award found it.
 /// `Some` hands back the ledger to store alongside the split to pay out.
 pub(crate) fn plan_award(
     mut ledger: Ledger,
@@ -106,8 +107,8 @@ pub(crate) fn plan_award(
 ) -> Option<(Ledger, FullAward)> {
     let applied = ledger.apply_due(epoch);
     let liability = ledger.liability();
-    // A committed fold's dust is no longer owed to recipients but is not yet burnt, so it stays
-    // reserved until the post-transaction send moves it.
+    // A committed fold's dust belongs to f099, and the send that does that comes _after_ the
+    // transaction, so the reserve still holds it here.
     let reserve = gas_reward + &liability + &applied.fold_dust;
     if *balance <= reserve {
         warn!(
@@ -127,17 +128,20 @@ pub(crate) fn plan_award(
     } else {
         expected.clone()
     };
-    // The reserve bounds the reward from above alone, so a negative expected reward would reach
-    // the split and allocate negative portions.
+    // The reserve caps the reward from above only, so without this guard a negative
+    // this_epoch_reward reaches the split and allocates negative portions.
     if block_reward.is_negative() {
         error!("negative block reward {block_reward} at epoch {epoch}; paying gas reward only");
         return None;
     }
-    if let Err(error) = schedule_at(&ledger.streams.streams, epoch) {
-        warn!("invalid stream weights at epoch {epoch}: {error}; paying gas reward only");
-        return None;
-    }
-    let allocation = ledger.allocate(epoch, &block_reward);
+    let evaluated = match schedule_at(&ledger.streams.streams, epoch) {
+        Ok(evaluated) => evaluated,
+        Err(error) => {
+            warn!("invalid stream weights at epoch {epoch}: {error}; paying gas reward only");
+            return None;
+        }
+    };
+    let allocation = ledger.allocate(&evaluated, &block_reward);
     ledger.accrue(&allocation.portions);
     Some((ledger, FullAward { block_reward, allocation, applied }))
 }
@@ -148,22 +152,26 @@ impl Ledger {
         explicit_liability(&self.streams, &self.accrued)
     }
 
-    /// Splits one block reward across the active streams at `epoch`, in stream order.
+    /// Splits one block reward across the active streams, in stream order, under the weights
+    /// [`schedule_at`] evaluated for this ledger.
     ///
-    /// The caller has proved the schedule invariants at `epoch`, which is what keeps the split
-    /// within the reward: each portion floors `weight * BR / DENOM` and the evaluated weights sum
-    /// to at most `DENOM`, so the portions sum to at most `BR` and the residual burn covers the
-    /// difference exactly.
-    pub(crate) fn allocate(&self, epoch: ChainEpoch, block_reward: &TokenAmount) -> Allocation {
+    /// Those schedule invariants over the weights keeps the split within the reward. Each portion
+    /// floors `weight * BR / DENOM` and the weights sum to at most `DENOM`, so the portions sum to
+    /// at most `BR` and the residual burn covers the difference exactly.
+    pub(crate) fn allocate(&self, evaluated: &[u64], block_reward: &TokenAmount) -> Allocation {
+        debug_assert_eq!(
+            evaluated.len(),
+            self.streams.streams.len(),
+            "the evaluated weights are one per stream"
+        );
         let mut miner = TokenAmount::zero();
         let mut portions = Vec::with_capacity(self.streams.streams.len());
         let mut burn = TokenAmount::zero();
         let mut allocated = TokenAmount::zero();
         let denom = BigInt::from(DENOM);
 
-        for stream in &self.streams.streams {
-            let weight = compute_weight(&stream.weight, epoch);
-            let mut portion = TokenAmount::from_atto(block_reward.atto() * weight / &denom);
+        for (stream, weight) in self.streams.streams.iter().zip(evaluated) {
+            let mut portion = TokenAmount::from_atto(block_reward.atto() * *weight / &denom);
             allocated += &portion;
             if let Some(distribution) = stream.explicit() {
                 let share_total = distribution.share_total();
@@ -188,7 +196,7 @@ impl Ledger {
     ///
     /// The portions are one per explicit stream in the state they were allocated from, which the
     /// accounting invariants pairs one to one with the accrual rows. A projected registration or
-    /// removal moves both together so we never have a mismatch.
+    /// removal moves both together, so they stay paired.
     pub(crate) fn accrue(&mut self, portions: &[(StreamId, TokenAmount)]) {
         for (id, amount) in portions {
             let accrual = self
@@ -203,9 +211,8 @@ impl Ledger {
 /// streams, plus every carried balance, live or tombstoned.
 ///
 /// This is the slice-shaped form of `Ledger::liability`, for a caller holding no `Ledger`. The
-/// invariant checker measures state that may be corrupt, which is state no `Ledger` would accept.
-/// The caller's responsible for maintaining the accounting invariants (which every `Ledger` does,
-/// and which the invariant checker proves before it measures a persisted state).
+/// invariant checker measures state that may be corrupt. The caller's responsible for maintaining
+/// the accounting invariants.
 pub fn explicit_liability(streams: &StreamsState, accrued: &[StreamAccrual]) -> TokenAmount {
     let mut total = TokenAmount::zero();
 

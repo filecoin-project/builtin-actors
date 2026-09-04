@@ -23,7 +23,7 @@ mod weights;
 
 pub use self::award::explicit_liability;
 pub(crate) use self::award::{FullAward, plan_award};
-pub(crate) use self::distribution::normalize_shares;
+pub(crate) use self::distribution::admit_shares;
 pub(crate) use self::invariants::validate_streams_state;
 pub(crate) use self::queue::{ApplyResult, QueuedCall, Slot};
 
@@ -122,9 +122,10 @@ impl Ledger {
 
     /// Opens an accrual row for a newly registered explicit stream, keeping the rows ascending.
     fn insert_accrual(&mut self, id: StreamId) {
-        let idx = self.accrued.binary_search_by_key(&id, |row| row.id).expect_err(
-            "accounting invariants: an accrual row belongs to one live explicit stream",
-        );
+        let idx = self
+            .accrued
+            .binary_search_by_key(&id, |row| row.id)
+            .expect_err("registration precondition: the stream ID holds no accrual row yet");
         self.accrued.insert(idx, StreamAccrual { id, amount: TokenAmount::zero() });
     }
 

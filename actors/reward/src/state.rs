@@ -249,8 +249,7 @@ pub const MAX_PENDING_WRITES: usize =
 /// that is live, tombstoned or already queued for registration is rejected at admission by
 /// `ensure_stream_id_available`, and one whose ID has become live or tombstoned since strands at
 /// application as `Stranded::StreamIdInUse`. An ID therefore comes back into use only once its
-/// tombstone is gone, which is when its last row is claimed, and a removal that leaves nothing
-/// unpaid files no tombstone at all.
+/// tombstone is gone.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct StreamsState {
     /// Ordered by stream ID.
