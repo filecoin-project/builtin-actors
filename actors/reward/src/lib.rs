@@ -20,11 +20,10 @@ use num_traits::Zero;
 
 pub use self::logic::*;
 pub use self::state::{
-    DENOM, ExplicitDistribution, MAX_PAYABLE_ROWS_PER_STREAM, MAX_PENDING_WRITES, MAX_RECIPIENTS,
-    MAX_STREAMS, MAX_TOMBSTONE_ROWS, PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare,
-    RecipientTable, State, Stream, StreamAccrual, StreamId, StreamsState, Tombstone, WeightRecord,
+    DENOM, ExplicitDistribution, MAX_PENDING_WRITES, MAX_RECIPIENTS, MAX_STREAMS, PendingWrite,
+    PendingWriteOp, RecipientShare, State, Stream, StreamId, StreamsState, WeightRecord,
 };
-pub use self::streams::*;
+pub(crate) use self::streams::*;
 pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
@@ -62,7 +61,6 @@ pub enum Method {
     SetDistributionExported = frc42_dispatch::method_hash!("SetDistribution"),
     CancelPendingExported = frc42_dispatch::method_hash!("CancelPending"),
     SetSharesExported = frc42_dispatch::method_hash!("SetShares"),
-    ClaimExported = frc42_dispatch::method_hash!("Claim"),
 }
 
 /// Reward Actor
@@ -113,7 +111,7 @@ impl Actor {
                 .cloned()
                 .map_err(|e| illegal_argument(e, "failed to queue weight records"))
         })?;
-        settle_applied(rt, &applied)?;
+        emit_apply(rt, &applied)?;
         emit::write_queued(rt, &queued)
     }
 
@@ -145,11 +143,11 @@ impl Actor {
                 .cloned()
                 .map_err(|e| illegal_argument(e, "failed to queue stream registration"))
         })?;
-        settle_applied(rt, &applied)?;
+        emit_apply(rt, &applied)?;
         emit::write_queued(rt, &queued)
     }
 
-    /// Queues stream removal, preserving unpaid allocations when it applies.
+    /// Queues stream removal, which takes it out of the schedule when it applies.
     fn remove_stream(rt: &impl Runtime, params: RemoveStreamParams) -> Result<(), ActorError> {
         validate_swa(rt)?;
         let call = QueuedCall::Remove { id: params.id }.canonical();
@@ -159,11 +157,11 @@ impl Actor {
                 .cloned()
                 .map_err(|e| illegal_argument(e, "failed to queue stream removal"))
         })?;
-        settle_applied(rt, &applied)?;
+        emit_apply(rt, &applied)?;
         emit::write_queued(rt, &queued)
     }
 
-    /// Queues replacement of an explicit stream's writer, closing its current period on apply.
+    /// Queues replacement of an explicit stream's designated writer.
     fn set_distribution(
         rt: &impl Runtime,
         params: SetDistributionParams,
@@ -177,7 +175,7 @@ impl Actor {
                 .cloned()
                 .map_err(|e| illegal_argument(e, "failed to queue distribution writer"))
         })?;
-        settle_applied(rt, &applied)?;
+        emit_apply(rt, &applied)?;
         emit::write_queued(rt, &queued)
     }
 
@@ -187,14 +185,14 @@ impl Actor {
         let slot = Slot::for_cancel(params.id, params.op)
             .map_err(|e| illegal_argument(e, "invalid cancellation target"))?;
         let (applied, cancelled) = run_mutation(rt, |ledger, _, _| Ok(ledger.cancel(slot)))?;
-        settle_applied(rt, &applied)?;
+        emit_apply(rt, &applied)?;
         if let Some(write) = cancelled {
             emit::write_cancelled(rt, &write)?;
         }
         Ok(())
     }
 
-    /// Closes an explicit stream's current period and installs its next recipient share map.
+    /// Installs an explicit stream's next recipient share map, in force from the next award.
     fn set_shares(rt: &impl Runtime, params: SetSharesParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         if params.shares.len() > MAX_RECIPIENTS {
@@ -206,7 +204,7 @@ impl Actor {
             ));
         }
         let caller = rt.message().caller();
-        let (mut applied, fold_dust) = run_mutation(rt, |ledger, _, _| {
+        let (applied, ()) = run_mutation(rt, |ledger, _, _| {
             // A due SetDistribution may have replaced the writer, so the check reads the ledger
             // the due writes left rather than the one this method loaded.
             let writer = ledger
@@ -232,58 +230,14 @@ impl Actor {
                 .set_shares(params.id, shares)
                 .map_err(|e| illegal_argument(e, "failed to set stream shares"))
         })?;
-        // One burn send carries the immediate fold's dust with any the due writes left.
-        applied.fold_dust += fold_dust;
-        settle_applied(rt, &applied)
-    }
-
-    /// Pays the named wallets' live and carried entitlements for one explicit stream.
-    ///
-    /// Anyone may call this method; amounts and payout events preserve request order.
-    ///
-    /// A claim always names a stream ID, and a stream that has been removed keeps answering under
-    /// that same ID, because removal files its unpaid rows as a tombstone there. The tombstone
-    /// deletes itself when its last row is claimed, and the ID returns zeros from then on. A
-    /// wallet owed by several streams claims one stream at a time, live or tombstoned alike.
-    fn claim(rt: &impl Runtime, params: ClaimParams) -> Result<ClaimReturn, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        if params.wallets.len() > MAX_RECIPIENTS {
-            return Err(actor_error!(
-                illegal_argument,
-                "wallet count {} exceeds maximum {}",
-                params.wallets.len(),
-                MAX_RECIPIENTS
-            ));
-        }
-        // Stored recipients are ID addresses, so an unresolvable input takes a positional zero.
-        let wallets: Vec<Option<Address>> = params
-            .wallets
-            .iter()
-            .map(|wallet| rt.resolve_address(wallet).map(Address::new_id))
-            .collect();
-
-        let (applied, amounts) = run_mutation(rt, |ledger, _, _| {
-            ledger
-                .claim(params.id, &wallets)
-                .map_err(|e| illegal_argument(e, "failed to claim stream funds"))
-        })?;
-        settle_applied(rt, &applied)?;
-        for (wallet, amount) in wallets.iter().zip(&amounts) {
-            if let Some(recipient) = wallet
-                && amount > &TokenAmount::zero()
-            {
-                extract_send_result(rt.send_simple(recipient, METHOD_SEND, None, amount.clone()))?;
-                emit::claim_payout(rt, params.id, recipient, amount)?;
-            }
-        }
-        Ok(ClaimReturn { amounts })
+        emit_apply(rt, &applied)
     }
 
     /// Applies due stream writes and divides one block reward among all active streams.
     ///
-    /// Explicit portions accrue for later claims. The implicit portion and gas reward go to the
-    /// winning miner, while the exact residual is burnt. The system actor calls this implicitly
-    /// once per block.
+    /// Each explicit stream's portion is paid out to its stored recipients. The implicit portion
+    /// and the gas reward go to the winning miner, and the exact residual is burnt. The system
+    /// actor calls this implicitly once per block.
     fn award_block_reward(
         rt: &impl Runtime,
         params: AwardBlockRewardParams,
@@ -318,7 +272,7 @@ impl Actor {
             .ok_or_else(|| actor_error!(not_found, "failed to resolve given owner address"))?;
         let penalty: TokenAmount = &params.penalty * PENALTY_MULTIPLIER;
 
-        let (miner_reward, burn, applied) = rt.transaction(|st: &mut State, rt| {
+        let (miner_reward, payouts, mut burn, applied) = rt.transaction(|st: &mut State, rt| {
             let stream_bytes = rt
                 .store()
                 .get(&st.streams_root)
@@ -333,7 +287,7 @@ impl Actor {
                 .ok_or_else(|| {
                     actor_error!(illegal_state, "streams state root {} not found", st.streams_root)
                 })?;
-            let ledger = match Ledger::decode_for_award(&stream_bytes, &st.accrued) {
+            let ledger = match Ledger::decode_for_award(&stream_bytes) {
                 Ok(ledger) => ledger,
                 Err(error) => {
                     error!(
@@ -364,17 +318,19 @@ impl Actor {
             st.total_minted_reward += &block_reward;
             st.total_burn_minted += &allocation.burn;
             st.total_explicit_minted +=
-                allocation.portions.iter().map(|(_, amount)| amount).sum::<TokenAmount>();
+                allocation.payouts.iter().map(|payout| &payout.amount).sum::<TokenAmount>();
 
             Ok((
                 &params.gas_reward + allocation.miner,
-                &applied.fold_dust + allocation.burn,
+                allocation.payouts,
+                allocation.burn,
                 applied,
             ))
         })?;
 
-        // Reserved liabilities and dust are excluded before BR is capped; allocation conserves BR.
-        let outgoing = &miner_reward + &burn;
+        // The gas reward is excluded before BR is capped and the allocation conserves BR.
+        let paid: TokenAmount = payouts.iter().map(|payout| &payout.amount).sum();
+        let outgoing = &miner_reward + &paid + &burn;
         if outgoing > prior_balance {
             return Err(actor_error!(
                 illegal_state,
@@ -389,45 +345,59 @@ impl Actor {
             warn!("failed to emit implicit award events: {error}");
         }
         let reward_params = ext::miner::ApplyRewardParams { reward: miner_reward.clone(), penalty };
-        let miner_result = extract_send_result(rt.send_simple(
+        if let Err(e) = extract_send_result(rt.send_simple(
             &Address::new_id(miner_id),
             ext::miner::APPLY_REWARDS_METHOD,
             IpldBlock::serialize_cbor(&reward_params)?,
             miner_reward.clone(),
-        ));
+        )) {
+            error!(
+                "failed to send ApplyRewards call to the miner actor with funds {}, code: {:?}",
+                miner_reward,
+                e.exit_code()
+            );
+            burn += &miner_reward;
+        }
 
-        match miner_result {
-            Ok(_) => {
-                if burn > TokenAmount::zero() {
-                    extract_send_result(rt.send_simple(
-                        &BURNT_FUNDS_ACTOR_ADDR,
-                        METHOD_SEND,
-                        None,
-                        burn,
-                    ))?;
-                }
+        // A payout send runs no recipient code, so the only failures are a recipient that has
+        // ceased to exist and the runtime's own limits. Either way the amount burns and we opt to
+        // not propagate an error from here.
+        for payout in &payouts {
+            if payout.amount.is_zero() {
+                continue;
             }
-            Err(e) => {
+            if let Err(e) = extract_send_result(rt.send_simple(
+                &payout.recipient,
+                METHOD_SEND,
+                None,
+                payout.amount.clone(),
+            )) {
                 error!(
-                    "failed to send ApplyRewards call to the miner actor with funds {}, code: {:?}",
-                    miner_reward,
+                    "failed to pay stream {} recipient {} funds {}, code: {:?}",
+                    payout.stream,
+                    payout.recipient,
+                    payout.amount,
                     e.exit_code()
                 );
-                let fallback_burn = burn + miner_reward;
-                if fallback_burn > TokenAmount::zero()
-                    && let Err(e) = extract_send_result(rt.send_simple(
-                        &BURNT_FUNDS_ACTOR_ADDR,
-                        METHOD_SEND,
-                        None,
-                        fallback_burn,
-                    ))
-                {
-                    error!(
-                        "failed to send unsent reward to the burnt funds actor, code: {:?}",
-                        e.exit_code()
-                    );
-                }
+                burn += &payout.amount;
             }
+        }
+
+        // The award is already committed, so an unsendable burn is logged and the block reward
+        // stands, as an unpayable miner reward does.
+        if burn > TokenAmount::zero()
+            && let Err(e) = extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                burn.clone(),
+            ))
+        {
+            error!(
+                "failed to send burn {} to the burnt funds actor, code: {:?}",
+                burn,
+                e.exit_code()
+            );
         }
 
         Ok(())
@@ -530,22 +500,7 @@ fn run_mutation<T>(
     })
 }
 
-/// Emits an event for every write, then sends the fold dust it left to f099.
-fn settle_applied(rt: &impl Runtime, applied: &ApplyResult) -> Result<(), ActorError> {
-    emit_apply(rt, applied)?;
-    if applied.fold_dust > TokenAmount::zero() {
-        extract_send_result(rt.send_simple(
-            &BURNT_FUNDS_ACTOR_ADDR,
-            METHOD_SEND,
-            None,
-            applied.fold_dust.clone(),
-        ))?;
-    }
-    Ok(())
-}
-
-/// Announces the writes an application moved. The award calls this on its own, because its burn
-/// carries the fold dust with the block reward's residual.
+/// Announces the writes an application moved.
 fn emit_apply(rt: &impl Runtime, result: &ApplyResult) -> Result<(), ActorError> {
     for write in &result.applied {
         emit::write_applied(rt, write)?;
@@ -556,10 +511,10 @@ fn emit_apply(rt: &impl Runtime, result: &ApplyResult) -> Result<(), ActorError>
     Ok(())
 }
 
-/// FIP-0118 2.4.3's `no_award`: the miner is paid the gas reward alone and the state stands as it
-/// was.
-fn no_award(gas_reward: &TokenAmount) -> (TokenAmount, TokenAmount, ApplyResult) {
-    (gas_reward.clone(), TokenAmount::zero(), ApplyResult::default())
+/// FIP-0118 2.4.3's `no_award`: the miner is paid the gas reward alone, no recipient is paid, and
+/// the state stands as it was.
+fn no_award(gas_reward: &TokenAmount) -> (TokenAmount, Vec<Payout>, TokenAmount, ApplyResult) {
+    (gas_reward.clone(), Vec::new(), TokenAmount::zero(), ApplyResult::default())
 }
 
 impl ActorCode for Actor {
@@ -581,6 +536,5 @@ impl ActorCode for Actor {
         SetDistributionExported => set_distribution,
         CancelPendingExported => cancel_pending,
         SetSharesExported => set_shares,
-        ClaimExported => claim,
     }
 }

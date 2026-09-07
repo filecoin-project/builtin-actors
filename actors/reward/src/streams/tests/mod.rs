@@ -42,66 +42,37 @@ fn full_share_map(first_recipient: u64) -> Vec<RecipientShare> {
 }
 
 fn explicit(writer: u64, shares: Vec<RecipientShare>) -> ExplicitDistribution {
-    ExplicitDistribution {
-        writer: Address::new_id(writer),
-        shares,
-        payable: RecipientTable::default(),
-        claimed_period: RecipientTable::default(),
-    }
+    ExplicitDistribution { writer: Address::new_id(writer), shares }
 }
 
 fn stream(id: StreamId, weight: u64, distribution: Option<ExplicitDistribution>) -> Stream {
     Stream { id, weight: constant_weight(weight), distribution }
 }
 
-fn base_state() -> (StreamsState, Vec<StreamAccrual>) {
-    (
-        StreamsState {
-            streams: vec![
-                stream(1, pct(60), None),
-                stream(2, pct(20), Some(explicit(200, shares(&[(101, DENOM)])))),
-            ],
-            tombstones: Vec::new(),
-            pending_writes: Vec::new(),
-        },
-        vec![StreamAccrual { id: 2, amount: TokenAmount::zero() }],
-    )
-}
-
-fn tombstone(id: StreamId, first_recipient: u64, rows: usize) -> Tombstone {
-    Tombstone {
-        id,
-        payable: (0..rows)
-            .map(|offset| RecipientAmount {
-                recipient: Address::new_id(first_recipient + offset as u64),
-                amount: TokenAmount::from_atto(1),
-            })
-            .collect::<Vec<_>>()
-            .into(),
+fn base_state() -> StreamsState {
+    StreamsState {
+        streams: vec![
+            stream(1, pct(60), None),
+            stream(2, pct(20), Some(explicit(200, shares(&[(101, DENOM)])))),
+        ],
+        pending_writes: Vec::new(),
     }
 }
 
 /// A ledger over state the test built by hand, bypassing the invariants a load would run.
-///
-/// Wherever the operation under test reads an accrual row, the state given here has to satisfy
-/// those invariants anyway: the engine's accrual lookups are `expect`s, so a live explicit stream
-/// without its row panics rather than returning the rejection the test is looking for.
-fn ledger(streams: &StreamsState, accruals: &[StreamAccrual]) -> Ledger {
-    Ledger { streams: streams.clone(), accrued: accruals.to_vec(), streams_dirty: false }
+fn ledger(streams: &StreamsState) -> Ledger {
+    Ledger { streams: streams.clone(), streams_dirty: false }
 }
 
 /// The queue operations as the actor drives them: load a ledger, act, keep what it holds only if
 /// the call was admitted, since a rejected ledger is unspecified and the caller discards it.
-///
-/// Admission never changes the accrual rows, so these hand them back untouched and take a slice.
 fn admit(
     streams: &mut StreamsState,
-    accruals: &[StreamAccrual],
     call: QueuedCall,
     epoch: ChainEpoch,
     timelock: ChainEpoch,
 ) -> anyhow::Result<PendingWrite> {
-    let mut ledger = ledger(streams, accruals);
+    let mut ledger = ledger(streams);
     let queued = ledger.admit(call.canonical(), epoch, timelock).cloned()?;
     *streams = ledger.streams;
     Ok(queued)
@@ -109,19 +80,17 @@ fn admit(
 
 fn queue_weight_records(
     streams: &mut StreamsState,
-    accruals: &[StreamAccrual],
     epoch: ChainEpoch,
     timelock: ChainEpoch,
     op: PendingWriteOp,
     updates: &[WeightRecordUpdate],
 ) -> anyhow::Result<PendingWrite> {
     let call = QueuedCall::Weights { op, updates: updates.to_vec() };
-    admit(streams, accruals, call, epoch, timelock)
+    admit(streams, call, epoch, timelock)
 }
 
 fn queue_register_stream(
     streams: &mut StreamsState,
-    accruals: &[StreamAccrual],
     epoch: ChainEpoch,
     timelock: ChainEpoch,
     stream: Stream,
@@ -136,84 +105,59 @@ fn queue_register_stream(
         }),
         activation,
     };
-    admit(streams, accruals, call, epoch, timelock)
+    admit(streams, call, epoch, timelock)
 }
 
 fn queue_remove_stream(
     streams: &mut StreamsState,
-    accruals: &[StreamAccrual],
     epoch: ChainEpoch,
     timelock: ChainEpoch,
     id: StreamId,
 ) -> anyhow::Result<PendingWrite> {
-    admit(streams, accruals, QueuedCall::Remove { id }, epoch, timelock)
+    admit(streams, QueuedCall::Remove { id }, epoch, timelock)
 }
 
 fn queue_set_distribution(
     streams: &mut StreamsState,
-    accruals: &[StreamAccrual],
     epoch: ChainEpoch,
     timelock: ChainEpoch,
     id: StreamId,
     writer: Address,
 ) -> anyhow::Result<PendingWrite> {
-    admit(streams, accruals, QueuedCall::SetDistribution { id, writer }, epoch, timelock)
+    admit(streams, QueuedCall::SetDistribution { id, writer }, epoch, timelock)
 }
 
 /// The explicit share update as the actor drives it, keeping what the ledger holds only on
 /// success.
 fn set_shares(
     streams: &mut StreamsState,
-    accruals: &mut Vec<StreamAccrual>,
     id: StreamId,
     shares: Vec<RecipientShare>,
-) -> anyhow::Result<TokenAmount> {
-    let mut ledger = ledger(streams, accruals);
-    let dust = ledger.set_shares(id, shares)?;
+) -> anyhow::Result<()> {
+    let mut ledger = ledger(streams);
+    ledger.set_shares(id, shares)?;
     *streams = ledger.streams;
-    *accruals = ledger.accrued;
-    Ok(dust)
+    Ok(())
 }
 
 /// One due removal, driven straight through the transition the queue applies.
-fn remove_stream(
-    streams: &mut StreamsState,
-    accruals: &mut Vec<StreamAccrual>,
-    id: StreamId,
-) -> Result<TokenAmount, Stranded> {
-    let mut ledger = ledger(streams, accruals);
-    let dust = ledger.remove_stream(id)?;
+fn remove_stream(streams: &mut StreamsState, id: StreamId) -> Result<(), Stranded> {
+    let mut ledger = ledger(streams);
+    ledger.remove_stream(id)?;
     *streams = ledger.streams;
-    *accruals = ledger.accrued;
-    Ok(dust)
+    Ok(())
 }
 
 /// One due writer change, driven straight through the transition the queue applies.
 fn replace_writer(
     streams: &mut StreamsState,
-    accruals: &mut Vec<StreamAccrual>,
     id: StreamId,
     writer: Address,
-) -> Result<TokenAmount, Stranded> {
-    let mut ledger = ledger(streams, accruals);
-    let dust = ledger.replace_writer(id, writer)?;
+) -> Result<(), Stranded> {
+    let mut ledger = ledger(streams);
+    ledger.replace_writer(id, writer)?;
     *streams = ledger.streams;
-    *accruals = ledger.accrued;
-    Ok(dust)
-}
-
-/// A claim over wallets the actor layer has already resolved.
-fn claim(
-    streams: &mut StreamsState,
-    accruals: &[StreamAccrual],
-    id: StreamId,
-    wallets: &[Address],
-) -> anyhow::Result<Vec<TokenAmount>> {
-    let mut ledger = ledger(streams, accruals);
-    let resolved: Vec<Option<Address>> = wallets.iter().copied().map(Some).collect();
-    let amounts = ledger.claim(id, &resolved)?;
-    *streams = ledger.streams;
-    Ok(amounts)
+    Ok(())
 }
 
 /// One block reward split across a bare stream table, which is all the split reads, under the
@@ -222,31 +166,30 @@ fn allocate(streams: &[Stream], epoch: ChainEpoch, block_reward: &TokenAmount) -
     let table = StreamsState { streams: streams.to_vec(), ..Default::default() };
     let evaluated: Vec<u64> =
         streams.iter().map(|stream| compute_weight(&stream.weight, epoch)).collect();
-    ledger(&table, &[]).allocate(&evaluated, block_reward)
+    ledger(&table).allocate(&evaluated, block_reward)
 }
 
-/// The award crediting its portions, which only adds to rows that are already there, so the row
-/// count holds.
-fn accrue(accruals: &mut [StreamAccrual], portions: &[(StreamId, TokenAmount)]) {
-    let mut ledger = ledger(&StreamsState::default(), accruals);
-    ledger.accrue(portions);
-    accruals.clone_from_slice(&ledger.accrued);
+/// What an allocation pays out across every stream and recipient.
+fn paid(allocation: &Allocation) -> TokenAmount {
+    allocation.payouts.iter().map(|payout| &payout.amount).sum()
 }
 
-/// The accrual rows an award's portions amount to from an empty start.
-fn accruals_of(portions: &[(StreamId, TokenAmount)]) -> Vec<StreamAccrual> {
-    portions.iter().map(|(id, amount)| StreamAccrual { id: *id, amount: amount.clone() }).collect()
+/// One recipient's payout from one stream, which an award makes exactly once.
+fn payout(allocation: &Allocation, stream: StreamId, recipient: u64) -> TokenAmount {
+    let recipient = Address::new_id(recipient);
+    let mut rows = allocation
+        .payouts
+        .iter()
+        .filter(|payout| payout.stream == stream && payout.recipient == recipient);
+    let amount = rows.next().map_or_else(TokenAmount::zero, |payout| payout.amount.clone());
+    assert!(rows.next().is_none(), "one payout per stream and recipient");
+    amount
 }
 
-fn apply_due_writes(
-    streams: &mut StreamsState,
-    accruals: &mut Vec<StreamAccrual>,
-    epoch: ChainEpoch,
-) -> ApplyResult {
-    let mut ledger = ledger(streams, accruals);
+fn apply_due_writes(streams: &mut StreamsState, epoch: ChainEpoch) -> ApplyResult {
+    let mut ledger = ledger(streams);
     let result = ledger.apply_due(epoch);
     *streams = ledger.streams;
-    *accruals = ledger.accrued;
     result
 }
 
@@ -257,85 +200,36 @@ fn cancel(
     op: PendingWriteOp,
 ) -> anyhow::Result<Option<PendingWrite>> {
     let slot = Slot::for_cancel(id, op)?;
-    let mut ledger = ledger(streams, &[]);
+    let mut ledger = ledger(streams);
     let removed = ledger.cancel(slot);
     *streams = ledger.streams;
     Ok(removed)
 }
 
-fn amount(rows: &RecipientTable, recipient: u64) -> TokenAmount {
-    rows.get(&Address::new_id(recipient))
-}
-
-fn explicit_liabilities(streams: &StreamsState, accruals: &[StreamAccrual]) -> TokenAmount {
-    ledger(streams, accruals).liability()
-}
-
-fn assert_explicit_conserved(
-    gross: &TokenAmount,
-    paid: &TokenAmount,
-    burned: &TokenAmount,
-    streams: &StreamsState,
-    accruals: &[StreamAccrual],
-) {
-    let mut accounted = paid.clone();
-    accounted += burned;
-    accounted += explicit_liabilities(streams, accruals);
-    assert_eq!(*gross, accounted);
-}
-
+/// The three counters an award moves, and the miner's share, tracked across a run of awards.
 #[derive(Default)]
 struct SupplyTracker {
     total_minted: TokenAmount,
     total_burn: TokenAmount,
     total_explicit: TokenAmount,
-    total_dust: TokenAmount,
-    f099_balance: TokenAmount,
-    actor_balance: TokenAmount,
+    miner_total: TokenAmount,
 }
 
 impl SupplyTracker {
-    fn award(
-        &mut self,
-        streams: &StreamsState,
-        accruals: &mut [StreamAccrual],
-        epoch: ChainEpoch,
-        reward: TokenAmount,
-    ) {
+    /// Records one award and reports how many recipients it paid a non-zero amount.
+    fn award(&mut self, streams: &StreamsState, epoch: ChainEpoch, reward: TokenAmount) -> usize {
         schedule_at(&streams.streams, epoch).expect("valid randomized state entered degradation");
         let allocation = allocate(&streams.streams, epoch, &reward);
-        let explicit = allocation
-            .portions
-            .iter()
-            .fold(TokenAmount::zero(), |total, (_, amount)| total + amount);
-        accrue(accruals, &allocation.portions);
+        let paid = paid(&allocation);
+        assert_eq!(reward, &allocation.miner + &paid + &allocation.burn);
         self.total_minted += &reward;
         self.total_burn += &allocation.burn;
-        self.total_explicit += &explicit;
-        self.f099_balance += allocation.burn;
-        self.actor_balance += explicit;
+        self.total_explicit += paid;
+        self.miner_total += &allocation.miner;
+        allocation.payouts.iter().filter(|payout| !payout.amount.is_zero()).count()
     }
 
-    fn burn_dust(&mut self, dust: TokenAmount) {
-        self.actor_balance -= &dust;
-        self.total_dust += &dust;
-        self.f099_balance += dust;
-    }
-
-    fn pay_claim(&mut self, result: &[TokenAmount]) {
-        let paid = result.iter().fold(TokenAmount::zero(), |total, amount| total + amount);
-        self.actor_balance -= paid;
-    }
-
-    fn assert_invariants(&self, streams: &StreamsState, accruals: &[StreamAccrual]) {
-        let liabilities = explicit_liabilities(streams, accruals);
-        assert_eq!(self.actor_balance, liabilities);
-        assert!(
-            liabilities <= self.total_explicit,
-            "conservative explicit reserve is below exact liability"
-        );
-        let miner = &self.total_minted - &self.total_burn - &self.total_explicit;
-        assert!(miner >= TokenAmount::zero());
-        assert_eq!(self.f099_balance, &self.total_burn + &self.total_dust);
+    fn assert_invariants(&self) {
+        assert_eq!(self.total_minted, &self.miner_total + &self.total_explicit + &self.total_burn);
     }
 }

@@ -5,10 +5,9 @@ use std::cell::RefCell;
 
 use fil_actor_reward::{
     Actor as RewardActor, AwardBlockRewardParams, BASELINE_INITIAL_VALUE, BASELINE_TOTAL, DENOM,
-    ExplicitDistribution, Method, PENALTY_MULTIPLIER, PendingWrite, PendingWriteOp,
-    RecipientAmount, RecipientShare, RecipientTable, SIMPLE_TOTAL, SetWeightRecordsParams, State,
-    Stream, StreamAccrual, StreamsState, ThisEpochRewardReturn, Tombstone, WeightRecord,
-    WeightRecordUpdate, ext, testing::check_state_invariants,
+    ExplicitDistribution, Method, PENALTY_MULTIPLIER, PendingWrite, PendingWriteOp, RecipientShare,
+    SIMPLE_TOTAL, SetWeightRecordsParams, State, Stream, StreamsState, ThisEpochRewardReturn,
+    WeightRecord, WeightRecordUpdate, ext, testing::check_state_invariants,
 };
 use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
 use fil_actors_runtime::test_utils::*;
@@ -55,7 +54,6 @@ mod construction_tests {
         assert_eq!(TokenAmount::zero(), state.total_minted_reward);
         assert_eq!(TokenAmount::zero(), state.total_burn_minted);
         assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
-        assert!(state.accrued.is_empty());
         assert_eq!(0, state.swa_timelock_epochs);
 
         // The whole reward reaches the miner through one implicit stream at full weight.
@@ -76,7 +74,7 @@ mod construction_tests {
     }
 
     #[test]
-    fn checks_explicit_accounting_invariants() {
+    fn reports_a_non_id_swa_actor() {
         let rt = construct_and_verify(&StoragePower::from(0));
         let mut state: State = rt.get_state();
         let allocation = TokenAmount::from_whole(1_100_000_000);
@@ -87,46 +85,6 @@ mod construction_tests {
         state.swa_actor = Address::new_delegated(10, &[1; 20]).unwrap();
         let (_, acc) = check_state_invariants(&state, &*rt.store, -1, 0, &allocation);
         assert!(acc.messages().iter().any(|message| message.contains("not an ID address")));
-        state.swa_actor = Address::new_id(0);
-
-        let streams = StreamsState {
-            streams: vec![Stream {
-                id: 2,
-                weight: WeightRecord::default(),
-                distribution: Some(ExplicitDistribution {
-                    writer: Address::new_id(100),
-                    shares: vec![RecipientShare { recipient: Address::new_id(101), share: DENOM }],
-                    payable: RecipientTable::default(),
-                    claimed_period: RecipientTable::default(),
-                }),
-            }],
-            ..Default::default()
-        };
-        state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-        state.total_minted_reward = allocation;
-        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, 0, &TokenAmount::zero());
-        assert!(acc.messages().iter().any(|message| message.contains("missing [2]")));
-
-        state.total_explicit_minted = TokenAmount::from_atto(10);
-        state.accrued = vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(10) }];
-
-        let (_, acc) = check_state_invariants(&state, &*rt.store, -1, 0, &TokenAmount::zero());
-        assert!(
-            acc.messages()
-                .iter()
-                .any(|message| message.contains("does not cover explicit-stream liabilities"))
-        );
-
-        let (_, acc) =
-            check_state_invariants(&state, &*rt.store, -1, 0, &TokenAmount::from_atto(10));
-        acc.assert_empty();
-
-        state.accrued[0].amount = TokenAmount::from_atto(-1);
-        let (_, acc) =
-            check_state_invariants(&state, &*rt.store, -1, 0, &TokenAmount::from_atto(10));
-        let messages = acc.messages();
-        assert!(messages.iter().any(|message| message.contains("explicit-stream accrual")));
-        assert!(messages.iter().any(|message| message.contains("invalid streams state")));
     }
 
     #[test]
@@ -136,13 +94,10 @@ mod construction_tests {
         let distribution = ExplicitDistribution {
             writer: Address::new_id(100),
             shares: vec![RecipientShare { recipient: Address::new_id(101), share: DENOM }],
-            payable: RecipientTable::default(),
-            claimed_period: RecipientTable::default(),
         };
         let mut state: State = rt.get_state();
         state.total_minted_reward = allocation.clone();
         state.swa_timelock_epochs = 2;
-        state.accrued = vec![StreamAccrual { id: 2, amount: TokenAmount::zero() }];
         // This is the valid control: the unallocated 10% burns, so weights need not sum to DENOM.
         // Each case below clones it and violates one structural invariant.
         let streams = StreamsState {
@@ -191,57 +146,6 @@ mod construction_tests {
         let mut duplicate_streams = streams.clone();
         duplicate_streams.streams.insert(1, duplicate_streams.streams[0].clone());
         assert_message(&state, &duplicate_streams, "streams are not strictly ordered");
-
-        let mut overlap = streams.clone();
-        overlap.tombstones = vec![Tombstone {
-            id: 2,
-            payable: vec![RecipientAmount {
-                recipient: Address::new_id(101),
-                amount: TokenAmount::from_atto(1),
-            }]
-            .into(),
-        }];
-        let mut overlap_state = state.clone();
-        overlap_state.total_explicit_minted = TokenAmount::from_atto(1);
-        assert_message(&overlap_state, &overlap, "both live and tombstoned");
-
-        let tombstone = Tombstone {
-            id: 3,
-            payable: vec![RecipientAmount {
-                recipient: Address::new_id(101),
-                amount: TokenAmount::from_atto(1),
-            }]
-            .into(),
-        };
-        let mut duplicate_tombstones = streams.clone();
-        duplicate_tombstones.tombstones = vec![tombstone.clone(), tombstone];
-        let mut tombstone_state = state.clone();
-        tombstone_state.total_explicit_minted = TokenAmount::from_atto(2);
-        assert_message(
-            &tombstone_state,
-            &duplicate_tombstones,
-            "tombstones are not strictly ordered",
-        );
-
-        let mut duplicate_accruals = state.clone();
-        duplicate_accruals.accrued.push(duplicate_accruals.accrued[0].clone());
-        assert_message(&duplicate_accruals, &streams, "accrual rows are not strictly ordered");
-
-        let mut extra_stream = streams.streams[1].clone();
-        extra_stream.id = 3;
-        extra_stream.weight = WeightRecord::default();
-        let mut unordered_streams = streams.clone();
-        unordered_streams.streams.push(extra_stream);
-        let mut unordered_accruals = state.clone();
-        unordered_accruals.accrued = vec![
-            StreamAccrual { id: 3, amount: TokenAmount::zero() },
-            StreamAccrual { id: 2, amount: TokenAmount::zero() },
-        ];
-        assert_message(
-            &unordered_accruals,
-            &unordered_streams,
-            "accrual rows are not strictly ordered",
-        );
 
         let weights = SetWeightRecordsParams {
             updates: vec![
@@ -309,15 +213,12 @@ mod construction_tests {
                             recipient: Address::new_id(101),
                             share: DENOM,
                         }],
-                        payable: RecipientTable::default(),
-                        claimed_period: RecipientTable::default(),
                     }),
                 },
             ],
             ..Default::default()
         };
         state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-        state.accrued = vec![StreamAccrual { id: 2, amount: TokenAmount::zero() }];
         let allocation = TokenAmount::from_whole(1_100_000_000);
 
         let (_, at_epoch_zero) = check_state_invariants(&state, &*rt.store, -1, 0, &allocation);

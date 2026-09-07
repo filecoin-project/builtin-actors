@@ -1,10 +1,8 @@
-use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
+use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR};
 use fvm_shared::address::Address;
-use fvm_shared::econ::TokenAmount;
-use num_traits::Zero;
 
 use super::*;
-use crate::streams::distribution::validate_shares;
+use crate::streams::distribution::{validate_shares, validate_stored_shares};
 
 #[test]
 fn rejects_invalid_share_maps() {
@@ -19,6 +17,25 @@ fn rejects_invalid_share_maps() {
         })
         .collect();
     assert!(validate_shares(&too_many).is_err());
+}
+
+// A send from f02 to itself moves nothing and reports no error, so the reward actor is not a
+// recipient in either form of the map.
+#[test]
+fn rejects_the_reward_actor_as_a_recipient() {
+    let wire = vec![
+        RecipientShare { recipient: REWARD_ACTOR_ADDR, share: DENOM / 2 },
+        RecipientShare { recipient: Address::new_id(101), share: DENOM - DENOM / 2 },
+    ];
+    let error = validate_shares(&wire).unwrap_err();
+    assert_eq!("the reward actor is not a share recipient", error.to_string());
+    assert_eq!(error.to_string(), admit_shares(wire).unwrap_err().to_string());
+
+    let stored = vec![RecipientShare { recipient: REWARD_ACTOR_ADDR, share: DENOM }];
+    assert_eq!(
+        "the reward actor is not a share recipient",
+        validate_stored_shares(&stored).unwrap_err().to_string()
+    );
 }
 
 #[test]
@@ -38,134 +55,45 @@ fn admits_and_strips_burn_sentinel_rows() {
 }
 
 #[test]
-fn folds_period_under_outgoing_shares_and_burns_only_dust() {
-    let third = DENOM / 3;
-    let old_shares = shares(&[(101, third), (102, third), (103, DENOM - 2 * third)]);
-    let mut distribution = explicit(200, old_shares);
-    distribution.payable.add(Address::new_id(104), TokenAmount::from_atto(5));
-    distribution.claimed_period.add(Address::new_id(101), TokenAmount::from_atto(1));
-    let mut streams = StreamsState {
-        streams: vec![stream(2, pct(20), Some(distribution))],
-        ..Default::default()
-    };
-    let mut accruals = vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(10) }];
+fn installs_the_admitted_map_in_recipient_order() {
+    let mut streams = base_state();
 
-    let burn = set_shares(&mut streams, &mut accruals, 2, shares(&[(105, DENOM)])).unwrap();
-    let distribution = streams.streams[0].distribution.as_ref().unwrap();
-    assert_eq!(TokenAmount::from_atto(1), burn);
-    assert_eq!(TokenAmount::zero(), accruals[0].amount);
-    assert!(distribution.claimed_period.is_empty());
-    assert_eq!(shares(&[(105, DENOM)]), distribution.shares);
-    assert_eq!(TokenAmount::from_atto(2), amount(&distribution.payable, 101));
-    assert_eq!(TokenAmount::from_atto(3), amount(&distribution.payable, 102));
-    assert_eq!(TokenAmount::from_atto(3), amount(&distribution.payable, 103));
-    assert_eq!(TokenAmount::from_atto(5), amount(&distribution.payable, 104));
-}
-
-#[test]
-fn fold_dust_preserves_the_supply_decomposition_without_moving_counters() {
-    let (mut streams, mut accruals) = base_state();
-    let third = DENOM / 3;
-    let split = shares(&[(101, third), (102, third), (103, DENOM - 2 * third)]);
-    streams.streams[1].distribution.as_mut().unwrap().shares = split.clone();
-    let mut supply = SupplyTracker::default();
-
-    for _ in 0..2 {
-        supply.award(&streams, &mut accruals, 0, TokenAmount::from_atto(51));
-        let before_burn = supply.total_burn.clone();
-        let before_explicit = supply.total_explicit.clone();
-        let dust = set_shares(&mut streams, &mut accruals, 2, split.clone()).unwrap();
-        assert_eq!(TokenAmount::from_atto(1), dust);
-        supply.burn_dust(dust);
-        assert_eq!(before_burn, supply.total_burn);
-        assert_eq!(before_explicit, supply.total_explicit);
-        supply.assert_invariants(&streams, &accruals);
-    }
-
-    assert_eq!(TokenAmount::from_atto(22), supply.total_burn);
-    assert_eq!(TokenAmount::from_atto(20), supply.total_explicit);
-    assert_eq!(TokenAmount::from_atto(2), supply.total_dust);
-    supply.assert_invariants(&streams, &accruals);
-}
-
-#[test]
-fn claims_live_and_payable_amounts_once_in_request_order() {
-    let mut distribution = explicit(200, shares(&[(101, DENOM / 2), (102, DENOM - DENOM / 2)]));
-    distribution.payable = vec![
-        RecipientAmount { recipient: Address::new_id(101), amount: TokenAmount::from_atto(3) },
-        RecipientAmount { recipient: Address::new_id(102), amount: TokenAmount::from_atto(4) },
-    ]
-    .into();
-    distribution.claimed_period = vec![RecipientAmount {
-        recipient: Address::new_id(101),
-        amount: TokenAmount::from_atto(2),
-    }]
-    .into();
-    let mut streams = StreamsState {
-        streams: vec![stream(2, pct(20), Some(distribution))],
-        ..Default::default()
-    };
-    let accruals = vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(11) }];
-    let wallets =
-        [Address::new_id(101), Address::new_id(101), Address::new_id(102), Address::new_id(999)];
-
-    let result = claim(&mut streams, &accruals, 2, &wallets).unwrap();
+    set_shares(&mut streams, 2, shares(&[(103, pct(40)), (101, pct(60))])).unwrap();
     assert_eq!(
-        vec![
-            TokenAmount::from_atto(6),
-            TokenAmount::zero(),
-            TokenAmount::from_atto(9),
-            TokenAmount::zero(),
-        ],
-        result
+        shares(&[(101, pct(60)), (103, pct(40))]),
+        streams.streams[1].distribution.as_ref().unwrap().shares
     );
-
-    let distribution = streams.streams[0].distribution.as_ref().unwrap();
-    assert!(distribution.payable.is_empty());
-    assert_eq!(TokenAmount::from_atto(5), amount(&distribution.claimed_period, 101));
-    assert_eq!(TokenAmount::from_atto(5), amount(&distribution.claimed_period, 102));
-    let before = streams.clone();
-    let zero = claim(&mut streams, &accruals, 2, &[Address::new_id(999)]).unwrap();
-    assert_eq!(vec![TokenAmount::zero()], zero);
-    assert_eq!(before, streams);
 }
 
 #[test]
-fn claims_tombstones_and_deletes_them_when_drained() {
-    let mut streams = StreamsState {
-        tombstones: vec![Tombstone {
-            id: 3,
-            payable: vec![
-                RecipientAmount {
-                    recipient: Address::new_id(101),
-                    amount: TokenAmount::from_atto(7),
-                },
-                RecipientAmount {
-                    recipient: Address::new_id(102),
-                    amount: TokenAmount::from_atto(8),
-                },
-            ]
-            .into(),
-        }],
-        ..Default::default()
-    };
+fn set_shares_rejects_a_missing_or_implicit_stream() {
+    let mut streams = base_state();
 
-    let result = claim(
-        &mut streams,
-        &[],
-        3,
-        &[Address::new_id(101), Address::new_id(101), Address::new_id(999)],
-    )
-    .unwrap();
-    assert_eq!(vec![TokenAmount::from_atto(7), TokenAmount::zero(), TokenAmount::zero()], result);
-    assert_eq!(1, streams.tombstones.len());
+    let error = set_shares(&mut streams.clone(), 9, shares(&[(101, DENOM)])).unwrap_err();
+    assert_eq!("stream 9 not found", error.to_string());
 
-    let result = claim(&mut streams, &[], 3, &[Address::new_id(102)]).unwrap();
-    assert_eq!(vec![TokenAmount::from_atto(8)], result);
+    let error = set_shares(&mut streams, 1, shares(&[(101, DENOM)])).unwrap_err();
+    assert_eq!("stream 1 is implicit", error.to_string());
+}
 
-    let before = streams.clone();
-    let result =
-        claim(&mut streams, &[], 3, &[Address::new_id(102), Address::new_id(999)]).unwrap();
-    assert_eq!(vec![TokenAmount::zero(), TokenAmount::zero()], result);
-    assert_eq!(before, streams);
+#[test]
+fn writer_replacement_keeps_the_share_map() {
+    let mut streams = base_state();
+
+    replace_writer(&mut streams, 2, Address::new_id(999)).unwrap();
+    let distribution = streams.streams[1].distribution.as_ref().unwrap();
+    assert_eq!(Address::new_id(999), distribution.writer);
+    assert_eq!(shares(&[(101, DENOM)]), distribution.shares);
+
+    assert!(replace_writer(&mut streams, 1, Address::new_id(999)).is_err());
+    assert!(replace_writer(&mut streams, 9, Address::new_id(999)).is_err());
+}
+
+#[test]
+fn removal_takes_the_stream_out_of_the_schedule() {
+    let mut streams = base_state();
+
+    remove_stream(&mut streams, 2).unwrap();
+    assert_eq!(vec![1], streams.streams.iter().map(|stream| stream.id).collect::<Vec<_>>());
+    assert!(remove_stream(&mut streams, 2).is_err());
 }
