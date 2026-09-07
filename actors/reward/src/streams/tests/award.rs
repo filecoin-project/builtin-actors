@@ -17,16 +17,17 @@ fn allocates_reward_in_stream_order_and_conserves_attos() {
     let allocation = allocate(&streams, 0, &reward);
 
     assert_eq!(TokenAmount::from_atto(3), allocation.miner);
+    // Stream 3's tenth of seven attos floors to nothing, so only stream 2 pays.
     assert_eq!(
-        vec![(2, Address::new_id(101)), (3, Address::new_id(102))],
+        vec![(2, Address::new_id(101))],
         allocation
             .payouts
             .iter()
             .map(|payout| (payout.stream, payout.recipient))
             .collect::<Vec<_>>()
     );
-    assert_eq!(TokenAmount::from_atto(1), allocation.payouts[0].amount);
-    assert_eq!(TokenAmount::zero(), allocation.payouts[1].amount);
+    assert_eq!(TokenAmount::from_atto(1), payout(&allocation, 2, 101));
+    assert_eq!(TokenAmount::zero(), payout(&allocation, 3, 102));
     assert_eq!(TokenAmount::from_atto(3), allocation.burn);
     assert_eq!(reward, &allocation.miner + &paid(&allocation) + &allocation.burn);
 }

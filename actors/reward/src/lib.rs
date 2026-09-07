@@ -194,6 +194,8 @@ impl Actor {
 
     /// Installs an explicit stream's next recipient share map, in force from the next award.
     fn set_shares(rt: &impl Runtime, params: SetSharesParams) -> Result<(), ActorError> {
+        // Any caller reaches this far. The writer check is inside the transaction below, after
+        // the due writes apply, because a due SetDistribution can change who the writer is.
         rt.validate_immediate_caller_accept_any()?;
         if params.shares.len() > MAX_RECIPIENTS {
             return Err(actor_error!(
@@ -235,9 +237,10 @@ impl Actor {
 
     /// Applies due stream writes and divides one block reward among all active streams.
     ///
-    /// Each explicit stream's portion is paid out to its stored recipients. The implicit portion
-    /// and the gas reward go to the winning miner, and the exact residual is burnt. The system
-    /// actor calls this implicitly once per block.
+    /// Each explicit stream's portion reaches its stored recipients in this call, one transfer
+    /// per recipient. The implicit portion and the gas reward go to the winning miner, and the
+    /// exact residual is burnt. A transfer the runtime rejects joins the burn, logged, and the
+    /// award stands. The system actor calls this implicitly once per block.
     fn award_block_reward(
         rt: &impl Runtime,
         params: AwardBlockRewardParams,
@@ -328,7 +331,9 @@ impl Actor {
             ))
         })?;
 
-        // The gas reward is excluded before BR is capped and the allocation conserves BR.
+        // `outgoing` is everything this call sends, the miner reward with the gas reward folded
+        // in, every payout, and the burn. BR is capped at the balance less the gas reward and the
+        // allocation splits BR exactly, so the sum stays within the balance.
         let paid: TokenAmount = payouts.iter().map(|payout| &payout.amount).sum();
         let outgoing = &miner_reward + &paid + &burn;
         if outgoing > prior_balance {
@@ -359,13 +364,10 @@ impl Actor {
             burn += &miner_reward;
         }
 
-        // A payout send runs no recipient code, so the only failures are a recipient that has
-        // ceased to exist and the runtime's own limits. Either way the amount burns and we opt to
-        // not propagate an error from here.
+        // A payout is a method-0 transfer, so no recipient code runs and the failures left are a
+        // recipient that has ceased to exist and the runtime's own limits. Either way the amount
+        // joins the burn and the award stands.
         for payout in &payouts {
-            if payout.amount.is_zero() {
-                continue;
-            }
             if let Err(e) = extract_send_result(rt.send_simple(
                 &payout.recipient,
                 METHOD_SEND,
@@ -511,8 +513,8 @@ fn emit_apply(rt: &impl Runtime, result: &ApplyResult) -> Result<(), ActorError>
     Ok(())
 }
 
-/// FIP-0118 2.4.3's `no_award`: the miner is paid the gas reward alone, no recipient is paid, and
-/// the state stands as it was.
+/// `no_award` from FIP-0118 2.4.3. The winning miner takes the gas reward alone, the block reward
+/// goes unminted, and the state stands as it was.
 fn no_award(gas_reward: &TokenAmount) -> (TokenAmount, Vec<Payout>, TokenAmount, ApplyResult) {
     (gas_reward.clone(), Vec::new(), TokenAmount::zero(), ApplyResult::default())
 }

@@ -141,24 +141,31 @@ fn set_shares(
     Ok(())
 }
 
-/// One due removal, driven straight through the transition the queue applies.
-fn remove_stream(streams: &mut StreamsState, id: StreamId) -> Result<(), Stranded> {
+/// One queued call applied at `epoch` as the queue applies it, keeping what the ledger holds only
+/// when the call is not stranded.
+fn apply_call(
+    streams: &mut StreamsState,
+    call: QueuedCall,
+    epoch: ChainEpoch,
+) -> Result<(), Stranded> {
     let mut ledger = ledger(streams);
-    ledger.remove_stream(id)?;
+    ledger.apply(&call, epoch)?;
     *streams = ledger.streams;
     Ok(())
 }
 
-/// One due writer change, driven straight through the transition the queue applies.
+/// One due removal.
+fn remove_stream(streams: &mut StreamsState, id: StreamId) -> Result<(), Stranded> {
+    apply_call(streams, QueuedCall::Remove { id }, 0)
+}
+
+/// One due writer change.
 fn replace_writer(
     streams: &mut StreamsState,
     id: StreamId,
     writer: Address,
 ) -> Result<(), Stranded> {
-    let mut ledger = ledger(streams);
-    ledger.replace_writer(id, writer)?;
-    *streams = ledger.streams;
-    Ok(())
+    apply_call(streams, QueuedCall::SetDistribution { id, writer }, 0)
 }
 
 /// One block reward split across a bare stream table, which is all the split reads, under the

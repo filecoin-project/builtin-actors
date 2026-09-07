@@ -59,8 +59,9 @@
 //! `SetWeightRecords` that repairs things without stranding a still-valid entry. It gets the
 //! ordinary timelock like anything else.
 //!
-//! FIP-0118 2.4.7 has the timelock, the three epochs, slots and cancellability; 2.4.8 has details
-//! about what admission proves, stranding, and repair.
+//! FIP-0118 2.4.6 has the stream lifecycle these writes drive, from registration through removal;
+//! 2.4.7 has the timelock, the three epochs, slots and cancellability; 2.4.8 has details about
+//! what admission proves, stranding, and repair.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -308,21 +309,26 @@ impl QueuedCall {
     }
 }
 
-/// The effects of applying due writes, for the actor layer to settle after the transaction.
+/// Where every due write went, so the actor layer can emit events for them once the transaction
+/// commits.
 ///
 /// This crosses Rust call boundaries only so doesn't need to be encodable.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ApplyResult {
-    /// Successful writes, for actor-layer events after a committed application.
+    /// The writes that applied, in queue order.
     pub applied: Vec<PendingWrite>,
-    /// Removed writes, for actor-layer events after a committed application.
+    /// The writes dropped for a missing prerequisite, in queue order.
     pub dropped: Vec<PendingWrite>,
 }
 
 impl Ledger {
     /// Applies one queued call in the state its predecessors left, from the epoch it becomes
     /// effective, or reports the one prerequisite the call is missing.
-    fn apply(&mut self, call: &QueuedCall, effective: ChainEpoch) -> Result<(), Stranded> {
+    pub(super) fn apply(
+        &mut self,
+        call: &QueuedCall,
+        effective: ChainEpoch,
+    ) -> Result<(), Stranded> {
         match call {
             QueuedCall::Weights { updates, .. } => {
                 for update in updates {
@@ -353,8 +359,15 @@ impl Ledger {
                 });
                 self.streams.insert_stream(Stream { id, weight: weight.clone(), distribution });
             }
-            QueuedCall::Remove { id } => self.remove_stream(*id)?,
-            QueuedCall::SetDistribution { id, writer } => self.replace_writer(*id, *writer)?,
+            // The next award pays under the streams that remain.
+            QueuedCall::Remove { id } => {
+                self.streams.take_stream(*id).ok_or(Stranded::MissingStream(*id))?;
+            }
+            // The share map stays as it is, under the new writer.
+            QueuedCall::SetDistribution { id, writer } => {
+                let stream = self.streams.stream_mut(*id).ok_or(Stranded::MissingStream(*id))?;
+                stream.explicit_mut().ok_or(Stranded::NotExplicit(*id))?.writer = *writer;
+            }
         }
         // Only the weight envelope needs checking here; the registration preconditions above
         // guard the stream table, and the other calls leave its shape as they found it.
@@ -430,6 +443,9 @@ impl Ledger {
                 );
                 *activation
             }
+            // Nothing to check here. Whether the stream is live when the removal applies is
+            // proved by the queue projection in [`Ledger::admit`], so this arm only computes
+            // the effective epoch.
             QueuedCall::Remove { .. } => timelock_epoch(epoch, timelock)?,
             QueuedCall::SetDistribution { writer, .. } => {
                 validate_id_address(writer, "distribution writer")?;

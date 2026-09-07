@@ -5,15 +5,15 @@
 //! the StreamsState block that it references. Reward state mutates every epoch, but StreamsState
 //! mutates much less often so we attempt to manage state churn by using the division.
 //!
-//! FIP-0118 section 2.4.2 defines the current layout as implemented here. It also defines
-//! ordering: `streams` has unique ascending stream IDs; a share map has unique ascending
-//! recipient IDs; and `pending_writes` is ordered by effective epoch, preserving admission order
-//! at equal epochs.
+//! FIP-0118 section 2.4.2 defines the layout implemented here. It also defines ordering.
+//! `streams` has unique ascending stream IDs; a share map has unique ascending recipient IDs; and
+//! `pending_writes` is ordered by effective epoch, preserving admission order at equal epochs.
 //!
 //! A stream's distribution is one of two kinds (2.4.1). `IMPLICIT` (the `None` arm) stores
 //! nothing and pays the block winner, only the "consensus" stream is implicit. `EXPLICIT` (the
-//! `Some` arm) carries a writer and a share map. The FIP-0118 migration pins consensus = 1 and
-//! the service stream = 2, but f02 only knows and cares about the kind.
+//! `Some` arm) carries a writer and a share map, and every award pays that map's recipients
+//! directly. The FIP-0118 migration pins consensus = 1 and the service stream = 2, but f02 only
+//! knows and cares about the kind.
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
@@ -217,7 +217,8 @@ pub type StreamId = u64;
 pub const DENOM: u64 = 1_000_000_000_000_000_000;
 /// Streams the schedule can carry, counting the implicit consensus stream.
 pub const MAX_STREAMS: usize = 8;
-/// Recipients in one share map, each paid its own send at every award.
+/// Recipients in one share map. Each is paid its own transfer at every award, so the product of
+/// this and `MAX_STREAMS` bounds the transfers one award makes.
 pub const MAX_RECIPIENTS: usize = 64;
 /// Registration, removal and writer change, the three operations one stream can have queued.
 const STREAM_SCOPED_PENDING_OPS: usize = 3;
@@ -316,7 +317,7 @@ pub struct WeightRecord {
     pub cap: u64,
 }
 
-/// Persisted distribution for an explicit stream.
+/// Persisted distribution for an explicit stream, which every award pays from.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ExplicitDistribution {
     /// Designated share writer, not a payee.

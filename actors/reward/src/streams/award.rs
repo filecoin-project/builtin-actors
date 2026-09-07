@@ -11,7 +11,7 @@
 //!     if the block is undecodable, or its stream or queue structure is invalid:
 //!         no_award()
 //!     apply the due writes, dropping the cancellation-stranded ones
-//!     if balance <= gas_reward:         // nothing to mint; the writes stay queued
+//!     if balance <= gas_reward:            // nothing to mint; the writes stay queued
 //!         no_award()
 //!     BR = min(computed_BR, balance - gas_reward)
 //!     if BR < 0:                        // only a negative this_epoch_reward
@@ -41,14 +41,14 @@
 //!     total_burn_minted += burn
 //!     total_minted_reward += BR
 //!     store state
-//!     require miner_reward + gas_reward + sum payouts + burn <= balance
-//!     pay miner_reward + gas_reward to the winning miner; penalties as today;
+//!     require miner_reward + gas_reward + sum payouts + burn <= balance   // the outflow check
+//!     pay miner_reward + gas_reward to the winning miner; penalties as the miner path applies them;
 //!         an unpaid miner reward joins the burn
 //!     send each non-zero payout with method 0; an unpaid payout joins the burn
 //!     send(f099, burn)                  // one burn send; an unsent burn is logged
 //!
 //! no_award():
-//!     pay gas_reward and apply penalty as today; return without state change
+//!     pay gas_reward and apply the penalty; return without state change
 //! ```
 //!
 //! Every award is one of those two outcomes: `no_award`, which pays the gas reward alone and
@@ -59,7 +59,7 @@
 //! - [`Ledger::apply_due`] applies the due writes
 //! - [`schedule_at`] evaluates the weights and holds them within `DENOM`
 //! - [`Ledger::allocate`] is the per-stream loop over those weights, down to one payout per
-//!   stored recipient
+//!   stored recipient the stream's portion reaches
 
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -73,7 +73,8 @@ use super::invariants::schedule_at;
 use super::queue::ApplyResult;
 use crate::state::{DENOM, StreamId};
 
-/// One recipient's share of one stream's portion of a block reward.
+/// One recipient's share of one stream's portion of a block reward. The award sends each one as
+/// a transfer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Payout {
     pub stream: StreamId,
@@ -85,7 +86,8 @@ pub(crate) struct Payout {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Allocation {
     pub miner: TokenAmount,
-    /// One entry per stored recipient of every explicit stream, in stream order.
+    /// One entry per stored recipient a stream's portion reaches, in stream order then recipient
+    /// order.
     pub payouts: Vec<Payout>,
     pub burn: TokenAmount,
 }
@@ -111,6 +113,8 @@ pub(crate) fn plan_award(
     gas_reward: &TokenAmount,
     expected: &TokenAmount,
 ) -> Option<(Ledger, FullAward)> {
+    // The due writes apply first, on this ledger, so the split below runs under the schedule they
+    // leave. A `None` return discards the ledger and they stay queued for the next award.
     let applied = ledger.apply_due(epoch);
     if *balance <= *gas_reward {
         warn!("reward balance {balance} does not exceed gas {gas_reward}; paying gas reward only");
@@ -153,6 +157,9 @@ impl Ledger {
     /// at most `BR`. Each payout floors `share * portion / DENOM` and the stored shares sum to at
     /// most `DENOM`, so a stream's payouts sum to at most its portion. The burn takes both
     /// differences exactly, so miner, payouts and burn together are `BR`.
+    ///
+    /// A share that floors to zero leaves its recipient out of the split, so we make sure that
+    /// every payout an we return from here is non-zero.
     pub(crate) fn allocate(&self, evaluated: &[u64], block_reward: &TokenAmount) -> Allocation {
         debug_assert_eq!(
             evaluated.len(),
@@ -172,6 +179,9 @@ impl Ledger {
                 let mut paid = TokenAmount::zero();
                 for row in &distribution.shares {
                     let amount = TokenAmount::from_atto(portion.atto() * row.share / &denom);
+                    if amount.is_zero() {
+                        continue;
+                    }
                     paid += &amount;
                     payouts.push(Payout { stream: stream.id, recipient: row.recipient, amount });
                 }

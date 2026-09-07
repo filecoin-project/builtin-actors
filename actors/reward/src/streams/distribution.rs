@@ -1,8 +1,7 @@
-//! Admitting an explicit stream's share map, and the three operations that reshape a stream
-//! prospectively (FIP-0118 2.4.4 and 2.4.6).
+//! Admitting an explicit stream's share map and installing it (FIP-0118 2.4.4).
 //!
-//! The shapes it reads and writes are in [`crate::state`]: [`ExplicitDistribution`] and its
-//! [`RecipientShare`] map.
+//! The shapes it reads and writes are in [`crate::state`], as
+//! [`ExplicitDistribution`](crate::state::ExplicitDistribution) and its [`RecipientShare`] map.
 //!
 //! An installed map is in force from the next award, and every award pays under the map it finds.
 //!
@@ -23,10 +22,8 @@
 //! returns. The caller check and the address resolution are the actor layer's, because they need
 //! the runtime.
 //!
-//! The other two operations are queued rather than immediate, and the queue applies them through
-//! [`Ledger::remove_stream`], which takes a stream out of the schedule, and
-//! [`Ledger::replace_writer`], which points one at a new designated writer while its share map
-//! stays as it is.
+//! A registration carries the same map in its payload; [`validate_distribution_init`] admits that
+//! form, and [`validate_stored_shares`] is what the structure invariants hold a persisted map to.
 
 use std::collections::BTreeSet;
 
@@ -35,7 +32,6 @@ use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR};
 use fvm_shared::address::{Address, Protocol};
 
 use super::Ledger;
-use super::queue::Stranded;
 use crate::state::{DENOM, MAX_RECIPIENTS, RecipientShare, Stream, StreamId};
 use crate::types::DistributionInit;
 
@@ -111,28 +107,14 @@ pub(crate) fn admit_shares(mut shares: Vec<RecipientShare>) -> Result<Vec<Recipi
 impl Ledger {
     /// Installs an explicit stream's next recipient share map, in force from the next award.
     pub(crate) fn set_shares(&mut self, id: StreamId, shares: Vec<RecipientShare>) -> Result<()> {
-        self.streams_dirty = true;
         // Admit the incoming map, which is what turns caller rows into storable ones.
         let shares = admit_shares(shares)?;
         ensure!(self.streams.has_stream(id), "stream {id} not found");
         let Some(distribution) = self.streams.stream_mut(id).and_then(Stream::explicit_mut) else {
             return Err(anyhow::anyhow!("stream {id} is implicit"));
         };
+        self.streams_dirty = true;
         distribution.shares = shares;
-        Ok(())
-    }
-
-    /// Takes a live stream out of the schedule. The next award pays under the streams that remain.
-    pub(super) fn remove_stream(&mut self, id: StreamId) -> Result<(), Stranded> {
-        self.streams.take_stream(id).ok_or(Stranded::MissingStream(id))?;
-        Ok(())
-    }
-
-    /// Points an explicit stream at a new designated writer, keeping its share map.
-    pub(super) fn replace_writer(&mut self, id: StreamId, writer: Address) -> Result<(), Stranded> {
-        let stream = self.streams.stream_mut(id).ok_or(Stranded::MissingStream(id))?;
-        let distribution = stream.explicit_mut().ok_or(Stranded::NotExplicit(id))?;
-        distribution.writer = writer;
         Ok(())
     }
 }

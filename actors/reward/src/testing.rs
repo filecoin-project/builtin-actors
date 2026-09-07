@@ -7,6 +7,8 @@ use fvm_ipld_encoding::CborStore;
 use fvm_shared::{address::Protocol, clock::ChainEpoch, econ::TokenAmount};
 use num_traits::Signed;
 
+/// The size of the stream state a check read, for a whole-tree check to report alongside the
+/// other actors'. An unreadable streams block leaves both counts at zero.
 #[derive(Default)]
 pub struct StateSummary {
     pub stream_count: usize,
