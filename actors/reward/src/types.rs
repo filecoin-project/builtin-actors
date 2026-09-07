@@ -72,17 +72,6 @@ pub struct CancelPendingParams {
     pub op: PendingWriteOp,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ClaimParams {
-    pub id: StreamId,
-    pub wallets: Vec<Address>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ClaimReturn {
-    pub amounts: Vec<TokenAmount>,
-}
-
 /// One stream update in `SetWeightRecords` and `StepWeightRecords` parameters.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct WeightRecordUpdate {

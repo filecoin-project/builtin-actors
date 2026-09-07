@@ -1,9 +1,9 @@
+use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::econ::TokenAmount;
 
 use super::*;
-use crate::streams::invariants::{accounting, structure};
+use crate::streams::invariants::structure;
 
 fn delegated_address() -> Address {
     Address::new_delegated(10, &[1; 20]).unwrap()
@@ -11,9 +11,9 @@ fn delegated_address() -> Address {
 
 #[test]
 fn rejects_non_id_addresses_in_persisted_state_and_pending_payloads() {
-    let (base, accruals) = base_state();
+    let base = base_state();
     let assert_invalid = |streams: StreamsState| {
-        let error = validate_streams_state(&streams, &accruals, 0).unwrap_err();
+        let error = validate_streams_state(&streams, 0).unwrap_err();
         assert!(error.to_string().contains("not an ID address"), "{error}");
     };
 
@@ -23,29 +23,6 @@ fn rejects_non_id_addresses_in_persisted_state_and_pending_payloads() {
 
     let mut streams = base.clone();
     streams.streams[1].distribution.as_mut().unwrap().shares[0].recipient = delegated_address();
-    assert_invalid(streams);
-
-    let mut streams = base.clone();
-    streams.streams[1].distribution.as_mut().unwrap().payable =
-        vec![RecipientAmount { recipient: delegated_address(), amount: TokenAmount::from_atto(1) }]
-            .into();
-    assert_invalid(streams);
-
-    let mut streams = base.clone();
-    streams.streams[1].distribution.as_mut().unwrap().claimed_period =
-        vec![RecipientAmount { recipient: delegated_address(), amount: TokenAmount::from_atto(1) }]
-            .into();
-    assert_invalid(streams);
-
-    let mut streams = base.clone();
-    streams.tombstones = vec![Tombstone {
-        id: 3,
-        payable: vec![RecipientAmount {
-            recipient: delegated_address(),
-            amount: TokenAmount::from_atto(1),
-        }]
-        .into(),
-    }];
     assert_invalid(streams);
 
     let mut streams = base.clone();
@@ -73,14 +50,6 @@ fn rejects_non_id_addresses_in_persisted_state_and_pending_payloads() {
         effective_epoch: 10,
     }];
     assert_invalid(streams);
-}
-
-#[test]
-fn rejects_persisted_tombstone_rows_above_the_bound() {
-    let (mut streams, accruals) = base_state();
-    streams.tombstones = vec![tombstone(3, 1_000, MAX_TOMBSTONE_ROWS + 1)];
-    let error = validate_streams_state(&streams, &accruals, 0).unwrap_err();
-    assert!(error.to_string().contains("tombstone row reservation 257"), "{error}");
 }
 
 // Wire maps arrive in any order and admit_shares sorts them; a persisted map that is not
@@ -122,36 +91,19 @@ fn structural_validation_rejects_unordered_stored_shares() {
     assert!(error.to_string().contains("stored share recipients are not ordered"), "{error}");
 }
 
+// Admission never stores the burn sentinel or the reward actor, so a persisted map holding either
+// is corrupt.
 #[test]
-fn structural_validation_rejects_payable_reservation_over_cap() {
-    let mut distribution = explicit(300, full_share_map(100));
-    distribution.payable = (0..=MAX_PAYABLE_ROWS_PER_STREAM)
-        .map(|idx| RecipientAmount {
-            recipient: Address::new_id(100 + idx as u64),
-            amount: TokenAmount::from_atto(1),
-        })
-        .collect::<Vec<_>>()
-        .into();
-    let streams = StreamsState {
-        streams: vec![stream(2, pct(20), Some(distribution))],
-        ..Default::default()
+fn structural_validation_rejects_persisted_sentinel_and_reward_actor_recipients() {
+    let base = base_state();
+    validate_streams_state(&base, 0).unwrap();
+    let with_recipient = |recipient: Address| {
+        let mut streams = base.clone();
+        streams.streams[1].distribution.as_mut().unwrap().shares =
+            vec![RecipientShare { recipient, share: DENOM }];
+        streams
     };
 
-    let error = structure(&streams).unwrap_err();
-    assert_eq!(
-        format!(
-            "stream 2 payable row reservation {} exceeds maximum {MAX_PAYABLE_ROWS_PER_STREAM}",
-            MAX_PAYABLE_ROWS_PER_STREAM + 1
-        ),
-        error.to_string()
-    );
-}
-
-// Every explicit stream carries an accrual row, so a method aborts on a missing one rather than
-// dropping the queued call that would have needed it.
-#[test]
-fn accounting_rejects_a_missing_accrual_row() {
-    let (streams, _) = base_state();
-    let error = accounting(&streams, &[]).unwrap_err();
-    assert_eq!("explicit-stream accrual IDs do not match live explicit streams", error.to_string());
+    assert!(validate_streams_state(&with_recipient(REWARD_ACTOR_ADDR), 0).is_err());
+    assert!(validate_streams_state(&with_recipient(BURNT_FUNDS_ACTOR_ADDR), 0).is_err());
 }

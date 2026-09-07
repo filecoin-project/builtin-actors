@@ -1,9 +1,9 @@
+use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
 use super::*;
-use crate::streams::invariants::accounting;
 
 #[test]
 fn allocates_reward_in_stream_order_and_conserves_attos() {
@@ -17,88 +17,102 @@ fn allocates_reward_in_stream_order_and_conserves_attos() {
     let allocation = allocate(&streams, 0, &reward);
 
     assert_eq!(TokenAmount::from_atto(3), allocation.miner);
-    assert_eq!(vec![2, 3], allocation.portions.iter().map(|(id, _)| *id).collect::<Vec<_>>());
-    assert_eq!(TokenAmount::from_atto(1), allocation.portions[0].1);
-    assert_eq!(TokenAmount::zero(), allocation.portions[1].1);
-    assert_eq!(TokenAmount::from_atto(3), allocation.burn);
+    // Stream 3's tenth of seven attos floors to nothing, so only stream 2 pays.
     assert_eq!(
-        reward,
-        &allocation.miner
-            + &allocation
-                .portions
-                .iter()
-                .fold(TokenAmount::zero(), |sum, (_, amount)| sum + amount)
-            + &allocation.burn
+        vec![(2, Address::new_id(101))],
+        allocation
+            .payouts
+            .iter()
+            .map(|payout| (payout.stream, payout.recipient))
+            .collect::<Vec<_>>()
     );
-
-    let mut accruals = vec![
-        StreamAccrual { id: 2, amount: TokenAmount::from_atto(4) },
-        StreamAccrual { id: 3, amount: TokenAmount::from_atto(5) },
-    ];
-    accrue(&mut accruals, &allocation.portions);
-    assert_eq!(TokenAmount::from_atto(5), accruals[0].amount);
-    assert_eq!(TokenAmount::from_atto(5), accruals[1].amount);
-
-    // The row per explicit stream that the award credits is the accounting invariants.
-    let state = StreamsState { streams, ..Default::default() };
-    let error = accounting(&state, &accruals[..1]).unwrap_err();
-    assert_eq!("explicit-stream accrual IDs do not match live explicit streams", error.to_string());
+    assert_eq!(TokenAmount::from_atto(1), payout(&allocation, 2, 101));
+    assert_eq!(TokenAmount::zero(), payout(&allocation, 3, 102));
+    assert_eq!(TokenAmount::from_atto(3), allocation.burn);
+    assert_eq!(reward, &allocation.miner + &paid(&allocation) + &allocation.burn);
 }
 
 #[test]
-fn indivisible_sentinel_portion_preserves_survivor_entitlements() {
+fn splits_a_stream_portion_across_its_recipients_and_burns_the_dust() {
     let third = DENOM / 3;
-    let survivor_shares = shares(&[(101, third), (102, third)]);
-    let reward = TokenAmount::from_atto(2);
-
-    // Control: three ordinary recipients split the full two-atto explicit pool. Each recipient's
-    // third floors to zero when claimed.
-    let mut ordinary = StreamsState {
-        streams: vec![stream(
+    let streams = vec![
+        stream(1, pct(50), None),
+        stream(
             2,
-            DENOM,
+            pct(50),
             Some(explicit(200, shares(&[(101, third), (102, third), (103, DENOM - 2 * third)]))),
-        )],
-        ..Default::default()
-    };
-    let ordinary_allocation = allocate(&ordinary.streams, 0, &reward);
-    let mut ordinary_accruals = accruals_of(&ordinary_allocation.portions);
-    let ordinary_claims =
-        claim(&mut ordinary, &ordinary_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
-            .unwrap();
-    assert_eq!(vec![TokenAmount::zero(), TokenAmount::zero()], ordinary_claims);
+        ),
+    ];
+    let reward = TokenAmount::from_atto(100);
+    schedule_at(&streams, 0).unwrap();
+    let allocation = allocate(&streams, 0, &reward);
 
-    // Sentinel case: the third recipient's share burns. Flooring the survivor pool yields one
-    // atto, so the two surviving claims remain zero. Flooring the burn instead would leave a
-    // two-atto pool and incorrectly pay each survivor one atto after denominator adjustment.
-    let mut sentinel = StreamsState {
-        streams: vec![stream(2, DENOM, Some(explicit(200, survivor_shares)))],
-        ..Default::default()
-    };
-    let sentinel_allocation = allocate(&sentinel.streams, 0, &reward);
-    assert_eq!(TokenAmount::from_atto(1), sentinel_allocation.portions[0].1);
-    assert_eq!(TokenAmount::from_atto(1), sentinel_allocation.burn);
+    // Each of the three floors 50 * (1/3) to 16, so two attos of the portion are indivisible.
+    assert_eq!(TokenAmount::from_atto(50), allocation.miner);
+    assert_eq!(TokenAmount::from_atto(16), payout(&allocation, 2, 101));
+    assert_eq!(TokenAmount::from_atto(16), payout(&allocation, 2, 102));
+    assert_eq!(TokenAmount::from_atto(16), payout(&allocation, 2, 103));
+    assert_eq!(TokenAmount::from_atto(2), allocation.burn);
+    assert_eq!(reward, &allocation.miner + &paid(&allocation) + &allocation.burn);
+}
+
+#[test]
+fn burns_the_whole_portion_of_an_all_sentinel_map() {
+    let mut streams = base_state();
+    set_shares(&mut streams, 2, shares(&[(99, DENOM)])).unwrap();
+    assert!(streams.streams[1].distribution.as_ref().unwrap().shares.is_empty());
+
+    let reward = TokenAmount::from_atto(100);
+    let allocation = allocate(&streams.streams, 0, &reward);
+    assert!(allocation.payouts.is_empty());
+    assert_eq!(TokenAmount::from_atto(60), allocation.miner);
+    assert_eq!(TokenAmount::from_atto(40), allocation.burn);
+    assert_eq!(reward, &allocation.miner + &allocation.burn);
+    assert_eq!(BURNT_FUNDS_ACTOR_ADDR, Address::new_id(99));
+}
+
+#[test]
+fn pays_a_recipient_of_two_streams_once_for_each() {
+    let shared_wallet = 101;
+    let streams = vec![
+        stream(1, pct(20), None),
+        stream(2, pct(40), Some(explicit(200, shares(&[(shared_wallet, DENOM)])))),
+        stream(
+            3,
+            pct(40),
+            Some(explicit(201, shares(&[(shared_wallet, DENOM / 4), (102, DENOM - DENOM / 4)]))),
+        ),
+    ];
+    let reward = TokenAmount::from_atto(100);
+    schedule_at(&streams, 0).unwrap();
+    let allocation = allocate(&streams, 0, &reward);
+
     assert_eq!(
-        ordinary_allocation.portions[0].1,
-        &sentinel_allocation.portions[0].1 + &sentinel_allocation.burn
+        vec![2, 3, 3],
+        allocation.payouts.iter().map(|payout| payout.stream).collect::<Vec<_>>()
     );
+    assert_eq!(TokenAmount::from_atto(40), payout(&allocation, 2, shared_wallet));
+    assert_eq!(TokenAmount::from_atto(10), payout(&allocation, 3, shared_wallet));
+    assert_eq!(TokenAmount::from_atto(30), payout(&allocation, 3, 102));
+    assert_eq!(TokenAmount::from_atto(20), allocation.miner);
+    assert_eq!(TokenAmount::zero(), allocation.burn);
+    assert_eq!(reward, &allocation.miner + &paid(&allocation) + &allocation.burn);
+}
 
-    let mut sentinel_accruals = accruals_of(&sentinel_allocation.portions);
-    let sentinel_claims =
-        claim(&mut sentinel, &sentinel_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
-            .unwrap();
-    assert_eq!(ordinary_claims, sentinel_claims);
+#[test]
+fn pays_every_recipient_of_a_full_share_map() {
+    let streams = vec![stream(2, DENOM, Some(explicit(200, full_share_map(1_000))))];
+    let reward = TokenAmount::from_atto(3 * MAX_RECIPIENTS as i64);
+    schedule_at(&streams, 0).unwrap();
+    let allocation = allocate(&streams, 0, &reward);
 
-    accrue(&mut ordinary_accruals, &allocate(&ordinary.streams, 0, &reward).portions);
-    accrue(&mut sentinel_accruals, &allocate(&sentinel.streams, 0, &reward).portions);
-    let ordinary_claims =
-        claim(&mut ordinary, &ordinary_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
-            .unwrap();
-    let sentinel_claims =
-        claim(&mut sentinel, &sentinel_accruals, 2, &[Address::new_id(101), Address::new_id(102)])
-            .unwrap();
-    assert_eq!(vec![TokenAmount::from_atto(1), TokenAmount::from_atto(1)], ordinary_claims);
-    assert_eq!(ordinary_claims, sentinel_claims);
+    assert_eq!(MAX_RECIPIENTS, allocation.payouts.len());
+    assert!(
+        allocation.payouts.iter().all(|payout| payout.amount == TokenAmount::from_atto(3)),
+        "each of the equal shares takes the same amount"
+    );
+    assert_eq!(reward, paid(&allocation));
+    assert_eq!(TokenAmount::zero(), allocation.burn);
 }
 
 // The award splits nothing until the schedule holds at its own epoch, so these three are the
@@ -131,4 +145,38 @@ fn malformed_explicit_weight_fails_the_award_schedule_check() {
 
     let error = schedule_at(&[malformed], 0).unwrap_err();
     assert_eq!("weight cap exceeds DENOM", error.to_string());
+}
+
+#[test]
+fn pays_every_recipient_of_every_stream_at_the_configured_bound() {
+    let table: Vec<Stream> = (0..MAX_STREAMS as u64)
+        .map(|slot| {
+            let id = 2 + slot;
+            let first_recipient = 1_000 + slot * MAX_RECIPIENTS as u64;
+            stream(id, pct(12), Some(explicit(200 + id, full_share_map(first_recipient))))
+        })
+        .collect();
+    let streams = StreamsState { streams: table, ..Default::default() };
+
+    // Eight streams at 12% of a 32000 atto reward: 3840 each, 60 to each of 64 recipients, and
+    // the unassigned 4% burns.
+    let reward = TokenAmount::from_atto(32_000);
+    let (after, award) = full_award(&streams, 0, &reward);
+    let allocation = award.allocation;
+
+    assert_eq!(MAX_STREAMS * MAX_RECIPIENTS, allocation.payouts.len());
+    let order: Vec<(StreamId, Address)> =
+        allocation.payouts.iter().map(|payout| (payout.stream, payout.recipient)).collect();
+    let mut ascending = order.clone();
+    ascending.sort();
+    assert_eq!(ascending, order, "payouts run in stream order, then recipient order");
+    assert!(
+        allocation.payouts.iter().all(|payout| payout.amount == TokenAmount::from_atto(60)),
+        "each of the equal shares takes the same amount"
+    );
+
+    assert_eq!(TokenAmount::zero(), allocation.miner);
+    assert_eq!(TokenAmount::from_atto(30_720), paid(&allocation));
+    assert_eq!(TokenAmount::from_atto(1_280), allocation.burn);
+    assert_eq!(streams, after);
 }

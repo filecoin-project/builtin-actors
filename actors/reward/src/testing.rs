@@ -1,23 +1,17 @@
 use std::collections::BTreeSet;
 
-use crate::{
-    STORAGE_MINING_ALLOCATION, State, StreamsState,
-    streams::{
-        explicit_liability,
-        invariants::{accounting, structure},
-        validate_streams_state,
-    },
-};
+use crate::{STORAGE_MINING_ALLOCATION, State, StreamsState, streams::validate_streams_state};
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::{address::Protocol, clock::ChainEpoch, econ::TokenAmount};
 use num_traits::Signed;
 
+/// The size of the stream state a check read, for a whole-tree check to report alongside the
+/// other actors'. An unreadable streams block leaves both counts at zero.
 #[derive(Default)]
 pub struct StateSummary {
     pub stream_count: usize,
-    pub tombstone_count: usize,
     pub pending_write_count: usize,
 }
 
@@ -88,16 +82,6 @@ pub fn check_state_invariants<BS: Blockstore>(
         state.swa_actor.protocol() == Protocol::ID,
         format!("SWA actor {} is not an ID address", state.swa_actor),
     );
-    acc.require(
-        state.accrued.windows(2).all(|rows| rows[0].id < rows[1].id),
-        "explicit-stream accrual rows are not strictly ordered by stream ID",
-    );
-    for row in &state.accrued {
-        acc.require(
-            !row.amount.is_negative(),
-            format!("explicit-stream accrual for stream {} is negative ({})", row.id, row.amount),
-        );
-    }
 
     let streams_state = match store.get_cbor::<StreamsState>(&state.streams_root) {
         Ok(Some(streams_state)) => streams_state,
@@ -110,44 +94,17 @@ pub fn check_state_invariants<BS: Blockstore>(
             return (StateSummary::default(), acc);
         }
     };
-    if let Err(error) = validate_streams_state(&streams_state, &state.accrued, current_epoch) {
+    if let Err(error) = validate_streams_state(&streams_state, current_epoch) {
         acc.add(format!("invalid streams state: {error}"));
     }
     let summary = StateSummary {
         stream_count: streams_state.streams.len(),
-        tombstone_count: streams_state.tombstones.len(),
         pending_write_count: streams_state.pending_writes.len(),
     };
 
     acc.require(
         streams_state.streams.windows(2).all(|rows| rows[0].id < rows[1].id),
         "streams are not strictly ordered by stream ID",
-    );
-    acc.require(
-        streams_state.tombstones.windows(2).all(|rows| rows[0].id < rows[1].id),
-        "tombstones are not strictly ordered by stream ID",
-    );
-
-    let stream_ids: BTreeSet<_> = streams_state.streams.iter().map(|stream| stream.id).collect();
-    let explicit_stream_ids: BTreeSet<_> = streams_state
-        .streams
-        .iter()
-        .filter(|stream| !stream.is_implicit())
-        .map(|stream| stream.id)
-        .collect();
-    let accrual_ids: BTreeSet<_> = state.accrued.iter().map(|row| row.id).collect();
-    let tombstone_ids: BTreeSet<_> =
-        streams_state.tombstones.iter().map(|tombstone| tombstone.id).collect();
-    acc.require(stream_ids.is_disjoint(&tombstone_ids), "a stream ID is both live and tombstoned");
-
-    let missing_accruals: Vec<_> = explicit_stream_ids.difference(&accrual_ids).copied().collect();
-    let unexpected_accruals: Vec<_> =
-        accrual_ids.difference(&explicit_stream_ids).copied().collect();
-    acc.require(
-        missing_accruals.is_empty() && unexpected_accruals.is_empty(),
-        format!(
-            "explicit-stream accrual IDs do not match live explicit streams: missing {missing_accruals:?}, unexpected {unexpected_accruals:?}"
-        ),
     );
 
     let mut pending_slots = BTreeSet::new();
@@ -164,26 +121,6 @@ pub fn check_state_invariants<BS: Blockstore>(
             .all(|writes| writes[0].effective_epoch <= writes[1].effective_epoch),
         "pending writes are not ordered by effective epoch",
     );
-
-    // The liability is a sum over the rows the structure and accounting invariants place, so it
-    // runs wherever those two hold. The schedule has no bearing on it: a claim stays payable
-    // while the weight schedule is invalid.
-    if structure(&streams_state).is_ok() && accounting(&streams_state, &state.accrued).is_ok() {
-        let liabilities = explicit_liability(&streams_state, &state.accrued);
-        acc.require(
-            liabilities <= state.total_explicit_minted,
-            format!(
-                "explicit-stream liabilities {liabilities} exceed total explicit minted {}",
-                state.total_explicit_minted
-            ),
-        );
-        acc.require(
-            balance >= &liabilities,
-            format!(
-                "reward balance {balance} does not cover explicit-stream liabilities {liabilities}"
-            ),
-        );
-    }
 
     (summary, acc)
 }

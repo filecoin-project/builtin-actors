@@ -4,13 +4,12 @@
 mod serialization {
     use cid::Cid;
     use fil_actor_reward::{
-        AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn, ConstructorParams,
-        DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, PendingWrite,
-        PendingWriteOp, RecipientAmount, RecipientShare, RegisterStreamParams,
-        RegisterStreamPayload, RemoveStreamParams, SetDistributionParams, SetDistributionPayload,
-        SetSharesParams, SetWeightRecordsParams, State, StepWeightRecordsParams, Stream,
-        StreamAccrual, StreamsState, ThisEpochRewardReturn, Tombstone, UpdateNetworkKPIParams,
-        WeightRecord, WeightRecordUpdate, WeightRecordsPayload,
+        AwardBlockRewardParams, CancelPendingParams, ConstructorParams, DENOM, DistributionInit,
+        ExplicitDistribution, MAX_RECIPIENTS, PendingWrite, PendingWriteOp, RecipientShare,
+        RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, SetDistributionParams,
+        SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State,
+        StepWeightRecordsParams, Stream, StreamsState, ThisEpochRewardReturn,
+        UpdateNetworkKPIParams, WeightRecord, WeightRecordUpdate, WeightRecordsPayload,
     };
     use fil_actors_runtime::reward::FilterEstimate;
     use fil_actors_runtime::test_blockstores::MemoryBlockstore;
@@ -37,7 +36,6 @@ mod serialization {
         assert_eq!(expected.total_minted_reward, actual.total_minted_reward);
         assert_eq!(expected.total_burn_minted, actual.total_burn_minted);
         assert_eq!(expected.total_explicit_minted, actual.total_explicit_minted);
-        assert_eq!(expected.accrued, actual.accrued);
         assert_eq!(expected.swa_timelock_epochs, actual.swa_timelock_epochs);
         assert_eq!(expected.swa_actor, actual.swa_actor);
         assert_eq!(expected.streams_root, actual.streams_root);
@@ -172,7 +170,7 @@ mod serialization {
     fn empty_streams_state() {
         let state = StreamsState::default();
         let encoded = IpldBlock::serialize_cbor(&state).unwrap().unwrap();
-        assert_eq!(encoded.data, hex!("83808080"));
+        assert_eq!(encoded.data, hex!("828080"));
         let decoded: StreamsState = IpldBlock::deserialize(&encoded).unwrap();
         assert_eq!(state, decoded);
     }
@@ -189,27 +187,9 @@ mod serialization {
                     distribution: Some(ExplicitDistribution {
                         writer: Address::new_id(100),
                         shares: vec![RecipientShare { recipient: Address::new_id(101), share: 6 }],
-                        payable: vec![RecipientAmount {
-                            recipient: Address::new_id(102),
-                            amount: TokenAmount::from_atto(7),
-                        }]
-                        .into(),
-                        claimed_period: vec![RecipientAmount {
-                            recipient: Address::new_id(103),
-                            amount: TokenAmount::from_atto(8),
-                        }]
-                        .into(),
                     }),
                 },
             ],
-            tombstones: vec![Tombstone {
-                id: 3,
-                payable: vec![RecipientAmount {
-                    recipient: Address::new_id(104),
-                    amount: TokenAmount::from_atto(9),
-                }]
-                .into(),
-            }],
             pending_writes: vec![PendingWrite {
                 id: Some(4),
                 op: PendingWriteOp::RegisterStream,
@@ -221,9 +201,7 @@ mod serialization {
         let encoded = IpldBlock::serialize_cbor(&state).unwrap().unwrap();
         assert_eq!(
             encoded.data,
-            hex!(
-                "83828301850000000000f6830285052101040584420064818242006506818242006642000781824200674200088182038182420068420009818404024281010a"
-            )
+            hex!("82828301850000000000f6830285052101040582420064818242006506818404024281010a")
         );
         let decoded: StreamsState = IpldBlock::deserialize(&encoded).unwrap();
         assert_eq!(state, decoded);
@@ -236,7 +214,7 @@ mod serialization {
         assert_eq!(
             encoded.data,
             hex!(
-                "8f404000404082404040004040408000420000d82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
+                "8e4040004040824040400040404000420000d82a5827000171a0e4022010e33daada0ea8a29a2323892f10fb6f1e3c1db56af56d8a92149bc9dfc3378b"
             )
         );
         let decoded: State = IpldBlock::deserialize(&encoded).unwrap();
@@ -257,7 +235,6 @@ mod serialization {
             total_minted_reward: TokenAmount::from_atto(8),
             total_burn_minted: TokenAmount::from_atto(9),
             total_explicit_minted: TokenAmount::from_atto(10),
-            accrued: vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(11) }],
             swa_timelock_epochs: 13,
             swa_actor: Address::new_id(1001),
             streams_root: empty_streams_root(),
@@ -267,7 +244,7 @@ mod serialization {
         assert_eq!(
             encoded.data,
             hex!(
-                "8f420001420002034200044200058240404200060742000842000942000a81820242000b0d4300e907d82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
+                "8e420001420002034200044200058240404200060742000842000942000a0d4300e907d82a5827000171a0e4022010e33daada0ea8a29a2323892f10fb6f1e3c1db56af56d8a92149bc9dfc3378b"
             )
         );
         let decoded: State = IpldBlock::deserialize(&encoded).unwrap();
@@ -709,81 +686,6 @@ mod serialization {
             let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
             assert_eq!(encoded.data, expected_hex);
             let decoded: CancelPendingParams = IpldBlock::deserialize(&encoded).unwrap();
-            assert_eq!(params, decoded);
-        }
-    }
-
-    #[test]
-    fn claim_params() {
-        let max_wallets =
-            (1000..1000 + MAX_RECIPIENTS as u64).map(Address::new_id).collect::<Vec<_>>();
-        let test_cases = vec![
-            (
-                ClaimParams { id: 1_u64 << 32, wallets: Vec::new() },
-                // [4294967296,[]]
-                &hex!("821b000000010000000080")[..],
-            ),
-            (
-                ClaimParams {
-                    id: 65_536,
-                    wallets: vec![Address::new_id(1_u64 << 32), delegated_address()],
-                },
-                // [
-                //   65536,[byte[008080808010],
-                //   byte[040a1111111111111111111111111111111111111111]]
-                // ]
-                &hex!(
-                    "821a000100008246008080808010"
-                    "56040a1111111111111111111111111111111111111111"
-                )[..],
-            ),
-            (
-                ClaimParams { id: 65_536, wallets: max_wallets },
-                &hex!(
-                    "821a0001000098404300e8074300e9074300ea074300eb074300ec074300ed074300ee0743"
-                    "00ef074300f0074300f1074300f2074300f3074300f4074300f5074300f6074300f7074300"
-                    "f8074300f9074300fa074300fb074300fc074300fd074300fe074300ff0743008008430081"
-                    "08430082084300830843008408430085084300860843008708430088084300890843008a08"
-                    "43008b0843008c0843008d0843008e0843008f084300900843009108430092084300930843"
-                    "009408430095084300960843009708430098084300990843009a0843009b0843009c084300"
-                    "9d0843009e0843009f084300a0084300a1084300a2084300a3084300a4084300a5084300a6"
-                    "084300a708"
-                )[..],
-            ),
-        ];
-
-        for (params, expected_hex) in test_cases {
-            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
-            assert_eq!(encoded.data, expected_hex);
-            let decoded: ClaimParams = IpldBlock::deserialize(&encoded).unwrap();
-            assert_eq!(params, decoded);
-        }
-    }
-
-    #[test]
-    fn claim_return() {
-        let test_cases = vec![
-            (
-                ClaimReturn { amounts: Vec::new() },
-                // [[]]
-                &hex!("8180")[..],
-            ),
-            (
-                ClaimReturn {
-                    amounts: [0, 24, 256, 65_536, 1_i64 << 32]
-                        .into_iter()
-                        .map(TokenAmount::from_atto)
-                        .collect(),
-                },
-                // [[byte[],byte[0018],byte[000100],byte[00010000],byte[000100000000]]]
-                &hex!("81854042001843000100440001000046000100000000")[..],
-            ),
-        ];
-
-        for (params, expected_hex) in test_cases {
-            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
-            assert_eq!(encoded.data, expected_hex);
-            let decoded: ClaimReturn = IpldBlock::deserialize(&encoded).unwrap();
             assert_eq!(params, decoded);
         }
     }

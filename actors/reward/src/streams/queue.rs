@@ -37,7 +37,7 @@
 //! | op | needs at its effective epoch |
 //! |---|---|
 //! | `SetWeightRecords`, `StepWeightRecords` | every target id live; envelope holds from the effective epoch |
-//! | `RegisterStream` | id not live or tombstoned; stream table below `MAX_STREAMS`; if implicit, no other implicit; envelope holds from activation |
+//! | `RegisterStream` | id not live; stream table below `MAX_STREAMS`; if implicit, no other implicit; envelope holds from activation |
 //! | `RemoveStream` | id live |
 //! | `SetDistribution` | id live and explicit |
 //!
@@ -59,8 +59,9 @@
 //! `SetWeightRecords` that repairs things without stranding a still-valid entry. It gets the
 //! ordinary timelock like anything else.
 //!
-//! FIP-0118 2.4.7 has the timelock, the three epochs, slots and cancellability; 2.4.8 has details
-//! about what admission proves, stranding, and repair.
+//! FIP-0118 2.4.6 has the stream lifecycle these writes drive, from registration through removal;
+//! 2.4.7 has the timelock, the three epochs, slots and cancellability; 2.4.8 has details about
+//! what admission proves, stranding, and repair.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -69,17 +70,15 @@ use anyhow::{Result, ensure};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
 use log::info;
-use num_traits::Zero;
 
 use super::Ledger;
 use super::distribution::{validate_distribution_init, validate_id_address};
-use super::invariants::{schedule, validate_tombstone_capacity};
+use super::invariants::schedule;
 use super::weights::{validate_weight_record, validate_weight_updates};
 use crate::state::{
-    ExplicitDistribution, MAX_PENDING_WRITES, MAX_STREAMS, PendingWrite, PendingWriteOp,
-    RecipientTable, Stream, StreamId, StreamsState, WeightRecord,
+    ExplicitDistribution, MAX_PENDING_WRITES, MAX_STREAMS, PendingWrite, PendingWriteOp, Stream,
+    StreamId, StreamsState, WeightRecord,
 };
 use crate::types::{
     DistributionInit, RegisterStreamPayload, SetDistributionPayload, WeightRecordUpdate,
@@ -131,7 +130,7 @@ pub(super) enum Stranded {
     MissingStream(StreamId),
     /// A writer change names the implicit stream.
     NotExplicit(StreamId),
-    /// A registration's ID is live or tombstoned.
+    /// A registration's ID is live.
     StreamIdInUse(StreamId),
     /// A registration has no room left in the stream table.
     StreamTableFull,
@@ -149,7 +148,7 @@ impl fmt::Display for Stranded {
         match self {
             Stranded::MissingStream(id) => write!(f, "stream {id} not found"),
             Stranded::NotExplicit(id) => write!(f, "stream {id} is implicit"),
-            Stranded::StreamIdInUse(id) => write!(f, "stream ID {id} is live or tombstoned"),
+            Stranded::StreamIdInUse(id) => write!(f, "stream ID {id} is live"),
             Stranded::StreamTableFull => {
                 write!(f, "stream count exceeds maximum {MAX_STREAMS}")
             }
@@ -310,27 +309,27 @@ impl QueuedCall {
     }
 }
 
-/// The effects of applying due writes, for the actor layer to settle after the transaction.
+/// Where every due write went, so the actor layer can emit events for them once the transaction
+/// commits.
 ///
 /// This crosses Rust call boundaries only so doesn't need to be encodable.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ApplyResult {
-    pub fold_dust: TokenAmount,
-    /// Successful writes, for actor-layer events after a committed application.
+    /// The writes that applied, in queue order.
     pub applied: Vec<PendingWrite>,
-    /// Removed writes, for actor-layer events after a committed application.
+    /// The writes dropped for a missing prerequisite, in queue order.
     pub dropped: Vec<PendingWrite>,
 }
 
 impl Ledger {
     /// Applies one queued call in the state its predecessors left, from the epoch it becomes
-    /// effective.
-    ///
-    /// Returns the fold dust for the caller to burn, or the one prerequisite the call is missing.
-    /// Only `RemoveStream` and `SetDistribution` fold, closing the explicit stream's period before
-    /// it is tombstoned or re-pointed, so only they can leave dust; the other calls return zero.
-    fn apply(&mut self, call: &QueuedCall, effective: ChainEpoch) -> Result<TokenAmount, Stranded> {
-        let dust = match call {
+    /// effective, or reports the one prerequisite the call is missing.
+    pub(super) fn apply(
+        &mut self,
+        call: &QueuedCall,
+        effective: ChainEpoch,
+    ) -> Result<(), Stranded> {
+        match call {
             QueuedCall::Weights { updates, .. } => {
                 for update in updates {
                     let stream = self
@@ -339,14 +338,13 @@ impl Ledger {
                         .ok_or(Stranded::MissingStream(update.id))?;
                     stream.weight = update.weight.clone();
                 }
-                TokenAmount::zero()
             }
             QueuedCall::Register { id, weight, distribution, .. } => {
                 let id = *id;
                 if id == 0 {
                     return Err(Stranded::ReservedId);
                 }
-                if self.streams.has_stream(id) || self.streams.has_tombstone(id) {
+                if self.streams.has_stream(id) {
                     return Err(Stranded::StreamIdInUse(id));
                 }
                 if self.streams.streams.len() >= MAX_STREAMS {
@@ -358,24 +356,23 @@ impl Ledger {
                 let distribution = distribution.as_ref().map(|distribution| ExplicitDistribution {
                     writer: distribution.writer,
                     shares: distribution.shares.clone(),
-                    payable: RecipientTable::default(),
-                    claimed_period: RecipientTable::default(),
                 });
-                if distribution.is_some() {
-                    self.insert_accrual(id);
-                }
                 self.streams.insert_stream(Stream { id, weight: weight.clone(), distribution });
-                TokenAmount::zero()
             }
-            QueuedCall::Remove { id } => self.remove_stream(*id)?,
-            QueuedCall::SetDistribution { id, writer } => self.replace_writer(*id, *writer)?,
-        };
-        // Only the weight envelope needs checking here. The stream table is guarded by the
-        // registration preconditions above, a fold only moves value between existing recipients,
-        // inserts stay sorted and positive, and tombstone room was charged when the removal was
-        // admitted.
+            // The next award pays under the streams that remain.
+            QueuedCall::Remove { id } => {
+                self.streams.take_stream(*id).ok_or(Stranded::MissingStream(*id))?;
+            }
+            // The share map stays as it is, under the new writer.
+            QueuedCall::SetDistribution { id, writer } => {
+                let stream = self.streams.stream_mut(*id).ok_or(Stranded::MissingStream(*id))?;
+                stream.explicit_mut().ok_or(Stranded::NotExplicit(*id))?.writer = *writer;
+            }
+        }
+        // Only the weight envelope needs checking here; the registration preconditions above
+        // guard the stream table, and the other calls leave its shape as they found it.
         schedule(&self.streams.streams, effective).map_err(Stranded::Schedule)?;
-        Ok(dust)
+        Ok(())
     }
 
     /// Applies every write due through `epoch`, each validated from its own effective epoch just
@@ -398,9 +395,8 @@ impl Ledger {
             // if it's dropped, the copy is thrown away and the ledger is as the last write left it.
             let mut next = self.clone();
             match next.apply(&call, write.effective_epoch) {
-                Ok(dust) => {
+                Ok(()) => {
                     *self = next;
-                    result.fold_dust += dust;
                     result.applied.push(write);
                 }
                 Err(stranded) => {
@@ -447,6 +443,9 @@ impl Ledger {
                 );
                 *activation
             }
+            // Nothing to check here. Whether the stream is live when the removal applies is
+            // proved by the queue projection in [`Ledger::admit`], so this arm only computes
+            // the effective epoch.
             QueuedCall::Remove { .. } => timelock_epoch(epoch, timelock)?,
             QueuedCall::SetDistribution { writer, .. } => {
                 validate_id_address(writer, "distribution writer")?;
@@ -504,10 +503,6 @@ impl Ledger {
             before.accepted.is_subset(&after.accepted),
             "new call invalidates an existing pending call"
         );
-        if let QueuedCall::Remove { .. } = call {
-            // A removal reserves the tombstone rows its fold may leave behind.
-            validate_tombstone_capacity(&self.streams)?;
-        }
 
         Ok(self
             .streams
@@ -541,7 +536,7 @@ impl Ledger {
             // that epoch cannot change which writes apply.
             let mut candidate = projected.clone();
             match candidate.apply(&call, write.effective_epoch) {
-                Ok(_) => {
+                Ok(()) => {
                     projected = candidate;
                     projection.accepted.insert(call.slot());
                 }
@@ -569,7 +564,6 @@ fn ensure_slot_available(streams: &StreamsState, slot: Slot) -> Result<()> {
 
 fn ensure_stream_id_available(streams: &StreamsState, id: StreamId) -> Result<()> {
     ensure!(!streams.has_stream(id), "stream ID {id} is already registered");
-    ensure!(!streams.has_tombstone(id), "stream ID {id} is tombstoned");
     ensure!(
         !streams
             .pending_writes

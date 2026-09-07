@@ -2,12 +2,11 @@ use std::cell::RefCell;
 
 use fil_actor_reward::testing::check_state_invariants;
 use fil_actor_reward::{
-    Actor as RewardActor, AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn,
-    DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, Method, PENALTY_MULTIPLIER,
-    PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare, RecipientTable,
-    RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, SetDistributionParams,
-    SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State, Stream, StreamAccrual,
-    StreamsState, WeightRecord, WeightRecordUpdate, explicit_liability, ext,
+    Actor as RewardActor, AwardBlockRewardParams, CancelPendingParams, DENOM, DistributionInit,
+    ExplicitDistribution, MAX_RECIPIENTS, MAX_STREAMS, Method, PENALTY_MULTIPLIER, PendingWrite,
+    PendingWriteOp, RecipientShare, RegisterStreamParams, RegisterStreamPayload,
+    RemoveStreamParams, SetDistributionParams, SetDistributionPayload, SetSharesParams,
+    SetWeightRecordsParams, State, Stream, StreamsState, WeightRecord, WeightRecordUpdate, ext,
 };
 use fil_actors_runtime::test_utils::{
     ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
@@ -19,7 +18,8 @@ use fvm_ipld_encoding::{CBOR, CborStore, RawBytes, ipld_block::IpldBlock};
 use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
+use fvm_shared::error::{ErrorNumber, ExitCode};
+use fvm_shared::sys::SendFlags;
 use multihash_codetable::{Code, MultihashDigest};
 use num_traits::Zero;
 
@@ -27,6 +27,10 @@ const SWA_ACTOR_ID: u64 = 1001;
 const WRITER: u64 = 200;
 const RECIPIENT_A: u64 = 201;
 const RECIPIENT_B: u64 = 202;
+const MINER: u64 = 203;
+const NEXT_WRITER: u64 = 204;
+/// The first of the 512 recipients a full stream table pays.
+const FIRST_BOUND_RECIPIENT: u64 = 2_000;
 
 fn swa_actor() -> Address {
     Address::new_id(SWA_ACTOR_ID)
@@ -47,7 +51,7 @@ fn base_runtime() -> MockRuntime {
         caller_type: RefCell::new(*EVM_ACTOR_CODE_ID),
         ..Default::default()
     };
-    for id in [SWA_ACTOR_ID, WRITER, RECIPIENT_A, RECIPIENT_B] {
+    for id in [SWA_ACTOR_ID, WRITER, RECIPIENT_A, RECIPIENT_B, MINER] {
         rt.set_address_actor_type(Address::new_id(id), *EVM_ACTOR_CODE_ID);
     }
     rt.set_address_actor_type(BURNT_FUNDS_ACTOR_ADDR, *ACCOUNT_ACTOR_CODE_ID);
@@ -63,8 +67,6 @@ fn base_runtime() -> MockRuntime {
                         recipient: Address::new_id(RECIPIENT_A),
                         share: DENOM,
                     }],
-                    payable: RecipientTable::default(),
-                    claimed_period: RecipientTable::default(),
                 }),
             },
         ],
@@ -73,7 +75,6 @@ fn base_runtime() -> MockRuntime {
     let streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     rt.replace_state(&State {
         epoch: 0,
-        accrued: vec![StreamAccrual { id: 2, amount: TokenAmount::zero() }],
         swa_timelock_epochs: 2,
         swa_actor: swa_actor(),
         streams_root,
@@ -85,11 +86,6 @@ fn base_runtime() -> MockRuntime {
 fn load_streams(rt: &MockRuntime) -> StreamsState {
     let state: State = rt.get_state();
     rt.store.get_cbor(&state.streams_root).unwrap().unwrap()
-}
-
-fn liability(rt: &MockRuntime) -> TokenAmount {
-    let state: State = rt.get_state();
-    explicit_liability(&load_streams(rt), &state.accrued)
 }
 
 fn assert_state_invariants(rt: &MockRuntime) {
@@ -122,15 +118,15 @@ fn expect_write_event(rt: &MockRuntime, typ: &str, write: &PendingWrite, queued:
     rt.expect_emitted_event(event.build().unwrap());
 }
 
-fn expect_claim_event(rt: &MockRuntime, stream_id: u64, recipient: Address, amount: &TokenAmount) {
-    rt.expect_emitted_event(
-        EventBuilder::new()
-            .typ("claim-payout")
-            .field_indexed("stream-id", &stream_id)
-            .field_indexed("recipient", &recipient.id().unwrap())
-            .field("amount", amount)
-            .build()
-            .unwrap(),
+/// One recipient's payout from one award, which the actor sends with method 0.
+fn expect_payout(rt: &MockRuntime, recipient: u64, amount: u64, exit_code: ExitCode) {
+    rt.expect_send_simple(
+        Address::new_id(recipient),
+        METHOD_SEND,
+        None,
+        TokenAmount::from_atto(amount),
+        None,
+        exit_code,
     );
 }
 
@@ -141,7 +137,7 @@ fn expect_miner_reward(
     exit_code: ExitCode,
 ) {
     rt.expect_send_simple(
-        Address::new_id(RECIPIENT_A),
+        Address::new_id(MINER),
         ext::miner::APPLY_REWARDS_METHOD,
         IpldBlock::serialize_cbor(&ext::miner::ApplyRewardParams {
             reward: reward.clone(),
@@ -169,12 +165,7 @@ fn award(
     call(
         rt,
         Method::AwardBlockReward,
-        &AwardBlockRewardParams {
-            miner: Address::new_id(RECIPIENT_A),
-            penalty,
-            gas_reward,
-            win_count,
-        },
+        &AwardBlockRewardParams { miner: Address::new_id(MINER), penalty, gas_reward, win_count },
     )
 }
 
@@ -275,16 +266,7 @@ fn authorizes_the_swa_address_stored_in_state() {
 #[test]
 fn bounds_recipient_inputs_before_lookup_and_authorization_work() {
     let rt = base_runtime();
-    let too_many_wallets = vec![Address::new_id(RECIPIENT_A); MAX_RECIPIENTS + 1];
-
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(999));
-    rt.expect_validate_caller_any();
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        call(&rt, Method::ClaimExported, &ClaimParams { id: 2, wallets: too_many_wallets }),
-    );
-    rt.verify();
-
     let too_many_shares =
         vec![
             RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: DENOM };
@@ -358,32 +340,22 @@ fn rejects_invalid_method_parameters_without_state_changes() {
     );
     rt.verify();
 
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(999));
-    rt.expect_validate_caller_any();
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        call(&rt, Method::ClaimExported, &ClaimParams { id: 1, wallets: Vec::new() }),
-    );
-    rt.verify();
-
     assert_eq!(before, load_streams(&rt));
 }
 
 #[test]
-fn mutations_reject_inconsistent_accounting_without_a_due_write() {
+fn mutations_reject_invalid_persisted_state_without_a_due_write() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
-    state.accrued[0].amount = TokenAmount::from_atto(-1);
+    let mut streams = load_streams(&rt);
+    // Descending stored share recipients, which no admitted map can produce.
+    streams.streams[1].distribution.as_mut().unwrap().shares = vec![
+        RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM / 2 },
+        RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: DENOM - DENOM / 2 },
+    ];
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     let before = state.clone();
     rt.replace_state(&state);
-
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(999));
-    rt.expect_validate_caller_any();
-    expect_abort(
-        ExitCode::USR_ILLEGAL_STATE,
-        call(&rt, Method::ClaimExported, &ClaimParams { id: 999, wallets: Vec::new() }),
-    );
-    rt.verify();
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
     rt.expect_validate_caller_any();
@@ -419,7 +391,6 @@ fn mutations_reject_inconsistent_accounting_without_a_due_write() {
 
     let state: State = rt.get_state();
     assert_eq!(before.streams_root, state.streams_root);
-    assert_eq!(before.accrued, state.accrued);
     assert!(load_streams(&rt).pending_writes.is_empty());
 }
 
@@ -450,7 +421,6 @@ fn rejects_malformed_cbor_for_every_exported_method() {
         Method::SetDistributionExported,
         Method::CancelPendingExported,
         Method::SetSharesExported,
-        Method::ClaimExported,
     ] {
         expect_abort(
             ExitCode::USR_SERIALIZATION,
@@ -509,15 +479,16 @@ fn queues_cancels_and_applies_weight_writes() {
     rt.verify();
 
     rt.epoch.replace(3);
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(300));
-    rt.expect_validate_caller_any();
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-applied", &queued, false);
-    let result = call(&rt, Method::ClaimExported, &ClaimParams { id: 999, wallets: Vec::new() })
-        .unwrap()
-        .unwrap();
-    let result: ClaimReturn = result.deserialize().unwrap();
+    // Cancelling an empty slot does nothing of its own, so the due write is all that moves.
+    call(
+        &rt,
+        Method::CancelPendingExported,
+        &CancelPendingParams { id: Some(999), op: PendingWriteOp::RemoveStream },
+    )
+    .unwrap();
     rt.verify();
-    assert!(result.amounts.is_empty());
     let streams = load_streams(&rt);
     assert_eq!(pct(55), streams.streams[0].weight.v_start);
     assert_eq!(pct(25), streams.streams[1].weight.v_start);
@@ -525,157 +496,160 @@ fn queues_cancels_and_applies_weight_writes() {
 }
 
 #[test]
-fn set_shares_folds_liabilities_and_burns_dust() {
+fn set_shares_binds_from_the_next_award_and_never_redirects_an_earlier_one() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
-    state.accrued[0].amount = TokenAmount::from_atto(5);
-    state.total_explicit_minted = TokenAmount::from_atto(5);
+    state.this_epoch_reward = TokenAmount::from_atto(500);
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
+
+    // Stream 2 carries 20% of a 100 atto block reward, all of it to recipient A.
+    expect_miner_reward(&rt, TokenAmount::from_atto(60), TokenAmount::zero(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 20, ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(20), ExitCode::OK);
+    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+    assert_eq!(TokenAmount::from_atto(20), rt.get_state::<State>().total_explicit_minted);
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    rt.expect_validate_caller_any();
+    call(
+        &rt,
+        Method::SetSharesExported,
+        &SetSharesParams {
+            id: 2,
+            shares: vec![RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM }],
+        },
+    )
+    .unwrap();
+    rt.verify();
+
+    // The next award pays the new map, and nothing goes back to recipient A.
+    expect_miner_reward(&rt, TokenAmount::from_atto(60), TokenAmount::zero(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_B, 20, ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(20), ExitCode::OK);
+    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(TokenAmount::from_atto(200), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(40), state.total_burn_minted);
+    assert_eq!(TokenAmount::from_atto(40), state.total_explicit_minted);
+    assert_state_invariants(&rt);
+}
+
+#[test]
+fn award_burns_a_payout_its_recipient_cannot_receive() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
     let mut streams = load_streams(&rt);
     streams.streams[1].distribution.as_mut().unwrap().shares = vec![
         RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: DENOM / 2 },
         RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM - DENOM / 2 },
     ];
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    state.this_epoch_reward = TokenAmount::from_atto(500);
     rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(5));
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
-    rt.expect_validate_caller_any();
-    rt.expect_send_simple(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        TokenAmount::from_atto(1),
-        None,
-        ExitCode::OK,
-    );
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
 
-    call(
-        &rt,
-        Method::SetSharesExported,
-        &SetSharesParams {
-            id: 2,
-            shares: vec![RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: DENOM }],
-        },
-    )
-    .unwrap();
-    rt.verify();
-
-    let state: State = rt.get_state();
-    assert_eq!(TokenAmount::zero(), state.accrued[0].amount);
-    assert_eq!(TokenAmount::from_atto(4), liability(&rt));
-    let distribution = load_streams(&rt).streams.remove(1).distribution.unwrap();
-    assert_eq!(
-        RecipientTable::from(vec![
-            RecipientAmount {
-                recipient: Address::new_id(RECIPIENT_A),
-                amount: TokenAmount::from_atto(2),
-            },
-            RecipientAmount {
-                recipient: Address::new_id(RECIPIENT_B),
-                amount: TokenAmount::from_atto(2),
-            },
-        ]),
-        distribution.payable
-    );
-    assert_eq!(DENOM, distribution.shares[0].share);
-}
-
-#[test]
-fn claim_returns_positional_amounts_and_deletes_drained_tombstone() {
-    let rt = base_runtime();
-    let mut state: State = rt.get_state();
-    state.accrued[0].amount = TokenAmount::from_atto(10);
-    state.total_explicit_minted = TokenAmount::from_atto(17);
-    let mut streams = load_streams(&rt);
-    streams.tombstones.push(fil_actor_reward::Tombstone {
-        id: 3,
-        payable: vec![RecipientAmount {
-            recipient: Address::new_id(RECIPIENT_A),
-            amount: TokenAmount::from_atto(7),
-        }]
-        .into(),
-    });
-    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-    rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(17));
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(300));
-
-    rt.expect_validate_caller_any();
-    rt.expect_send_simple(
+    // Recipient A is gone, so its 10 attos join the 20 atto residual in the single burn send.
+    // A is the first payout of the loop, so recipient B is paid after the failure.
+    expect_miner_reward(&rt, TokenAmount::from_atto(60), TokenAmount::zero(), ExitCode::OK);
+    rt.expect_send(
         Address::new_id(RECIPIENT_A),
         METHOD_SEND,
         None,
         TokenAmount::from_atto(10),
         None,
-        ExitCode::OK,
-    );
-    expect_claim_event(&rt, 2, Address::new_id(RECIPIENT_A), &TokenAmount::from_atto(10));
-    let result = call(
-        &rt,
-        Method::ClaimExported,
-        &ClaimParams {
-            id: 2,
-            wallets: vec![
-                Address::new_id(RECIPIENT_A),
-                Address::new_id(RECIPIENT_A),
-                Address::new_id(RECIPIENT_B),
-            ],
-        },
-    )
-    .unwrap()
-    .unwrap();
-    let result: ClaimReturn = result.deserialize().unwrap();
-    rt.verify();
-    assert_eq!(
-        vec![TokenAmount::from_atto(10), TokenAmount::zero(), TokenAmount::zero()],
-        result.amounts
-    );
-    assert_eq!(TokenAmount::from_atto(7), liability(&rt));
-
-    rt.expect_validate_caller_any();
-    let result = call(
-        &rt,
-        Method::ClaimExported,
-        &ClaimParams { id: 2, wallets: vec![Address::new_id(RECIPIENT_A)] },
-    )
-    .unwrap()
-    .unwrap();
-    let result: ClaimReturn = result.deserialize().unwrap();
-    rt.verify();
-    assert_eq!(vec![TokenAmount::zero()], result.amounts);
-
-    rt.expect_validate_caller_any();
-    rt.expect_send_simple(
-        Address::new_id(RECIPIENT_A),
-        METHOD_SEND,
-        None,
-        TokenAmount::from_atto(7),
+        SendFlags::default(),
         None,
         ExitCode::OK,
+        Some(ErrorNumber::NotFound),
     );
-    expect_claim_event(&rt, 3, Address::new_id(RECIPIENT_A), &TokenAmount::from_atto(7));
-    call(
-        &rt,
-        Method::ClaimExported,
-        &ClaimParams { id: 3, wallets: vec![Address::new_id(RECIPIENT_A)] },
-    )
-    .unwrap();
+    expect_payout(&rt, RECIPIENT_B, 10, ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(30), ExitCode::OK);
+    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
     rt.verify();
-    assert!(load_streams(&rt).tombstones.is_empty());
-    assert_eq!(TokenAmount::zero(), liability(&rt));
+
+    let state: State = rt.get_state();
+    assert_eq!(TokenAmount::from_atto(100), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(20), state.total_burn_minted);
+    assert_eq!(TokenAmount::from_atto(20), state.total_explicit_minted);
+    assert_state_invariants(&rt);
 }
 
 #[test]
-fn settlement_remains_live_while_the_weight_envelope_is_invalid() {
+fn award_pays_miner_payouts_and_burn_within_the_balance() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    state.this_epoch_reward = TokenAmount::from_atto(25);
+    rt.replace_state(&state);
+    // Exactly the gas reward plus the block reward, so every atto leaves in this one award.
+    rt.set_balance(TokenAmount::from_atto(7));
+
+    expect_miner_reward(&rt, TokenAmount::from_atto(5), TokenAmount::zero(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 1, ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::OK);
+    award(&rt, TokenAmount::from_atto(2), TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(1), state.total_burn_minted);
+    assert_eq!(TokenAmount::from_atto(1), state.total_explicit_minted);
+    assert_eq!(TokenAmount::zero(), *rt.balance.borrow());
+}
+
+#[test]
+fn rejects_the_reward_actor_as_a_share_recipient() {
+    let rt = base_runtime();
+    rt.set_address_actor_type(REWARD_ACTOR_ADDR, *EVM_ACTOR_CODE_ID);
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    rt.expect_validate_caller_any();
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        call(
+            &rt,
+            Method::SetSharesExported,
+            &SetSharesParams {
+                id: 2,
+                shares: vec![RecipientShare { recipient: REWARD_ACTOR_ADDR, share: DENOM }],
+            },
+        ),
+    );
+    rt.verify();
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, swa_actor());
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        call(
+            &rt,
+            Method::RegisterStreamExported,
+            &RegisterStreamParams {
+                id: 3,
+                weight: weight(pct(10)),
+                distribution: Some(DistributionInit {
+                    writer: Address::new_id(WRITER),
+                    shares: vec![RecipientShare { recipient: REWARD_ACTOR_ADDR, share: DENOM }],
+                }),
+                activation_epoch: 2,
+            },
+        ),
+    );
+    rt.verify();
+    assert!(load_streams(&rt).pending_writes.is_empty());
+}
+
+#[test]
+fn set_shares_remains_live_while_the_weight_envelope_is_invalid() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
     let mut streams = load_streams(&rt);
     streams.streams[0].weight = weight(pct(90));
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-    state.total_explicit_minted = TokenAmount::from_atto(10);
-    state.accrued[0].amount = TokenAmount::from_atto(10);
     rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(10));
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
     rt.expect_validate_caller_any();
@@ -684,35 +658,17 @@ fn settlement_remains_live_while_the_weight_envelope_is_invalid() {
         Method::SetSharesExported,
         &SetSharesParams {
             id: 2,
-            shares: vec![RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: DENOM }],
+            shares: vec![RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM }],
         },
     )
     .unwrap();
     rt.verify();
 
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(300));
-    rt.expect_validate_caller_any();
-    rt.expect_send_simple(
-        Address::new_id(RECIPIENT_A),
-        METHOD_SEND,
-        None,
-        TokenAmount::from_atto(10),
-        None,
-        ExitCode::OK,
+    let distribution = load_streams(&rt).streams.remove(1).distribution.unwrap();
+    assert_eq!(
+        vec![Address::new_id(RECIPIENT_B)],
+        distribution.shares.iter().map(|row| row.recipient).collect::<Vec<_>>()
     );
-    expect_claim_event(&rt, 2, Address::new_id(RECIPIENT_A), &TokenAmount::from_atto(10));
-    let result = call(
-        &rt,
-        Method::ClaimExported,
-        &ClaimParams { id: 2, wallets: vec![Address::new_id(RECIPIENT_A)] },
-    )
-    .unwrap()
-    .unwrap();
-    let result: ClaimReturn = result.deserialize().unwrap();
-    rt.verify();
-
-    assert_eq!(vec![TokenAmount::from_atto(10)], result.amounts);
-    assert_eq!(TokenAmount::zero(), liability(&rt));
 }
 
 #[test]
@@ -769,16 +725,20 @@ fn cancellation_strands_a_call_and_emits_drop_on_next_mutation() {
     rt.verify();
 
     rt.epoch.replace(2);
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(300));
-    rt.expect_validate_caller_any();
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-dropped", &stranded, false);
-    call(&rt, Method::ClaimExported, &ClaimParams { id: 999, wallets: Vec::new() }).unwrap();
+    call(
+        &rt,
+        Method::CancelPendingExported,
+        &CancelPendingParams { id: Some(999), op: PendingWriteOp::RemoveStream },
+    )
+    .unwrap();
     rt.verify();
     assert!(load_streams(&rt).pending_writes.is_empty());
 }
 
 #[test]
-fn award_burns_sentinel_share_immediately_and_counts_it() {
+fn award_burns_the_sentinel_share_and_counts_it_as_residual() {
     let rt = base_runtime();
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
     rt.expect_validate_caller_any();
@@ -809,7 +769,10 @@ fn award_burns_sentinel_share_immediately_and_counts_it() {
     state.this_epoch_reward = TokenAmount::from_atto(500);
     rt.replace_state(&state);
     rt.set_balance(TokenAmount::from_whole(1_100_000_000));
+    // Half of stream 2's 20 atto portion is the sentinel's, so it burns with the 20 atto residual.
     expect_miner_reward(&rt, TokenAmount::from_atto(60), TokenAmount::zero(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 5, ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_B, 5, ExitCode::OK);
     expect_burn(&rt, TokenAmount::from_atto(30), ExitCode::OK);
     award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
     rt.verify();
@@ -818,35 +781,13 @@ fn award_burns_sentinel_share_immediately_and_counts_it() {
     assert_eq!(TokenAmount::from_atto(100), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(30), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(10), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(10), state.accrued[0].amount);
     assert_eq!(
         TokenAmount::from_atto(60),
         &state.total_minted_reward - &state.total_burn_minted - &state.total_explicit_minted
     );
     assert_state_invariants(&rt);
 
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(300));
-    rt.expect_validate_caller_any();
-    let result = call(
-        &rt,
-        Method::ClaimExported,
-        &ClaimParams { id: 2, wallets: vec![BURNT_FUNDS_ACTOR_ADDR] },
-    )
-    .unwrap()
-    .unwrap();
-    let result: ClaimReturn = result.deserialize().unwrap();
-    rt.verify();
-    assert_eq!(vec![TokenAmount::zero()], result.amounts);
-    let streams = load_streams(&rt);
-    let distribution = streams.streams[1].distribution.as_ref().unwrap();
-    assert!(
-        distribution
-            .payable
-            .iter()
-            .chain(distribution.claimed_period.iter())
-            .all(|row| row.recipient != BURNT_FUNDS_ACTOR_ADDR)
-    );
-
+    // An all-sentinel map leaves the stream nothing to pay, so its whole portion burns.
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
     rt.expect_validate_caller_any();
     call(
@@ -859,11 +800,7 @@ fn award_burns_sentinel_share_immediately_and_counts_it() {
     )
     .unwrap();
     rt.verify();
-    let streams = load_streams(&rt);
-    let distribution = streams.streams[1].distribution.as_ref().unwrap();
-    assert!(distribution.shares.is_empty());
-    assert!(distribution.claimed_period.is_empty());
-    assert!(distribution.payable.iter().all(|row| row.recipient != BURNT_FUNDS_ACTOR_ADDR));
+    assert!(load_streams(&rt).streams[1].distribution.as_ref().unwrap().shares.is_empty());
 
     expect_miner_reward(&rt, TokenAmount::from_atto(60), TokenAmount::zero(), ExitCode::OK);
     expect_burn(&rt, TokenAmount::from_atto(40), ExitCode::OK);
@@ -874,7 +811,6 @@ fn award_burns_sentinel_share_immediately_and_counts_it() {
     assert_eq!(TokenAmount::from_atto(200), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(70), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(10), state.total_explicit_minted);
-    assert_eq!(TokenAmount::zero(), state.accrued[0].amount);
     assert_state_invariants(&rt);
 }
 
@@ -890,6 +826,7 @@ fn award_splits_multiple_wins_atto_exactly_and_preserves_the_stream_root() {
     let gas = TokenAmount::from_atto(4);
     let penalty = TokenAmount::from_atto(2);
     expect_miner_reward(&rt, TokenAmount::from_atto(7), penalty.clone(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 1, ExitCode::OK);
     expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
     award(&rt, gas, penalty, 2).unwrap();
     rt.verify();
@@ -898,13 +835,12 @@ fn award_splits_multiple_wins_atto_exactly_and_preserves_the_stream_root() {
     assert_eq!(TokenAmount::from_atto(6), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(2), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(1), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(1), state.accrued[0].amount);
     assert_eq!(
         TokenAmount::from_atto(3),
         &state.total_minted_reward - &state.total_burn_minted - &state.total_explicit_minted
     );
     assert_eq!(streams_root, state.streams_root);
-    assert_eq!(TokenAmount::from_atto(91), *rt.balance.borrow());
+    assert_eq!(TokenAmount::from_atto(90), *rt.balance.borrow());
 }
 
 #[test]
@@ -931,7 +867,6 @@ fn award_floors_each_block_instead_of_aggregating_the_epoch() {
     assert_eq!(TokenAmount::from_atto(2), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(2), state.total_burn_minted);
     assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
-    assert_eq!(TokenAmount::zero(), state.accrued[0].amount);
     assert_eq!(streams_root, state.streams_root);
 }
 
@@ -964,13 +899,15 @@ fn award_reads_due_writes_from_queue_head_after_null_epochs() {
     state.this_epoch_reward = TokenAmount::from_atto(50);
     rt.replace_state(&state);
     rt.epoch.replace(10);
-    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
+    // The block reward plus the gas reward the system actor credited before this call.
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000) + TokenAmount::from_atto(2));
     assert_state_invariants(&rt);
 
     expect_write_event(&rt, "write-applied", &applied, false);
     expect_write_event(&rt, "write-dropped", &dropped, false);
     let penalty = TokenAmount::from_atto(4);
     expect_miner_reward(&rt, TokenAmount::from_atto(7), penalty.clone(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 3, ExitCode::OK);
     expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
     award(&rt, TokenAmount::from_atto(2), penalty, 1).unwrap();
     rt.verify();
@@ -1005,10 +942,14 @@ fn mutation_applies_due_write_from_queue_head() {
     rt.replace_state(&state);
     rt.epoch.replace(10);
 
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(999));
-    rt.expect_validate_caller_any();
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-applied", &write, false);
-    call(&rt, Method::ClaimExported, &ClaimParams { id: 999, wallets: Vec::new() }).unwrap();
+    call(
+        &rt,
+        Method::CancelPendingExported,
+        &CancelPendingParams { id: Some(999), op: PendingWriteOp::RemoveStream },
+    )
+    .unwrap();
     rt.verify();
 
     let streams = load_streams(&rt);
@@ -1055,6 +996,7 @@ fn award_pays_only_gas_for_malformed_weights_until_repaired() {
     rt.epoch.replace(2);
     expect_write_event(&rt, "write-applied", &repair, false);
     expect_miner_reward(&rt, TokenAmount::from_atto(3), TokenAmount::zero(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 1, ExitCode::OK);
     expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::OK);
     award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
     rt.verify();
@@ -1063,8 +1005,6 @@ fn award_pays_only_gas_for_malformed_weights_until_repaired() {
     assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(1), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(1), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(1), liability(&rt));
-    assert_eq!(TokenAmount::from_atto(1), state.accrued[0].amount);
 }
 
 #[test]
@@ -1088,7 +1028,6 @@ fn award_pays_only_gas_for_invalid_weight_envelope_until_repaired() {
     assert_eq!(TokenAmount::zero(), state.total_minted_reward);
     assert_eq!(TokenAmount::zero(), state.total_burn_minted);
     assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
-    assert_eq!(TokenAmount::zero(), state.accrued[0].amount);
 
     let params = SetWeightRecordsParams {
         updates: vec![
@@ -1111,6 +1050,7 @@ fn award_pays_only_gas_for_invalid_weight_envelope_until_repaired() {
     rt.epoch.replace(2);
     expect_write_event(&rt, "write-applied", &repair, false);
     expect_miner_reward(&rt, TokenAmount::from_atto(3), TokenAmount::zero(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 1, ExitCode::OK);
     expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::OK);
     award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
     rt.verify();
@@ -1119,106 +1059,6 @@ fn award_pays_only_gas_for_invalid_weight_envelope_until_repaired() {
     assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(1), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(1), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(1), state.accrued[0].amount);
-}
-
-#[test]
-fn full_explicit_stream_decommission_preserves_and_drains_liabilities() {
-    let rt = base_runtime();
-    let mut state: State = rt.get_state();
-    state.this_epoch_reward = TokenAmount::from_atto(25);
-    state.total_minted_reward = TokenAmount::from_atto(10);
-    state.total_explicit_minted = TokenAmount::from_atto(10);
-    state.accrued[0].amount = TokenAmount::from_atto(10);
-    rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
-
-    let removal = PendingWrite {
-        id: Some(2),
-        op: PendingWriteOp::RemoveStream,
-        payload: RawBytes::new(vec![0x80]),
-        effective_epoch: 2,
-    };
-    rt.expect_validate_caller_addr(vec![swa_actor()]);
-    expect_write_event(&rt, "write-queued", &removal, true);
-    call(&rt, Method::RemoveStreamExported, &RemoveStreamParams { id: 2 }).unwrap();
-    rt.verify();
-    assert_state_invariants(&rt);
-
-    rt.epoch.replace(1);
-    expect_miner_reward(&rt, TokenAmount::from_atto(3), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::OK);
-    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
-    rt.verify();
-    assert_state_invariants(&rt);
-    let state: State = rt.get_state();
-    assert_eq!(TokenAmount::from_atto(11), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(11), liability(&rt));
-
-    rt.epoch.replace(2);
-    expect_write_event(&rt, "write-applied", &removal, false);
-    expect_miner_reward(&rt, TokenAmount::from_atto(3), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
-    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
-    rt.verify();
-    assert_state_invariants(&rt);
-    let state: State = rt.get_state();
-    let streams = load_streams(&rt);
-    assert!(state.accrued.is_empty());
-    assert_eq!(TokenAmount::from_atto(11), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(11), liability(&rt));
-    assert_eq!(1, streams.streams.len());
-    assert_eq!(2, streams.tombstones[0].id);
-    assert_eq!(
-        TokenAmount::from_atto(11),
-        streams.tombstones[0].payable.get(&Address::new_id(RECIPIENT_A))
-    );
-
-    rt.epoch.replace(3);
-    expect_miner_reward(&rt, TokenAmount::from_atto(3), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
-    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
-    rt.verify();
-    assert_state_invariants(&rt);
-    assert_eq!(TokenAmount::from_atto(11), rt.get_state::<State>().total_explicit_minted);
-
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(999));
-    rt.expect_validate_caller_any();
-    rt.expect_send_simple(
-        Address::new_id(RECIPIENT_A),
-        METHOD_SEND,
-        None,
-        TokenAmount::from_atto(11),
-        None,
-        ExitCode::OK,
-    );
-    expect_claim_event(&rt, 2, Address::new_id(RECIPIENT_A), &TokenAmount::from_atto(11));
-    let result = call(
-        &rt,
-        Method::ClaimExported,
-        &ClaimParams { id: 2, wallets: vec![Address::new_id(RECIPIENT_A)] },
-    )
-    .unwrap()
-    .unwrap();
-    let result: ClaimReturn = result.deserialize().unwrap();
-    rt.verify();
-    assert_eq!(vec![TokenAmount::from_atto(11)], result.amounts);
-    assert!(load_streams(&rt).tombstones.is_empty());
-    assert_eq!(TokenAmount::zero(), liability(&rt));
-    assert_state_invariants(&rt);
-
-    rt.expect_validate_caller_any();
-    let result = call(
-        &rt,
-        Method::ClaimExported,
-        &ClaimParams { id: 2, wallets: vec![Address::new_id(RECIPIENT_A)] },
-    )
-    .unwrap()
-    .unwrap();
-    let result: ClaimReturn = result.deserialize().unwrap();
-    rt.verify();
-    assert_eq!(vec![TokenAmount::zero()], result.amounts);
-    assert_state_invariants(&rt);
 }
 
 #[test]
@@ -1236,10 +1076,14 @@ fn gate_write_for_a_removed_stream_reverts_at_admission() {
     rt.verify();
 
     rt.epoch.replace(2);
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(999));
-    rt.expect_validate_caller_any();
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
     expect_write_event(&rt, "write-applied", &removal, false);
-    call(&rt, Method::ClaimExported, &ClaimParams { id: 999, wallets: Vec::new() }).unwrap();
+    call(
+        &rt,
+        Method::CancelPendingExported,
+        &CancelPendingParams { id: Some(999), op: PendingWriteOp::SetDistribution },
+    )
+    .unwrap();
     rt.verify();
     assert_eq!(
         vec![1],
@@ -1262,13 +1106,12 @@ fn gate_write_for_a_removed_stream_reverts_at_admission() {
 }
 
 #[test]
-fn zero_explicit_streams_are_a_stable_award_and_claim_state() {
+fn zero_explicit_streams_are_a_stable_award_state() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
     let mut streams = load_streams(&rt);
     streams.streams.truncate(1);
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-    state.accrued.clear();
     state.this_epoch_reward = TokenAmount::from_atto(25);
     rt.replace_state(&state);
     rt.set_balance(TokenAmount::from_whole(1_100_000_000));
@@ -1284,25 +1127,9 @@ fn zero_explicit_streams_are_a_stable_award_and_claim_state() {
         assert_eq!(TokenAmount::from_atto(5 * award_count), state.total_minted_reward);
         assert_eq!(TokenAmount::from_atto(2 * award_count), state.total_burn_minted);
         assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
-        assert_eq!(TokenAmount::zero(), liability(&rt));
-        assert!(state.accrued.is_empty());
         assert_eq!(streams_root, state.streams_root);
         assert_state_invariants(&rt);
     }
-
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(999));
-    rt.expect_validate_caller_any();
-    let result = call(
-        &rt,
-        Method::ClaimExported,
-        &ClaimParams { id: 2, wallets: vec![Address::new_id(RECIPIENT_A)] },
-    )
-    .unwrap()
-    .unwrap();
-    let result: ClaimReturn = result.deserialize().unwrap();
-    rt.verify();
-    assert_eq!(vec![TokenAmount::zero()], result.amounts);
-    assert_state_invariants(&rt);
 }
 
 #[test]
@@ -1312,7 +1139,6 @@ fn consensus_stream_removal_uses_the_normal_queue_and_award_paths() {
     let mut streams = load_streams(&rt);
     streams.streams.truncate(1);
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-    state.accrued.clear();
     state.this_epoch_reward = TokenAmount::from_atto(25);
     rt.replace_state(&state);
     rt.set_balance(TokenAmount::from_whole(1_100_000_000) + TokenAmount::from_atto(2));
@@ -1341,213 +1167,17 @@ fn consensus_stream_removal_uses_the_normal_queue_and_award_paths() {
     assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(5), state.total_burn_minted);
     assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
-    assert_eq!(TokenAmount::zero(), liability(&rt));
     assert_state_invariants(&rt);
 }
 #[test]
-fn award_burns_transition_dust_without_counting_it_as_reward_residual() {
+fn award_pays_only_gas_for_malformed_stream_state() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
     let mut streams = load_streams(&rt);
-    let one_third = DENOM / 3;
-    let distribution = streams.streams[1].distribution.as_mut().unwrap();
-    distribution.shares = vec![
-        RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: one_third },
-        RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM - one_third },
+    streams.streams[1].distribution.as_mut().unwrap().shares = vec![
+        RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM / 2 },
+        RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: DENOM - DENOM / 2 },
     ];
-    let removal = PendingWrite {
-        id: Some(2),
-        op: PendingWriteOp::RemoveStream,
-        payload: RawBytes::new(vec![0x80]),
-        effective_epoch: 5,
-    };
-    streams.pending_writes = vec![removal.clone()];
-    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-    state.this_epoch_reward = TokenAmount::from_atto(25);
-    state.total_minted_reward = TokenAmount::from_atto(5);
-    state.total_explicit_minted = TokenAmount::from_atto(5);
-    state.accrued[0].amount = TokenAmount::from_atto(5);
-    rt.replace_state(&state);
-    rt.epoch.replace(5);
-    rt.set_balance(TokenAmount::from_atto(100));
-
-    expect_write_event(&rt, "write-applied", &removal, false);
-    expect_miner_reward(&rt, TokenAmount::from_atto(3), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(3), ExitCode::OK);
-    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
-    rt.verify();
-
-    let state: State = rt.get_state();
-    let streams = load_streams(&rt);
-    assert_eq!(TokenAmount::from_atto(10), state.total_minted_reward);
-    assert_eq!(TokenAmount::from_atto(2), state.total_burn_minted);
-    assert_eq!(TokenAmount::from_atto(5), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(4), liability(&rt));
-    assert!(state.accrued.is_empty());
-    assert_eq!(
-        TokenAmount::from_atto(4),
-        streams.tombstones[0].payable.get(&Address::new_id(RECIPIENT_A))
-            + streams.tombstones[0].payable.get(&Address::new_id(RECIPIENT_B))
-    );
-}
-
-#[test]
-fn award_reserves_existing_explicit_liabilities_when_reward_balance_is_low() {
-    let rt = base_runtime();
-    let mut state: State = rt.get_state();
-    state.this_epoch_reward = TokenAmount::from_atto(100);
-    state.total_minted_reward = TokenAmount::from_atto(30);
-    state.total_explicit_minted = TokenAmount::from_atto(30);
-    state.accrued[0].amount = TokenAmount::from_atto(30);
-    rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(40));
-
-    expect_miner_reward(&rt, TokenAmount::from_atto(6), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
-    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
-    rt.verify();
-
-    let state: State = rt.get_state();
-    assert_eq!(TokenAmount::from_atto(40), state.total_minted_reward);
-    assert_eq!(TokenAmount::from_atto(2), state.total_burn_minted);
-    assert_eq!(TokenAmount::from_atto(32), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(32), state.accrued[0].amount);
-    assert_eq!(TokenAmount::from_atto(32), liability(&rt));
-    assert_eq!(TokenAmount::from_atto(32), *rt.balance.borrow());
-}
-
-#[test]
-fn award_pays_only_gas_until_invalid_explicit_accounting_is_repaired() {
-    let rt = base_runtime();
-    let mut state: State = rt.get_state();
-    let mut streams = load_streams(&rt);
-    let pending = PendingWrite {
-        id: None,
-        op: PendingWriteOp::SetWeightRecords,
-        payload: RawBytes::serialize(&SetWeightRecordsParams {
-            updates: vec![WeightRecordUpdate { id: 1, weight: weight(pct(60)) }],
-        })
-        .unwrap(),
-        effective_epoch: 0,
-    };
-    streams.pending_writes = vec![pending.clone()];
-    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-    state.this_epoch_reward = TokenAmount::from_atto(25);
-    state.total_minted_reward = TokenAmount::from_atto(40);
-    state.total_burn_minted = TokenAmount::from_atto(2);
-    state.total_explicit_minted = TokenAmount::from_atto(10);
-    state.accrued[0].amount = TokenAmount::from_atto(-1);
-    let before = state.clone();
-    rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(100));
-
-    let gas = TokenAmount::from_atto(2);
-    let penalty = TokenAmount::from_atto(3);
-    expect_miner_reward(&rt, gas.clone(), penalty.clone(), ExitCode::OK);
-    award(&rt, gas.clone(), penalty, 1).unwrap();
-    rt.verify();
-
-    let state: State = rt.get_state();
-    assert_eq!(before.streams_root, state.streams_root);
-    assert_eq!(before.total_minted_reward, state.total_minted_reward);
-    assert_eq!(before.total_burn_minted, state.total_burn_minted);
-    assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
-    assert_eq!(before.accrued, state.accrued);
-    // The projection is discarded, so the due write is still queued for the next award.
-    assert_eq!(vec![pending.clone()], load_streams(&rt).pending_writes);
-    assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
-
-    let mut repaired = state;
-    repaired.accrued[0].amount = TokenAmount::from_atto(10);
-    rt.replace_state(&repaired);
-    rt.set_balance(TokenAmount::from_atto(100));
-    expect_write_event(&rt, "write-applied", &pending, false);
-    expect_miner_reward(&rt, TokenAmount::from_atto(5), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::OK);
-    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
-    rt.verify();
-
-    let state: State = rt.get_state();
-    assert_eq!(TokenAmount::from_atto(45), state.total_minted_reward);
-    assert_eq!(TokenAmount::from_atto(3), state.total_burn_minted);
-    assert_eq!(TokenAmount::from_atto(11), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(11), state.accrued[0].amount);
-    assert!(load_streams(&rt).pending_writes.is_empty());
-}
-
-#[test]
-fn award_pays_only_gas_when_a_claimed_recipient_is_absent_from_shares() {
-    let rt = base_runtime();
-    let mut state: State = rt.get_state();
-    let mut streams = load_streams(&rt);
-    state.this_epoch_reward = TokenAmount::from_atto(25);
-    state.total_minted_reward = TokenAmount::from_atto(40);
-    state.total_burn_minted = TokenAmount::from_atto(2);
-    state.total_explicit_minted = TokenAmount::from_atto(99);
-    state.accrued[0].amount = TokenAmount::from_atto(10);
-    streams.streams[1].distribution.as_mut().unwrap().claimed_period = vec![RecipientAmount {
-        recipient: Address::new_id(RECIPIENT_B),
-        amount: TokenAmount::from_atto(10),
-    }]
-    .into();
-    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-    let before = state.clone();
-    rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(100));
-
-    let gas = TokenAmount::from_atto(2);
-    expect_miner_reward(&rt, gas.clone(), TokenAmount::zero(), ExitCode::OK);
-    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
-    rt.verify();
-
-    let state: State = rt.get_state();
-    assert_eq!(before.streams_root, state.streams_root);
-    assert_eq!(before.total_minted_reward, state.total_minted_reward);
-    assert_eq!(before.total_burn_minted, state.total_burn_minted);
-    assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
-    assert_eq!(before.accrued, state.accrued);
-    assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
-}
-
-#[test]
-fn award_pays_only_gas_when_accounting_and_weights_are_invalid() {
-    let rt = base_runtime();
-    let mut state: State = rt.get_state();
-    let mut streams = load_streams(&rt);
-    state.this_epoch_reward = TokenAmount::from_atto(25);
-    state.total_minted_reward = TokenAmount::from_atto(40);
-    state.total_burn_minted = TokenAmount::from_atto(2);
-    state.total_explicit_minted = TokenAmount::from_atto(10);
-    state.accrued[0].amount = TokenAmount::from_atto(-1);
-    streams.streams[0].weight = weight(DENOM + 1);
-    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
-    let before = state.clone();
-    rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(100));
-
-    let gas = TokenAmount::from_atto(2);
-    expect_miner_reward(&rt, gas.clone(), TokenAmount::zero(), ExitCode::OK);
-    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
-    rt.verify();
-
-    let state: State = rt.get_state();
-    assert_eq!(before.streams_root, state.streams_root);
-    assert_eq!(before.total_minted_reward, state.total_minted_reward);
-    assert_eq!(before.total_burn_minted, state.total_burn_minted);
-    assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
-    assert_eq!(before.accrued, state.accrued);
-}
-
-#[test]
-fn award_pays_only_gas_for_malformed_non_accounting_state() {
-    let rt = base_runtime();
-    let mut state: State = rt.get_state();
-    let mut streams = load_streams(&rt);
-    streams.streams[1].distribution.as_mut().unwrap().payable = vec![RecipientAmount {
-        recipient: Address::new_id(RECIPIENT_A),
-        amount: TokenAmount::zero(),
-    }]
-    .into();
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     state.this_epoch_reward = TokenAmount::from_atto(25);
     let before = state.clone();
@@ -1564,7 +1194,6 @@ fn award_pays_only_gas_for_malformed_non_accounting_state() {
     assert_eq!(before.total_minted_reward, state.total_minted_reward);
     assert_eq!(before.total_burn_minted, state.total_burn_minted);
     assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
-    assert_eq!(before.accrued, state.accrued);
     assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
 }
 
@@ -1588,7 +1217,6 @@ fn award_pays_only_gas_for_an_unreadable_streams_root() {
     assert_eq!(before.total_minted_reward, state.total_minted_reward);
     assert_eq!(before.total_burn_minted, state.total_burn_minted);
     assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
-    assert_eq!(before.accrued, state.accrued);
     assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
 }
 
@@ -1612,25 +1240,34 @@ fn award_aborts_for_a_missing_streams_root() {
     assert_eq!(before.total_minted_reward, state.total_minted_reward);
     assert_eq!(before.total_burn_minted, state.total_burn_minted);
     assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
-    assert_eq!(before.accrued, state.accrued);
     assert_eq!(TokenAmount::from_atto(100), *rt.balance.borrow());
 }
 
 #[test]
-fn award_pays_only_gas_during_a_reserve_shortfall_then_recovers() {
+fn award_pays_only_gas_when_the_balance_does_not_exceed_the_gas_reward() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
-    state.this_epoch_reward = TokenAmount::from_atto(100);
-    state.total_minted_reward = TokenAmount::from_atto(30);
-    state.total_explicit_minted = TokenAmount::from_atto(30);
-    state.accrued[0].amount = TokenAmount::from_atto(30);
+    let mut streams = load_streams(&rt);
+    let queued = PendingWrite {
+        id: None,
+        op: PendingWriteOp::SetWeightRecords,
+        payload: RawBytes::serialize(&SetWeightRecordsParams {
+            updates: vec![WeightRecordUpdate { id: 1, weight: weight(pct(50)) }],
+        })
+        .unwrap(),
+        effective_epoch: 0,
+    };
+    streams.pending_writes = vec![queued.clone()];
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    state.this_epoch_reward = TokenAmount::from_atto(25);
     let before = state.clone();
     rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(31));
+    rt.set_balance(TokenAmount::from_atto(2));
 
+    // The miner takes the gas reward, no recipient is paid, and nothing is burnt.
     let gas = TokenAmount::from_atto(2);
     expect_miner_reward(&rt, gas.clone(), TokenAmount::zero(), ExitCode::OK);
-    award(&rt, gas.clone(), TokenAmount::zero(), 1).unwrap();
+    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
     rt.verify();
 
     let state: State = rt.get_state();
@@ -1638,39 +1275,249 @@ fn award_pays_only_gas_during_a_reserve_shortfall_then_recovers() {
     assert_eq!(before.total_minted_reward, state.total_minted_reward);
     assert_eq!(before.total_burn_minted, state.total_burn_minted);
     assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
-    assert_eq!(before.accrued, state.accrued);
-    assert_eq!(TokenAmount::from_atto(29), *rt.balance.borrow());
+    // The due write is still queued, so the next award applies it.
+    assert_eq!(vec![queued], load_streams(&rt).pending_writes);
+    assert_eq!(TokenAmount::zero(), *rt.balance.borrow());
 
-    rt.set_balance(TokenAmount::from_atto(52));
-    expect_miner_reward(&rt, TokenAmount::from_atto(14), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(4), ExitCode::OK);
-    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
+    rt.set_balance(TokenAmount::from_atto(100));
+    expect_write_event(&rt, "write-applied", &load_streams(&rt).pending_writes[0], false);
+    expect_miner_reward(&rt, TokenAmount::from_atto(4), TokenAmount::zero(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 1, ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
+    award(&rt, TokenAmount::from_atto(2), TokenAmount::zero(), 1).unwrap();
     rt.verify();
-
-    let state: State = rt.get_state();
-    assert_eq!(TokenAmount::from_atto(50), state.total_minted_reward);
-    assert_eq!(TokenAmount::from_atto(4), state.total_burn_minted);
-    assert_eq!(TokenAmount::from_atto(34), state.total_explicit_minted);
-    assert_eq!(TokenAmount::from_atto(34), state.accrued[0].amount);
-    assert_eq!(TokenAmount::from_atto(34), *rt.balance.borrow());
 }
 
 #[test]
-fn award_aborts_atomically_when_the_residual_burn_fails() {
+fn award_stands_when_the_residual_burn_cannot_be_sent() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
-    state.this_epoch_reward = TokenAmount::from_atto(5);
-    let before = state.clone();
+    state.this_epoch_reward = TokenAmount::from_atto(500);
+    let streams_root = state.streams_root;
     rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(10));
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
 
+    expect_miner_reward(&rt, TokenAmount::from_atto(60), TokenAmount::zero(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 20, ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(20), ExitCode::USR_FORBIDDEN);
+    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    // The miner and the recipient are paid and the counters stand, as the award committed them.
+    let state: State = rt.get_state();
+    assert_eq!(TokenAmount::from_atto(100), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(20), state.total_burn_minted);
+    assert_eq!(TokenAmount::from_atto(20), state.total_explicit_minted);
+    assert_eq!(streams_root, state.streams_root);
+}
+
+/// Eight explicit streams with full share maps, the largest award f02 admits.
+fn full_stream_table() -> StreamsState {
+    StreamsState {
+        streams: (0..MAX_STREAMS as u64)
+            .map(|slot| Stream {
+                id: 2 + slot,
+                weight: weight(pct(12)),
+                distribution: Some(ExplicitDistribution {
+                    writer: Address::new_id(WRITER),
+                    shares: (0..MAX_RECIPIENTS as u64)
+                        .map(|row| RecipientShare {
+                            recipient: Address::new_id(
+                                FIRST_BOUND_RECIPIENT + slot * MAX_RECIPIENTS as u64 + row,
+                            ),
+                            share: DENOM / MAX_RECIPIENTS as u64,
+                        })
+                        .collect(),
+                }),
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn award_pays_every_recipient_of_a_full_stream_table() {
+    let rt = base_runtime();
+    let streams = full_stream_table();
+    let mut state: State = rt.get_state();
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    // Epoch reward 160000 attos over five expected leaders gives a 32000 atto block reward. Each
+    // stream takes 12% (3840), each of its 64 recipients 60, and the unassigned 4% burns.
+    state.this_epoch_reward = TokenAmount::from_atto(160_000);
+    let streams_root = state.streams_root;
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
+
+    // Expectations are consumed in order: miner, then each stream's recipients in stored order,
+    // then the burn.
     expect_miner_reward(&rt, TokenAmount::zero(), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::USR_FORBIDDEN);
-    expect_abort(ExitCode::USR_FORBIDDEN, award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1));
+    for stream in &streams.streams {
+        for row in &stream.distribution.as_ref().unwrap().shares {
+            expect_payout(&rt, row.recipient.id().unwrap(), 60, ExitCode::OK);
+        }
+    }
+    expect_burn(&rt, TokenAmount::from_atto(1_280), ExitCode::OK);
+    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
     rt.verify();
 
     let state: State = rt.get_state();
-    assert_eq!(before.total_minted_reward, state.total_minted_reward);
-    assert_eq!(before.total_burn_minted, state.total_burn_minted);
-    assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
+    assert_eq!(streams_root, state.streams_root);
+    assert_eq!(TokenAmount::from_atto(32_000), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(30_720), state.total_explicit_minted);
+    assert_eq!(TokenAmount::from_atto(1_280), state.total_burn_minted);
+    assert_state_invariants(&rt);
+}
+
+#[test]
+fn award_sends_in_stream_order_then_recipient_order() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    let mut streams = load_streams(&rt);
+    // Stream 3 has the lower recipient IDs, so only stream order can put its sends after stream 2's.
+    streams.streams[1].distribution.as_mut().unwrap().shares = vec![
+        RecipientShare { recipient: Address::new_id(301), share: DENOM / 2 },
+        RecipientShare { recipient: Address::new_id(302), share: DENOM - DENOM / 2 },
+    ];
+    streams.streams.push(Stream {
+        id: 3,
+        weight: weight(pct(15)),
+        distribution: Some(ExplicitDistribution {
+            writer: Address::new_id(WRITER),
+            shares: vec![
+                RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: DENOM / 2 },
+                RecipientShare {
+                    recipient: Address::new_id(RECIPIENT_B),
+                    share: DENOM - DENOM / 2,
+                },
+            ],
+        }),
+    });
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    state.this_epoch_reward = TokenAmount::from_atto(500);
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
+
+    // Stream 2 splits 20 attos evenly. Stream 3 floors 15 attos to 7 each; the odd atto burns
+    // with the 5 atto residual of the 95% schedule.
+    expect_miner_reward(&rt, TokenAmount::from_atto(60), TokenAmount::zero(), ExitCode::OK);
+    expect_payout(&rt, 301, 10, ExitCode::OK);
+    expect_payout(&rt, 302, 10, ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 7, ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_B, 7, ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(6), ExitCode::OK);
+    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(TokenAmount::from_atto(100), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(34), state.total_explicit_minted);
+    assert_eq!(TokenAmount::from_atto(6), state.total_burn_minted);
+    assert_state_invariants(&rt);
+}
+
+#[test]
+fn set_shares_reads_the_writer_a_due_change_installs() {
+    let rt = base_runtime();
+    let next_writer = Address::new_id(NEXT_WRITER);
+    rt.set_address_actor_type(next_writer, *EVM_ACTOR_CODE_ID);
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
+
+    let change = PendingWrite {
+        id: Some(2),
+        op: PendingWriteOp::SetDistribution,
+        payload: RawBytes::serialize(&SetDistributionPayload { writer: next_writer }).unwrap(),
+        effective_epoch: 2,
+    };
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
+    expect_write_event(&rt, "write-queued", &change, true);
+    call(
+        &rt,
+        Method::SetDistributionExported,
+        &SetDistributionParams { id: 2, writer: next_writer },
+    )
+    .unwrap();
+    rt.verify();
+
+    // The due change applies before the caller check, so the old writer is refused. The refusal
+    // rolls back, leaving the change queued.
+    rt.epoch.replace(2);
+    let new_map = SetSharesParams {
+        id: 2,
+        shares: vec![RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM }],
+    };
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    rt.expect_validate_caller_any();
+    expect_abort(ExitCode::USR_FORBIDDEN, call(&rt, Method::SetSharesExported, &new_map));
+    rt.verify();
+    assert_eq!(vec![change.clone()], load_streams(&rt).pending_writes);
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, next_writer);
+    rt.expect_validate_caller_any();
+    expect_write_event(&rt, "write-applied", &change, false);
+    call(&rt, Method::SetSharesExported, &new_map).unwrap();
+    rt.verify();
+
+    let streams = load_streams(&rt);
+    let distribution = streams.streams[1].distribution.as_ref().unwrap();
+    assert!(streams.pending_writes.is_empty());
+    assert_eq!(next_writer, distribution.writer);
+    assert_eq!(
+        vec![Address::new_id(RECIPIENT_B)],
+        distribution.shares.iter().map(|row| row.recipient).collect::<Vec<_>>()
+    );
+    assert_state_invariants(&rt);
+}
+
+#[test]
+fn gas_only_award_leaves_a_due_write_for_the_next_mutation() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    let mut streams = load_streams(&rt);
+    let queued = PendingWrite {
+        id: None,
+        op: PendingWriteOp::SetWeightRecords,
+        payload: RawBytes::serialize(&SetWeightRecordsParams {
+            updates: vec![WeightRecordUpdate { id: 2, weight: weight(pct(40)) }],
+        })
+        .unwrap(),
+        effective_epoch: 0,
+    };
+    streams.pending_writes = vec![queued.clone()];
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    state.this_epoch_reward = TokenAmount::from_atto(25);
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_atto(2));
+
+    let gas = TokenAmount::from_atto(2);
+    expect_miner_reward(&rt, gas.clone(), TokenAmount::zero(), ExitCode::OK);
+    award(&rt, gas, TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+    assert_eq!(vec![queued.clone()], load_streams(&rt).pending_writes);
+
+    // The next mutation applies it; the award after pays under the new weight.
+    rt.set_caller(*EVM_ACTOR_CODE_ID, swa_actor());
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
+    expect_write_event(&rt, "write-applied", &queued, false);
+    call(
+        &rt,
+        Method::CancelPendingExported,
+        &CancelPendingParams { id: Some(999), op: PendingWriteOp::RemoveStream },
+    )
+    .unwrap();
+    rt.verify();
+
+    let streams = load_streams(&rt);
+    assert!(streams.pending_writes.is_empty());
+    assert_eq!(pct(40), streams.streams[1].weight.v_start);
+
+    rt.set_balance(TokenAmount::from_atto(100));
+    expect_miner_reward(&rt, TokenAmount::from_atto(3), TokenAmount::zero(), ExitCode::OK);
+    expect_payout(&rt, RECIPIENT_A, 2, ExitCode::OK);
+    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(2), state.total_explicit_minted);
+    assert_eq!(TokenAmount::zero(), state.total_burn_minted);
 }
