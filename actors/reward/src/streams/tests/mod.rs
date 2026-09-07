@@ -1,3 +1,4 @@
+use fvm_ipld_encoding::to_vec;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -169,6 +170,36 @@ fn allocate(streams: &[Stream], epoch: ChainEpoch, block_reward: &TokenAmount) -
     ledger(&table).allocate(&evaluated, block_reward)
 }
 
+/// Runs one award through `plan_award` with no gas reward and a balance equal to `reward`, so the
+/// block reward is `reward`. Returns the streams the award leaves and its split. Asserts that the
+/// reward equals miner plus payouts plus burn, and that an award which applies no queued write
+/// leaves the streams block bytes unchanged.
+fn full_award(
+    streams: &StreamsState,
+    epoch: ChainEpoch,
+    reward: &TokenAmount,
+) -> (StreamsState, FullAward) {
+    let before = to_vec(streams).expect("the streams block encodes");
+    let (ledger, award) = plan_award(ledger(streams), epoch, reward, &TokenAmount::zero(), reward)
+        .expect("the award splits the reward under a valid schedule");
+    let after = ledger.streams;
+
+    assert_eq!(*reward, award.block_reward);
+    assert_eq!(
+        *reward,
+        &award.allocation.miner + &paid(&award.allocation) + &award.allocation.burn,
+        "the award splits the whole block reward"
+    );
+    if award.applied == ApplyResult::default() {
+        assert_eq!(
+            before,
+            to_vec(&after).expect("the streams block encodes"),
+            "an award that moves no queued write rewrote the streams block"
+        );
+    }
+    (after, award)
+}
+
 /// What an allocation pays out across every stream and recipient.
 fn paid(allocation: &Allocation) -> TokenAmount {
     allocation.payouts.iter().map(|payout| &payout.amount).sum()
@@ -217,11 +248,13 @@ struct SupplyTracker {
 
 impl SupplyTracker {
     /// Records one award and reports how many recipients it paid a non-zero amount.
+    ///
+    /// The caller has already applied the epoch's due writes, so this award applies none.
     fn award(&mut self, streams: &StreamsState, epoch: ChainEpoch, reward: TokenAmount) -> usize {
-        schedule_at(&streams.streams, epoch).expect("valid randomized state entered degradation");
-        let allocation = allocate(&streams.streams, epoch, &reward);
+        let (_, award) = full_award(streams, epoch, &reward);
+        assert_eq!(ApplyResult::default(), award.applied);
+        let allocation = award.allocation;
         let paid = paid(&allocation);
-        assert_eq!(reward, &allocation.miner + &paid + &allocation.burn);
         self.total_minted += &reward;
         self.total_burn += &allocation.burn;
         self.total_explicit += paid;

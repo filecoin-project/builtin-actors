@@ -1,3 +1,4 @@
+use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 
@@ -88,4 +89,21 @@ fn structural_validation_rejects_unordered_stored_shares() {
     };
     let error = structure(&streams).unwrap_err();
     assert!(error.to_string().contains("stored share recipients are not ordered"), "{error}");
+}
+
+// Admission never stores the burn sentinel or the reward actor, so a persisted map holding either
+// is corrupt.
+#[test]
+fn structural_validation_rejects_persisted_sentinel_and_reward_actor_recipients() {
+    let base = base_state();
+    validate_streams_state(&base, 0).unwrap();
+    let with_recipient = |recipient: Address| {
+        let mut streams = base.clone();
+        streams.streams[1].distribution.as_mut().unwrap().shares =
+            vec![RecipientShare { recipient, share: DENOM }];
+        streams
+    };
+
+    assert!(validate_streams_state(&with_recipient(REWARD_ACTOR_ADDR), 0).is_err());
+    assert!(validate_streams_state(&with_recipient(BURNT_FUNDS_ACTOR_ADDR), 0).is_err());
 }

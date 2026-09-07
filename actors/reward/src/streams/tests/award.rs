@@ -145,3 +145,37 @@ fn malformed_explicit_weight_fails_the_award_schedule_check() {
     let error = schedule_at(&[malformed], 0).unwrap_err();
     assert_eq!("weight cap exceeds DENOM", error.to_string());
 }
+
+#[test]
+fn pays_every_recipient_of_every_stream_at_the_configured_bound() {
+    let table: Vec<Stream> = (0..MAX_STREAMS as u64)
+        .map(|slot| {
+            let id = 2 + slot;
+            let first_recipient = 1_000 + slot * MAX_RECIPIENTS as u64;
+            stream(id, pct(12), Some(explicit(200 + id, full_share_map(first_recipient))))
+        })
+        .collect();
+    let streams = StreamsState { streams: table, ..Default::default() };
+
+    // Eight streams at 12% of a 32000 atto reward: 3840 each, 60 to each of 64 recipients, and
+    // the unassigned 4% burns.
+    let reward = TokenAmount::from_atto(32_000);
+    let (after, award) = full_award(&streams, 0, &reward);
+    let allocation = award.allocation;
+
+    assert_eq!(MAX_STREAMS * MAX_RECIPIENTS, allocation.payouts.len());
+    let order: Vec<(StreamId, Address)> =
+        allocation.payouts.iter().map(|payout| (payout.stream, payout.recipient)).collect();
+    let mut ascending = order.clone();
+    ascending.sort();
+    assert_eq!(ascending, order, "payouts run in stream order, then recipient order");
+    assert!(
+        allocation.payouts.iter().all(|payout| payout.amount == TokenAmount::from_atto(60)),
+        "each of the equal shares takes the same amount"
+    );
+
+    assert_eq!(TokenAmount::zero(), allocation.miner);
+    assert_eq!(TokenAmount::from_atto(30_720), paid(&allocation));
+    assert_eq!(TokenAmount::from_atto(1_280), allocation.burn);
+    assert_eq!(streams, after);
+}
