@@ -7,10 +7,10 @@ mod serialization {
         AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn, ConstructorParams,
         DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, PendingWrite,
         PendingWriteOp, RecipientAmount, RecipientShare, RegisterStreamParams,
-        RegisterStreamPayload, RemoveStreamParams, SetDistributionParams, SetDistributionPayload,
-        SetSharesParams, SetWeightRecordsParams, State, StepWeightRecordsParams, Stream,
-        StreamAccrual, StreamsState, ThisEpochRewardReturn, Tombstone, UpdateNetworkKPIParams,
-        WeightRecord, WeightRecordUpdate, WeightRecordsPayload,
+        RegisterStreamPayload, RemoveStreamParams, ReplaceAddressParams, SetDistributionParams,
+        SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State,
+        StepWeightRecordsParams, Stream, StreamAccrual, StreamsState, ThisEpochRewardReturn,
+        Tombstone, UpdateNetworkKPIParams, WeightRecord, WeightRecordUpdate, WeightRecordsPayload,
     };
     use fil_actors_runtime::reward::FilterEstimate;
     use fil_actors_runtime::test_blockstores::MemoryBlockstore;
@@ -671,6 +671,40 @@ mod serialization {
             let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
             assert_eq!(encoded.data, expected_hex);
             let decoded: SetSharesParams = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(params, decoded);
+        }
+    }
+
+    #[test]
+    fn replace_address_params() {
+        let test_cases = vec![
+            (
+                ReplaceAddressParams {
+                    id: 24,
+                    old_address: Address::new_id(101),
+                    new_address: Address::new_id(102),
+                },
+                // [24,byte[0065],byte[0066]]
+                &hex!("831818420065420066")[..],
+            ),
+            (
+                ReplaceAddressParams {
+                    id: 256,
+                    old_address: Address::new_id(1_u64 << 32),
+                    new_address: delegated_address(),
+                },
+                // [256,byte[008080808010],byte[040a1111..1111]]
+                &hex!(
+                    "8319010046008080808010"
+                    "56040a1111111111111111111111111111111111111111"
+                )[..],
+            ),
+        ];
+
+        for (params, expected_hex) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex);
+            let decoded: ReplaceAddressParams = IpldBlock::deserialize(&encoded).unwrap();
             assert_eq!(params, decoded);
         }
     }

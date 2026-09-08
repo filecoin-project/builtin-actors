@@ -89,6 +89,97 @@ fn fold_dust_preserves_the_supply_decomposition_without_moving_counters() {
 }
 
 #[test]
+fn replace_address_renames_recipient_and_carries_balance() {
+    let mut distribution = explicit(200, shares(&[(101, DENOM / 2), (102, DENOM - DENOM / 2)]));
+    distribution.payable.add(Address::new_id(101), TokenAmount::from_atto(5));
+    distribution.claimed_period.add(Address::new_id(101), TokenAmount::from_atto(1));
+    let mut streams = StreamsState {
+        streams: vec![stream(2, pct(20), Some(distribution))],
+        ..Default::default()
+    };
+    let mut accruals = vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(10) }];
+
+    let burn =
+        replace_address(&mut streams, &mut accruals, 2, Address::new_id(101), Address::new_id(103))
+            .unwrap();
+
+    let distribution = streams.streams[0].distribution.as_ref().unwrap();
+    assert!(burn.is_zero());
+    assert_eq!(TokenAmount::zero(), accruals[0].amount);
+    assert!(distribution.claimed_period.is_empty());
+    assert_eq!(shares(&[(102, DENOM - DENOM / 2), (103, DENOM / 2)]), distribution.shares);
+    // 103 now holds 101's carried 5 plus its 5 earned this period less 1 already claimed.
+    assert_eq!(TokenAmount::zero(), amount(&distribution.payable, 101));
+    assert_eq!(TokenAmount::from_atto(9), amount(&distribution.payable, 103));
+    assert_eq!(TokenAmount::from_atto(5), amount(&distribution.payable, 102));
+}
+
+#[test]
+fn replace_address_rejects_missing_or_colliding_recipients() {
+    let (mut streams, mut accruals) = base_state();
+    streams.streams[1].distribution.as_mut().unwrap().shares =
+        shares(&[(101, DENOM / 2), (102, DENOM - DENOM / 2)]);
+
+    assert!(
+        replace_address(&mut streams, &mut accruals, 2, Address::new_id(109), Address::new_id(103))
+            .is_err()
+    );
+    assert!(
+        replace_address(&mut streams, &mut accruals, 2, Address::new_id(101), Address::new_id(102))
+            .is_err()
+    );
+    // Implicit stream.
+    assert!(
+        replace_address(&mut streams, &mut accruals, 1, Address::new_id(101), Address::new_id(103))
+            .is_err()
+    );
+}
+
+#[test]
+fn replace_address_with_burn_sentinel_matches_setshares_with_an_f099_row() {
+    let build = || {
+        let mut distribution = explicit(200, shares(&[(101, pct(30)), (102, pct(70))]));
+        distribution.payable.add(Address::new_id(101), TokenAmount::from_atto(7));
+        distribution.claimed_period.add(Address::new_id(102), TokenAmount::from_atto(2));
+        (
+            StreamsState {
+                streams: vec![stream(2, pct(20), Some(distribution))],
+                ..Default::default()
+            },
+            vec![StreamAccrual { id: 2, amount: TokenAmount::from_atto(13) }],
+        )
+    };
+
+    let (mut swapped, mut swapped_accruals) = build();
+    let swapped_burn = replace_address(
+        &mut swapped,
+        &mut swapped_accruals,
+        2,
+        Address::new_id(101),
+        BURNT_FUNDS_ACTOR_ADDR,
+    )
+    .unwrap();
+
+    let (mut rewritten, mut rewritten_accruals) = build();
+    let rewritten_burn = set_shares(
+        &mut rewritten,
+        &mut rewritten_accruals,
+        2,
+        shares(&[(99, pct(30)), (102, pct(70))]),
+    )
+    .unwrap();
+
+    assert_eq!(rewritten_burn, swapped_burn);
+    assert_eq!(rewritten_accruals, swapped_accruals);
+    assert_eq!(rewritten, swapped);
+
+    let distribution = swapped.streams[0].distribution.as_ref().unwrap();
+    assert_eq!(shares(&[(102, pct(70))]), distribution.shares);
+    // 101 keeps its carried 7 plus the 3 it earned before the row was dropped.
+    assert_eq!(TokenAmount::from_atto(7 + 3), amount(&distribution.payable, 101));
+}
+
+#[test]
 fn claims_live_and_payable_amounts_once_in_request_order() {
     let mut distribution = explicit(200, shares(&[(101, DENOM / 2), (102, DENOM - DENOM / 2)]));
     distribution.payable = vec![

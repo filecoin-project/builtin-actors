@@ -62,6 +62,7 @@ pub enum Method {
     SetDistributionExported = frc42_dispatch::method_hash!("SetDistribution"),
     CancelPendingExported = frc42_dispatch::method_hash!("CancelPending"),
     SetSharesExported = frc42_dispatch::method_hash!("SetShares"),
+    ReplaceAddressExported = frc42_dispatch::method_hash!("ReplaceAddress"),
     ClaimExported = frc42_dispatch::method_hash!("Claim"),
 }
 
@@ -233,6 +234,39 @@ impl Actor {
                 .map_err(|e| illegal_argument(e, "failed to set stream shares"))
         })?;
         // One burn send carries the immediate fold's dust with any the due writes left.
+        applied.fold_dust += fold_dust;
+        settle_applied(rt, &applied)
+    }
+
+    /// Closes an explicit stream's period and moves one share recipient to a new address, for the
+    /// stream writer only. Naming f099 drops the share to burn instead, like an f099 row in
+    /// `SetShares`, and the old address keeps whatever it already earned.
+    fn replace_address(rt: &impl Runtime, params: ReplaceAddressParams) -> Result<(), ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let caller = rt.message().caller();
+        let (mut applied, fold_dust) = run_mutation(rt, |ledger, _, _| {
+            let writer = ledger
+                .streams()
+                .explicit(params.id)
+                .map(|distribution| distribution.writer)
+                .ok_or_else(|| {
+                    actor_error!(illegal_argument, "stream {} is not explicit", params.id)
+                })?;
+            if caller != writer {
+                return Err(actor_error!(
+                    forbidden,
+                    "caller {} is not stream {} writer {}",
+                    caller,
+                    params.id,
+                    writer
+                ));
+            }
+            let old = resolve_required(rt, &params.old_address, "old recipient address")?;
+            let new = resolve_required(rt, &params.new_address, "new recipient address")?;
+            ledger
+                .replace_address(params.id, old, new)
+                .map_err(|e| illegal_argument(e, "failed to replace stream recipient address"))
+        })?;
         applied.fold_dust += fold_dust;
         settle_applied(rt, &applied)
     }
@@ -574,6 +608,7 @@ impl ActorCode for Actor {
         SetDistributionExported => set_distribution,
         CancelPendingExported => cancel_pending,
         SetSharesExported => set_shares,
+        ReplaceAddressExported => replace_address,
         ClaimExported => claim,
     }
 }

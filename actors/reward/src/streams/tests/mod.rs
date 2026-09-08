@@ -175,6 +175,22 @@ fn set_shares(
     Ok(dust)
 }
 
+/// The recipient-address swap as the actor drives it, keeping what the ledger holds only on
+/// success.
+fn replace_address(
+    streams: &mut StreamsState,
+    accruals: &mut Vec<StreamAccrual>,
+    id: StreamId,
+    old: Address,
+    new: Address,
+) -> anyhow::Result<TokenAmount> {
+    let mut ledger = ledger(streams, accruals);
+    let dust = ledger.replace_address(id, old, new)?;
+    *streams = ledger.streams;
+    *accruals = ledger.accrued;
+    Ok(dust)
+}
+
 /// One due removal, driven straight through the transition the queue applies.
 fn remove_stream(
     streams: &mut StreamsState,

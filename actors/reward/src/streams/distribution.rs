@@ -189,6 +189,49 @@ impl Ledger {
         Ok(burn)
     }
 
+    /// Closes the current period, then renames `old` to `new` in the share map and carries its
+    /// balance over. When `new` is f099 the row is instead dropped, reverting the share to burn
+    /// from the next award, and `old` keeps what it has already earned. Returns rounding dust.
+    pub(crate) fn replace_address(
+        &mut self,
+        id: StreamId,
+        old: Address,
+        new: Address,
+    ) -> Result<TokenAmount> {
+        self.streams_dirty = true;
+        validate_id_address(&old, "old recipient address")?;
+        validate_id_address(&new, "new recipient address")?;
+        let burning = new == BURNT_FUNDS_ACTOR_ADDR;
+        ensure!(self.streams.has_stream(id), "stream {id} not found");
+        let Some(period) = self.period_mut(id) else {
+            return Err(anyhow::anyhow!("stream {id} is implicit"));
+        };
+        ensure!(
+            period.distribution.shares.iter().any(|row| row.recipient == old),
+            "address {old} is not a recipient of stream {id}"
+        );
+        ensure!(
+            burning || !period.distribution.shares.iter().any(|row| row.recipient == new),
+            "address {new} is already a recipient of stream {id}"
+        );
+
+        let burn = fold(period.distribution, period.pool);
+        if burning {
+            period.distribution.shares.retain(|row| row.recipient != old);
+        } else {
+            for row in period.distribution.shares.iter_mut() {
+                if row.recipient == old {
+                    row.recipient = new;
+                }
+            }
+            period.distribution.shares.sort_by_key(|row| row.recipient);
+            let carried = period.distribution.payable.take(&old);
+            period.distribution.payable.add(new, carried);
+        }
+
+        Ok(burn)
+    }
+
     /// Removes a live stream, folding its closing period into a tombstone when anything is unpaid.
     pub(super) fn remove_stream(&mut self, id: StreamId) -> Result<TokenAmount, Stranded> {
         let mut stream = self.streams.take_stream(id).ok_or(Stranded::MissingStream(id))?;
