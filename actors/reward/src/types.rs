@@ -67,6 +67,13 @@ pub struct SetSharesParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ReplaceAddressParams {
+    pub id: StreamId,
+    pub old_address: Address,
+    pub new_address: Address,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct CancelPendingParams {
     pub id: Option<StreamId>,
     pub op: PendingWriteOp,

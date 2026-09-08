@@ -5,9 +5,9 @@ use fil_actor_reward::{
     Actor as RewardActor, AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn,
     DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, Method, PENALTY_MULTIPLIER,
     PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare, RecipientTable,
-    RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, SetDistributionParams,
-    SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State, Stream, StreamAccrual,
-    StreamsState, WeightRecord, WeightRecordUpdate, explicit_liability, ext,
+    RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, ReplaceAddressParams,
+    SetDistributionParams, SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State,
+    Stream, StreamAccrual, StreamsState, WeightRecord, WeightRecordUpdate, explicit_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
     ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
@@ -578,6 +578,140 @@ fn set_shares_folds_liabilities_and_burns_dust() {
         distribution.payable
     );
     assert_eq!(DENOM, distribution.shares[0].share);
+}
+
+#[test]
+fn replace_address_moves_a_recipient_for_the_stream_writer() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    state.accrued[0].amount = TokenAmount::from_atto(4);
+    state.total_explicit_minted = TokenAmount::from_atto(4);
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_atto(4));
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(RECIPIENT_A));
+    rt.expect_validate_caller_any();
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        call(
+            &rt,
+            Method::ReplaceAddressExported,
+            &ReplaceAddressParams {
+                id: 2,
+                old_address: Address::new_id(RECIPIENT_A),
+                new_address: Address::new_id(RECIPIENT_B),
+            },
+        ),
+    );
+    rt.verify();
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    rt.expect_validate_caller_any();
+    call(
+        &rt,
+        Method::ReplaceAddressExported,
+        &ReplaceAddressParams {
+            id: 2,
+            old_address: Address::new_id(RECIPIENT_A),
+            new_address: Address::new_id(RECIPIENT_B),
+        },
+    )
+    .unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(TokenAmount::zero(), state.accrued[0].amount);
+    let distribution = load_streams(&rt).streams.remove(1).distribution.unwrap();
+    assert_eq!(
+        vec![RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM }],
+        distribution.shares
+    );
+    assert_eq!(TokenAmount::from_atto(4), distribution.payable.get(&Address::new_id(RECIPIENT_B)));
+    assert_eq!(TokenAmount::from_atto(4), liability(&rt));
+}
+
+#[test]
+fn replace_address_with_burn_sentinel_ends_a_recipients_future_share() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    state.accrued[0].amount = TokenAmount::from_atto(4);
+    state.total_explicit_minted = TokenAmount::from_atto(4);
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_atto(4));
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    rt.expect_validate_caller_any();
+    call(
+        &rt,
+        Method::ReplaceAddressExported,
+        &ReplaceAddressParams {
+            id: 2,
+            old_address: Address::new_id(RECIPIENT_A),
+            new_address: BURNT_FUNDS_ACTOR_ADDR,
+        },
+    )
+    .unwrap();
+    rt.verify();
+
+    let distribution = load_streams(&rt).streams.remove(1).distribution.unwrap();
+    assert!(distribution.shares.is_empty());
+    // The old recipient keeps what it already earned; only its future share is dropped.
+    assert_eq!(TokenAmount::from_atto(4), distribution.payable.get(&Address::new_id(RECIPIENT_A)));
+    assert_eq!(TokenAmount::from_atto(4), liability(&rt));
+}
+
+#[test]
+fn replace_address_rejects_bad_targets() {
+    let rt = base_runtime();
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+
+    // Implicit stream.
+    rt.expect_validate_caller_any();
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        call(
+            &rt,
+            Method::ReplaceAddressExported,
+            &ReplaceAddressParams {
+                id: 1,
+                old_address: Address::new_id(RECIPIENT_A),
+                new_address: Address::new_id(RECIPIENT_B),
+            },
+        ),
+    );
+    rt.verify();
+
+    // Old address not a current recipient.
+    rt.expect_validate_caller_any();
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        call(
+            &rt,
+            Method::ReplaceAddressExported,
+            &ReplaceAddressParams {
+                id: 2,
+                old_address: Address::new_id(RECIPIENT_B),
+                new_address: Address::new_id(WRITER),
+            },
+        ),
+    );
+    rt.verify();
+
+    // Unresolvable new address.
+    rt.expect_validate_caller_any();
+    expect_abort(
+        ExitCode::USR_NOT_FOUND,
+        call(
+            &rt,
+            Method::ReplaceAddressExported,
+            &ReplaceAddressParams {
+                id: 2,
+                old_address: Address::new_id(RECIPIENT_A),
+                new_address: Address::new_id(909_090),
+            },
+        ),
+    );
+    rt.verify();
 }
 
 #[test]
