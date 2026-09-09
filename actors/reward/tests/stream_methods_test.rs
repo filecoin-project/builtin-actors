@@ -1656,21 +1656,92 @@ fn award_pays_only_gas_during_a_reserve_shortfall_then_recovers() {
 }
 
 #[test]
-fn award_aborts_atomically_when_the_residual_burn_fails() {
+fn award_commits_when_the_residual_burn_fails() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
-    state.this_epoch_reward = TokenAmount::from_atto(5);
-    let before = state.clone();
+    let mut streams = load_streams(&rt);
+    let applied = PendingWrite {
+        id: None,
+        op: PendingWriteOp::SetWeightRecords,
+        payload: RawBytes::serialize(&SetWeightRecordsParams {
+            updates: vec![
+                WeightRecordUpdate { id: 1, weight: weight(pct(50)) },
+                WeightRecordUpdate { id: 2, weight: weight(pct(30)) },
+            ],
+        })
+        .unwrap(),
+        effective_epoch: 5,
+    };
+    streams.pending_writes = vec![applied.clone()];
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    state.this_epoch_reward = TokenAmount::from_atto(100);
     rt.replace_state(&state);
-    rt.set_balance(TokenAmount::from_atto(10));
+    rt.epoch.replace(10);
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
 
-    expect_miner_reward(&rt, TokenAmount::zero(), TokenAmount::zero(), ExitCode::OK);
-    expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::USR_FORBIDDEN);
-    expect_abort(ExitCode::USR_FORBIDDEN, award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1));
+    expect_write_event(&rt, "write-applied", &applied, false);
+    expect_miner_reward(&rt, TokenAmount::from_atto(10), TokenAmount::zero(), ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(4), ExitCode::USR_FORBIDDEN);
+    award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
     rt.verify();
 
     let state: State = rt.get_state();
-    assert_eq!(before.total_minted_reward, state.total_minted_reward);
-    assert_eq!(before.total_burn_minted, state.total_burn_minted);
-    assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
+    let streams = load_streams(&rt);
+    assert!(streams.pending_writes.is_empty());
+    assert_eq!(pct(50), streams.streams[0].weight.v_start);
+    assert_eq!(pct(30), streams.streams[1].weight.v_start);
+    assert_eq!(TokenAmount::from_atto(20), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(4), state.total_burn_minted);
+    assert_eq!(TokenAmount::from_atto(6), state.total_explicit_minted);
+    assert_eq!(TokenAmount::from_atto(6), state.accrued[0].amount);
+    assert_state_invariants(&rt);
+}
+
+#[test]
+fn claim_reverts_the_batch_when_the_first_payout_send_fails() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    state.accrued[0].amount = TokenAmount::from_atto(10);
+    state.total_minted_reward = TokenAmount::from_atto(10);
+    state.total_explicit_minted = TokenAmount::from_atto(10);
+    let mut streams = load_streams(&rt);
+    streams.streams[1].distribution.as_mut().unwrap().shares = vec![
+        RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: DENOM / 2 },
+        RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM - DENOM / 2 },
+    ];
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    let before = state.clone();
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_atto(10));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(300));
+
+    // The first wallet of the batch is the one that cannot be paid, so a loop that stopped at the
+    // first failure and kept the rest would leave the second wallet unpaid and the call
+    // successful.
+    rt.expect_validate_caller_any();
+    rt.expect_send_simple(
+        Address::new_id(RECIPIENT_A),
+        METHOD_SEND,
+        None,
+        TokenAmount::from_atto(5),
+        None,
+        ExitCode::USR_FORBIDDEN,
+    );
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        call(
+            &rt,
+            Method::ClaimExported,
+            &ClaimParams {
+                id: 2,
+                wallets: vec![Address::new_id(RECIPIENT_A), Address::new_id(RECIPIENT_B)],
+            },
+        ),
+    );
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(before.streams_root, state.streams_root);
+    assert_eq!(before.accrued, state.accrued);
+    assert_eq!(TokenAmount::from_atto(10), liability(&rt));
 }

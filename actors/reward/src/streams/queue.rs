@@ -447,6 +447,8 @@ impl Ledger {
                 );
                 *activation
             }
+            // The projection in [`Ledger::admit`] proves the stream is live at the effective
+            // epoch, so this arm only computes that epoch.
             QueuedCall::Remove { .. } => timelock_epoch(epoch, timelock)?,
             QueuedCall::SetDistribution { writer, .. } => {
                 validate_id_address(writer, "distribution writer")?;

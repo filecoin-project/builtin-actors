@@ -282,8 +282,9 @@ impl Actor {
     /// Applies due stream writes and divides one block reward among all active streams.
     ///
     /// Explicit portions accrue for later claims. The implicit portion and gas reward go to the
-    /// winning miner, while the exact residual is burnt. The system actor calls this implicitly
-    /// once per block.
+    /// winning miner, while the exact residual is burnt. A failed miner or burn send is logged and
+    /// the award stands, with the state committed. The system actor calls this implicitly once per
+    /// block.
     fn award_block_reward(
         rt: &impl Runtime,
         params: AwardBlockRewardParams,
@@ -318,7 +319,7 @@ impl Actor {
             .ok_or_else(|| actor_error!(not_found, "failed to resolve given owner address"))?;
         let penalty: TokenAmount = &params.penalty * PENALTY_MULTIPLIER;
 
-        let (miner_reward, burn, applied) = rt.transaction(|st: &mut State, rt| {
+        let (miner_reward, mut burn, applied) = rt.transaction(|st: &mut State, rt| {
             let stream_bytes = rt
                 .store()
                 .get(&st.streams_root)
@@ -396,38 +397,30 @@ impl Actor {
             miner_reward.clone(),
         ));
 
-        match miner_result {
-            Ok(_) => {
-                if burn > TokenAmount::zero() {
-                    extract_send_result(rt.send_simple(
-                        &BURNT_FUNDS_ACTOR_ADDR,
-                        METHOD_SEND,
-                        None,
-                        burn,
-                    ))?;
-                }
-            }
-            Err(e) => {
-                error!(
-                    "failed to send ApplyRewards call to the miner actor with funds {}, code: {:?}",
-                    miner_reward,
-                    e.exit_code()
-                );
-                let fallback_burn = burn + miner_reward;
-                if fallback_burn > TokenAmount::zero()
-                    && let Err(e) = extract_send_result(rt.send_simple(
-                        &BURNT_FUNDS_ACTOR_ADDR,
-                        METHOD_SEND,
-                        None,
-                        fallback_burn,
-                    ))
-                {
-                    error!(
-                        "failed to send unsent reward to the burnt funds actor, code: {:?}",
-                        e.exit_code()
-                    );
-                }
-            }
+        // A miner that cannot take its reward has it burnt instead.
+        if let Err(e) = miner_result {
+            error!(
+                "failed to send ApplyRewards call to the miner actor with funds {}, code: {:?}",
+                miner_reward,
+                e.exit_code()
+            );
+            burn += miner_reward;
+        }
+        // A failed burn leaves the award committed and its value with f02, where a later award
+        // spends or burns it. An implicit call logs a send failure and returns Ok.
+        if burn > TokenAmount::zero()
+            && let Err(e) = extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                burn.clone(),
+            ))
+        {
+            error!(
+                "failed to send residual {} to the burnt funds actor, code: {:?}",
+                burn,
+                e.exit_code()
+            );
         }
 
         Ok(())

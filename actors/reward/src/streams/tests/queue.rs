@@ -13,9 +13,10 @@ fn next_epoch(streams: &StreamsState) -> ChainEpoch {
     streams.pending_writes.first().map_or(EPOCH_UNDEFINED, |write| write.effective_epoch)
 }
 
+/// An LCG whose low bits cycle short, so callers take the high bits of the state.
 fn random_u64(state: &mut u64) -> u64 {
     *state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
-    *state
+    *state >> 33
 }
 
 #[test]
@@ -1366,6 +1367,9 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
     let mut epoch = 0;
     let mut next_id = 4;
     let mut covered = [false; 9];
+    // Coverage says each arm ran; these say the two paying arms moved value.
+    let mut accruing_awards = 0;
+    let mut paying_claims = 0;
 
     queue_register_stream(
         &mut streams,
@@ -1376,7 +1380,6 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
         epoch + 2,
     )
     .unwrap();
-    covered[3] = true;
     queue_weight_records(
         &mut streams,
         &accruals,
@@ -1386,11 +1389,8 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
         &[WeightRecordUpdate { id: 3, weight: constant_weight(pct(10)) }],
     )
     .unwrap();
-    covered[6] = true;
     queue_set_distribution(&mut streams, &accruals, epoch, 2, 3, Address::new_id(303)).unwrap();
-    covered[5] = true;
     assert!(cancel(&mut streams, Some(3), PendingWriteOp::RegisterStream).unwrap().is_some());
-    covered[8] = true;
     epoch += 2;
     let result = apply_due_writes(&mut streams, &mut accruals, epoch);
     assert_eq!(2, result.dropped.len());
@@ -1408,7 +1408,11 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
         match random_u64(&mut random) % covered.len() as u64 {
             0 => {
                 let reward = TokenAmount::from_atto(random_u64(&mut random) % 1_000 + 1);
+                let explicit_before = supply.total_explicit.clone();
                 supply.award(&streams, &mut accruals, epoch, reward);
+                if supply.total_explicit > explicit_before {
+                    accruing_awards += 1;
+                }
                 covered[0] = true;
             }
             1 => {
@@ -1437,6 +1441,9 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
                     claim(&mut streams, &accruals, id, &[wallet, wallet, Address::new_id(999_998)])
                         .unwrap();
                 supply.pay_claim(&result);
+                if result.iter().any(|amount| !amount.is_zero()) {
+                    paying_claims += 1;
+                }
                 covered[1] = true;
             }
             2 => {
@@ -1471,8 +1478,12 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
             }
             3 => {
                 let id = next_id;
-                let new_stream =
-                    stream(id, 0, Some(explicit(20_000 + id, shares(&[(30_000 + id, DENOM)]))));
+                // The base schedule leaves 20% of the envelope free, room for a registration.
+                let new_stream = stream(
+                    id,
+                    pct(2),
+                    Some(explicit(20_000 + id, shares(&[(30_000 + id, DENOM)]))),
+                );
                 if queue_register_stream(&mut streams, &accruals, epoch, 2, new_stream, epoch + 2)
                     .is_ok()
                 {
@@ -1561,4 +1572,6 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
     supply.assert_invariants(&streams, &accruals);
     assert!(covered.iter().all(|covered| *covered), "missing operation coverage: {covered:?}");
     assert!(dropped >= 2);
+    assert!(accruing_awards >= 20, "only {accruing_awards} awards accrued to an explicit stream");
+    assert!(paying_claims >= 10, "only {paying_claims} claims paid a recipient");
 }

@@ -154,7 +154,6 @@ impl Ledger {
         id: StreamId,
         shares: Vec<RecipientShare>,
     ) -> Result<TokenAmount> {
-        self.streams_dirty = true;
         // Admit the incoming map, which is what turns caller rows into storable ones.
         let shares = admit_shares(shares)?;
         // Read before the period borrow, for the tombstone recharge at the end.
@@ -164,6 +163,7 @@ impl Ledger {
             .iter()
             .any(|write| write.op == PendingWriteOp::RemoveStream);
         ensure!(self.streams.has_stream(id), "stream {id} not found");
+        self.streams_dirty = true;
         let Some(period) = self.period_mut(id) else {
             return Err(anyhow::anyhow!("stream {id} is implicit"));
         };
