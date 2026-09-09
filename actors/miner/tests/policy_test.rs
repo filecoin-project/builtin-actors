@@ -2,7 +2,7 @@ use fil_actor_miner::{MAX_QUALITY_MULTIPLIER, QUALITY_BASE_MULTIPLIER, SECTOR_QU
 use fil_actor_miner::{
     SectorOnChainInfo, SectorOnChainInfoFlags, qa_power_for_sector, qa_power_max,
 };
-use fil_actor_miner::{daily_proof_fee, qa_power_for_weight, quality_for_weight};
+use fil_actor_miner::{daily_proof_fee, quality_for_weight};
 use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{EPOCHS_IN_DAY, SECONDS_IN_DAY};
@@ -143,7 +143,7 @@ fn empty_sector_has_power_equal_to_size() {
     for size in size_range {
         for duration in &duration_range {
             let expected_power = BigInt::from(size as i64);
-            assert_eq!(expected_power, qa_power_for_weight(size, *duration, &BigInt::zero()));
+            assert_eq!(expected_power, power_for_weight(size, *duration, &BigInt::zero()));
         }
     }
 }
@@ -168,7 +168,7 @@ fn verified_sector_has_power_a_multiple_of_size() {
         for duration in &duration_range {
             let verified_weight = weight(size, *duration);
             let expected_power = size as i64 * &verified_multiplier;
-            assert_eq!(expected_power, qa_power_for_weight(size, *duration, &verified_weight));
+            assert_eq!(expected_power, power_for_weight(size, *duration, &verified_weight));
         }
     }
 }
@@ -212,7 +212,7 @@ fn verified_weight_adds_proportional_power() {
             let ep = empty_weight * &fully_empty_power;
             let vp = &verified_weight * &fully_verified_power;
             let expected_power = (ep + vp) / &sector_weight;
-            let power = qa_power_for_weight(sector_size, sector_duration, &verified_weight);
+            let power = power_for_weight(sector_size, sector_duration, &verified_weight);
             let power_error = expected_power - power;
             assert!(power_error <= max_error);
         }
@@ -230,16 +230,16 @@ fn demonstrate_standard_sectors() {
 
     assert_eq!(
         BigInt::from(sector_size as u64),
-        qa_power_for_weight(sector_size, sector_duration, &BigInt::zero())
+        power_for_weight(sector_size, sector_duration, &BigInt::zero())
     );
     assert_eq!(
         &vmul * sector_size as u64,
-        qa_power_for_weight(sector_size, sector_duration, &sector_weight)
+        power_for_weight(sector_size, sector_duration, &sector_weight)
     );
     let half_verified_power = ((sector_size as u64) / 2) + (&vmul * (sector_size as u64) / 2);
     assert_eq!(
         half_verified_power,
-        qa_power_for_weight(sector_size, sector_duration, &(sector_weight / 2))
+        power_for_weight(sector_size, sector_duration, &(sector_weight / 2))
     );
 
     // 64GiB
@@ -248,17 +248,32 @@ fn demonstrate_standard_sectors() {
 
     assert_eq!(
         BigInt::from(sector_size as u64),
-        qa_power_for_weight(sector_size, sector_duration, &BigInt::zero())
+        power_for_weight(sector_size, sector_duration, &BigInt::zero())
     );
     assert_eq!(
         &vmul * sector_size as u64,
-        qa_power_for_weight(sector_size, sector_duration, &sector_weight)
+        power_for_weight(sector_size, sector_duration, &sector_weight)
     );
     let half_verified_power = ((sector_size as u64) / 2) + (&vmul * (sector_size as u64) / 2);
     assert_eq!(
         half_verified_power,
-        qa_power_for_weight(sector_size, sector_duration, &(sector_weight / 2))
+        power_for_weight(sector_size, sector_duration, &(sector_weight / 2))
     );
+}
+
+fn power_for_weight(
+    size: SectorSize,
+    duration: ChainEpoch,
+    verified_weight: &DealWeight,
+) -> BigInt {
+    qa_power_for_sector(
+        size,
+        &SectorOnChainInfo {
+            expiration: duration,
+            verified_deal_weight: verified_weight.clone(),
+            ..Default::default()
+        },
+    )
 }
 
 fn weight(size: SectorSize, duration: ChainEpoch) -> BigInt {
@@ -358,25 +373,25 @@ fn full_qa_power_flag_gives_10x() {
 
 #[test]
 fn full_qa_power_ignores_deal_weights() {
-    // A sector with FULL_QA_POWER but non-zero verified_deal_weight should still get exactly
-    // qa_power_max. The deal weights are irrelevant when the flag is set.
+    // FULL_QA_POWER ignores both deal weight fields.
     let size = SectorSize::_32GiB;
     let duration: ChainEpoch = 1000;
-    let full_verified_weight = weight(size, duration);
+    let full_weight = weight(size, duration);
 
     let sector = SectorOnChainInfo {
         sector_number: 1,
         flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER | SectorOnChainInfoFlags::FULL_QA_POWER,
         expiration: duration,
         power_base_epoch: 0,
-        verified_deal_weight: full_verified_weight,
+        deal_weight: full_weight.clone(),
+        verified_deal_weight: full_weight,
         ..Default::default()
     };
     let power = qa_power_for_sector(size, &sector);
     assert_eq!(
         power,
         qa_power_max(size),
-        "FULL_QA_POWER should produce qa_power_max regardless of verified_deal_weight"
+        "FULL_QA_POWER should produce qa_power_max regardless of deal weights"
     );
 }
 

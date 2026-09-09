@@ -499,7 +499,6 @@ mod miner_actor_test_commitment {
         let epoch = *rt.epoch.borrow();
         rt.set_epoch(epoch + 2);
 
-        // Pre-commit with a deal in order to exercise non-zero deal weights.
         let precommit_params =
             h.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, vec![]);
         // The below call expects no pledge delta.

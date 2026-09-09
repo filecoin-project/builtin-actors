@@ -55,41 +55,43 @@ fn commit_sector(h: &mut ActorHarness, rt: &MockRuntime) -> SectorOnChainInfo {
 }
 
 #[test]
-fn rejects_negative_extensions() {
+fn rejects_non_increasing_extensions() {
     let (mut h, rt) = setup();
     let sector = commit_sector(&mut h, &rt);
     h.advance_and_submit_posts(&rt, std::slice::from_ref(&sector));
 
-    // attempt to shorten epoch
-    let new_expiration = sector.expiration - rt.policy().wpost_proving_period;
-
-    // find deadline and partition
+    // Find the sector location.
     let state: State = rt.get_state();
     let (deadline_index, partition_index) =
         state.find_sector(rt.store(), sector.sector_number).unwrap();
 
-    let params = ExtendSectorExpiration2Params {
-        extensions: vec![ExpirationExtension2 {
-            deadline: deadline_index,
-            partition: partition_index,
-            sectors: make_bitfield(&[sector.sector_number]),
-            new_expiration,
-            sectors_with_claims: vec![],
-        }],
-    };
+    // Try a shorter and an unchanged expiration.
+    for new_expiration in [sector.expiration - rt.policy().wpost_proving_period, sector.expiration]
+    {
+        let params = ExtendSectorExpiration2Params {
+            extensions: vec![ExpirationExtension2 {
+                deadline: deadline_index,
+                partition: partition_index,
+                sectors: make_bitfield(&[sector.sector_number]),
+                new_expiration,
+                sectors_with_claims: vec![],
+            }],
+        };
 
-    let res = h.extend_sectors2(&rt, params);
-    expect_abort_contains_message(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        &format!("cannot reduce sector {} expiration", sector.sector_number),
-        res,
-    );
+        let res = h.extend_sectors2(&rt, params);
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            &format!(
+                "new expiration {} must be after sector {} expiration {}",
+                new_expiration, sector.sector_number, sector.expiration
+            ),
+            res,
+        );
+    }
     h.check_state(&rt);
 }
 
-// At its expiration epoch a sector is still live, so an unchanged expiration passes the
-// expired and reduction checks. An unflagged sector would then reach quality_for_weight with
-// zero spacetime.
+// At its expiration epoch a sector is still live but a new expiration must leave some duration.
 #[test]
 fn rejects_extension_with_no_remaining_duration() {
     let (mut h, rt) = setup();
@@ -113,16 +115,18 @@ fn rejects_extension_with_no_remaining_duration() {
         }],
     };
 
-    // Called directly: the harness precomputes the power delta over the same zero duration.
+    // Call directly because this check runs before caller validation.
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
-    rt.expect_validate_caller_addr(h.caller_addrs());
     let res = rt.call::<Actor>(
         Method::ExtendSectorExpiration2 as u64,
         IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        &format!("cannot extend sector {} to {}", sector.sector_number, sector.expiration),
+        &format!(
+            "new expiration {} must be after current epoch {}",
+            sector.expiration, sector.expiration
+        ),
         res,
     );
     rt.verify();
@@ -170,21 +174,51 @@ fn rejects_out_of_range_deadline() {
 }
 
 #[test]
+fn rejects_empty_sector_selection() {
+    let (mut h, rt) = setup();
+    let sector = commit_sector(&mut h, &rt);
+    let state: State = rt.get_state();
+    let (deadline, partition) = state.find_sector(rt.store(), sector.sector_number).unwrap();
+    let params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline,
+            partition,
+            sectors: BitField::new(),
+            new_expiration: sector.expiration + rt.policy().wpost_proving_period,
+            sectors_with_claims: vec![],
+        }],
+    };
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
+    let res = rt.call::<Actor>(
+        Method::ExtendSectorExpiration2 as u64,
+        IpldBlock::serialize_cbor(&params).unwrap(),
+    );
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        &format!("no sectors selected in deadline {} partition {}", deadline, partition),
+        res,
+    );
+    rt.verify();
+    assert_eq!(sector, h.get_sector(&rt, sector.sector_number));
+    h.check_state(&rt);
+}
+
+#[test]
 fn rejects_extension_too_far_in_future() {
     let (mut h, rt) = setup();
     let sector = commit_sector(&mut h, &rt);
     h.advance_and_submit_posts(&rt, std::slice::from_ref(&sector));
 
-    // extend by even proving period after max
+    // Exceed the limit by one proving period.
     rt.set_epoch(sector.expiration);
     let extension = rt.policy().wpost_proving_period + rt.policy().max_sector_expiration_extension;
     let new_expiration = *rt.epoch.borrow() + extension;
 
-    // find deadline and partition
+    // Find the sector location.
     let state: State = rt.get_state();
     let (deadline_index, partition_index) =
         state.find_sector(rt.store(), sector.sector_number).unwrap();
-
     let params = ExtendSectorExpiration2Params {
         extensions: vec![ExpirationExtension2 {
             deadline: deadline_index,
@@ -195,7 +229,11 @@ fn rejects_extension_too_far_in_future() {
         }],
     };
 
-    let res = h.extend_sectors2(&rt, params);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
+    let res = rt.call::<Actor>(
+        Method::ExtendSectorExpiration2 as u64,
+        IpldBlock::serialize_cbor(&params).unwrap(),
+    );
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         &format!(
@@ -204,6 +242,7 @@ fn rejects_extension_too_far_in_future() {
         ),
         res,
     );
+    rt.verify();
     h.check_state(&rt);
 }
 
@@ -220,8 +259,8 @@ fn rejects_extension_past_max_for_seal_proof() {
     let (deadline_index, partition_index) =
         state.find_sector(rt.store(), sector.sector_number).unwrap();
 
-    // extend sector until just below threshold
-    rt.set_epoch(sector.expiration);
+    // Extend the sector until just below the seal proof limit.
+    rt.set_epoch(sector.expiration - 1);
     let extension = rt.policy().min_sector_expiration;
 
     let mut expiration = sector.expiration + extension;
@@ -334,6 +373,12 @@ fn updates_expiration_with_valid_params() {
 
     let old_sector = commit_sector(&mut h, &rt);
     h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
+    h.rewrite_sectors(&rt, &[old_sector.sector_number], |sector| {
+        sector.expected_day_reward = Some(TokenAmount::from_whole(1));
+        sector.expected_storage_pledge = Some(TokenAmount::from_whole(2));
+        sector.replaced_day_reward = Some(TokenAmount::from_whole(3));
+    });
+    let old_sector = h.get_sector(&rt, old_sector.sector_number);
 
     let state: State = rt.get_state();
 
@@ -361,6 +406,9 @@ fn updates_expiration_with_valid_params() {
     // assert sector expiration is set to the new value
     let new_sector = h.get_sector(&rt, old_sector.sector_number);
     assert_eq!(new_expiration, new_sector.expiration);
+    assert_eq!(None, new_sector.expected_day_reward);
+    assert_eq!(None, new_sector.expected_storage_pledge);
+    assert_eq!(None, new_sector.replaced_day_reward);
 
     // assert that the fee hasn't changed
     assert_eq!(old_sector.daily_fee, new_sector.daily_fee);
@@ -381,6 +429,55 @@ fn updates_expiration_with_valid_params() {
     assert_eq!(expiration_set.len(), 1);
     assert!(expiration_set.on_time_sectors.get(old_sector.sector_number));
 
+    h.check_state(&rt);
+}
+
+#[test]
+fn extension_keeps_existing_fee_when_weight_rounding_changes_power() {
+    let (mut h, rt) = setup();
+    let sector = commit_sector(&mut h, &rt);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&sector));
+
+    let duration = sector.expiration - sector.power_base_epoch;
+    h.rewrite_sectors(&rt, &[sector.sector_number], |sector| {
+        sector.flags.remove(SectorOnChainInfoFlags::FULL_QA_POWER);
+        sector.verified_deal_weight = BigInt::from(57 * duration - 1);
+        sector.daily_fee = TokenAmount::from_atto(123);
+    });
+    let old_sector = h.get_sector(&rt, sector.sector_number);
+    let old_power = power_for_sector(h.sector_size, &old_sector);
+
+    let state: State = rt.get_state();
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.store(), old_sector.sector_number).unwrap();
+    let new_expiration = old_sector.expiration + 42 * rt.policy().wpost_proving_period;
+    let params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: BitField::new(),
+            sectors_with_claims: vec![SectorClaim {
+                sector_number: old_sector.sector_number,
+                maintain_claims: vec![],
+                drop_claims: vec![],
+            }],
+            new_expiration,
+        }],
+    };
+
+    h.extend_sectors2(&rt, params).unwrap();
+
+    let new_sector = h.get_sector(&rt, old_sector.sector_number);
+    let new_power = power_for_sector(h.sector_size, &new_sector);
+    assert!(new_power.qa < old_power.qa);
+    assert_eq!(old_sector.daily_fee, new_sector.daily_fee);
+
+    let (deadline, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+    assert_eq!(new_sector.daily_fee, deadline.daily_fee);
+    let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
+    let queue = h.collect_partition_expirations(&rt, &partition);
+    let expiration = quant.quantize_up(new_expiration);
+    assert_eq!(new_sector.daily_fee, queue[&expiration].fee_deduction);
     h.check_state(&rt);
 }
 
@@ -851,50 +948,6 @@ fn extend_expiration2_drop_claims() {
         &mut h,
         &rt,
         second_expiration,
-        old_sector.sector_number,
-        deadline_index,
-        partition_index,
-    );
-}
-
-#[test]
-fn update_expiration2_drop_claims_failure_cases() {
-    // FIP-0118: claim validation and the end_of_life_claim_drop_period constraint have been
-    // removed from extensions. Extensions with drop_claims now succeed regardless of timing.
-    let (mut h, rt) = setup();
-    let verified_deals = vec![
-        test_activated_deal(h.sector_size as u64 / 2),
-        test_activated_deal(h.sector_size as u64 / 2),
-    ];
-    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
-    h.advance_and_submit_posts(&rt, std::slice::from_ref(&old_sector));
-
-    let (deadline_index, partition_index) =
-        rt.get_state::<State>().find_sector(rt.store(), old_sector.sector_number).unwrap();
-
-    let extension = 42 * rt.policy().wpost_proving_period;
-    let new_expiration = old_sector.expiration + extension;
-
-    let params = ExtendSectorExpiration2Params {
-        extensions: vec![ExpirationExtension2 {
-            deadline: deadline_index,
-            partition: partition_index,
-            sectors: BitField::new(),
-            new_expiration,
-            sectors_with_claims: vec![SectorClaim {
-                sector_number: old_sector.sector_number,
-                maintain_claims: vec![400],
-                drop_claims: vec![500],
-            }],
-        }],
-    };
-
-    // Extension now succeeds since claim validation was removed
-    h.extend_sectors2(&rt, params).unwrap();
-    check_for_expiration(
-        &mut h,
-        &rt,
-        new_expiration,
         old_sector.sector_number,
         deadline_index,
         partition_index,

@@ -17,7 +17,6 @@ use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes, from_slice};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::*;
 use fvm_shared::piece::PieceInfo;
@@ -25,8 +24,8 @@ use fvm_shared::randomness::*;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, InteractiveSealRandomness,
     PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
-    RegisteredUpdateProof, ReplicaUpdateInfo, SealRandomness, SealVerifyInfo, SectorID, SectorInfo,
-    SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
+    ReplicaUpdateInfo, SealRandomness, SealVerifyInfo, SectorID, SectorInfo, SectorNumber,
+    SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND, MethodNum};
 use itertools::Itertools;
@@ -826,34 +825,20 @@ impl Actor {
         let sectors = Sectors::load(&store, &state.sectors)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
         let mut sector_infos = Vec::with_capacity(params.sector_updates.len());
-        let mut updates = Vec::with_capacity(params.sector_updates.len());
-        for (i, update) in params.sector_updates.iter().enumerate() {
-            let sector = sectors.must_get(update.sector)?;
-            sector_infos.push(sector);
-
-            updates.push(ReplicaUpdateInner {
-                sector_number: update.sector,
-                deadline: update.deadline,
-                partition: update.partition,
-                new_sealed_cid: update.new_sealed_cid,
-                update_proof_type: params.update_proofs_type,
-                // Replica proof may be empty if an aggregate is being proven.
-                // Validation needs to accept this empty proof.
-                replica_proof: params.sector_proofs.get(i).unwrap_or(&RawBytes::default()).clone(),
-            });
+        for update in &params.sector_updates {
+            sector_infos.push(sectors.must_get(update.sector)?);
         }
 
         // Validate inputs.
-        let (validation_batch, update_sector_infos) = validate_replica_updates(
-            &updates,
+        let validation_batch = validate_replica_updates(
+            &params,
             &sector_infos,
             &state,
             rt.policy(),
             rt.curr_epoch(),
             store,
-            params.require_activation_success,
         )?;
-        let valid_unproven_usis = validation_batch.successes(&update_sector_infos);
+        let valid_sector_infos = validation_batch.successes(&sector_infos);
         let valid_manifests = validation_batch.successes(&params.sector_updates);
 
         let mut sector_commds: HashMap<SectorNumber, CompactCommD> =
@@ -873,36 +858,36 @@ impl Actor {
                 ));
             }
 
-            // Note: an alternate factoring here could pull this block out to a separate function,
-            // return a BatchReturn, and then extract successes from
-            // valid_unproven_usis and valid_manifests, following the pattern used elsewhere.
-            for (usi, manifest) in valid_unproven_usis.iter().zip(valid_manifests) {
-                let sector_type = usi.sector_info.seal_proof;
+            let valid_proofs = validation_batch.successes(&params.sector_proofs);
+            for ((sector_info, manifest), proof) in
+                valid_sector_infos.into_iter().zip(valid_manifests).zip(valid_proofs)
+            {
+                let sector_type = sector_info.seal_proof;
                 let computed_commd = unsealed_cid_from_pieces(rt, &manifest.pieces, sector_type)?;
                 let proof_inputs = ReplicaUpdateInfo {
-                    update_proof_type: usi.update.update_proof_type,
-                    new_sealed_cid: usi.update.new_sealed_cid,
-                    old_sealed_cid: usi.sector_info.sealed_cid,
+                    update_proof_type: params.update_proofs_type,
+                    new_sealed_cid: manifest.new_sealed_cid,
+                    old_sealed_cid: sector_info.sealed_cid,
                     new_unsealed_cid: computed_commd.get_cid(sector_type)?,
-                    proof: usi.update.replica_proof.clone().into(),
+                    proof: proof.clone().into(),
                 };
                 sector_commds.insert(manifest.sector, computed_commd);
                 match rt.verify_replica_update(&proof_inputs) {
                     Ok(_) => {
-                        proven_manifests.push((manifest, usi.sector_info));
+                        proven_manifests.push((manifest, sector_info));
                         proven_batch_gen.add_success();
                     }
                     Err(e) => {
                         warn!(
                             "failed to verify replica update for sector {}: {e}",
-                            usi.sector_info.sector_number
+                            sector_info.sector_number
                         );
                         proven_batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
                         if params.require_activation_success {
                             return Err(actor_error!(
                                 illegal_argument,
                                 "invalid proof for sector {} while requiring activation success: {}",
-                                usi.sector_info.sector_number,
+                                sector_info.sector_number,
                                 e
                             ));
                         }
@@ -925,28 +910,22 @@ impl Actor {
         }
 
         // Activate data.
-        let data_activation_inputs: Vec<SectorPiecesActivationInput> = proven_manifests
+        let sector_spaces = proven_manifests
             .iter()
-            .map(|(update, info)| SectorPiecesActivationInput {
-                piece_manifests: update.pieces.clone(),
-                sector_expiry: info.expiration,
-                sector_number: info.sector_number,
-                sector_type: info.seal_proof,
-                expected_commd: None, // CommD was computed, doesn't need checking.
-            })
-            .collect();
-
-        let sector_spaces = validate_and_total_pieces(rt, data_activation_inputs)?;
+            .map(|(update, _)| total_piece_space(update.sector, &update.pieces))
+            .collect::<Result<Vec<_>, _>>()?;
 
         let mut state_updates_by_partition =
             BTreeMap::<(u64, u64), Vec<ReplicaUpdateStateInputs>>::new();
         for ((update, sector_info), space) in proven_manifests.iter().zip(sector_spaces) {
-            let activated_data =
-                ReplicaUpdateActivatedData { seal_cid: update.new_sealed_cid, space };
             state_updates_by_partition
                 .entry((update.deadline, update.partition))
                 .or_default()
-                .push(ReplicaUpdateStateInputs { sector_info, activated_data });
+                .push(ReplicaUpdateStateInputs {
+                    sector_info,
+                    seal_cid: update.new_sealed_cid,
+                    space,
+                });
         }
 
         let (power_delta, pledge_delta) =
@@ -1207,31 +1186,7 @@ impl Actor {
         rt: &impl Runtime,
         params: PreCommitSectorBatchParams2,
     ) -> Result<(), ActorError> {
-        Self::pre_commit_sector_batch_inner(
-            rt,
-            params
-                .sectors
-                .into_iter()
-                .map(|spci| SectorPreCommitInfoInner {
-                    seal_proof: spci.seal_proof,
-                    sector_number: spci.sector_number,
-                    sealed_cid: spci.sealed_cid,
-                    seal_rand_epoch: spci.seal_rand_epoch,
-                    deal_ids: spci.deal_ids,
-                    expiration: spci.expiration,
-
-                    unsealed_cid: spci.unsealed_cid,
-                })
-                .collect(),
-        )
-    }
-
-    /// This function combines old and new flows for PreCommit with use Option<CommpactCommD>
-    /// The old PreCommits will call this with None, new ones with Some(CompactCommD).
-    fn pre_commit_sector_batch_inner(
-        rt: &impl Runtime,
-        sectors: Vec<SectorPreCommitInfoInner>,
-    ) -> Result<(), ActorError> {
+        let sectors = params.sectors;
         let curr_epoch = rt.curr_epoch();
         if sectors.is_empty() {
             return Err(actor_error!(illegal_argument, "batch empty"));
@@ -1577,20 +1532,13 @@ impl Actor {
         }
 
         // Activate data and verify CommD matches the declared one.
-        let data_activation_inputs = proven_activation_inputs
+        let sector_spaces = proven_activation_inputs
             .iter()
-            .map(|(activation, precommit)| -> SectorPiecesActivationInput {
-                SectorPiecesActivationInput {
-                    piece_manifests: activation.pieces.clone(),
-                    sector_expiry: precommit.info.expiration,
-                    sector_number: precommit.info.sector_number,
-                    sector_type: precommit.info.seal_proof,
-                    expected_commd: Some(precommit.info.unsealed_cid.clone()), // Check CommD
-                }
+            .map(|(activation, precommit)| {
+                validate_commd(rt, activation, precommit)?;
+                total_piece_space(activation.sector_number, &activation.pieces)
             })
-            .collect();
-
-        let sector_spaces = validate_and_total_pieces(rt, data_activation_inputs)?;
+            .collect::<Result<Vec<_>, _>>()?;
         let successful_precommits =
             proven_activation_inputs.iter().map(|(_, second)| *second).collect();
 
@@ -2076,43 +2024,29 @@ impl Actor {
         params: ExtendSectorExpiration2Params,
     ) -> Result<(), ActorError> {
         let policy = rt.policy();
-        for decl in &params.extensions {
-            if decl.deadline >= policy.wpost_period_deadlines {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "deadline {} not in range 0..{}",
-                    decl.deadline,
-                    policy.wpost_period_deadlines
-                ));
-            }
-        }
-        let inner = ExtendExpirationsInner {
-            extensions: params.extensions.into_iter().map(|e2| e2.into()).collect(),
-        };
-        Self::extend_sector_expiration_inner(rt, inner)
-    }
-
-    fn extend_sector_expiration_inner(
-        rt: &impl Runtime,
-        inner: ExtendExpirationsInner,
-    ) -> Result<(), ActorError> {
         let curr_epoch = rt.curr_epoch();
-        let circulating_supply = rt.total_fil_circ_supply();
+        for decl in &params.extensions {
+            validate_deadline_index(policy, decl.deadline)?;
+            validate_sector_selection(
+                decl.deadline,
+                decl.partition,
+                decl.sectors.is_empty() && decl.sectors_with_claims.is_empty(),
+            )?;
+            validate_expiration_bounds(policy, curr_epoch, decl.new_expiration)?;
+        }
 
+        let extensions: Vec<ValidatedExpirationExtension> =
+            params.extensions.into_iter().map(Into::into).collect();
+        let circulating_supply = rt.total_fil_circ_supply();
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
-            let policy = rt.policy();
 
-            replace_sector_records(
-                policy,
-                rt.store(),
-                state,
-                info.sector_size,
-                &inner.extensions,
-                |decl, sector| match decl.new_expiration {
+            let rewrite_sector = |decl: &ValidatedExpirationExtension,
+                                  sector: &SectorOnChainInfo| {
+                match decl.new_expiration {
                     Some(new_expiration) => extend_sector_committment(
                         policy,
                         curr_epoch,
@@ -2122,8 +2056,21 @@ impl Actor {
                         info.sector_size,
                     )
                     .map(Some),
-                    None => Ok(Some(sector.clone())),
-                },
+                    None => Err(actor_error!(
+                        illegal_state,
+                        "missing expiration for sector {}",
+                        sector.sector_number
+                    )),
+                }
+            };
+
+            replace_sector_records(
+                policy,
+                rt.store(),
+                state,
+                info.sector_size,
+                &extensions,
+                rewrite_sector,
             )
         })?;
 
@@ -2148,6 +2095,9 @@ impl Actor {
     /// `ExtendSectorExpiration2` would, without one it is skipped, so repeating a call
     /// locks nothing.
     ///
+    /// Once all pre FIP-0118 sectors in the network are upgraded or terminated, this
+    /// method becomes a no-op and can be removed.
+    ///
     /// # Errors
     /// Aborts with `USR_INSUFFICIENT_FUNDS` unless the available balance covers the
     /// whole batch's pledge increase and any outstanding fee debt, which is repaid in
@@ -2166,8 +2116,6 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
         validate_upgrade_quality_extensions(policy, curr_epoch, &params.upgrades)?;
 
-        // Pledge inputs come from other actors and must be fetched before the
-        // transaction, where sends are blocked.
         let rew = request_current_epoch_block_reward(rt)?;
         let pow = request_current_total_power(rt)?;
         let pledge_inputs = NetworkPledgeInputs {
@@ -2179,10 +2127,37 @@ impl Actor {
             ramp_duration_epochs: pow.ramp_duration_epochs,
         };
 
-        // The upgraded power and its pledge depend only on the sector size, so they
-        // are the same for every sector in the batch.
         let full_qa_power = qa_power_max(info.sector_size);
         let full_power_pledge = pledge_inputs.initial_pledge_for_power(&full_qa_power);
+
+        let rewrite_sector = |decl: &ValidatedExpirationExtension, sector: &SectorOnChainInfo| {
+            // Already at full power, by flag or by weights, there is nothing to
+            // upgrade or re-pledge: the sector is only extended if asked, else
+            // skipped rather than failed.
+            let at_full_power = qa_power_for_sector(info.sector_size, sector) >= full_qa_power;
+            match (at_full_power, decl.new_expiration) {
+                (true, None) => Ok(None),
+                (true, Some(new_expiration)) => extend_sector_committment(
+                    policy,
+                    curr_epoch,
+                    &pledge_inputs.circulating_supply,
+                    new_expiration,
+                    sector,
+                    info.sector_size,
+                )
+                .map(Some),
+                (false, _) => upgrade_sector_to_full_power(
+                    policy,
+                    curr_epoch,
+                    decl.new_expiration,
+                    sector,
+                    info.sector_size,
+                    &pledge_inputs.circulating_supply,
+                    &full_power_pledge,
+                )
+                .map(Some),
+            }
+        };
 
         let (power_delta, pledge_delta, fee_to_burn) = rt.transaction(|state: &mut State, rt| {
             let declarations: Vec<ValidatedExpirationExtension> =
@@ -2193,35 +2168,7 @@ impl Actor {
                 state,
                 info.sector_size,
                 &declarations,
-                |decl, sector| {
-                    // Already at full power, by flag or by weights, there is nothing to
-                    // upgrade or re-pledge: the sector is only extended if asked, else
-                    // skipped rather than failed.
-                    let at_full_power =
-                        qa_power_for_sector(info.sector_size, sector) >= full_qa_power;
-                    match (at_full_power, decl.new_expiration) {
-                        (true, None) => Ok(None),
-                        (true, Some(new_expiration)) => extend_sector_committment(
-                            policy,
-                            curr_epoch,
-                            &pledge_inputs.circulating_supply,
-                            new_expiration,
-                            sector,
-                            info.sector_size,
-                        )
-                        .map(Some),
-                        (false, _) => upgrade_sector_to_full_power(
-                            policy,
-                            curr_epoch,
-                            decl.new_expiration,
-                            sector,
-                            info.sector_size,
-                            &pledge_inputs.circulating_supply,
-                            &full_power_pledge,
-                        )
-                        .map(Some),
-                    }
-                },
+                rewrite_sector,
             )?;
 
             // Lock the pledge top-up, checking funds before adding it so a shortfall
@@ -3317,35 +3264,6 @@ impl Actor {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-struct SectorPreCommitInfoInner {
-    pub seal_proof: RegisteredSealProof,
-    pub sector_number: SectorNumber,
-    /// CommR
-    pub sealed_cid: Cid,
-    pub seal_rand_epoch: ChainEpoch,
-    pub deal_ids: Vec<DealID>,
-    pub expiration: ChainEpoch,
-    /// CommD
-    pub unsealed_cid: CompactCommD,
-}
-
-/// ReplicaUpdate param with Option<Cid> for CommD
-/// None means unknown
-#[derive(Debug, Clone)]
-pub struct ReplicaUpdateInner {
-    pub sector_number: SectorNumber,
-    pub deadline: u64,
-    pub partition: u64,
-    pub new_sealed_cid: Cid,
-    pub update_proof_type: RegisteredUpdateProof,
-    pub replica_proof: RawBytes,
-}
-
-struct ExtendExpirationsInner {
-    extensions: Vec<ValidatedExpirationExtension>,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidatedExpirationExtension {
     pub deadline: u64,
@@ -3664,17 +3582,15 @@ fn extend_sector_committment(
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector_info)?;
 
     let mut new_sector_info = extend_sector_weights(new_expiration, curr_epoch, sector_info)?;
+    // As of FIP-0098, these fields are unused (and should be cleared).
+    new_sector_info.expected_day_reward = None;
+    new_sector_info.expected_storage_pledge = None;
+    new_sector_info.replaced_day_reward = None;
 
-    // qa_power_for_sector handles FULL_QA_POWER flag correctly (returns qa_power_max).
-    let new_qa_power = qa_power_for_sector(sector_size, &new_sector_info);
     if new_sector_info.daily_fee.is_zero() {
         // pre-FIP-0100 sector
+        let new_qa_power = qa_power_for_sector(sector_size, &new_sector_info);
         new_sector_info.daily_fee = daily_proof_fee(policy, circulating_supply, &new_qa_power);
-    } else {
-        // daily_proof_fee_adjust is a no-op when the power hasn't changed.
-        let old_qa_power = qa_power_for_sector(sector_size, sector_info);
-        new_sector_info.daily_fee =
-            daily_proof_fee_adjust(&sector_info.daily_fee, &old_qa_power, &new_qa_power);
     }
     Ok(new_sector_info)
 }
@@ -3694,9 +3610,7 @@ fn validate_extended_expiration(
             sector.seal_proof
         ));
     }
-    // This can happen if the sector should have already expired, but hasn't
-    // because the end of its deadline hasn't passed yet.
-    if sector.expiration < curr_epoch {
+    if sector.expiration <= curr_epoch {
         return Err(actor_error!(
             forbidden,
             "cannot extend expiration for expired sector {} at {}",
@@ -3705,12 +3619,12 @@ fn validate_extended_expiration(
         ));
     }
 
-    if new_expiration < sector.expiration {
+    if new_expiration <= sector.expiration {
         return Err(actor_error!(
             illegal_argument,
-            "cannot reduce sector {} expiration to {} from {}",
-            sector.sector_number,
+            "new expiration {} must be after sector {} expiration {}",
             new_expiration,
+            sector.sector_number,
             sector.expiration
         ));
     }
@@ -3729,17 +3643,6 @@ fn extend_sector_weights(
     curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
 ) -> Result<SectorOnChainInfo, ActorError> {
-    // The new duration is the divisor for quality, so it must be positive.
-    if new_expiration <= curr_epoch {
-        return Err(actor_error!(
-            illegal_argument,
-            "cannot extend sector {} to {} with no duration remaining at {}",
-            sector.sector_number,
-            new_expiration,
-            curr_epoch
-        ));
-    }
-
     let mut new_sector = sector.clone();
 
     new_sector.expiration = new_expiration;
@@ -3759,18 +3662,65 @@ fn extend_sector_weights(
         new_sector.verified_deal_weight = old_verified_deal_space * new_duration;
     }
 
-    // Deprecated by FIP-0100 and read nowhere; cleared as sectors are touched.
-    new_sector.expected_day_reward = None;
-    new_sector.expected_storage_pledge = None;
-    new_sector.replaced_day_reward = None;
-
     Ok(new_sector)
+}
+
+fn validate_sector_selection(
+    deadline: u64,
+    partition: u64,
+    is_empty: bool,
+) -> Result<(), ActorError> {
+    if is_empty {
+        return Err(actor_error!(
+            illegal_argument,
+            "no sectors selected in deadline {} partition {}",
+            deadline,
+            partition
+        ));
+    }
+    Ok(())
+}
+
+fn validate_deadline_index(policy: &Policy, deadline: u64) -> Result<(), ActorError> {
+    if deadline >= policy.wpost_period_deadlines {
+        return Err(actor_error!(
+            illegal_argument,
+            "deadline {} not in range 0..{}",
+            deadline,
+            policy.wpost_period_deadlines
+        ));
+    }
+    Ok(())
+}
+
+fn validate_expiration_bounds(
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
+    new_expiration: ChainEpoch,
+) -> Result<(), ActorError> {
+    if new_expiration <= curr_epoch {
+        return Err(actor_error!(
+            illegal_argument,
+            "new expiration {} must be after current epoch {}",
+            new_expiration,
+            curr_epoch
+        ));
+    }
+    if new_expiration > curr_epoch + policy.max_sector_expiration_extension {
+        return Err(actor_error!(
+            illegal_argument,
+            "new expiration {} cannot be more than {} past current epoch {}",
+            new_expiration,
+            policy.max_sector_expiration_extension,
+            curr_epoch
+        ));
+    }
+    Ok(())
 }
 
 /// Validates `UpgradeSectorQuality` declarations before any state changes: at
 /// least one declaration, deadline indices in range, no empty sector selections,
-/// and requested expirations inside the allowed window. There is no batch cap:
-/// gas bounds the batch, as it does for `ExtendSectorExpiration2`.
+/// and requested expirations inside the allowed window.
 fn validate_upgrade_quality_extensions(
     policy: &Policy,
     curr_epoch: ChainEpoch,
@@ -3781,45 +3731,12 @@ fn validate_upgrade_quality_extensions(
     }
 
     for decl in extensions {
-        // Must precede replace_sector_records, which indexes by deadline.
-        if decl.deadline >= policy.wpost_period_deadlines {
-            return Err(actor_error!(
-                illegal_argument,
-                "deadline {} not in range 0..{}",
-                decl.deadline,
-                policy.wpost_period_deadlines
-            ));
-        }
+        validate_deadline_index(policy, decl.deadline)?;
 
-        if decl.sectors.is_empty() {
-            return Err(actor_error!(
-                illegal_argument,
-                "no sectors selected in deadline {} partition {}",
-                decl.deadline,
-                decl.partition
-            ));
-        }
+        validate_sector_selection(decl.deadline, decl.partition, decl.sectors.is_empty())?;
 
-        // Bounds that need no sector are rejected here, before the network queries;
-        // each sector's own expiration, activation and lifetime are checked later.
         if let Some(new_expiration) = decl.new_expiration {
-            if new_expiration <= curr_epoch {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "new expiration {} must be after current epoch {}",
-                    new_expiration,
-                    curr_epoch
-                ));
-            }
-            if new_expiration > curr_epoch + policy.max_sector_expiration_extension {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "new expiration {} cannot be more than {} past current epoch {}",
-                    new_expiration,
-                    policy.max_sector_expiration_extension,
-                    curr_epoch
-                ));
-            }
+            validate_expiration_bounds(policy, curr_epoch, new_expiration)?;
         }
     }
 
@@ -3848,23 +3765,29 @@ fn upgrade_sector_to_full_power(
     circulating_supply: &TokenAmount,
     full_power_pledge: &TokenAmount,
 ) -> Result<SectorOnChainInfo, ActorError> {
-    // An upgrade-only sector keeps its own expiration but must pass the same
-    // validation, so expired-but-not-yet-removed sectors are rejected here too.
-    let effective_expiration = new_expiration.unwrap_or(sector.expiration);
-    validate_extended_expiration(policy, curr_epoch, effective_expiration, sector)?;
-
     let mut new_sector = match new_expiration {
-        None => sector.clone(),
-        Some(new_expiration) => extend_sector_weights(new_expiration, curr_epoch, sector)?,
+        None => {
+            if sector.expiration <= curr_epoch {
+                return Err(actor_error!(
+                    forbidden,
+                    "cannot upgrade expired sector {} at {}",
+                    sector.sector_number,
+                    sector.expiration
+                ));
+            }
+            sector.clone()
+        }
+        Some(new_expiration) => {
+            validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
+            extend_sector_weights(new_expiration, curr_epoch, sector)?
+        }
     };
 
-    // The flags are the entire power change: qa_power_for_sector returns the
-    // maximum for FULL_QA_POWER sectors.
     new_sector.flags |=
         SectorOnChainInfoFlags::SIMPLE_QA_POWER | SectorOnChainInfoFlags::FULL_QA_POWER;
     let full_qa_power = qa_power_max(sector_size);
 
-    // extend_sector_weights already clears these; the upgrade-only branch needs it too.
+    // As of FIP-0098, these fields are unused and should be unset.
     new_sector.expected_day_reward = None;
     new_sector.expected_storage_pledge = None;
     new_sector.replaced_day_reward = None;
@@ -3884,41 +3807,37 @@ fn upgrade_sector_to_full_power(
     Ok(new_sector)
 }
 
-// Validates a list of replica update requests and parallel sector infos.
-// Returns all pairs of update and sector info, even those that fail validation.
-// The proof verification inputs are needed as witnesses to verify an aggregate proof to allow
-// other, valid, updates to succeed.
-#[allow(clippy::too_many_arguments)]
-fn validate_replica_updates<'a, BS>(
-    updates: &'a [ReplicaUpdateInner],
-    sector_infos: &'a [SectorOnChainInfo],
+// Validates replica update manifests against parallel sector records.
+fn validate_replica_updates<BS>(
+    params: &ProveReplicaUpdates3Params,
+    sector_infos: &[SectorOnChainInfo],
     state: &State,
     policy: &Policy,
     curr_epoch: ChainEpoch,
     store: BS,
-    all_or_nothing: bool,
-) -> Result<(BatchReturn, Vec<UpdateAndSectorInfo<'a>>), ActorError>
+) -> Result<BatchReturn, ActorError>
 where
     BS: Blockstore,
 {
     let mut sector_numbers = BTreeSet::<SectorNumber>::new();
-    let mut validate_one = |update: &ReplicaUpdateInner,
-                            sector_info: &SectorOnChainInfo|
+    let mut validate_one = |update: &SectorUpdateManifest,
+                            sector_info: &SectorOnChainInfo,
+                            proof_len: usize|
      -> Result<(), ActorError> {
-        if !sector_numbers.insert(update.sector_number) {
+        if !sector_numbers.insert(update.sector) {
             return Err(actor_error!(
                 illegal_argument,
                 "skipping duplicate sector {}",
-                update.sector_number
+                update.sector
             ));
         }
 
-        if update.replica_proof.len() > 4096 {
+        if proof_len > 4096 {
             return Err(actor_error!(
                 illegal_argument,
                 "update proof is too large ({}), skipping sector {}",
-                update.replica_proof.len(),
-                update.sector_number
+                proof_len,
+                update.sector
             ));
         }
 
@@ -3928,7 +3847,7 @@ where
                 "deadline {} not in range 0..{}, skipping sector {}",
                 update.deadline,
                 policy.wpost_period_deadlines,
-                update.sector_number
+                update.sector
             ));
         }
 
@@ -3937,7 +3856,7 @@ where
                 illegal_argument,
                 "new sealed CID had wrong prefix {}, skipping sector {}",
                 update.new_sealed_cid,
-                update.sector_number
+                update.sector
             ));
         }
 
@@ -3952,7 +3871,7 @@ where
                 illegal_argument,
                 "cannot upgrade sectors in immutable deadline {}, skipping sector {}",
                 update.deadline,
-                update.sector_number
+                update.sector
             ));
         }
 
@@ -3961,13 +3880,13 @@ where
             &store,
             update.deadline,
             update.partition,
-            update.sector_number,
+            update.sector,
             true,
         )? {
             return Err(actor_error!(
                 illegal_argument,
                 "sector isn't active, skipping sector {}",
-                update.sector_number
+                update.sector
             ));
         }
 
@@ -3975,7 +3894,7 @@ where
             return Err(actor_error!(
                 illegal_argument,
                 "cannot update sector with non-zero data, skipping sector {}",
-                update.sector_number
+                update.sector
             ));
         }
 
@@ -3983,38 +3902,35 @@ where
             .seal_proof
             .registered_update_proof()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "couldn't load update proof type")?;
-        if update.update_proof_type != expected_proof_type {
+        if params.update_proofs_type != expected_proof_type {
             return Err(actor_error!(
                 illegal_argument,
                 "expected proof type {}, was {}",
                 i64::from(expected_proof_type),
-                i64::from(update.update_proof_type)
+                i64::from(params.update_proofs_type)
             ));
         }
         Ok(())
     };
 
-    let mut batch = BatchReturnGen::new(updates.len());
-    let mut update_sector_infos: Vec<UpdateAndSectorInfo> = Vec::with_capacity(updates.len());
-    for (i, (update, sector_info)) in updates.iter().zip(sector_infos).enumerate() {
-        // Build update and sector info for all updates, even if they fail validation.
-        update_sector_infos.push(UpdateAndSectorInfo { update, sector_info });
-
-        match validate_one(update, sector_info) {
+    let mut batch = BatchReturnGen::new(params.sector_updates.len());
+    for (i, (update, sector_info)) in params.sector_updates.iter().zip(sector_infos).enumerate() {
+        let proof_len = params.sector_proofs.get(i).map_or(0, |proof| proof.len());
+        match validate_one(update, sector_info, proof_len) {
             Ok(_) => {
                 batch.add_success();
             }
             Err(e) => {
                 let e = e.wrap(format!("invalid update {} while requiring activation success", i));
                 info!("{}", e.msg());
-                if all_or_nothing {
+                if params.require_activation_success {
                     return Err(e);
                 }
                 batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
             }
         }
     }
-    Ok((batch.generate(), update_sector_infos))
+    Ok(batch.generate())
 }
 
 fn update_replica_states<R: Runtime>(
@@ -4049,8 +3965,7 @@ fn update_replica_states<R: Runtime>(
                     .map(|update| {
                         update_existing_sector_info(
                             rt.policy(),
-                            update.sector_info,
-                            &update.activated_data,
+                            update,
                             &pledge_inputs,
                             sector_size,
                             &new_qa_power,
@@ -4108,8 +4023,7 @@ fn update_replica_states<R: Runtime>(
 // Builds a new sector info representing newly activated data in an existing sector.
 fn update_existing_sector_info(
     policy: &Policy,
-    sector_info: &SectorOnChainInfo,
-    activated_data: &ReplicaUpdateActivatedData,
+    update: &ReplicaUpdateStateInputs,
     pledge_inputs: &NetworkPledgeInputs,
     sector_size: SectorSize,
     // FIP-0118: all sectors get maximum QA power (10x). Computed once by the caller since it's
@@ -4117,12 +4031,13 @@ fn update_existing_sector_info(
     new_qa_power: &StoragePower,
     curr_epoch: ChainEpoch,
 ) -> SectorOnChainInfo {
+    let sector_info = update.sector_info;
     let mut new_sector_info = sector_info.clone();
 
     new_sector_info.flags.set(SectorOnChainInfoFlags::SIMPLE_QA_POWER, true);
     // FIP-0118: replica updates always get full QA power.
     new_sector_info.flags.set(SectorOnChainInfoFlags::FULL_QA_POWER, true);
-    new_sector_info.sealed_cid = activated_data.seal_cid;
+    new_sector_info.sealed_cid = update.seal_cid;
     new_sector_info.sector_key_cid = match new_sector_info.sector_key_cid {
         None => Some(sector_info.sealed_cid),
         Some(x) => Some(x),
@@ -4133,7 +4048,7 @@ fn update_existing_sector_info(
     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
 
     new_sector_info.deal_weight = DealWeight::zero();
-    new_sector_info.verified_deal_weight = BigInt::from(activated_data.space) * duration;
+    new_sector_info.verified_deal_weight = BigInt::from(update.space) * duration;
 
     new_sector_info.expected_day_reward = None;
     new_sector_info.replaced_day_reward = None;
@@ -4152,7 +4067,7 @@ fn update_existing_sector_info(
         // pre-FIP-0100 sector
         new_sector_info.daily_fee =
             daily_proof_fee(policy, &pledge_inputs.circulating_supply, new_qa_power);
-    } else if power_changed {
+    } else {
         new_sector_info.daily_fee =
             daily_proof_fee_adjust(&new_sector_info.daily_fee, &old_qa_power, new_qa_power);
     }
@@ -5421,82 +5336,46 @@ pub fn calculate_create_miner_deposit(rt: &impl Runtime) -> Result<TokenAmount, 
     ))
 }
 
-pub struct SectorPiecesActivationInput {
-    pub piece_manifests: Vec<PieceActivationManifest>,
-    pub sector_expiry: ChainEpoch,
-    pub sector_number: SectorNumber,
-    pub sector_type: RegisteredSealProof,
-    pub expected_commd: Option<CompactCommD>,
-}
-
-// Track information needed to update a sector info's data during ProveReplicaUpdate
-#[derive(Clone, Debug)]
-struct UpdateAndSectorInfo<'a> {
-    update: &'a ReplicaUpdateInner,
-    sector_info: &'a SectorOnChainInfo,
-}
-
 // Inputs to state update for a single sector replica update.
 struct ReplicaUpdateStateInputs<'a> {
     sector_info: &'a SectorOnChainInfo,
-    activated_data: ReplicaUpdateActivatedData,
-}
-
-// Summary of activated data for a replica update.
-struct ReplicaUpdateActivatedData {
     seal_cid: Cid,
     space: u64,
 }
 
-// Checks each sector's pieces against a declared CommD, where one is given, and totals piece
-// space per sector.
-// `verified_allocation_key` on piece manifests is accepted and ignored: QA power comes from
-// the FULL_QA_POWER flag rather than from allocations (FIP-0118).
-fn validate_and_total_pieces(
+fn validate_commd(
     rt: &impl Runtime,
-    activation_inputs: Vec<SectorPiecesActivationInput>,
-) -> Result<Vec<u64>, ActorError> {
-    let mut sector_spaces = Vec::with_capacity(activation_inputs.len());
+    activation: &SectorActivationManifest,
+    precommit: &SectorPreCommitOnChainInfo,
+) -> Result<(), ActorError> {
+    let sector_type = precommit.info.seal_proof;
+    let computed_commd =
+        unsealed_cid_from_pieces(rt, &activation.pieces, sector_type)?.get_cid(sector_type)?;
+    let declared_commd = &precommit.info.unsealed_cid;
 
-    for activation_info in &activation_inputs {
-        // Check a declared CommD matches that computed from the data.
-        if let Some(declared_commd) = &activation_info.expected_commd {
-            let computed_commd = unsealed_cid_from_pieces(
-                rt,
-                &activation_info.piece_manifests,
-                activation_info.sector_type,
-            )?
-            .get_cid(activation_info.sector_type)?;
-            // A declared zero CommD might be compact or fully computed,
-            // so normalize to the computed value before checking.
-            if !declared_commd.get_cid(activation_info.sector_type)?.eq(&computed_commd) {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "unsealed CID does not match pieces for sector {}, computed {:?} declared {:?}",
-                    activation_info.sector_number,
-                    computed_commd,
-                    declared_commd
-                ));
-            }
-        }
-
-        let mut space: u64 = 0;
-        for piece in &activation_info.piece_manifests {
-            // Caller-supplied sizes are unbounded until CommD is computed, which is optional.
-            space = space.checked_add(piece.size.0).ok_or_else(|| {
-                actor_error!(
-                    illegal_argument,
-                    "piece sizes overflow for sector {}",
-                    activation_info.sector_number
-                )
-            })?;
-        }
-        sector_spaces.push(space);
+    // A declared zero CommD may be compact or fully computed.
+    if declared_commd.get_cid(sector_type)? != computed_commd {
+        return Err(actor_error!(
+            illegal_argument,
+            "unsealed CID does not match pieces for sector {}, computed {:?} declared {:?}",
+            precommit.info.sector_number,
+            computed_commd,
+            declared_commd
+        ));
     }
-
-    Ok(sector_spaces)
+    Ok(())
 }
 
+fn total_piece_space(
+    sector_number: SectorNumber,
+    pieces: &[PieceActivationManifest],
+) -> Result<u64, ActorError> {
+    pieces.iter().try_fold(0u64, |space, piece| {
+        space.checked_add(piece.size.0).ok_or_else(|| {
+            actor_error!(illegal_argument, "piece sizes overflow for sector {}", sector_number)
+        })
+    })
+}
 fn unsealed_cid_from_pieces(
     rt: &impl Runtime,
     pieces: &[PieceActivationManifest],

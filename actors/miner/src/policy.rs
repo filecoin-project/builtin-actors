@@ -143,16 +143,6 @@ pub fn qa_power_max(size: SectorSize) -> StoragePower {
     (BigInt::from(size as u64) * &*MAX_QUALITY_MULTIPLIER).div_floor(&QUALITY_BASE_MULTIPLIER)
 }
 
-/// Returns the power for a sector size and weight.
-pub fn qa_power_for_weight(
-    size: SectorSize,
-    duration: ChainEpoch,
-    verified_weight: &DealWeight,
-) -> StoragePower {
-    let quality = quality_for_weight(size, duration, verified_weight);
-    (BigInt::from(size as u64) * quality) >> SECTOR_QUALITY_PRECISION
-}
-
 /// Returns the quality-adjusted power for a sector.
 /// Sectors with the FULL_QA_POWER flag always receive maximum QA power (10x).
 pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> StoragePower {
@@ -160,7 +150,8 @@ pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> Stor
         return qa_power_max(size);
     }
     let duration = sector.expiration - sector.power_base_epoch;
-    qa_power_for_weight(size, duration, &sector.verified_deal_weight)
+    let quality = quality_for_weight(size, duration, &sector.verified_deal_weight);
+    (BigInt::from(size as u64) * quality) >> SECTOR_QUALITY_PRECISION
 }
 
 pub fn raw_power_for_sector(size: SectorSize) -> StoragePower {

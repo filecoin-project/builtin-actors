@@ -431,10 +431,13 @@ pub struct SectorOnChainInfo {
     /// Spacetime of legacy unverified deals. Zero for sectors activated since FIP-0118, which
     /// record piece spacetime in `verified_deal_weight`; legacy sectors keep theirs and carry
     /// it across extensions, because the data-presence checks read both fields.
+    /// A future upgrade may opt to remove this field.
     #[serde(with = "bigint_ser")]
     pub deal_weight: DealWeight,
     /// Spacetime of the sector's pieces, restated across extensions so quality is unchanged.
-    /// Nothing is verified since FIP-0118; directly onboarded data lands here too.
+    /// Nothing is "verified" since FIP-0118 so this field simply tracks the total spacetime of all
+    /// pieces in the sector.
+    /// A future upgrade may opt to remove this field or convert it to a simple "space".
     #[serde(with = "bigint_ser")]
     pub verified_deal_weight: DealWeight,
     /// Pledge collected to commit this sector
@@ -474,6 +477,8 @@ bitflags::bitflags! {
     #[serde(transparent)]
     pub struct SectorOnChainInfoFlags: u32 {
         /// QA power mechanism introduced in FIP-0045
+        /// This flag is no longer consumed inside the miner actor, it can be removed in a
+        /// future cleanup.
         const SIMPLE_QA_POWER = 0x1;
         /// Sector always receives maximum QA power (10x), regardless of deal content.
         /// Introduced by FIP-0118 (deprecate FIL+).

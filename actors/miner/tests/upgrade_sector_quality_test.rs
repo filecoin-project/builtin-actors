@@ -471,7 +471,7 @@ fn clears_deprecated_reward_estimates_on_upgrade() {
     let (deadline, partition) = sector_location(&rt, numbers[0]);
     assert_eq!((deadline, partition), sector_location(&rt, numbers[1]));
 
-    // Real pre-FIP-0100 records still carry the deprecated estimates.
+    // Real pre-FIP-0098 records still carry the deprecated estimates.
     h.rewrite_sectors(&rt, &numbers, |s| {
         s.expected_day_reward = Some(TokenAmount::from_whole(1));
         s.expected_storage_pledge = Some(TokenAmount::from_whole(2));
@@ -673,7 +673,7 @@ fn later_declaration_extends_an_upgraded_sector_again() {
         &rt,
         declare_twice([second, first]),
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        &format!("cannot reduce sector {} expiration", legacy.sector_number),
+        &format!("must be after sector {} expiration", legacy.sector_number),
     );
 
     // ...so the last expiration stands, and the sector is charged its top-up once.
@@ -969,7 +969,7 @@ fn rejects_out_of_range_expirations() {
         ),
         (
             legacy.expiration - 1,
-            format!("cannot reduce sector {} expiration", legacy.sector_number),
+            format!("must be after sector {} expiration", legacy.sector_number),
         ),
     ];
     for (new_expiration, message) in cases {
@@ -989,7 +989,7 @@ fn rejects_out_of_range_expirations() {
         &rt,
         upgrade_params(&rt, upgraded.sector_number, Some(upgraded.expiration - 1)),
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        &format!("cannot reduce sector {} expiration", legacy.sector_number),
+        &format!("must be after sector {} expiration", legacy.sector_number),
     );
     h.check_state(&rt);
 }
@@ -1133,23 +1133,24 @@ fn rejects_expired_sector_awaiting_cron() {
     let (mut h, rt) = setup();
     let legacy = commit_legacy_cc_sector(&mut h, &rt);
 
-    // Past its expiration but not yet removed by the deadline cron: no longer upgradable.
-    rt.set_epoch(legacy.expiration + 1);
-    expect_upgrade_abort(
-        &h,
-        &rt,
-        upgrade_params(&rt, legacy.sector_number, None),
-        ExitCode::USR_FORBIDDEN,
-        "cannot extend expiration for expired sector",
-    );
+    // Expired sectors can remain until deadline cron but cannot be upgraded.
+    for epoch in [legacy.expiration, legacy.expiration + 1] {
+        rt.set_epoch(epoch);
+        expect_upgrade_abort(
+            &h,
+            &rt,
+            upgrade_params(&rt, legacy.sector_number, None),
+            ExitCode::USR_FORBIDDEN,
+            "cannot upgrade expired sector",
+        );
+    }
 
-    // At its expiration epoch it is still live and upgrades normally.
-    rt.set_epoch(legacy.expiration);
+    // Upgrade while the sector still has time remaining.
+    rt.set_epoch(legacy.expiration - 1);
     let upgraded = upgrade_one(&h, &rt, &legacy, None);
     assert_full_power_record(&h, &rt, &legacy, &upgraded);
 
-    // Expired at full power, an extension is refused as ExtendSectorExpiration2 refuses it,
-    // while an in-place repeat has nothing to do and nothing to reject.
+    // An expired full-power sector cannot extend but an in-place repeat is a no-op.
     rt.set_epoch(legacy.expiration + 1);
     expect_upgrade_abort(
         &h,
