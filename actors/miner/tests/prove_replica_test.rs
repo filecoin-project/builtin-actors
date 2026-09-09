@@ -1,8 +1,10 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::SectorNumber;
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use fvm_shared::{ActorID, clock::ChainEpoch};
 
 use fil_actor_miner::{
@@ -23,7 +25,8 @@ const FIRST_SECTOR_NUMBER: SectorNumber = 100;
 
 #[test]
 fn update_batch() {
-    let (h, rt, sectors) = setup_empty_sectors(4);
+    let (h, rt, sectors) =
+        setup_empty_sectors_with_proof(4, RegisteredSealProof::StackedDRG2KiBV1P1);
 
     // Reduce the circulating supply. We expect the fees to stay the same after replica update even
     // if the circulating supply changes.
@@ -71,8 +74,11 @@ fn update_batch() {
         notifications
     );
 
+    let state_after: State = h.get_state(&rt);
     let sectors_after = snos.iter().map(|sno| h.get_sector(&rt, *sno)).collect::<Vec<_>>();
-    let mut total_fees = TokenAmount::zero();
+    let mut fees_by_deadline = BTreeMap::<u64, TokenAmount>::new();
+    let mut fees_by_partition_expiration = BTreeMap::<(u64, u64, ChainEpoch), TokenAmount>::new();
+    let mut locations = BTreeSet::new();
     for (i, (before, after)) in sectors.iter().zip(&sectors_after).enumerate() {
         // Sectors with odd indices (1 and 3) are full of verified data, even indices (0 and 2) are not
         let has_verified = i % 2 == 1;
@@ -93,22 +99,32 @@ fn update_batch() {
             before.sector_number
         );
 
-        total_fees += &after.daily_fee;
+        let (deadline, partition) =
+            state_after.find_sector(rt.store(), after.sector_number).unwrap();
+        locations.insert((deadline, partition));
+        *fees_by_deadline.entry(deadline).or_insert_with(TokenAmount::zero) += &after.daily_fee;
+        let expiration =
+            state_after.quant_spec_for_deadline(&rt.policy, deadline).quantize_up(after.expiration);
+        *fees_by_partition_expiration
+            .entry((deadline, partition, expiration))
+            .or_insert_with(TokenAmount::zero) += &after.daily_fee;
     }
 
-    let (deadline_index, partition_index) = st.find_sector(rt.store(), snos[0]).unwrap();
-    // check the deadline and partition state is correct for the replaced sector's fee
-    let (deadline, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+    // The small proof type places this batch across multiple deadline/partition locations.
+    assert!(locations.len() > 1);
 
-    // deadline has the total fees for all sectors
-    assert_eq!(total_fees, deadline.daily_fee);
+    for (deadline_index, expected_fee) in fees_by_deadline {
+        let deadline = h.get_deadline(&rt, deadline_index);
+        assert_eq!(expected_fee, deadline.daily_fee);
+    }
 
-    // partition expiration queue has the total fees for all sectors as a deduction
-    let quant = h.get_state(&rt).quant_spec_for_deadline(&rt.policy, deadline_index);
-    let quantized_expiration = quant.quantize_up(sectors_after[0].expiration);
-    let p_queue = h.collect_partition_expirations(&rt, &partition);
-    let entry = p_queue.get(&quantized_expiration).unwrap().clone();
-    assert_eq!(total_fees, entry.fee_deduction);
+    for ((deadline_index, partition_index, expiration), expected_fee) in
+        fees_by_partition_expiration
+    {
+        let (_, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+        let expiration_queue = h.collect_partition_expirations(&rt, &partition);
+        assert_eq!(expected_fee, expiration_queue.get(&expiration).unwrap().fee_deduction);
+    }
 
     h.check_state(&rt);
 }
@@ -589,6 +605,20 @@ fn setup_basic() -> (ActorHarness, MockRuntime) {
 
 fn setup_empty_sectors(count: usize) -> (ActorHarness, MockRuntime, Vec<SectorOnChainInfo>) {
     let (h, rt) = setup_basic();
+    let sector_expiry = *rt.epoch.borrow() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
+    let sectors = onboard_empty_sectors(&rt, &h, sector_expiry, FIRST_SECTOR_NUMBER, count);
+    (h, rt, sectors)
+}
+
+fn setup_empty_sectors_with_proof(
+    count: usize,
+    proof_type: RegisteredSealProof,
+) -> (ActorHarness, MockRuntime, Vec<SectorOnChainInfo>) {
+    let mut h = ActorHarness::new_with_options(HarnessOptions::default());
+    h.set_proof_type(proof_type);
+    let rt = h.new_runtime();
+    rt.set_balance(BIG_BALANCE.clone());
+    h.construct_and_verify(&rt);
     let sector_expiry = *rt.epoch.borrow() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
     let sectors = onboard_empty_sectors(&rt, &h, sector_expiry, FIRST_SECTOR_NUMBER, count);
     (h, rt, sectors)

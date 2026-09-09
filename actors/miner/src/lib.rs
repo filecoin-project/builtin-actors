@@ -823,7 +823,7 @@ impl Actor {
         }
 
         // Load sector infos for validation, failing if any don't exist.
-        let mut sectors = Sectors::load(&store, &state.sectors)
+        let sectors = Sectors::load(&store, &state.sectors)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
         let mut sector_infos = Vec::with_capacity(params.sector_updates.len());
         let mut updates = Vec::with_capacity(params.sector_updates.len());
@@ -938,27 +938,19 @@ impl Actor {
 
         let sector_spaces = validate_and_total_pieces(rt, data_activation_inputs)?;
 
-        let mut state_updates_by_dline = BTreeMap::<u64, Vec<ReplicaUpdateStateInputs>>::new();
+        let mut state_updates_by_partition =
+            BTreeMap::<(u64, u64), Vec<ReplicaUpdateStateInputs>>::new();
         for ((update, sector_info), space) in proven_manifests.iter().zip(sector_spaces) {
             let activated_data =
                 ReplicaUpdateActivatedData { seal_cid: update.new_sealed_cid, space };
-            state_updates_by_dline.entry(update.deadline).or_default().push(
-                ReplicaUpdateStateInputs {
-                    deadline: update.deadline,
-                    partition: update.partition,
-                    sector_info,
-                    activated_data,
-                },
-            );
+            state_updates_by_partition
+                .entry((update.deadline, update.partition))
+                .or_default()
+                .push(ReplicaUpdateStateInputs { sector_info, activated_data });
         }
 
-        let (power_delta, pledge_delta) = update_replica_states(
-            rt,
-            &state_updates_by_dline,
-            proven_manifests.len(),
-            &mut sectors,
-            info.sector_size,
-        )?;
+        let (power_delta, pledge_delta) =
+            update_replica_states(rt, &state_updates_by_partition, info.sector_size)?;
 
         notify_pledge_changed(rt, &pledge_delta)?;
         request_update_power(rt, power_delta)?;
@@ -3401,8 +3393,7 @@ impl From<UpgradeSectorQuality> for ValidatedExpirationExtension {
 /// (and rewritten again only if `rewrite` says so).
 ///
 /// A declaration with a new expiration re-registers its partition in the deadline's expiration
-/// queue, unless it rewrote no sector. Without one the sectors stay where they are already
-/// scheduled.
+/// queue if necessary.
 fn replace_sector_records<BS: Blockstore>(
     policy: &Policy,
     store: &BS,
@@ -3414,20 +3405,91 @@ fn replace_sector_records<BS: Blockstore>(
         &SectorOnChainInfo,
     ) -> Result<Option<SectorOnChainInfo>, ActorError>,
 ) -> Result<(PowerPair, TokenAmount), ActorError> {
+    let replace_declaration_batch = |decl: &ValidatedExpirationExtension,
+                                     key: &PartitionKey,
+                                     partition: &mut Partition,
+                                     sectors: &mut Sectors<BS>,
+                                     quant: QuantSpec| {
+        let mut old_sectors = Vec::new();
+        let mut new_sectors = Vec::new();
+        for sector in
+            sectors.load_sectors(&decl.sectors).map_err(|e| e.wrap("failed to load sectors"))?
+        {
+            if !partition.is_active(sector.sector_number) {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "sector {} is not active in {:?}",
+                    sector.sector_number,
+                    key
+                ));
+            }
+            if let Some(new_sector) = rewrite(decl, &sector)? {
+                old_sectors.push(sector);
+                new_sectors.push(new_sector);
+            }
+        }
+
+        replace_partition_sector_records(
+            SectorRecordReplacementContext { store, key, sector_size, quant },
+            partition,
+            sectors,
+            old_sectors.iter(),
+            new_sectors,
+        )
+    };
+
+    replace_sector_record_batches(
+        policy,
+        store,
+        state,
+        declarations,
+        |decl| SectorRecordBatchLocation {
+            deadline: decl.deadline,
+            partition: decl.partition,
+            new_expiration: decl.new_expiration,
+        },
+        replace_declaration_batch,
+    )
+}
+#[derive(Clone, Copy)]
+struct SectorRecordBatchLocation {
+    deadline: u64,
+    partition: u64,
+    new_expiration: Option<ChainEpoch>,
+}
+
+/// Applies batches of sector record replacements, updating the sectors AMT plus each affected
+/// partition and deadline. Batches may carry caller-specific data; `replace` materializes and
+/// applies their records.
+fn replace_sector_record_batches<BS: Blockstore, B>(
+    policy: &Policy,
+    store: &BS,
+    state: &mut State,
+    batches: impl IntoIterator<Item = B>,
+    location: impl Fn(&B) -> SectorRecordBatchLocation,
+    mut replace: impl FnMut(
+        B,
+        &PartitionKey,
+        &mut Partition,
+        &mut Sectors<BS>,
+        QuantSpec,
+    ) -> Result<Option<(PowerPair, TokenAmount, TokenAmount)>, ActorError>,
+) -> Result<(PowerPair, TokenAmount), ActorError> {
     let mut deadlines =
         state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
-    // Group declarations by deadline, and remember iteration order.
-    let mut decls_by_deadline: Vec<_> =
+    // Group batches by deadline while preserving their order within each deadline.
+    let mut batches_by_deadline: Vec<_> =
         std::iter::repeat_with(Vec::new).take(policy.wpost_period_deadlines as usize).collect();
     let mut deadlines_to_load = Vec::<u64>::new();
-    for decl in declarations {
-        // the deadline indices are already checked.
-        let decls = &mut decls_by_deadline[decl.deadline as usize];
-        if decls.is_empty() {
-            deadlines_to_load.push(decl.deadline);
+    for batch in batches {
+        let location = location(&batch);
+        // Deadline indices are validated by each caller before this function.
+        let deadline_batches = &mut batches_by_deadline[location.deadline as usize];
+        if deadline_batches.is_empty() {
+            deadlines_to_load.push(location.deadline);
         }
-        decls.push(decl);
+        deadline_batches.push((location, batch));
     }
 
     let mut sectors = Sectors::load(store, &state.sectors).map_err(|e| {
@@ -3439,14 +3501,12 @@ fn replace_sector_records<BS: Blockstore>(
 
     for deadline_idx in deadlines_to_load {
         let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
-
         let mut partitions = deadline.partitions_amt(store).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to load partitions for deadline {}", deadline_idx),
             )
         })?;
-
         let quant = state.quant_spec_for_deadline(policy, deadline_idx);
 
         let mut deadline_power_delta = PowerPair::zero();
@@ -3457,11 +3517,10 @@ fn replace_sector_records<BS: Blockstore>(
         let mut partitions_by_new_epoch = BTreeMap::<ChainEpoch, Vec<u64>>::new();
         let mut epochs_to_reschedule = Vec::<ChainEpoch>::new();
 
-        for decl in &decls_by_deadline[deadline_idx as usize] {
-            let key = PartitionKey { deadline: deadline_idx, partition: decl.partition };
-
+        for (location, batch) in std::mem::take(&mut batches_by_deadline[deadline_idx as usize]) {
+            let key = PartitionKey { deadline: deadline_idx, partition: location.partition };
             let mut partition = partitions
-                .get(decl.partition)
+                .get(location.partition)
                 .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -3471,71 +3530,28 @@ fn replace_sector_records<BS: Blockstore>(
                 .cloned()
                 .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
-            let mut old_sectors = Vec::new();
-            let mut new_sectors = Vec::new();
-            for sector in
-                sectors.load_sectors(&decl.sectors).map_err(|e| e.wrap("failed to load sectors"))?
-            {
-                // Reject a faulty, unproven, terminated or foreign sector.
-                if !partition.is_active(sector.sector_number) {
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "sector {} is not active in {:?}",
-                        sector.sector_number,
-                        key
-                    ));
-                }
-                if let Some(new_sector) = rewrite(decl, &sector)? {
-                    old_sectors.push(sector);
-                    new_sectors.push(new_sector);
-                }
-            }
-            if new_sectors.is_empty() {
+            let Some((batch_power_delta, batch_pledge_delta, batch_daily_fee_delta)) =
+                replace(batch, &key, &mut partition, &mut sectors, quant)?
+            else {
                 continue;
-            }
+            };
 
-            // Remove old sectors from partition and assign new sectors.
-            let (partition_power_delta, partition_pledge_delta, partition_daily_fee_delta) =
-                partition
-                    .replace_sectors(store, &old_sectors, &new_sectors, sector_size, quant)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to replace sector expirations at {:?}", key),
-                        )
-                    })?;
+            deadline_power_delta += &batch_power_delta;
+            deadline_pledge_delta += &batch_pledge_delta;
+            deadline_daily_fee_delta += &batch_daily_fee_delta;
 
-            // Overwrite sector infos.
-            sectors.store(new_sectors).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to update sectors {:?}", decl.sectors),
-                )
-            })?;
-
-            deadline_power_delta += &partition_power_delta;
-            deadline_pledge_delta += &partition_pledge_delta;
-            // non-zero when touching sectors that previously paid no fees (e.g., because
-            // they were sealed before we started charging fees).
-            deadline_daily_fee_delta += &partition_daily_fee_delta;
-
-            partitions.set(decl.partition, partition).map_err(|e| {
+            partitions.set(location.partition, partition).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to save partition {:?}", key),
                 )
             })?;
 
-            // Record the new partition expiration epoch for setting outside this loop
-            // over declarations.
-            if let Some(new_expiration) = decl.new_expiration {
-                let prev_epoch_partitions = partitions_by_new_epoch.entry(new_expiration);
-                let not_exists = matches!(prev_epoch_partitions, Entry::Vacant(_));
-
-                // Add declaration partition
-                prev_epoch_partitions.or_default().push(decl.partition);
-                if not_exists {
-                    // reschedule epoch if the partition for new epoch didn't already exist
+            if let Some(new_expiration) = location.new_expiration {
+                let epoch_partitions = partitions_by_new_epoch.entry(new_expiration);
+                let new_epoch = matches!(epoch_partitions, Entry::Vacant(_));
+                epoch_partitions.or_default().push(location.partition);
+                if new_epoch {
                     epochs_to_reschedule.push(new_expiration);
                 }
             }
@@ -3543,7 +3559,6 @@ fn replace_sector_records<BS: Blockstore>(
 
         deadline.live_power += &deadline_power_delta;
         deadline.daily_fee += &deadline_daily_fee_delta;
-
         power_delta += &deadline_power_delta;
         pledge_delta += &deadline_pledge_delta;
 
@@ -3554,18 +3569,19 @@ fn replace_sector_records<BS: Blockstore>(
             )
         })?;
 
-        // Record partitions in deadline expiration queue
         for epoch in epochs_to_reschedule {
-            let p_idxs = partitions_by_new_epoch.get(&epoch).unwrap();
-            deadline.add_expiration_partitions(store, epoch, p_idxs, quant).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!(
-                        "failed to add expiration partitions to deadline {} epoch {}",
-                        deadline_idx, epoch
-                    ),
-                )
-            })?;
+            let partition_indices = partitions_by_new_epoch.get(&epoch).unwrap();
+            deadline.add_expiration_partitions(store, epoch, partition_indices, quant).map_err(
+                |e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!(
+                            "failed to add expiration partitions to deadline {} epoch {}",
+                            deadline_idx, epoch
+                        ),
+                    )
+                },
+            )?;
         }
 
         deadlines.update_deadline(policy, store, deadline_idx, &deadline).map_err(|e| {
@@ -3585,6 +3601,55 @@ fn replace_sector_records<BS: Blockstore>(
         .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines"))?;
 
     Ok((power_delta, pledge_delta))
+}
+
+struct SectorRecordReplacementContext<'a, BS> {
+    store: &'a BS,
+    key: &'a PartitionKey,
+    sector_size: SectorSize,
+    quant: QuantSpec,
+}
+
+/// Commits prepared replacements to one partition and the sectors AMT, returning accounting
+/// deltas, or `None` when there is nothing to replace.
+fn replace_partition_sector_records<'a, BS, I>(
+    context: SectorRecordReplacementContext<'_, BS>,
+    partition: &mut Partition,
+    sectors: &mut Sectors<BS>,
+    old_sectors: I,
+    new_sectors: Vec<SectorOnChainInfo>,
+) -> Result<Option<(PowerPair, TokenAmount, TokenAmount)>, ActorError>
+where
+    BS: Blockstore,
+    I: IntoIterator<Item = &'a SectorOnChainInfo>,
+{
+    if new_sectors.is_empty() {
+        return Ok(None);
+    }
+
+    let deltas = partition
+        .replace_sectors(
+            context.store,
+            old_sectors,
+            new_sectors.iter(),
+            context.sector_size,
+            context.quant,
+        )
+        .map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                format!("failed to replace sector records at {:?}", context.key),
+            )
+        })?;
+
+    sectors.store(new_sectors).map_err(|e| {
+        e.downcast_default(
+            ExitCode::USR_ILLEGAL_STATE,
+            format!("failed to update sectors at {:?}", context.key),
+        )
+    })?;
+
+    Ok(Some(deltas))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3952,16 +4017,11 @@ where
     Ok((batch.generate(), update_sector_infos))
 }
 
-fn update_replica_states<BS>(
-    rt: &impl Runtime,
-    updates_by_deadline: &BTreeMap<u64, Vec<ReplicaUpdateStateInputs>>,
-    expected_count: usize,
-    sectors: &mut Sectors<BS>,
+fn update_replica_states<R: Runtime>(
+    rt: &R,
+    updates_by_partition: &BTreeMap<(u64, u64), Vec<ReplicaUpdateStateInputs>>,
     sector_size: SectorSize,
-) -> Result<(PowerPair, TokenAmount), ActorError>
-where
-    BS: Blockstore,
-{
+) -> Result<(PowerPair, TokenAmount), ActorError> {
     let rew = request_current_epoch_block_reward(rt)?;
     let pow = request_current_total_power(rt)?;
     let circulating_supply = rt.total_fil_circ_supply();
@@ -3973,135 +4033,54 @@ where
         epochs_since_ramp_start: rt.curr_epoch() - pow.ramp_start_epoch,
         ramp_duration_epochs: pow.ramp_duration_epochs,
     };
-    let mut power_delta = PowerPair::zero();
-    let mut pledge_delta = TokenAmount::zero();
 
     // FIP-0118: all sectors get maximum QA power (10x); same for every update in this batch.
     let new_qa_power = qa_power_max(sector_size);
 
     rt.transaction(|state: &mut State, rt| {
-        let mut deadlines = state.load_deadlines(rt.store())?;
-        let mut new_sectors = Vec::with_capacity(expected_count);
-        // Process updates grouped by deadline.
-        for (&dl_idx, updates) in updates_by_deadline {
-            let mut deadline = deadlines.load_deadline(rt.store(), dl_idx)?;
-
-            let mut partitions = deadline
-                .partitions_amt(rt.store())
-                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    format!("failed to load partitions for deadline {}", dl_idx)
-                })?;
-
-            let quant = state.quant_spec_for_deadline(rt.policy(), dl_idx);
-
-            let mut deadline_power_delta = PowerPair::zero();
-            let mut deadline_pledge_delta = TokenAmount::zero();
-            let mut deadline_daily_fee_delta = TokenAmount::zero();
-
-            for update in updates {
-                // Compute updated sector info.
-                let new_sector_info = update_existing_sector_info(
-                    rt.policy(),
-                    update.sector_info,
-                    &update.activated_data,
-                    &pledge_inputs,
-                    sector_size,
-                    &new_qa_power,
-                    rt.curr_epoch(),
-                );
-
-                let mut partition = partitions
-                    .get(update.partition)
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!(
-                            "failed to load deadline {} partition {}",
-                            update.deadline, update.partition
-                        )
-                    })?
-                    .cloned()
-                    .ok_or_else(|| {
-                        actor_error!(
-                            not_found,
-                            "no such deadline {} partition {}",
-                            dl_idx,
-                            update.partition
-                        )
-                    })?;
-
-                // Note: replacing sectors one at a time in each partition is inefficient.
-                let (partition_power_delta, partition_pledge_delta, partition_daily_fee_delta) =
-                    partition
-                        .replace_sectors(
-                            rt.store(),
-                            std::slice::from_ref(update.sector_info),
-                            std::slice::from_ref(&new_sector_info),
+        let replace_replica_batch =
+            |(_, updates): (&(u64, u64), &Vec<ReplicaUpdateStateInputs<'_>>),
+             key: &PartitionKey,
+             partition: &mut Partition,
+             sectors: &mut Sectors<R::Blockstore>,
+             quant: QuantSpec| {
+                let new_sectors = updates
+                    .iter()
+                    .map(|update| {
+                        update_existing_sector_info(
+                            rt.policy(),
+                            update.sector_info,
+                            &update.activated_data,
+                            &pledge_inputs,
                             sector_size,
-                            quant,
+                            &new_qa_power,
+                            rt.curr_epoch(),
                         )
-                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                            format!(
-                                "failed to replace sector at deadline {} partition {}",
-                                update.deadline, update.partition
-                            )
-                        })?;
+                    })
+                    .collect();
 
-                deadline_power_delta += &partition_power_delta;
-                deadline_pledge_delta += &partition_pledge_delta;
-                deadline_daily_fee_delta += &partition_daily_fee_delta;
+                replace_partition_sector_records(
+                    SectorRecordReplacementContext { store: rt.store(), key, sector_size, quant },
+                    partition,
+                    sectors,
+                    updates.iter().map(|update| update.sector_info),
+                    new_sectors,
+                )
+            };
 
-                partitions.set(update.partition, partition).with_context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    || {
-                        format!(
-                            "failed to save deadline {} partition {}",
-                            update.deadline, update.partition
-                        )
-                    },
-                )?;
+        let (power_delta, pledge_delta) = replace_sector_record_batches(
+            rt.policy(),
+            rt.store(),
+            state,
+            updates_by_partition,
+            |((deadline, partition), _)| SectorRecordBatchLocation {
+                deadline: *deadline,
+                partition: *partition,
+                new_expiration: None,
+            },
+            replace_replica_batch,
+        )?;
 
-                new_sectors.push(new_sector_info);
-            } // End loop over declarations in one deadline.
-
-            deadline.live_power += &deadline_power_delta;
-            deadline.daily_fee += &deadline_daily_fee_delta;
-
-            power_delta += &deadline_power_delta;
-            pledge_delta += &deadline_pledge_delta;
-
-            deadline.partitions =
-                partitions.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    format!("failed to save partitions for deadline {}", dl_idx)
-                })?;
-
-            deadlines
-                .update_deadline(rt.policy(), rt.store(), dl_idx, &deadline)
-                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    format!("failed to save deadline {}", dl_idx)
-                })?;
-        } // End loop over deadlines
-
-        if new_sectors.len() != expected_count {
-            return Err(actor_error!(
-                illegal_state,
-                "unexpected new_sectors len {} != {}",
-                new_sectors.len(),
-                expected_count
-            ));
-        }
-
-        // Overwrite sector infos.
-        sectors.store(new_sectors).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to update sector infos")
-        })?;
-
-        state.sectors = sectors.amt.flush().map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save sectors")
-        })?;
-        state.save_deadlines(rt.store(), deadlines).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
-        })?;
-
-        // Update pledge.
         let current_balance = rt.current_balance();
         if pledge_delta.is_positive() {
             let unlocked_balance = state.get_unlocked_balance(&current_balance).map_err(|e| {
@@ -4120,11 +4099,10 @@ where
         state
             .add_initial_pledge(&pledge_delta)
             .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
-
         state.check_balance_invariants(&current_balance).map_err(balance_invariants_broken)?;
-        Ok(())
-    })?;
-    Ok((power_delta, pledge_delta))
+
+        Ok((power_delta, pledge_delta))
+    })
 }
 
 // Builds a new sector info representing newly activated data in an existing sector.
@@ -5460,8 +5438,6 @@ struct UpdateAndSectorInfo<'a> {
 
 // Inputs to state update for a single sector replica update.
 struct ReplicaUpdateStateInputs<'a> {
-    deadline: u64,
-    partition: u64,
     sector_info: &'a SectorOnChainInfo,
     activated_data: ReplicaUpdateActivatedData,
 }
