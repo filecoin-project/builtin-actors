@@ -11,6 +11,7 @@ use fil_actor_reward::{
 };
 use fil_actors_runtime::test_utils::{
     ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
+    expect_abort_contains_message,
 };
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, EventBuilder, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -581,7 +582,7 @@ fn set_shares_folds_liabilities_and_burns_dust() {
 }
 
 #[test]
-fn replace_address_moves_a_recipient_for_the_stream_writer() {
+fn replace_address_moves_the_future_share_and_leaves_the_balance() {
     let rt = base_runtime();
     let mut state: State = rt.get_state();
     state.accrued[0].amount = TokenAmount::from_atto(4);
@@ -626,8 +627,64 @@ fn replace_address_moves_a_recipient_for_the_stream_writer() {
         vec![RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM }],
         distribution.shares
     );
-    assert_eq!(TokenAmount::from_atto(4), distribution.payable.get(&Address::new_id(RECIPIENT_B)));
+    // The period's earnings stay with the wallet that earned them; the new address takes the
+    // future share and starts from zero.
+    assert_eq!(TokenAmount::from_atto(4), distribution.payable.get(&Address::new_id(RECIPIENT_A)));
+    assert_eq!(TokenAmount::zero(), distribution.payable.get(&Address::new_id(RECIPIENT_B)));
     assert_eq!(TokenAmount::from_atto(4), liability(&rt));
+}
+
+#[test]
+fn replace_address_reads_the_writer_a_due_change_installs() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    let mut streams = load_streams(&rt);
+    let write = PendingWrite {
+        id: Some(2),
+        op: PendingWriteOp::SetDistribution,
+        payload: RawBytes::serialize(&SetDistributionPayload {
+            writer: Address::new_id(RECIPIENT_B),
+        })
+        .unwrap(),
+        effective_epoch: 5,
+    };
+    streams.pending_writes.push(write.clone());
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    rt.replace_state(&state);
+    rt.epoch.replace(10);
+
+    let params = ReplaceAddressParams {
+        id: 2,
+        old_address: Address::new_id(RECIPIENT_A),
+        new_address: Address::new_id(WRITER),
+    };
+
+    // The due writer change lands ahead of the caller check, so the outgoing writer is refused and
+    // the abort leaves that change queued.
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    rt.expect_validate_caller_any();
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        &format!("writer {}", Address::new_id(RECIPIENT_B)),
+        call(&rt, Method::ReplaceAddressExported, &params),
+    );
+    rt.verify();
+    assert_eq!(1, load_streams(&rt).pending_writes.len());
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(RECIPIENT_B));
+    rt.expect_validate_caller_any();
+    expect_write_event(&rt, "write-applied", &write, false);
+    call(&rt, Method::ReplaceAddressExported, &params).unwrap();
+    rt.verify();
+
+    let streams = load_streams(&rt);
+    assert!(streams.pending_writes.is_empty());
+    let distribution = streams.streams[1].distribution.clone().unwrap();
+    assert_eq!(Address::new_id(RECIPIENT_B), distribution.writer);
+    assert_eq!(
+        vec![RecipientShare { recipient: Address::new_id(WRITER), share: DENOM }],
+        distribution.shares
+    );
 }
 
 #[test]
@@ -663,6 +720,7 @@ fn replace_address_with_burn_sentinel_ends_a_recipients_future_share() {
 #[test]
 fn replace_address_rejects_bad_targets() {
     let rt = base_runtime();
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
 
     // Implicit stream.
@@ -680,6 +738,7 @@ fn replace_address_rejects_bad_targets() {
         ),
     );
     rt.verify();
+    assert_state_invariants(&rt);
 
     // Old address not a current recipient.
     rt.expect_validate_caller_any();
@@ -696,6 +755,24 @@ fn replace_address_rejects_bad_targets() {
         ),
     );
     rt.verify();
+    assert_state_invariants(&rt);
+
+    // The old address is already the new one.
+    rt.expect_validate_caller_any();
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        call(
+            &rt,
+            Method::ReplaceAddressExported,
+            &ReplaceAddressParams {
+                id: 2,
+                old_address: Address::new_id(RECIPIENT_A),
+                new_address: Address::new_id(RECIPIENT_A),
+            },
+        ),
+    );
+    rt.verify();
+    assert_state_invariants(&rt);
 
     // Unresolvable new address.
     rt.expect_validate_caller_any();
@@ -712,6 +789,57 @@ fn replace_address_rejects_bad_targets() {
         ),
     );
     rt.verify();
+    assert_state_invariants(&rt);
+
+    // A full share map beside a full table of former recipients leaves the payable union at its
+    // cap, so an address with no row there has nowhere to go.
+    let first_recipient = 300;
+    let fresh = Address::new_id(2_000);
+    rt.set_address_actor_type(fresh, *EVM_ACTOR_CODE_ID);
+    rt.set_address_actor_type(Address::new_id(first_recipient), *EVM_ACTOR_CODE_ID);
+    let mut state: State = rt.get_state();
+    let mut streams = load_streams(&rt);
+    let distribution = streams.streams[1].distribution.as_mut().unwrap();
+    distribution.shares = (0..MAX_RECIPIENTS)
+        .map(|offset| RecipientShare {
+            recipient: Address::new_id(first_recipient + offset as u64),
+            share: DENOM / MAX_RECIPIENTS as u64,
+        })
+        .collect();
+    distribution.payable = (0..MAX_RECIPIENTS)
+        .map(|offset| RecipientAmount {
+            recipient: Address::new_id(1_000 + offset as u64),
+            amount: TokenAmount::from_atto(1),
+        })
+        .collect::<Vec<_>>()
+        .into();
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    // One atto per recipient, so the fold gives every stored recipient a payable row of its own.
+    state.accrued[0].amount = TokenAmount::from_atto(MAX_RECIPIENTS as u64);
+    state.total_explicit_minted = TokenAmount::from_atto(2 * MAX_RECIPIENTS as u64);
+    state.total_minted_reward = TokenAmount::from_atto(2 * MAX_RECIPIENTS as u64);
+    rt.replace_state(&state);
+    assert_state_invariants(&rt);
+    let streams_root = state.streams_root;
+
+    rt.expect_validate_caller_any();
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "payable row reservation",
+        call(
+            &rt,
+            Method::ReplaceAddressExported,
+            &ReplaceAddressParams {
+                id: 2,
+                old_address: Address::new_id(first_recipient),
+                new_address: fresh,
+            },
+        ),
+    );
+    rt.verify();
+    let state: State = rt.get_state();
+    assert_eq!(streams_root, state.streams_root);
+    assert_state_invariants(&rt);
 }
 
 #[test]

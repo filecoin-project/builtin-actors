@@ -238,9 +238,11 @@ impl Actor {
         settle_applied(rt, &applied)
     }
 
-    /// Closes an explicit stream's period and moves one share recipient to a new address, for the
-    /// stream writer only. Naming f099 drops the share to burn instead, like an f099 row in
-    /// `SetShares`, and the old address keeps whatever it already earned.
+    /// Closes an explicit stream's period and moves one recipient's future share to a new
+    /// address, for the stream writer only. Naming f099 drops the share to burn, like an f099 row
+    /// in `SetShares`. The old wallet keeps its payable balance and the new wallet starts a fresh
+    /// tally. This is `SetShares` on the stored map with one row changed, so the fold and every
+    /// `SetShares` check apply. Either address may be given in any form that resolves.
     fn replace_address(rt: &impl Runtime, params: ReplaceAddressParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let caller = rt.message().caller();

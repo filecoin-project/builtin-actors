@@ -1,12 +1,14 @@
-//! Explicit-stream recipient accounting: the share map, the period fold, claims, and the two
+//! Explicit-stream recipient accounting: the share map, the period fold, claims, and the
 //! lifecycle operations that fold (FIP-0118 2.4.4, 2.4.5 and 2.4.6).
 //!
 //! The shapes it reads and writes are in [`crate::state`]: [`ExplicitDistribution`], its
 //! [`RecipientShare`] map, and its [`RecipientTable`] balances.
 //!
-//! A period is the interval between two `SetShares` calls on one stream. f02 knows nothing of
-//! quarters and imposes no cadence; installing a new map first closes the current period under
-//! the outgoing one, which is what makes a share change strictly prospective.
+//! A period is the interval between two map installs on one stream, by `SetShares` or by
+//! `ReplaceAddress`. f02 knows nothing of quarters and imposes no cadence; installing a new map
+//! first closes the current period under the outgoing one, which is what makes a share change
+//! strictly prospective. [`Ledger::replace_address`] is `SetShares` with one row changed, so it
+//! folds the same way and balances stay where they accrued.
 //!
 //! FIP-0118 2.4.4, `SetShares`:
 //!
@@ -56,10 +58,10 @@
 //! stream at its new writer; the share map stays as it is, so payments continue.
 //!
 //! We use two caps to keep those tables small: a live stream holds at most
-//! `MAX_PAYABLE_ROWS_PER_STREAM` payable rows, checked by [`Ledger::set_shares`] on the map it is
-//! about to install. All tombstones together hold at most `MAX_TOMBSTONE_ROWS`. A removal only
-//! folds when it applies, so [`validate_tombstone_capacity`] reserves its rows at admission,
-//! and checks the reservation again on every `SetShares` made while the removal is pending.
+//! `MAX_PAYABLE_ROWS_PER_STREAM` payable rows. All tombstones together hold at most
+//! `MAX_TOMBSTONE_ROWS`. A removal only folds when it applies, so [`validate_tombstone_capacity`]
+//! reserves its rows at admission, and checks the reservation again on every install made while the
+//! removal is pending.
 
 use std::collections::BTreeSet;
 
@@ -156,6 +158,54 @@ impl Ledger {
     ) -> Result<TokenAmount> {
         // Admit the incoming map, which is what turns caller rows into storable ones.
         let shares = admit_shares(shares)?;
+        self.install_shares(id, shares)
+    }
+
+    /// Moves one recipient's future share to `new`, or drops it when `new` is f099. The old wallet
+    /// keeps its payable balance and the new wallet starts a fresh tally. Because this is
+    /// a `SetShares` on the stored map with one row changed, the fold and other `SetShares` checks
+    /// apply. Returns rounding dust.
+    pub(crate) fn replace_address(
+        &mut self,
+        id: StreamId,
+        old: Address,
+        new: Address,
+    ) -> Result<TokenAmount> {
+        validate_id_address(&old, "old recipient address")?;
+        validate_id_address(&new, "new recipient address")?;
+        ensure!(self.streams.has_stream(id), "stream {id} not found");
+        let Some(distribution) = self.streams.explicit(id) else {
+            return Err(anyhow::anyhow!("stream {id} is implicit"));
+        };
+        ensure!(
+            distribution.shares.iter().any(|row| row.recipient == old),
+            "address {old} is not a recipient of stream {id}"
+        );
+        // No dupes, f099 can go through because it gets dropped before store.
+        let burning = new == BURNT_FUNDS_ACTOR_ADDR;
+        ensure!(
+            burning || !distribution.shares.iter().any(|row| row.recipient == new),
+            "address {new} is already a recipient of stream {id}"
+        );
+
+        let mut shares = distribution.shares.clone();
+        if burning {
+            shares.retain(|row| row.recipient != old);
+        } else {
+            for row in shares.iter_mut() {
+                if row.recipient == old {
+                    row.recipient = new;
+                }
+            }
+            shares.sort_by_key(|row| row.recipient);
+        }
+        self.install_shares(id, shares)
+    }
+
+    /// Closes the current period and installs `shares`, already in stored form. The fold leaves
+    /// each wallet's earnings in `payable` under the wallet that earned them, so the installed map
+    /// can add a row to that table. Returns indivisible rounding dust for burning.
+    fn install_shares(&mut self, id: StreamId, shares: Vec<RecipientShare>) -> Result<TokenAmount> {
         // Read before the period borrow, for the tombstone recharge at the end.
         let removal_pending = self
             .streams
@@ -186,49 +236,6 @@ impl Ledger {
         if removal_pending {
             validate_tombstone_capacity(&self.streams)?;
         }
-        Ok(burn)
-    }
-
-    /// Closes the current period, then renames `old` to `new` in the share map and carries its
-    /// balance over. When `new` is f099 the row is instead dropped, reverting the share to burn
-    /// from the next award, and `old` keeps what it has already earned. Returns rounding dust.
-    pub(crate) fn replace_address(
-        &mut self,
-        id: StreamId,
-        old: Address,
-        new: Address,
-    ) -> Result<TokenAmount> {
-        self.streams_dirty = true;
-        validate_id_address(&old, "old recipient address")?;
-        validate_id_address(&new, "new recipient address")?;
-        let burning = new == BURNT_FUNDS_ACTOR_ADDR;
-        ensure!(self.streams.has_stream(id), "stream {id} not found");
-        let Some(period) = self.period_mut(id) else {
-            return Err(anyhow::anyhow!("stream {id} is implicit"));
-        };
-        ensure!(
-            period.distribution.shares.iter().any(|row| row.recipient == old),
-            "address {old} is not a recipient of stream {id}"
-        );
-        ensure!(
-            burning || !period.distribution.shares.iter().any(|row| row.recipient == new),
-            "address {new} is already a recipient of stream {id}"
-        );
-
-        let burn = fold(period.distribution, period.pool);
-        if burning {
-            period.distribution.shares.retain(|row| row.recipient != old);
-        } else {
-            for row in period.distribution.shares.iter_mut() {
-                if row.recipient == old {
-                    row.recipient = new;
-                }
-            }
-            period.distribution.shares.sort_by_key(|row| row.recipient);
-            let carried = period.distribution.payable.take(&old);
-            period.distribution.payable.add(new, carried);
-        }
-
         Ok(burn)
     }
 
