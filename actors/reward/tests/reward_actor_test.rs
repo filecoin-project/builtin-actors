@@ -256,12 +256,12 @@ mod construction_tests {
             effective_epoch: 2,
         };
         let mut duplicate_pending = streams.clone();
-        duplicate_pending.pending_writes =
+        duplicate_pending.pending_writes_queue =
             vec![pending.clone(), PendingWrite { effective_epoch: 3, ..pending.clone() }];
-        assert_message(&state, &duplicate_pending, "duplicate pending slot");
+        assert_message(&state, &duplicate_pending, "duplicate pending key");
 
         let mut unordered_pending = streams.clone();
-        unordered_pending.pending_writes = vec![
+        unordered_pending.pending_writes_queue = vec![
             PendingWrite { effective_epoch: 3, ..pending.clone() },
             PendingWrite { op: PendingWriteOp::StepWeightRecords, effective_epoch: 2, ..pending },
         ];

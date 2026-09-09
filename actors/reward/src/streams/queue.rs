@@ -1,20 +1,21 @@
 //! The pending-write queue: the SWA timelock, admission, cancellation, and application.
 //!
 //! Every SWA write lands here first as a `PendingWrite` containing the op, its encoded params,
-//! and the epoch it becomes due. Each one sits in a [`Slot`]. Per-stream ops key by `(id, op)`;
-//! the two weight ops are schedule-wide and key by `op` alone (i.e. null id). One write per slot,
-//! and an occupied slot means a new write for that slot will be rejected, so changing your mind
-//! means a cancel plus requeue and the timelock starts again. `CancelPending` has to name the slot
-//! being cancelled the same way the queue keys it. For cancellation a mismatched id/op is an error,
-//! an empty slot is a no-op, and `StepWeightRecords` can't be cancelled at all (the discretionary
-//! `SetWeightRecords` can be).
+//! and the epoch it becomes due. A queued write has three forms: `PendingWrite` as stored,
+//! [`QueuedCall`] as decoded, and its [`WriteKey`] which can be derived from either. Per-stream ops
+//! key by `(id, op)`; the two weight ops are schedule-wide and key by `op` alone (i.e. null id).
+//! One write per key, and an occupied key means a new write for that key will be rejected, so
+//! changing your mind means a cancel plus requeue and the timelock starts again. `CancelPending`
+//! has to name the key being cancelled the same way the queue keys it. For cancellation a
+//! mismatched id/op is an error, an empty key is a no-op, and `StepWeightRecords` can't be
+//! cancelled at all (the discretionary `SetWeightRecords` can be).
 //!
-//! Three epochs matter for an entry. The queue epoch is when the SWA called. The effective epoch
-//! is queue plus `swa_timelock_epochs` (except for `RegisterStream`, which brings its own
-//! `activation_epoch` and just has to be at or past that floor). The apply epoch is whenever the
-//! next stream-engine method runs at or after that, `AwardBlockReward` included, because every
-//! one of them applies due entries before doing its own thing. The queue is sorted by effective
-//! epoch with ties in arrival order, so the head tells you whether anything is due.
+//! The "effective epoch" for a write is its queue entry epoch plus `swa_timelock_epochs` (except
+//! for `RegisterStream`, which brings its own `activation_epoch` and just has to be at or past that
+//! floor). The "apply epoch" is when we need to attempt to install the write, which we try to do
+//! on most operations, `AwardBlockReward` included. An entry at or past its effective epoch is due,
+//! i.e. a "due write". The queue is sorted by effective epoch with ties in arrival order, so the
+//! head tells you whether anything is due.
 //!
 //! One rule drives most of the logic in here: *cancellation is unconditional*. A compromised SWA
 //! must not be able to make a bad write uncancellable by queueing something that depends on it,
@@ -26,11 +27,10 @@
 //!
 //! The admission rule: *W is admitted iff, applying the queue in effective order, W applies in
 //! the state its predecessors produce, and every write that applied before W's admission still
-//! applies after it*. The second clause is the subset check in [`Ledger::admit`]. It's
-//! there because a `RegisterStream` can have a far-future activation, so a `SetWeightRecords`
+//! applies after it*. The second clause is the subset check in [`Ledger::admit`] (it's there
+//! because a `RegisterStream` can have a far-future activation). So a `SetWeightRecords`
 //! admitted later but effective earlier applies first and could eat the headroom the
-//! registration was admitted on. Without it, admission would be a second way to strand a write,
-//! and cancellation is meant to be the only one.
+//! registration was admitted on.
 //!
 //! What each op needs at its effective epoch:
 //!
@@ -49,18 +49,13 @@
 //! | `RemoveStream(id)` | a table slot, the implicit slot, and envelope headroom for a later `Register`, `Set` or `Step` |
 //! | `SetWeightRecords` (a decrease) | envelope headroom for a later `Set`, `Step` or `Register` |
 //!
-//! At application, due entries go in queue order, each validated from its own effective epoch
-//! rather than the current one, so a null round can't change which ones apply. A well-formed
-//! entry that's lost its prerequisite is dropped with a `write-dropped` event and we carry on;
-//! the installed config is untouched.
+//! At application, due entries go in queue order. A well-formed entry that's lost its prerequisite
+//! somehow is dropped with a `write-dropped` event and we carry on, current config unchanged.
 //!
 //! If the persisted weight records or envelope are already invalid, due entries still only
 //! apply when their result validates, and new ones are rejected, with one exception: a
 //! `SetWeightRecords` that repairs things without stranding a still-valid entry. It gets the
 //! ordinary timelock like anything else.
-//!
-//! FIP-0118 2.4.7 has the timelock, the three epochs, slots and cancellability; 2.4.8 has details
-//! about what admission proves, stranding, and repair.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -88,37 +83,39 @@ use crate::types::{
 
 const EMPTY_TUPLE_CBOR: &[u8] = &[0x80];
 
-/// The queue position that a single pending write occupies (one write per slot).
+/// The key a pending write is filed under: `(stream id, op)` for per-stream ops, `op` alone for
+/// schedule-wide ones. One write per key. Cancellation names a key, admission rejects an occupied
+/// key, and the projection tracks writes by key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum Slot {
+pub(crate) enum WriteKey {
     PerStream(StreamId, PendingWriteOp),
     ScheduleWide(PendingWriteOp),
 }
 
-impl Slot {
-    /// The slot that an operation on `id` occupies, rejecting a mismatched ID and operation.
-    fn for_target(id: Option<StreamId>, op: PendingWriteOp) -> Result<Slot> {
+impl WriteKey {
+    /// The key for an operation on `id`, rejecting a mismatched ID and operation.
+    fn for_target(id: Option<StreamId>, op: PendingWriteOp) -> Result<WriteKey> {
         match (op.is_schedule_wide(), id) {
-            (true, None) => Ok(Slot::ScheduleWide(op)),
+            (true, None) => Ok(WriteKey::ScheduleWide(op)),
             (true, Some(_)) => Err(anyhow::anyhow!("schedule-wide call has a stream ID")),
-            (false, Some(id)) => Ok(Slot::PerStream(id, op)),
+            (false, Some(id)) => Ok(WriteKey::PerStream(id, op)),
             (false, None) => Err(anyhow::anyhow!("per-stream call has no stream ID")),
         }
     }
 
-    /// The slot `CancelPending` identifies with `StepWeightRecords` being the one uncancellable
+    /// The key `CancelPending` names, with `StepWeightRecords` being the one uncancellable
     /// operation.
-    pub(crate) fn for_cancel(id: Option<StreamId>, op: PendingWriteOp) -> Result<Slot> {
+    pub(crate) fn for_cancel(id: Option<StreamId>, op: PendingWriteOp) -> Result<WriteKey> {
         ensure!(op != PendingWriteOp::StepWeightRecords, "StepWeightRecords cannot be cancelled");
-        Slot::for_target(id, op)
+        WriteKey::for_target(id, op)
     }
 }
 
 impl PendingWrite {
-    /// The slot this write occupies.
-    fn slot(&self) -> Slot {
-        Slot::for_target(self.id, self.op)
-            .expect("structure invariants: every queued write names a slot")
+    /// The key this write is filed under.
+    fn key(&self) -> WriteKey {
+        WriteKey::for_target(self.id, self.op)
+            .expect("structure invariants: every queued write names a key")
     }
 }
 
@@ -170,12 +167,12 @@ enum Baseline {
     Repairing,
 }
 
-/// The queue replayed in effective order: the slots that apply, and the prerequisite each of the
+/// The queue replayed in effective order: the keys that apply, and the prerequisite each of the
 /// others is missing.
 #[derive(Debug, Default)]
 struct Projection {
-    accepted: BTreeSet<Slot>,
-    stranded: Vec<(Slot, Stranded)>,
+    accepted: BTreeSet<WriteKey>,
+    stranded: Vec<(WriteKey, Stranded)>,
 }
 
 /// A queued write's operation and arguments, decoded from its payload.
@@ -227,13 +224,13 @@ impl QueuedCall {
     /// Reads a queue entry's payload, rejecting one that disagrees with the entry's ID and
     /// operation or does not hold that operation's canonical tuple.
     fn decode(write: &PendingWrite) -> Result<QueuedCall> {
-        let call = match Slot::for_target(write.id, write.op)? {
-            Slot::ScheduleWide(op) => {
+        let call = match WriteKey::for_target(write.id, write.op)? {
+            WriteKey::ScheduleWide(op) => {
                 let payload: WeightRecordsPayload = write.payload.deserialize()?;
                 validate_weight_updates(&payload.updates)?;
                 QueuedCall::Weights { op, updates: payload.updates }
             }
-            Slot::PerStream(id, PendingWriteOp::RegisterStream) => {
+            WriteKey::PerStream(id, PendingWriteOp::RegisterStream) => {
                 let payload: RegisterStreamPayload = write.payload.deserialize()?;
                 validate_weight_record(&payload.weight)?;
                 validate_distribution_init(&payload.distribution)?;
@@ -244,20 +241,20 @@ impl QueuedCall {
                     activation: write.effective_epoch,
                 }
             }
-            Slot::PerStream(id, PendingWriteOp::RemoveStream) => {
+            WriteKey::PerStream(id, PendingWriteOp::RemoveStream) => {
                 ensure!(
                     write.payload.bytes() == EMPTY_TUPLE_CBOR,
                     "RemoveStream payload is not an empty tuple"
                 );
                 QueuedCall::Remove { id }
             }
-            Slot::PerStream(id, PendingWriteOp::SetDistribution) => {
+            WriteKey::PerStream(id, PendingWriteOp::SetDistribution) => {
                 let payload: SetDistributionPayload = write.payload.deserialize()?;
                 validate_id_address(&payload.writer, "distribution writer")?;
                 QueuedCall::SetDistribution { id, writer: payload.writer }
             }
-            // Slot::for_target puts both weight operations in the schedule-wide arm.
-            Slot::PerStream(_, op) => {
+            // WriteKey::for_target puts both weight operations in the schedule-wide arm.
+            WriteKey::PerStream(_, op) => {
                 return Err(anyhow::anyhow!("schedule-wide call {op:?} has a stream ID"));
             }
         };
@@ -289,22 +286,24 @@ impl QueuedCall {
         })
     }
 
-    fn slot(&self) -> Slot {
+    fn key(&self) -> WriteKey {
         match self {
-            QueuedCall::Weights { op, .. } => Slot::ScheduleWide(*op),
-            QueuedCall::Register { id, .. } => Slot::PerStream(*id, PendingWriteOp::RegisterStream),
-            QueuedCall::Remove { id } => Slot::PerStream(*id, PendingWriteOp::RemoveStream),
+            QueuedCall::Weights { op, .. } => WriteKey::ScheduleWide(*op),
+            QueuedCall::Register { id, .. } => {
+                WriteKey::PerStream(*id, PendingWriteOp::RegisterStream)
+            }
+            QueuedCall::Remove { id } => WriteKey::PerStream(*id, PendingWriteOp::RemoveStream),
             QueuedCall::SetDistribution { id, .. } => {
-                Slot::PerStream(*id, PendingWriteOp::SetDistribution)
+                WriteKey::PerStream(*id, PendingWriteOp::SetDistribution)
             }
         }
     }
 
     /// The queue entry carrying this call, due at `effective_epoch`.
     fn queue_entry(&self, effective_epoch: ChainEpoch) -> Result<PendingWrite> {
-        let (id, op) = match self.slot() {
-            Slot::PerStream(id, op) => (Some(id), op),
-            Slot::ScheduleWide(op) => (None, op),
+        let (id, op) = match self.key() {
+            WriteKey::PerStream(id, op) => (Some(id), op),
+            WriteKey::ScheduleWide(op) => (None, op),
         };
         Ok(PendingWrite { id, op, payload: self.encode()?, effective_epoch })
     }
@@ -384,11 +383,11 @@ impl Ledger {
     pub(crate) fn apply_due(&mut self, epoch: ChainEpoch) -> ApplyResult {
         let due_count = self
             .streams
-            .pending_writes
+            .pending_writes_queue
             .iter()
             .take_while(|write| write.effective_epoch <= epoch)
             .count();
-        let due: Vec<PendingWrite> = self.streams.pending_writes.drain(..due_count).collect();
+        let due: Vec<PendingWrite> = self.streams.pending_writes_queue.drain(..due_count).collect();
         let mut result = ApplyResult::default();
 
         for write in due {
@@ -406,7 +405,7 @@ impl Ledger {
                 Err(stranded) => {
                     info!(
                         "dropping pending write {:?} effective at {}: {stranded}",
-                        call.slot(),
+                        call.key(),
                         write.effective_epoch
                     );
                     result.dropped.push(write);
@@ -468,18 +467,18 @@ impl Ledger {
         timelock: ChainEpoch,
     ) -> Result<&PendingWrite> {
         let effective = self.admission_preconditions(&call, epoch, timelock)?;
-        let slot = call.slot();
-        ensure_slot_available(&self.streams, slot)?;
+        let key = call.key();
+        ensure_key_available(&self.streams, key)?;
         // Admission is the only thing that lengthens the queue, so this is the point where we need
         // to do the bounds check.
-        let count = self.streams.pending_writes.len() + 1;
+        let count = self.streams.pending_writes_queue.len() + 1;
         ensure!(
             count <= MAX_PENDING_WRITES,
             "pending write count {count} exceeds maximum {MAX_PENDING_WRITES}"
         );
         // Every method applies due writes before its own work, so nothing here is in the past.
         debug_assert!(
-            self.streams.pending_writes.iter().all(|write| write.effective_epoch >= epoch),
+            self.streams.pending_writes_queue.iter().all(|write| write.effective_epoch >= epoch),
             "admission projects a queue that is entirely ahead of it"
         );
 
@@ -487,20 +486,20 @@ impl Ledger {
         // an invalid schedule, a SetWeightRecords batch is the one admissible repair (2.4.8).
         let (baseline, before) = match self.project(epoch, Baseline::Valid) {
             Ok(before) => (Baseline::Valid, before),
-            Err(_) if slot == Slot::ScheduleWide(PendingWriteOp::SetWeightRecords) => {
+            Err(_) if key == WriteKey::ScheduleWide(PendingWriteOp::SetWeightRecords) => {
                 (Baseline::Repairing, self.project(epoch, Baseline::Repairing)?)
             }
             Err(error) => return Err(error),
         };
 
-        self.streams.pending_writes.push(call.queue_entry(effective)?);
+        self.streams.pending_writes_queue.push(call.queue_entry(effective)?);
         // Stable sorting preserves insertion order among calls effective at the same epoch.
-        self.streams.pending_writes.sort_by_key(|write| write.effective_epoch);
+        self.streams.pending_writes_queue.sort_by_key(|write| write.effective_epoch);
         self.streams_dirty = true;
 
         let after = self.project(epoch, baseline)?;
-        if let Some((_, stranded)) = after.stranded.iter().find(|(occupied, _)| *occupied == slot) {
-            return Err(anyhow::anyhow!("pending call {slot:?} is invalid: {stranded}"));
+        if let Some((_, stranded)) = after.stranded.iter().find(|(occupied, _)| *occupied == key) {
+            return Err(anyhow::anyhow!("pending call {key:?} is invalid: {stranded}"));
         }
         ensure!(
             before.accepted.is_subset(&after.accepted),
@@ -513,18 +512,18 @@ impl Ledger {
 
         Ok(self
             .streams
-            .pending_writes
+            .pending_writes_queue
             .iter()
-            .find(|write| write.slot() == slot)
-            .expect("the admitted call occupies its slot"))
+            .find(|write| write.key() == key)
+            .expect("the admitted call occupies its key"))
     }
 
-    /// Empties one queue slot. Cancelling an empty slot is a no-op.
-    pub(crate) fn cancel(&mut self, slot: Slot) -> Option<PendingWrite> {
-        // Cancellation rewrites the streams block whether or not the slot held a write.
+    /// Removes the write filed under one key. Cancelling an empty key is a no-op.
+    pub(crate) fn cancel(&mut self, key: WriteKey) -> Option<PendingWrite> {
+        // Cancellation rewrites the streams block whether or not the key held a write.
         self.streams_dirty = true;
-        let idx = self.streams.pending_writes.iter().position(|write| write.slot() == slot)?;
-        Some(self.streams.pending_writes.remove(idx))
+        let idx = self.streams.pending_writes_queue.iter().position(|write| write.key() == key)?;
+        Some(self.streams.pending_writes_queue.remove(idx))
     }
 
     /// Replays the queue in effective order on a copy of this ledger, through the same transition
@@ -536,7 +535,7 @@ impl Ledger {
         let mut projected = self.clone();
         let mut projection = Projection::default();
 
-        for write in &self.streams.pending_writes {
+        for write in &self.streams.pending_writes_queue {
             let call = QueuedCall::decode(write)
                 .expect("structure invariants: every queued payload decodes");
             // Validated from the entry's effective epoch, as at application, so a null round at
@@ -545,9 +544,9 @@ impl Ledger {
             match candidate.apply(&call, write.effective_epoch) {
                 Ok(_) => {
                     projected = candidate;
-                    projection.accepted.insert(call.slot());
+                    projection.accepted.insert(call.key());
                 }
-                Err(stranded) => projection.stranded.push((call.slot(), stranded)),
+                Err(stranded) => projection.stranded.push((call.key(), stranded)),
             }
         }
         Ok(projection)
@@ -561,10 +560,10 @@ fn timelock_epoch(current_epoch: ChainEpoch, timelock_epochs: ChainEpoch) -> Res
         .ok_or_else(|| anyhow::anyhow!("timelock epoch overflow"))
 }
 
-fn ensure_slot_available(streams: &StreamsState, slot: Slot) -> Result<()> {
+fn ensure_key_available(streams: &StreamsState, key: WriteKey) -> Result<()> {
     ensure!(
-        !streams.pending_writes.iter().any(|write| write.slot() == slot),
-        "pending slot {slot:?} is occupied"
+        !streams.pending_writes_queue.iter().any(|write| write.key() == key),
+        "pending key {key:?} is occupied"
     );
     Ok(())
 }
@@ -574,7 +573,7 @@ fn ensure_stream_id_available(streams: &StreamsState, id: StreamId) -> Result<()
     ensure!(!streams.has_tombstone(id), "stream ID {id} is tombstoned");
     ensure!(
         !streams
-            .pending_writes
+            .pending_writes_queue
             .iter()
             .any(|write| write.id == Some(id) && write.op == PendingWriteOp::RegisterStream),
         "stream ID {id} has a pending registration"
@@ -582,8 +581,8 @@ fn ensure_stream_id_available(streams: &StreamsState, id: StreamId) -> Result<()
     Ok(())
 }
 
-/// Check the queue according to the structure invariants: ordered, bounded, one write per slot, and
-/// every payload decodable. Everything downstream reads a slot or a payload without re-proving it.
+/// Check the queue according to the structure invariants: ordered, bounded, one write per key, and
+/// every payload decodable. Everything downstream reads a key or a payload without re-proving it.
 pub(super) fn validate_pending_queue(writes: &[PendingWrite]) -> Result<()> {
     ensure!(
         writes.is_sorted_by_key(|write| write.effective_epoch),
@@ -594,10 +593,10 @@ pub(super) fn validate_pending_queue(writes: &[PendingWrite]) -> Result<()> {
         "pending write count {} exceeds maximum {MAX_PENDING_WRITES}",
         writes.len()
     );
-    let mut slots = BTreeSet::new();
+    let mut keys = BTreeSet::new();
     for write in writes {
-        let slot = QueuedCall::decode(write)?.slot();
-        ensure!(slots.insert(slot), "duplicate pending slot {slot:?}");
+        let key = QueuedCall::decode(write)?.key();
+        ensure!(keys.insert(key), "duplicate pending key {key:?}");
     }
     Ok(())
 }

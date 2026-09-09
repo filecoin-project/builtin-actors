@@ -4,16 +4,6 @@
 //! Every reward actor type that persists in its state, starting with the `State` block itself and
 //! the StreamsState block that it references. Reward state mutates every epoch, but StreamsState
 //! mutates much less often so we attempt to manage state churn by using the division.
-//!
-//! FIP-0118 section 2.4.2 defines the current layout as implemented here. It also defines ordering:
-//! "`accrued`, `streams`, and `tombstones` have unique ascending stream IDs; recipient tables have
-//! unique ascending recipient IDs; and `pending_writes` is ordered by effective epoch, preserving
-//! admission order at equal epochs."
-//!
-//! A stream's distribution is one of two kinds (2.4.1). `IMPLICIT` (the `None` arm) stores
-//! nothing and pays the block winner, only the "consensus" stream is implicit. `EXPLICIT` (the
-//! `Some` arm) carries a writer and three wallet-keyed tables. The FIP-0118 migration pins
-//! consensus = 1 and the service stream = 2, but f02 only knows and cares about the kind.
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
@@ -94,7 +84,7 @@ pub struct State {
     /// Cumulative block reward accrued to explicit streams.
     pub total_explicit_minted: TokenAmount,
 
-    /// Current-period accrual for each explicit stream, ordered by stream ID.
+    /// Current-period accrual for each explicit stream, unique and ascending by stream ID.
     pub accrued: Vec<StreamAccrual>,
 
     /// Hold applied to SWA writes. Construction leaves zero; the activation migration sets the
@@ -236,9 +226,9 @@ pub const MAX_TOMBSTONE_ROWS: usize = 256;
 const STREAM_SCOPED_PENDING_OPS: usize = 3;
 /// `SetWeightRecords` and `StepWeightRecords`, which act on the whole schedule.
 const SCHEDULE_WIDE_PENDING_OPS: usize = 2;
-/// Entries in the pending-write queue, which is the slot space of every per-stream operation
-/// across a full stream table plus the two schedule-wide slots. The queue enforces it as a plain
-/// length check rather than deriving it from the slots in use.
+/// Entries in the pending-write queue, which is the key space of every per-stream operation
+/// across a full stream table plus the two schedule-wide keys. The queue enforces it as a plain
+/// length check rather than deriving it from the keys in use.
 pub const MAX_PENDING_WRITES: usize =
     MAX_STREAMS * STREAM_SCOPED_PENDING_OPS + SCHEDULE_WIDE_PENDING_OPS;
 
@@ -252,12 +242,12 @@ pub const MAX_PENDING_WRITES: usize =
 /// tombstone is gone.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct StreamsState {
-    /// Ordered by stream ID.
+    /// Unique, ascending by stream ID.
     pub streams: Vec<Stream>,
-    /// Ordered by stream ID, disjoint from the live streams.
+    /// Unique, ascending by stream ID, disjoint from the live streams.
     pub tombstones: Vec<Tombstone>,
-    /// Ordered by effective epoch; equal epochs retain queue position.
-    pub pending_writes: Vec<PendingWrite>,
+    /// Ascending by effective epoch; equal epochs keep admission order.
+    pub pending_writes_queue: Vec<PendingWrite>,
 }
 
 /// Lookups by stream ID. The tables are bounded, so a linear scan is fine.
@@ -321,9 +311,12 @@ impl StreamsState {
 /// A live stream persisted in `StreamsState`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct Stream {
+    /// Assigned by the activation migration and the SWA; f02 attaches no meaning to particular
+    /// values.
     pub id: StreamId,
     pub weight: WeightRecord,
-    /// None is the implicit consensus distribution; Some is an explicit distribution.
+    /// `None` is implicit: nothing stored, the portion pays the block winner. Only the consensus
+    /// stream is implicit. `Some` is explicit, with a writer and wallet-keyed tables.
     pub distribution: Option<ExplicitDistribution>,
 }
 
@@ -392,11 +385,11 @@ pub struct RecipientAmount {
     pub amount: TokenAmount,
 }
 
-/// A wallet-keyed balance table. Rows ascending by recipient, where none are zero.
+/// A wallet-keyed balance table. Rows unique and ascending by recipient ID, none zero.
 ///
-/// The methods maintain that shape, which is the ordering 2.4.2 requires. `From` and
-/// deserialization take whatever rows they are given, and persisted rows are checked by
-/// `validate_amount_rows`. The encoded wire form is just the bare row array.
+/// The methods maintain that shape. `From` and deserialization take whatever rows they are given,
+/// and persisted rows are checked by `validate_amount_rows`. The encoded wire form is just the
+/// bare row array.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct RecipientTable(Vec<RecipientAmount>);
@@ -476,7 +469,9 @@ pub struct Tombstone {
     pub payable: RecipientTable,
 }
 
-/// A deferred SWA operation persisted in `StreamsState`.
+/// An SWA change held back by the timelock. It is pending until `effective_epoch` and due from
+/// then on. The next stream call, `AwardBlockReward` included, applies every due write before its
+/// own work.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct PendingWrite {
     /// Per-stream target, or `None` for a schedule-wide call.
@@ -484,6 +479,7 @@ pub struct PendingWrite {
     pub op: PendingWriteOp,
     /// Operation-specific CBOR tuple.
     pub payload: RawBytes,
+    /// Queue epoch plus the SWA timelock, or the activation epoch for `RegisterStream`.
     pub effective_epoch: ChainEpoch,
 }
 

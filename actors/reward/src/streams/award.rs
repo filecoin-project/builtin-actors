@@ -49,8 +49,9 @@
 //! ```
 //!
 //! Every award is one of those two outcomes: `no_award`, which pays the gas reward alone and
-//! leaves the state as it stands, or the full split above. The due writes apply first and only the
-//! second outcome stores a new ledger, so `no_award` leaves them queued for the next award.
+//! leaves the state as it stands, or the full split above. The due writes (timelock elapsed) apply
+//! first and only the second outcome stores a new ledger, so `no_award` leaves them queued for the
+//! next award.
 //! [`plan_award`] chooses between them, in the order written above, and
 //! `Actor::award_block_reward` applies what it chose and performs the sends. The pieces it calls:
 //! - [`Ledger::apply_due`] applies the due writes and reports their dust
@@ -72,8 +73,6 @@ use super::queue::ApplyResult;
 use crate::state::{DENOM, StreamAccrual, StreamId, StreamsState};
 
 /// One block reward split into its destinations.
-///
-/// This crosses Rust call boundaries only so doesn't need to be encodable.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Allocation {
     pub miner: TokenAmount,
@@ -83,8 +82,6 @@ pub(crate) struct Allocation {
 }
 
 /// A block reward to mint, and everything the award owes once it is minted.
-///
-/// This crosses Rust call boundaries only so doesn't need to be encodable.
 #[derive(Debug)]
 pub(crate) struct FullAward {
     pub block_reward: TokenAmount,

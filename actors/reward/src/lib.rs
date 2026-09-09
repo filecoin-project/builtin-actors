@@ -182,12 +182,12 @@ impl Actor {
         emit::write_queued(rt, &queued)
     }
 
-    /// Applies due writes, then removes the pending write in the named queue slot.
+    /// Applies due writes, then removes the pending write in the named queue key.
     fn cancel_pending(rt: &impl Runtime, params: CancelPendingParams) -> Result<(), ActorError> {
         validate_swa(rt)?;
-        let slot = Slot::for_cancel(params.id, params.op)
+        let key = WriteKey::for_cancel(params.id, params.op)
             .map_err(|e| illegal_argument(e, "invalid cancellation target"))?;
-        let (applied, cancelled) = run_mutation(rt, |ledger, _, _| Ok(ledger.cancel(slot)))?;
+        let (applied, cancelled) = run_mutation(rt, |ledger, _, _| Ok(ledger.cancel(key)))?;
         settle_applied(rt, &applied)?;
         if let Some(write) = cancelled {
             emit::write_cancelled(rt, &write)?;
@@ -542,7 +542,8 @@ fn illegal_argument(error: anyhow::Error, context: &'static str) -> ActorError {
 }
 
 /// Called by every explicit method because they do the same thing: load the ledger, apply the
-/// writes that have come due, do the method's own work, and store what it leaves.
+/// pending writes whose timelock has elapsed (the due writes), do the method's own work, and
+/// store what it leaves.
 ///
 /// The transaction is the atomicity boundary, so a rejection from `f` discards the whole thing,
 /// due writes included. The epochs `f` receives are the current one and the SWA timelock.

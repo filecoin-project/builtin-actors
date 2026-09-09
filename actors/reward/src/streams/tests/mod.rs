@@ -62,7 +62,7 @@ fn base_state() -> (StreamsState, Vec<StreamAccrual>) {
                 stream(2, pct(20), Some(explicit(200, shares(&[(101, DENOM)])))),
             ],
             tombstones: Vec::new(),
-            pending_writes: Vec::new(),
+            pending_writes_queue: Vec::new(),
         },
         vec![StreamAccrual { id: 2, amount: TokenAmount::zero() }],
     )
@@ -266,15 +266,15 @@ fn apply_due_writes(
     result
 }
 
-/// The cancellation path as the actor drives it: resolve the slot, then empty it.
+/// The cancellation path as the actor drives it: resolve the key, then empty it.
 fn cancel(
     streams: &mut StreamsState,
     id: Option<StreamId>,
     op: PendingWriteOp,
 ) -> anyhow::Result<Option<PendingWrite>> {
-    let slot = Slot::for_cancel(id, op)?;
+    let key = WriteKey::for_cancel(id, op)?;
     let mut ledger = ledger(streams, &[]);
-    let removed = ledger.cancel(slot);
+    let removed = ledger.cancel(key);
     *streams = ledger.streams;
     Ok(removed)
 }

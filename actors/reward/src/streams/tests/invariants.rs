@@ -49,7 +49,7 @@ fn rejects_non_id_addresses_in_persisted_state_and_pending_payloads() {
     assert_invalid(streams);
 
     let mut streams = base.clone();
-    streams.pending_writes = vec![PendingWrite {
+    streams.pending_writes_queue = vec![PendingWrite {
         id: Some(3),
         op: PendingWriteOp::RegisterStream,
         payload: RawBytes::serialize(&RegisterStreamPayload {
@@ -65,7 +65,7 @@ fn rejects_non_id_addresses_in_persisted_state_and_pending_payloads() {
     assert_invalid(streams);
 
     let mut streams = base;
-    streams.pending_writes = vec![PendingWrite {
+    streams.pending_writes_queue = vec![PendingWrite {
         id: Some(2),
         op: PendingWriteOp::SetDistribution,
         payload: RawBytes::serialize(&SetDistributionPayload { writer: delegated_address() })
@@ -103,7 +103,7 @@ fn structural_validation_rejects_unordered_stored_shares() {
 
     // The same rule gates the initial map carried by a pending registration.
     let streams = StreamsState {
-        pending_writes: vec![PendingWrite {
+        pending_writes_queue: vec![PendingWrite {
             id: Some(3),
             op: PendingWriteOp::RegisterStream,
             payload: RawBytes::serialize(&RegisterStreamPayload {

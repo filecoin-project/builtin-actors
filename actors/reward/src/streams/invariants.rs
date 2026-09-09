@@ -43,7 +43,7 @@ use crate::state::{
 /// The structure invariants: the shape of the streams block, independent of accounting and
 /// weights.
 pub(crate) fn structure(streams: &StreamsState) -> Result<()> {
-    validate_pending_queue(&streams.pending_writes)?;
+    validate_pending_queue(&streams.pending_writes_queue)?;
     stream_table(&streams.streams)?;
     ensure!(streams.tombstones.is_sorted_by(|a, b| a.id < b.id), "tombstones are not ordered");
 
@@ -56,7 +56,7 @@ pub(crate) fn structure(streams: &StreamsState) -> Result<()> {
         ensure!(!tombstone.payable.is_empty(), "tombstone {} is empty", tombstone.id);
         validate_amount_rows(&tombstone.payable, "tombstone payable")?;
     }
-    for write in &streams.pending_writes {
+    for write in &streams.pending_writes_queue {
         if write.op == PendingWriteOp::RegisterStream {
             // Pending-queue shape validation requires IDs on every per-stream operation.
             let id = write.id.expect("validated per-stream pending call has an ID");
@@ -187,7 +187,7 @@ pub(crate) fn validate_streams_state(
 /// pending removal.
 pub(super) fn validate_tombstone_capacity(streams: &StreamsState) -> Result<()> {
     let mut rows: usize = streams.tombstones.iter().map(|tombstone| tombstone.payable.len()).sum();
-    for write in &streams.pending_writes {
+    for write in &streams.pending_writes_queue {
         if write.op != PendingWriteOp::RemoveStream {
             continue;
         }

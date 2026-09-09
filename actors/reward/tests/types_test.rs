@@ -210,7 +210,7 @@ mod serialization {
                 }]
                 .into(),
             }],
-            pending_writes: vec![PendingWrite {
+            pending_writes_queue: vec![PendingWrite {
                 id: Some(4),
                 op: PendingWriteOp::RegisterStream,
                 payload: RawBytes::new(vec![0x81, 0x01]),

@@ -116,7 +116,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     let summary = StateSummary {
         stream_count: streams_state.streams.len(),
         tombstone_count: streams_state.tombstones.len(),
-        pending_write_count: streams_state.pending_writes.len(),
+        pending_write_count: streams_state.pending_writes_queue.len(),
     };
 
     acc.require(
@@ -150,16 +150,16 @@ pub fn check_state_invariants<BS: Blockstore>(
         ),
     );
 
-    let mut pending_slots = BTreeSet::new();
-    for write in &streams_state.pending_writes {
+    let mut pending_keys = BTreeSet::new();
+    for write in &streams_state.pending_writes_queue {
         acc.require(
-            pending_slots.insert((write.id, write.op)),
-            format!("duplicate pending slot ({:?}, {:?})", write.id, write.op),
+            pending_keys.insert((write.id, write.op)),
+            format!("duplicate pending key ({:?}, {:?})", write.id, write.op),
         );
     }
     acc.require(
         streams_state
-            .pending_writes
+            .pending_writes_queue
             .windows(2)
             .all(|writes| writes[0].effective_epoch <= writes[1].effective_epoch),
         "pending writes are not ordered by effective epoch",

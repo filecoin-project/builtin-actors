@@ -146,7 +146,7 @@ pub fn reward_f02_award_and_claim(v: &dyn VM) {
     assert_eq!(burn, state.total_burn_minted);
     assert_eq!(service_reward, state.total_explicit_minted);
     assert_eq!(service_reward, state.accrued[0].amount);
-    assert!(streams.pending_writes.is_empty());
+    assert!(streams.pending_writes_queue.is_empty());
     assert_invariants(v, &Policy::default(), None);
 
     let removal = PendingWrite {
@@ -295,7 +295,7 @@ pub fn reward_f02_queued_apply_and_drop(v: &dyn VM) {
     assert_eq!(vec![write_event("write-cancelled", &registration, false)], take_last_events(v));
 
     let (_, queued) = load_reward_state(v);
-    assert_eq!(vec![stranded.clone(), distribution_write.clone()], queued.pending_writes);
+    assert_eq!(vec![stranded.clone(), distribution_write.clone()], queued.pending_writes_queue);
 
     v.set_epoch(2);
     mutate_state(v, &REWARD_ACTOR_ADDR, |state: &mut RewardState| state.epoch = 2);
@@ -319,7 +319,7 @@ pub fn reward_f02_queued_apply_and_drop(v: &dyn VM) {
     );
 
     let (state, streams) = load_reward_state(v);
-    assert!(streams.pending_writes.is_empty());
+    assert!(streams.pending_writes_queue.is_empty());
     assert_eq!(next_writer, streams.streams[1].distribution.as_ref().unwrap().writer);
     assert_eq!(TokenAmount::zero(), state.total_minted_reward);
     assert_eq!(TokenAmount::zero(), state.total_burn_minted);

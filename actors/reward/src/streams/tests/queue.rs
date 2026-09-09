@@ -10,7 +10,7 @@ use crate::streams::invariants::structure;
 use crate::streams::weights::compute_weight;
 
 fn next_epoch(streams: &StreamsState) -> ChainEpoch {
-    streams.pending_writes.first().map_or(EPOCH_UNDEFINED, |write| write.effective_epoch)
+    streams.pending_writes_queue.first().map_or(EPOCH_UNDEFINED, |write| write.effective_epoch)
 }
 
 /// An LCG whose low bits cycle short, so callers take the high bits of the state.
@@ -339,7 +339,7 @@ fn rejects_a_new_call_that_strands_an_existing_call() {
     )
     .unwrap_err();
     assert!(error.to_string().contains("invalidates an existing pending call"));
-    assert_eq!(1, streams.pending_writes.len());
+    assert_eq!(1, streams.pending_writes_queue.len());
 }
 
 #[test]
@@ -405,7 +405,7 @@ fn rejects_a_schedule_that_depends_on_a_later_call() {
     .unwrap_err();
 
     assert!(error.to_string().contains("exceed DENOM"));
-    assert_eq!(1, streams.pending_writes.len());
+    assert_eq!(1, streams.pending_writes_queue.len());
     assert_eq!(20, next_epoch(&streams));
 }
 
@@ -502,7 +502,7 @@ fn rejects_single_epoch_overlap_on_either_side_of_a_clamp_crossing() {
             "{}: {error}",
             case.name
         );
-        assert!(streams.pending_writes.is_empty(), "{}", case.name);
+        assert!(streams.pending_writes_queue.is_empty(), "{}", case.name);
     }
 }
 
@@ -528,9 +528,10 @@ fn queues_batches_cancels_slots_and_tracks_queue_head() {
         .effective_epoch
     );
     assert_eq!(17, next_epoch(&streams));
-    assert_eq!(1, streams.pending_writes.len());
-    assert_eq!(None, streams.pending_writes[0].id);
-    let payload: WeightRecordsPayload = streams.pending_writes[0].payload.deserialize().unwrap();
+    assert_eq!(1, streams.pending_writes_queue.len());
+    assert_eq!(None, streams.pending_writes_queue[0].id);
+    let payload: WeightRecordsPayload =
+        streams.pending_writes_queue[0].payload.deserialize().unwrap();
     assert_eq!(updates, payload.updates.as_slice());
     assert!(
         queue_weight_records(
@@ -632,7 +633,7 @@ fn apply_and_cancel_surfaces_calls_dropped_before_cancellation() {
     assert_eq!(1, result.dropped.len());
     assert_eq!(PendingWriteOp::SetWeightRecords, result.dropped[0].op);
     assert!(removed.is_none());
-    assert!(streams.pending_writes.is_empty());
+    assert!(streams.pending_writes_queue.is_empty());
 }
 
 #[test]
@@ -648,7 +649,8 @@ fn enforces_registration_bounds_and_id_availability() {
             .unwrap()
             .effective_epoch
     );
-    let payload: RegisterStreamPayload = streams.pending_writes[0].payload.deserialize().unwrap();
+    let payload: RegisterStreamPayload =
+        streams.pending_writes_queue[0].payload.deserialize().unwrap();
     assert_eq!(
         vec![Address::new_id(102), Address::new_id(103)],
         payload.distribution.unwrap().shares.iter().map(|row| row.recipient).collect::<Vec<_>>()
@@ -774,13 +776,13 @@ fn bounds_the_pending_queue() {
             effective_epoch: idx as i64 + 1,
         })
         .collect::<Vec<_>>();
-    let streams = StreamsState { pending_writes: writes, ..Default::default() };
+    let streams = StreamsState { pending_writes_queue: writes, ..Default::default() };
 
     let error = structure(&streams).unwrap_err();
     assert!(error.to_string().contains("pending write count"), "{error}");
 }
 
-// Admission is where the queue grows, and the slot, ordering and payload guards around it leave
+// Admission is where the queue grows, and the key, ordering and payload guards around it leave
 // only its length for this one to hold.
 #[test]
 fn admission_bounds_the_pending_queue() {
@@ -802,7 +804,7 @@ fn admission_bounds_the_pending_queue() {
     for id in 3..=10 {
         register(&mut streams, id);
     }
-    // Each removal frees a table slot for one more registration, and reserves 64 tombstone rows.
+    // Each removal frees a table key for one more registration, and reserves 64 tombstone rows.
     for (idx, id) in (3..=6_u64).enumerate() {
         queue_set_distribution(&mut streams, &accruals, 0, 1, id, Address::new_id(300 + id))
             .unwrap();
@@ -824,10 +826,10 @@ fn admission_bounds_the_pending_queue() {
         queue_set_distribution(&mut streams, &accruals, 0, 1, id, Address::new_id(300 + id))
             .unwrap();
     }
-    assert_eq!(MAX_PENDING_WRITES, streams.pending_writes.len());
+    assert_eq!(MAX_PENDING_WRITES, streams.pending_writes_queue.len());
     structure(&streams).unwrap();
 
-    // Stream 11 is live with its writer slot free, so only the bound stands in the way.
+    // Stream 11 is live with its writer key free, so only the bound stands in the way.
     let error = queue_set_distribution(&mut streams, &accruals, 0, 1, 11, Address::new_id(311))
         .unwrap_err();
     assert_eq!(
@@ -837,13 +839,13 @@ fn admission_bounds_the_pending_queue() {
         ),
         error.to_string()
     );
-    assert_eq!(MAX_PENDING_WRITES, streams.pending_writes.len());
+    assert_eq!(MAX_PENDING_WRITES, streams.pending_writes_queue.len());
 }
 
 #[test]
 fn structure_rejects_unordered_pending_writes() {
     let (mut streams, _) = base_state();
-    streams.pending_writes = vec![
+    streams.pending_writes_queue = vec![
         PendingWrite {
             id: Some(1),
             op: PendingWriteOp::RegisterStream,
@@ -865,7 +867,7 @@ fn structure_rejects_unordered_pending_writes() {
 #[test]
 fn structure_rejects_an_undecodable_pending_payload() {
     let (mut streams, _) = base_state();
-    streams.pending_writes.push(PendingWrite {
+    streams.pending_writes_queue.push(PendingWrite {
         id: None,
         op: PendingWriteOp::SetWeightRecords,
         payload: fvm_ipld_encoding::RawBytes::new(vec![0xff]),
@@ -1043,7 +1045,7 @@ fn drops_two_dependents_stranded_by_one_cancelled_registration() {
         vec![PendingWriteOp::SetWeightRecords, PendingWriteOp::SetDistribution],
         result.dropped.iter().map(|write| write.op).collect::<Vec<_>>()
     );
-    assert!(streams.pending_writes.is_empty());
+    assert!(streams.pending_writes_queue.is_empty());
     assert_eq!(vec![1, 2], streams.streams.iter().map(|stream| stream.id).collect::<Vec<_>>());
 }
 
@@ -1351,11 +1353,11 @@ fn projects_due_writes_without_mutating_stored_state() {
     let mut projected = streams.clone();
     let result = apply_due_writes(&mut projected, &mut accruals.clone(), 10);
     assert_eq!(pct(70), projected.streams[0].weight.v_start);
-    assert!(projected.pending_writes.is_empty());
+    assert!(projected.pending_writes_queue.is_empty());
     assert_eq!(TokenAmount::zero(), result.fold_dust);
 
     assert_eq!(pct(60), streams.streams[0].weight.v_start);
-    assert_eq!(1, streams.pending_writes.len());
+    assert_eq!(1, streams.pending_writes_queue.len());
     assert_eq!(10, next_epoch(&streams));
 }
 
@@ -1543,7 +1545,7 @@ fn randomized_conservation_covers_the_full_operation_mix_and_drops() {
             }
             8 => {
                 let cancellable: Vec<_> = streams
-                    .pending_writes
+                    .pending_writes_queue
                     .iter()
                     .filter(|write| write.op != PendingWriteOp::StepWeightRecords)
                     .map(|write| (write.id, write.op))

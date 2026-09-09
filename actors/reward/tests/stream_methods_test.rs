@@ -421,7 +421,7 @@ fn mutations_reject_inconsistent_accounting_without_a_due_write() {
     let state: State = rt.get_state();
     assert_eq!(before.streams_root, state.streams_root);
     assert_eq!(before.accrued, state.accrued);
-    assert!(load_streams(&rt).pending_writes.is_empty());
+    assert!(load_streams(&rt).pending_writes_queue.is_empty());
 }
 
 #[test]
@@ -437,7 +437,7 @@ fn queue_rejection_has_a_deterministic_exit_code() {
         ),
     );
     rt.verify();
-    assert!(load_streams(&rt).pending_writes.is_empty());
+    assert!(load_streams(&rt).pending_writes_queue.is_empty());
 }
 
 #[test]
@@ -489,7 +489,7 @@ fn queues_cancels_and_applies_weight_writes() {
     expect_write_event(&rt, "write-queued", &queued, true);
     call(&rt, Method::SetWeightRecordsExported, &params).unwrap();
     rt.verify();
-    assert_eq!(1, load_streams(&rt).pending_writes.len());
+    assert_eq!(1, load_streams(&rt).pending_writes_queue.len());
 
     rt.epoch.replace(1);
     rt.expect_validate_caller_addr(vec![swa_actor()]);
@@ -501,7 +501,7 @@ fn queues_cancels_and_applies_weight_writes() {
     )
     .unwrap();
     rt.verify();
-    assert!(load_streams(&rt).pending_writes.is_empty());
+    assert!(load_streams(&rt).pending_writes_queue.is_empty());
 
     let queued = PendingWrite { effective_epoch: 3, ..queued };
     rt.expect_validate_caller_addr(vec![swa_actor()]);
@@ -522,7 +522,7 @@ fn queues_cancels_and_applies_weight_writes() {
     let streams = load_streams(&rt);
     assert_eq!(pct(55), streams.streams[0].weight.v_start);
     assert_eq!(pct(25), streams.streams[1].weight.v_start);
-    assert!(streams.pending_writes.is_empty());
+    assert!(streams.pending_writes_queue.is_empty());
 }
 
 #[test]
@@ -648,7 +648,7 @@ fn replace_address_reads_the_writer_a_due_change_installs() {
         .unwrap(),
         effective_epoch: 5,
     };
-    streams.pending_writes.push(write.clone());
+    streams.pending_writes_queue.push(write.clone());
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     rt.replace_state(&state);
     rt.epoch.replace(10);
@@ -669,7 +669,7 @@ fn replace_address_reads_the_writer_a_due_change_installs() {
         call(&rt, Method::ReplaceAddressExported, &params),
     );
     rt.verify();
-    assert_eq!(1, load_streams(&rt).pending_writes.len());
+    assert_eq!(1, load_streams(&rt).pending_writes_queue.len());
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(RECIPIENT_B));
     rt.expect_validate_caller_any();
@@ -678,7 +678,7 @@ fn replace_address_reads_the_writer_a_due_change_installs() {
     rt.verify();
 
     let streams = load_streams(&rt);
-    assert!(streams.pending_writes.is_empty());
+    assert!(streams.pending_writes_queue.is_empty());
     let distribution = streams.streams[1].distribution.clone().unwrap();
     assert_eq!(Address::new_id(RECIPIENT_B), distribution.writer);
     assert_eq!(
@@ -1036,7 +1036,7 @@ fn cancellation_strands_a_call_and_emits_drop_on_next_mutation() {
     expect_write_event(&rt, "write-dropped", &stranded, false);
     call(&rt, Method::ClaimExported, &ClaimParams { id: 999, wallets: Vec::new() }).unwrap();
     rt.verify();
-    assert!(load_streams(&rt).pending_writes.is_empty());
+    assert!(load_streams(&rt).pending_writes_queue.is_empty());
 }
 
 #[test]
@@ -1221,7 +1221,7 @@ fn award_reads_due_writes_from_queue_head_after_null_epochs() {
             .unwrap(),
         effective_epoch: 5,
     };
-    streams.pending_writes = vec![applied.clone(), dropped.clone()];
+    streams.pending_writes_queue = vec![applied.clone(), dropped.clone()];
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     state.this_epoch_reward = TokenAmount::from_atto(50);
     rt.replace_state(&state);
@@ -1239,7 +1239,7 @@ fn award_reads_due_writes_from_queue_head_after_null_epochs() {
 
     let state: State = rt.get_state();
     let streams = load_streams(&rt);
-    assert!(streams.pending_writes.is_empty());
+    assert!(streams.pending_writes_queue.is_empty());
     assert_eq!(pct(50), streams.streams[0].weight.v_start);
     assert_eq!(pct(30), streams.streams[1].weight.v_start);
     assert_eq!(TokenAmount::from_atto(10), state.total_minted_reward);
@@ -1262,7 +1262,7 @@ fn mutation_applies_due_write_from_queue_head() {
         .unwrap(),
         effective_epoch: 5,
     };
-    streams.pending_writes.push(write.clone());
+    streams.pending_writes_queue.push(write.clone());
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     rt.replace_state(&state);
     rt.epoch.replace(10);
@@ -1274,7 +1274,7 @@ fn mutation_applies_due_write_from_queue_head() {
     rt.verify();
 
     let streams = load_streams(&rt);
-    assert!(streams.pending_writes.is_empty());
+    assert!(streams.pending_writes_queue.is_empty());
     assert_eq!(pct(50), streams.streams[0].weight.v_start);
 }
 
@@ -1623,7 +1623,7 @@ fn award_burns_transition_dust_without_counting_it_as_reward_residual() {
         payload: RawBytes::new(vec![0x80]),
         effective_epoch: 5,
     };
-    streams.pending_writes = vec![removal.clone()];
+    streams.pending_writes_queue = vec![removal.clone()];
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     state.this_epoch_reward = TokenAmount::from_atto(25);
     state.total_minted_reward = TokenAmount::from_atto(5);
@@ -1692,7 +1692,7 @@ fn award_pays_only_gas_until_invalid_explicit_accounting_is_repaired() {
         .unwrap(),
         effective_epoch: 0,
     };
-    streams.pending_writes = vec![pending.clone()];
+    streams.pending_writes_queue = vec![pending.clone()];
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     state.this_epoch_reward = TokenAmount::from_atto(25);
     state.total_minted_reward = TokenAmount::from_atto(40);
@@ -1716,7 +1716,7 @@ fn award_pays_only_gas_until_invalid_explicit_accounting_is_repaired() {
     assert_eq!(before.total_explicit_minted, state.total_explicit_minted);
     assert_eq!(before.accrued, state.accrued);
     // The projection is discarded, so the due write is still queued for the next award.
-    assert_eq!(vec![pending.clone()], load_streams(&rt).pending_writes);
+    assert_eq!(vec![pending.clone()], load_streams(&rt).pending_writes_queue);
     assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
 
     let mut repaired = state;
@@ -1734,7 +1734,7 @@ fn award_pays_only_gas_until_invalid_explicit_accounting_is_repaired() {
     assert_eq!(TokenAmount::from_atto(3), state.total_burn_minted);
     assert_eq!(TokenAmount::from_atto(11), state.total_explicit_minted);
     assert_eq!(TokenAmount::from_atto(11), state.accrued[0].amount);
-    assert!(load_streams(&rt).pending_writes.is_empty());
+    assert!(load_streams(&rt).pending_writes_queue.is_empty());
 }
 
 #[test]
@@ -1934,7 +1934,7 @@ fn award_commits_when_the_residual_burn_fails() {
         .unwrap(),
         effective_epoch: 5,
     };
-    streams.pending_writes = vec![applied.clone()];
+    streams.pending_writes_queue = vec![applied.clone()];
     state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
     state.this_epoch_reward = TokenAmount::from_atto(100);
     rt.replace_state(&state);
@@ -1949,7 +1949,7 @@ fn award_commits_when_the_residual_burn_fails() {
 
     let state: State = rt.get_state();
     let streams = load_streams(&rt);
-    assert!(streams.pending_writes.is_empty());
+    assert!(streams.pending_writes_queue.is_empty());
     assert_eq!(pct(50), streams.streams[0].weight.v_start);
     assert_eq!(pct(30), streams.streams[1].weight.v_start);
     assert_eq!(TokenAmount::from_atto(20), state.total_minted_reward);

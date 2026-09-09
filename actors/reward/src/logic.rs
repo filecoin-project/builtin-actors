@@ -180,6 +180,10 @@ mod tests {
     fn test_baseline_reward() {
         let step = BigInt::from(5000_i64).shl(u128::BITS) - BigInt::from(77_777_777_777_i64); // offset from full integers
         let delta = BigInt::from(1_i64).shl(u128::BITS) - BigInt::from(33_333_333_333_i64); // offset from full integers
+        // Original golden vectors were calculated based on a baseline_total of 770M FIL, during
+        // FIP-0118 we moved baseline_total out of state and into a constant based on the actual
+        // mainnet value (BASELINE_TOTAL) which became fixed with actors-v2/NV4. We preserve the
+        // original vectors here by testing compute_reward() with the legacy value.
         let legacy_baseline_total = TokenAmount::from_whole(770_000_000);
 
         let mut prev_theta = BigInt::from(0i64);
@@ -218,8 +222,7 @@ mod tests {
             theta += &step;
         }
 
-        // These original Go vectors use the nominal 330M/770M allocations. Production uses the
-        // mainnet value captured after the actors-v2/NV4 baseline migration; sampled below.
+        // These original specs-actors vectors use the nominal 330M/770M allocations. See above.
         let filename = "testdata/TestBaselineReward.golden";
         let golden_contents =
             fs::read_to_string(filename).expect("Something went wrong reading the file");
