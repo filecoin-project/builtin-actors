@@ -298,8 +298,6 @@ pub fn create_miner_deposit_for_test(vm: &dyn VM) -> TokenAmount {
         &reward_state.this_epoch_reward_smoothed,
         &power_state.this_epoch_qa_power_smoothed,
         &vm.circulating_supply(),
-        vm.epoch() - power_state.ramp_start_epoch,
-        power_state.ramp_duration_epochs,
     )
 }
 
