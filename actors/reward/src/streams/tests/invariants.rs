@@ -155,3 +155,40 @@ fn accounting_rejects_a_missing_accrual_row() {
     let error = accounting(&streams, &[]).unwrap_err();
     assert_eq!("explicit-stream accrual IDs do not match live explicit streams", error.to_string());
 }
+
+// The planted fault is the probe: `structure` rejects it and `accounting` accepts it, so an `Ok`
+// from `validate_changes` proves `structure` did not run and the tombstone error proves it did.
+// The test below is the other half, an accrual fault caught when only the accrual rows moved.
+#[test]
+fn validation_only_covers_changes() {
+    let (mut streams, accruals) = base_state();
+    // Plant a bad entry: empty tombstone is a `structure` fault, but `accounting`-only checks won't
+    // catch this.
+    streams.tombstones.push(Tombstone { id: 3, payable: RecipientTable::default() });
+    assert!(structure(&streams).is_err()); // caught it
+    accounting(&streams, &accruals).unwrap(); // passes
+
+    let st = State { accrued: accruals.clone(), ..Default::default() };
+    let mut ledger = ledger(&streams, &accruals);
+    ledger.validate_changes(&st).unwrap(); // nothing changed, no invariants run
+
+    // Trigger an `accounting` (only) check by modifying an accrual row.
+    ledger.accrued[0].amount = TokenAmount::from_atto(1);
+    ledger.validate_changes(&st).unwrap(); // only accounting invariants run, pass
+
+    // The streams block moved so `structure` runs too.
+    ledger.streams_dirty = true;
+    let error = ledger.validate_changes(&st).unwrap_err();
+    assert_eq!("tombstone 3 is empty", error.to_string());
+}
+
+#[test]
+fn accrual_rows_are_checked_against_their_own_streams() {
+    let (streams, accruals) = base_state();
+    let st = State { accrued: accruals.clone(), ..Default::default() };
+    let mut ledger = ledger(&streams, &accruals);
+    ledger.accrued.push(StreamAccrual { id: 9, amount: TokenAmount::zero() });
+
+    let error = ledger.validate_changes(&st).unwrap_err();
+    assert_eq!("explicit-stream accrual IDs do not match live explicit streams", error.to_string());
+}

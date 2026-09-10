@@ -396,6 +396,15 @@ impl Actor {
                 return Ok(no_award(&params.gas_reward));
             };
 
+            if let Err(error) = ledger.validate_changes(st) {
+                error!(
+                    "award at epoch {} breaks the stream invariants: {}; paying gas reward only",
+                    rt.curr_epoch(),
+                    error
+                );
+                return Ok(no_award(&params.gas_reward));
+            }
+
             let FullAward { block_reward, allocation, applied } = award;
             ledger.store(rt, st)?;
             st.total_minted_reward += &block_reward;
@@ -555,6 +564,9 @@ fn run_mutation<T>(
         let mut ledger = Ledger::load(rt, st)?;
         let applied = ledger.apply_due(rt.curr_epoch());
         let value = f(&mut ledger, rt.curr_epoch(), st.swa_timelock_epochs)?;
+        ledger.validate_changes(st).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "mutation breaks the stream invariants")
+        })?;
         ledger.store(rt, st)?;
         Ok((applied, value))
     })
@@ -615,3 +627,6 @@ impl ActorCode for Actor {
         ClaimExported => claim,
     }
 }
+
+#[cfg(test)]
+mod tests;

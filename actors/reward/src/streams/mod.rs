@@ -29,10 +29,11 @@ pub(crate) use self::queue::{ApplyResult, QueuedCall, WriteKey};
 
 /// Stream state that has passed the structure and accounting invariants.
 ///
-/// Construction is the only place either invariant runs, and it is the only way to obtain one, so
-/// an operation cannot be handed state it needs to re-check. The schedule invariants are
-/// deliberately not checked: claims, cancellation and `SetShares` stay usable while the weight
-/// schedule is invalid (FIP-0118 2.4.8); the schedule invariants are checked separately.
+/// Construction runs both checks so no need for a upstream re-check.
+/// [`Ledger::validate_changes`] runs them once more over any changes made, so a mutation that would
+/// have stored a fault causes a fail back to to the causal operation. The schedule invariants
+/// don't need to be checked because claims, cancellation and `SetShares` stay usable while the
+/// weight schedule is invalid; these are checked separately.
 ///
 /// The accrual rows are part of the ledger even though they persist in the state root rather than
 /// the streams block, because every liability the block describes is measured against them.
@@ -88,6 +89,29 @@ impl Ledger {
         Ok(Ledger { streams, accrued, streams_dirty: false })
     }
 
+    /// Checks the invariants over any changes. We do the full set when the streams block is dirty
+    /// and only the `accounting` checks when just the accrual rows were touched.
+    ///
+    /// `st` is used to detect whether the accrual rows are dirty.
+    pub(crate) fn validate_changes(&self, st: &State) -> Result<()> {
+        // --- Test builds only
+        // A test can arm the fault to make one validation fail. See `arm_award_fault`.
+        #[cfg(test)]
+        if AWARD_FAULT.with(|armed| armed.replace(false)) {
+            anyhow::bail!("test fault armed");
+        }
+        // ---
+
+        let accrued_changed = st.accrued != self.accrued;
+        if self.streams_dirty {
+            invariants::structure(&self.streams)?;
+        }
+        if self.streams_dirty || accrued_changed {
+            invariants::accounting(&self.streams, &self.accrued)?;
+        }
+        Ok(())
+    }
+
     /// Writes the accrual rows, and the streams block when this ledger has touched it.
     pub(crate) fn store(&self, rt: &impl Runtime, st: &mut State) -> Result<(), ActorError> {
         st.accrued = self.accrued.clone();
@@ -138,6 +162,27 @@ impl Ledger {
     fn take_accrual(&mut self, id: StreamId) -> Option<TokenAmount> {
         let idx = self.accrued.iter().position(|row| row.id == id)?;
         Some(self.accrued.remove(idx).amount)
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Armed by the test that needs a planned award to fail validation.
+    /// Consumed by the next `validate_changes`.
+    static AWARD_FAULT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+impl Ledger {
+    /// Adds an accrual row not belonging to a real stream, this should be rejected by accounting
+    /// invariants.
+    pub(crate) fn corrupt(&mut self) {
+        self.accrued.push(StreamAccrual { id: StreamId::MAX, amount: TokenAmount::zero() });
+    }
+
+    /// Makes the next `validate_changes` fail.
+    pub(crate) fn arm_award_fault() {
+        AWARD_FAULT.with(|armed| armed.set(true));
     }
 }
 

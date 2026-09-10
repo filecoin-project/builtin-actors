@@ -17,13 +17,14 @@
 //! | award | gas only | gas only | gas only |
 //! | invariant checker | reported | reported | reported |
 //!
-//! Each group is checked once, where it's needed. [`structure`] and [`accounting`] run when a
-//! [`Ledger`](super::Ledger) is built, and building one is the only way an operation gets its
-//! state, so nothing past that point checks them again. [`schedule`] is deliberately not part
-//! of that: claims, cancellation and `SetShares` have to keep working while the schedule is
-//! broken (FIP-0118 2.4.8), so the queue checks it from each write's effective epoch and
-//! [`schedule_at`] checks it at the award's epoch. [`validate_streams_state`] runs all three and
-//! is what `testing.rs` reports from.
+//! Each group is checked where it's needed. [`structure`] and [`accounting`] run when a
+//! [`Ledger`](super::Ledger) is built (the only way to get the state);
+//! [`Ledger::validate_changes`](super::Ledger::validate_changes) runs them over whatever the
+//! operation changed so a fault is caught before a write.
+//! [`schedule`] is isolated because claims, cancellation and `SetShares` have to keep working
+//! while the schedule is broken, so the queue checks it from each write's effective epoch and
+//! [`schedule_at`] checks it at the award's epoch.
+//! [`validate_streams_state`] runs all three; this is what `testing.rs` reports from.
 
 use std::collections::BTreeSet;
 

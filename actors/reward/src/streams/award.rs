@@ -40,6 +40,8 @@
 //!             total_explicit_minted += accrue
 //!             burn += portion - accrue
 //!     burn += BR - allocated
+//!     if the stream and accrual state the split leaves is invalid:
+//!         no_award()
 //!     send(f099, burn + fold_dust); total_burn_minted += burn
 //!     total_minted_reward += BR
 //!     pay miner_reward + gas_reward to winning miner; penalties as today
@@ -53,7 +55,8 @@
 //! first and only the second outcome stores a new ledger, so `no_award` leaves them queued for the
 //! next award.
 //! [`plan_award`] chooses between them, in the order written above, and
-//! `Actor::award_block_reward` applies what it chose and performs the sends. The pieces it calls:
+//! `Actor::award_block_reward` validates the invariants, applies what the plan chose and performs
+//! the sends. The pieces [`plan_award`] calls:
 //! - [`Ledger::apply_due`] applies the due writes and reports their dust
 //! - [`schedule_at`] evaluates the weights and holds them within `DENOM`
 //! - [`Ledger::allocate`] is the per-stream loop over those weights
