@@ -1,34 +1,20 @@
 //! Explicit-stream recipient accounting: the share map, the period fold, claims, and the
-//! lifecycle operations that fold (FIP-0118 2.4.4, 2.4.5 and 2.4.6).
+//! lifecycle operations that fold.
 //!
 //! A "period" is the interval between two map installs on one stream, by `SetShares` or by
 //! `ReplaceAddress`. Installing a new map first closes the current period.
 //!
-//! FIP-0118 2.4.4, `SetShares`:
+//! `SetShares(id, map)` installs a map, by the stream's designated writer, this isn't queued:
 //!
-//! ```text
-//! SetShares(id, new_map):     // designated writer only; never queued
-//!     require caller == the stream's designated writer
-//!     require sum new_map wire shares == DENOM, every share positive
-//!     reject a repeated recipient, except f099, which may appear more
-//!         than once
-//!     resolve each recipient to an ID address, rejecting on failure
-//!     strip f099 rows from new_map
-//!     pool = accrued[id]
-//!     share_total = sum OLD map shares              // stored; f099 absent
-//!     for each (wallet, share) in the OLD map:
-//!         earned = floor(share * pool / share_total)
-//!         payable[wallet] += earned - claimed_period[wallet]
-//!     residue = pool - sum earned               // rounding dust only
-//!     send(f099, residue)                     // burned; neither counter moves
-//!     accrued[id] = 0; clear claimed_period
-//!     install new_map
-//! ```
+//! 1. Admit the map: shares sum to `DENOM`, every recipient resolves, f099 rows are stripped.
+//! 2. Fold the period: divide `accrued[id]` across the old map, credit each wallet's `payable`
+//!    with what it earned less what it already claimed, and hand back the rounding dust to burn.
+//! 3. Install the new map, clear `claimed_period`, and the next period starts from zero.
 //!
 //! `Claim(id, wallets[]) -> amounts[]` is permissionless and batched. A wallet's entitlement is
 //! its live portion of the current period, `floor(share * accrued[id] / share_total)` less what
-//! it has claimed this period, plus its payable balance from closed periods. A tombstoned id pays
-//! the payable balance alone. This accounting drives the need for the fold operation in here.
+//! it has claimed this period, plus its payable balance from previously closed periods. A
+//! tombstoned id pays the payable balance alone.
 //!
 //! `fold` consolidates a period into payable rows and returns the residue for the caller to burn.
 //!
@@ -43,7 +29,8 @@
 //! Two caps bound the tables: `MAX_PAYABLE_ROWS_PER_STREAM` on a live stream's payable rows and
 //! `MAX_TOMBSTONE_ROWS` across all tombstones. A removal folds only when it applies, so
 //! `validate_tombstone_capacity` reserves its rows at admission and rechecks on every install made
-//! while it is pending.
+//! while it is pending. The caps exist as a safety measure to bound storage forms and to bound
+//! calculation complexity.
 
 use std::collections::BTreeSet;
 

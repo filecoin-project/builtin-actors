@@ -406,29 +406,30 @@ impl Actor {
             }
 
             let FullAward { block_reward, allocation, applied } = award;
+            let miner_reward = &params.gas_reward + &allocation.miner;
+            let burn = &applied.fold_dust + &allocation.burn;
+            // BR is capped to what remains after the gas reward, the streams' unclaimed balances
+            // and the fold dust are set aside, and the split pays out exactly BR, so the outflow
+            // should fit the balance and we shouldn't encounter this case.
+            // Failure here would be an arithmetic/programmer bug but we handle it gracefully rather
+            // than halt.
+            if &miner_reward + &burn > prior_balance {
+                error!(
+                    "reward outflow {} exceeds balance {} at epoch {}; paying gas reward only",
+                    &miner_reward + &burn,
+                    prior_balance,
+                    rt.curr_epoch()
+                );
+                return Ok(no_award(&params.gas_reward));
+            }
             ledger.store(rt, st)?;
             st.total_minted_reward += &block_reward;
             st.total_burn_minted += &allocation.burn;
             st.total_explicit_minted +=
                 allocation.portions.iter().map(|(_, amount)| amount).sum::<TokenAmount>();
 
-            Ok((
-                &params.gas_reward + allocation.miner,
-                &applied.fold_dust + allocation.burn,
-                applied,
-            ))
+            Ok((miner_reward, burn, applied))
         })?;
-
-        // Reserved liabilities and dust are excluded before BR is capped; allocation conserves BR.
-        let outgoing = &miner_reward + &burn;
-        if outgoing > prior_balance {
-            return Err(actor_error!(
-                illegal_state,
-                "reward outflow {} exceeds balance {}",
-                outgoing,
-                prior_balance
-            ));
-        }
 
         // Implicit-message events are best-effort and would require FIP-0107 for chain visibility.
         if let Err(error) = emit_apply(rt, &applied) {

@@ -1,68 +1,27 @@
 //! Dividing one block reward among the streams, and measuring what f02 still owes.
 //!
-//! FIP-0118 2.4.3, in the order [`plan_award`] runs it, with the counters it moves specified in
-//! 2.5:
+//! An award has two outcomes. `no_award` pays the miner its gas reward and leaves the state as
+//! it stands. The full award divides one block reward and stores the result.
 //!
-//! ```text
-//! AwardBlockReward(miner, penalty, gas_reward, win_count):
-//!     require balance >= gas_reward
-//!     load the streams block            // absent block or store error aborts
-//!     computed_BR = this_epoch_reward * win_count / 5
-//!     if the block is undecodable, or its stream, tombstone or queue
-//!        structure or its accounting is invalid:
-//!         no_award()
-//!     apply the due writes, dropping the cancellation-stranded ones
-//!     fold_dust = the dust those folds left
-//!     liability =
-//!         sum live (accrued - sum claimed_period + sum payable)
-//!         + sum tombstone payable
-//!     if balance <= gas_reward + liability + fold_dust:
-//!         no_award()
-//!     BR = min(computed_BR, balance - gas_reward - liability - fold_dust)
-//!     if BR < 0:                        // only a negative this_epoch_reward
-//!         no_award()
-//!     evaluated = ComputeWeight for every active stream
-//!     if any record violates 0 <= floor <= v_start <= cap <= DENOM
-//!        or sum evaluated > DENOM:
-//!         no_award()
-//!     miner_reward = 0
-//!     allocated = 0
-//!     burn = 0
-//!     for each active stream s:                     // in list order
-//!         portion = floor(evaluated[s] * BR / DENOM)
-//!         allocated += portion
-//!         if s.distribution is IMPLICIT:
-//!             miner_reward += portion
-//!         else:
-//!             share_total = sum s.distribution.shares // stored; f099 absent
-//!             accrue = floor(portion * share_total / DENOM)
-//!             accrued[s.id] += accrue
-//!             total_explicit_minted += accrue
-//!             burn += portion - accrue
-//!     burn += BR - allocated
-//!     if the stream and accrual state the split leaves is invalid:
-//!         no_award()
-//!     send(f099, burn + fold_dust); total_burn_minted += burn
-//!     total_minted_reward += BR
-//!     pay miner_reward + gas_reward to winning miner; penalties as today
+//! 1. Load and check the streams block. Undecodable or invalid: `no_award`.
+//! 2. Apply the due writes (timelock elapsed). A stranded one is dropped.
+//! 3. Reserve the gas reward, what the explicit streams are owed, and the fold dust.
+//! 4. `BR = min(this_epoch_reward * win_count / 5, balance - reserve)`. Reserve not covered, or
+//!    `BR < 0`: `no_award`.
+//! 5. Evaluate every stream's weight at this epoch. Out of band, or sum over `DENOM`: `no_award`.
+//! 6. Split `BR` by weight. Implicit portions pay the miner, explicit portions accrue to their
+//!    streams, rounding and the stripped f099 share burn.
+//! 7. Check the result, store it, move the counters.
+//! 8. Send `miner_reward + gas_reward` to the miner and `burn + fold dust` to f099.
 //!
-//! no_award():
-//!     pay gas_reward and apply penalty as today; return without state change
-//! ```
-//!
-//! Every award is one of those two outcomes: `no_award`, which pays the gas reward alone and
-//! leaves the state as it stands, or the full split above. The due writes (timelock elapsed) apply
-//! first and only the second outcome stores a new ledger, so `no_award` leaves them queued for the
-//! next award.
-//! [`plan_award`] chooses between them, in the order written above, and
-//! `Actor::award_block_reward` validates the invariants, applies what the plan chose and performs
-//! the sends. The pieces [`plan_award`] calls:
+//! `no_award` stores nothing, so the due writes stay queued for the next award. [`plan_award`]
+//! chooses the outcome; `Actor::award_block_reward` stores, moves the counters and sends. The
+//! pieces that [`plan_award`] calls are:
 //! - [`Ledger::apply_due`] applies the due writes and reports their dust
 //! - [`schedule_at`] evaluates the weights and holds them within `DENOM`
-//! - [`Ledger::allocate`] is the per-stream loop over those weights
-//! - [`Ledger::accrue`] adds the resulting portions to the inline accrual rows
-//! - [`Ledger::liability`] is the `liability` sum the reserve check subtracts, and the balance
-//!   cover 2.5 requires of the counters this award moves
+//! - [`Ledger::allocate`] is the per-stream split
+//! - [`Ledger::accrue`] adds the explicit portions to the inline accrual rows
+//! - [`Ledger::liability`] is what the explicit streams are owed, the reserve above
 
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;

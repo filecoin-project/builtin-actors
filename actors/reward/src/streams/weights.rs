@@ -1,51 +1,26 @@
 //! Stream weights: one clamped linear segment per stream, and the envelope over all of them.
 //!
-//! FIP-0118 2.4.1(3), `ComputeWeight`:
+//! A [`WeightRecord`] is a line clamped to a band, `clamp(v_start + slope * (e - t_start),
+//! floor, cap)`, in `DENOM` fixed point. The residual is whatever the stored weights leave of
+//! `DENOM`, this is burnt.
 //!
-//! ```text
-//! WeightRecord = { v_start, slope, t_start, floor, cap }   // one record per stream
+//! The envelope is the rule that the stored weights sum to (strictly) _at most_ `DENOM` at every
+//! epoch projected out into the future, so the residual never goes negative. Each weight is
+//! piecewise linear, so the sum is too, therefore a line under `DENOM` at both ends stays under it
+//! between them. So we can run the check at a finite number of epochs to be sure it holds
+//! everywhere:
 //!
-//! func clamp(x, lo, hi) -> Fraction:
-//!     return max(lo, min(hi, x))
+//! 1. each record's `t_start`, where its segment begins;
+//! 2. each epoch where a ramp meets its floor or cap and goes flat;
+//! 3. one epoch past the last of those, after which the sum is constant.
 //!
-//! func ComputeWeight(w WeightRecord, e Epoch) -> Fraction:
-//!     return clamp(w.v_start + w.slope * (e - w.t_start), w.floor, w.cap)
-//!
-//! // per-epoch weights, all evaluated by the same function:
-//! w1(e) = ComputeWeight(W_consensus, e)  // linear: slope < 0, floor = W1_FLOOR, cap = W1_START
-//! w2(e) = ComputeWeight(W_service, e)    // Q1: linear bootstrap record mirroring w1's ramp;
-//!                                        // Q2 onward: constant record stepped by the gate
-//! w0(e) = 1 - sum_{i>=1} ComputeWeight(W_i, e)  // residual over all streams; never stored
-//! ```
-//!
-//! FIP-0118 2.4.8 reduces the envelope to finitely many epochs:
-//!
-//! ```text
-//! The checks: per record, `0 <= floor <= v_start <= cap <= 1`; and the
-//! projected weights must satisfy `sum_{i>=1} w_i(e) <= 1` at every epoch,
-//! so the burn residual w0 stays non-negative. Each weight is a clamped linear
-//! function of the epoch (`ComputeWeight`), so the sum is piecewise
-//! linear: between breakpoints it is a straight line, and a line at or
-//! below 1 at both ends stays at or below 1 in between. `sum <= 1`
-//! therefore need only hold at:
-//!
-//!   - each record's `t_start`, where its segment begins;
-//!
-//!   - each epoch where a ramping weight meets a clamp and goes flat:
-//!     `e = t_start + (floor - v_start)/slope` and
-//!     `e = t_start + (cap - v_start)/slope`, for `slope != 0`;
-//!
-//!   - one point past the last of these, where every weight has gone
-//!     flat and the sum no longer changes.
-//! ```
-//!
-//! - `compute_weight` is `ComputeWeight` using `DENOM` fixed point.
-//! - `weight_breakpoints` enumerates that epoch list for one record, bracketing each crossing so
-//!   integer division can't step over a one-epoch violation.
+//! - `compute_weight` is the clamped line.
+//! - `weight_breakpoints` lists those epochs for one record, bracketing each crossing so
+//!   integer division cannot step over a one-epoch violation.
 //! - `invariants::schedule` sums every stream at every breakpoint from a start epoch onward.
 //!
 //! The record a stream persists is [`WeightRecord`], in [`crate::state`]; the update and payload
-//! shapes an SWA call carries it in are in [`crate::types`].
+//! encoded forms from SWA calls are in [`crate::types`].
 
 use std::collections::BTreeSet;
 
