@@ -236,7 +236,7 @@ mod serialization {
         assert_eq!(
             encoded.data,
             hex!(
-                "8f404000404082404040004040408000420000d82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
+                "8f404000404082404040004040400042000080d82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
             )
         );
         let decoded: State = IpldBlock::deserialize(&encoded).unwrap();
@@ -267,7 +267,7 @@ mod serialization {
         assert_eq!(
             encoded.data,
             hex!(
-                "8f420001420002034200044200058240404200060742000842000942000a81820242000b0d4300e907d82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
+                "8f420001420002034200044200058240404200060742000842000942000a0d4300e90781820242000bd82a5827000171a0e40220d63b11132be58f8f498e5f8c46c4d26b89675b443ff1c47f1e7e3d3cb8d2dcaa"
             )
         );
         let decoded: State = IpldBlock::deserialize(&encoded).unwrap();

@@ -41,6 +41,8 @@ lazy_static! {
 /// Reward actor state
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone)]
 pub struct State {
+    // ---- Baseline and per-epoch block reward ----
+    //
     /// Target CumsumRealized needs to reach for EffectiveNetworkTime to increase
     /// Expressed in byte-epochs.
     #[serde(with = "bigint_ser")]
@@ -75,6 +77,8 @@ pub struct State {
     /// Epoch tracks for which epoch the Reward was computed.
     pub epoch: ChainEpoch,
 
+    // ---- Minted totals: total = burn + explicit + the miners' share ----
+    //
     /// Total FIL minted through block rewards.
     pub total_minted_reward: TokenAmount,
 
@@ -84,18 +88,23 @@ pub struct State {
     /// Cumulative block reward accrued to explicit streams.
     pub total_explicit_minted: TokenAmount,
 
-    /// Current-period accrual for each explicit stream, unique and ascending by stream ID.
-    pub accrued: Vec<StreamAccrual>,
-
-    /// Hold applied to SWA writes. Construction leaves zero; the activation migration sets the
-    /// operational value.
+    // ---- SWA configuration, set by the activation migration ----
+    //
+    /// Hold applied to SWA writes. Activation migration sets the operational value.
     pub swa_timelock_epochs: ChainEpoch,
 
-    /// SWA actor authorized to manage stream configuration. Construction uses f00; the activation
-    /// migration sets the operational address.
+    /// SWA actor authorized to manage stream configuration. Activation migration sets the
+    /// operational address.
     pub swa_actor: Address,
 
-    /// Offboarded StreamsState for active streams, tombstones, and queued-write state.
+    // ---- The stream `Ledger` elements, spanning this root block and StreamsState  ----
+    //
+    /// Current-period accrual for each explicit stream, unique and ascending by stream ID. Inline
+    /// because it mutates with every award.
+    pub accrued: Vec<StreamAccrual>,
+
+    /// Offboarded StreamsState for active streams, tombstones, and queued-write state. Only mutates
+    /// on SWA writes and share operations.
     pub streams_root: Cid,
 }
 
@@ -113,9 +122,9 @@ impl Default for State {
             total_minted_reward: Default::default(),
             total_burn_minted: Default::default(),
             total_explicit_minted: Default::default(),
-            accrued: Default::default(),
             swa_timelock_epochs: Default::default(),
             swa_actor: Address::new_id(0),
+            accrued: Default::default(),
             streams_root: Default::default(),
         }
     }
