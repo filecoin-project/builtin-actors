@@ -413,7 +413,7 @@ impl Ledger {
             }
         }
 
-        self.streams_dirty |= !(result.applied.is_empty() && result.dropped.is_empty());
+        self.streams_dirty |= due_count != 0;
         result
     }
 
