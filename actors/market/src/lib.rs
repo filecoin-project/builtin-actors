@@ -619,9 +619,12 @@ impl Actor {
                     warn!("deal {}, already slashed, terminating now anyway", id);
                 }
 
-                // The pending proposal outlives settlement at the start epoch, so remove it
-                // whether or not the deal was ever updated.
-                st.remove_pending_deal(rt.store(), deal_cid(rt, &deal)?)?;
+                // Settlement at the start epoch retains pending; later settlement clears it.
+                if state.last_updated_epoch == EPOCH_UNDEFINED
+                    || state.last_updated_epoch <= deal.start_epoch
+                {
+                    st.remove_pending_deal(rt.store(), deal_cid(rt, &deal)?)?;
+                }
 
                 state.slash_epoch = params.epoch;
                 total_slashed += st.process_slashed_deal(rt.store(), &deal, &state)?;
@@ -675,7 +678,7 @@ impl Actor {
 
                     let dcid = deal_cid(rt, &deal_proposal)?;
 
-                    let mut state = match st.get_active_deal_or_process_timeout(
+                    let mut state = match st.get_started_deal_or_process_timeout(
                         rt.store(),
                         curr_epoch,
                         deal_id,
@@ -697,11 +700,6 @@ impl Actor {
                         }
                     };
 
-                    if curr_epoch == deal_proposal.start_epoch {
-                        // Cron follows explicit messages, so pending is no longer needed at the deal start epoch.
-                        st.remove_pending_deal(rt.store(), dcid)?;
-                    }
-
                     // A deal should get just one cron visit, scheduled at publish. Anything queued
                     // later was rescheduled by cron itself, which only applies to legacy deals
                     // which get continued cron handling (See FIP-0074).
@@ -710,14 +708,9 @@ impl Actor {
                         rt.policy().deal_updates_interval,
                         deal_proposal.start_epoch,
                     );
+                    // Cron follows explicit messages, so even a start-epoch first visit can clear pending.
                     if i == first_visit {
-                        if curr_epoch > deal_proposal.start_epoch {
-                            st.remove_pending_deal(rt.store(), dcid)?;
-                        }
-
-                        // newly activated deals are not scheduled for cron processing. they are handled explicitly by
-                        // calling ProcessDealUpdates method with specific deal ids.
-                        // the code below this point handles legacy deals that are already scheduled for cron processing
+                        st.remove_pending_deal(rt.store(), dcid)?;
                         continue;
                     }
 
@@ -1020,7 +1013,7 @@ impl Actor {
                     }
                 };
 
-                let loaded_deal = match st.get_active_deal_or_process_timeout(
+                let loaded_deal = match st.get_started_deal_or_process_timeout(
                     rt.store(),
                     curr_epoch,
                     deal_id,
@@ -1036,7 +1029,7 @@ impl Actor {
 
                 let mut deal_state = match loaded_deal {
                     LoadDealState::TooEarly => {
-                        // deal is not active, we process it as a zero-payment no-op
+                        // The deal has not started; settlement is a zero-payment no-op.
                         settlements.push(DealSettlementSummary {
                             completed: false,
                             payment: TokenAmount::zero(),

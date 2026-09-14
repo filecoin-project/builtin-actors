@@ -115,6 +115,24 @@ fn invariant_rejects_a_never_visited_deal_at_the_wrong_epoch() {
 }
 
 #[test]
+fn invariant_rejects_a_never_visited_deal_at_multiple_epochs() {
+    let rt = setup();
+    let (deal_id, _) = publish_and_activate(&rt, START_EPOCH);
+    let first_visit = process_epoch(START_EPOCH, deal_id);
+    let interval = rt.policy.deal_updates_interval;
+    let mut state: State = rt.get_state();
+    let mut deal_ops = state.load_deal_ops(rt.store()).unwrap();
+    deal_ops.put(&(first_visit + interval), deal_id).unwrap();
+    state.deal_ops_by_epoch = deal_ops.flush().unwrap();
+    rt.replace_state(&state);
+
+    check_state_with_expected(
+        &rt,
+        &[Regex::new("never-visited deal .* exactly one deal op at epoch").unwrap()],
+    );
+}
+
+#[test]
 fn deal_settled_before_its_first_visit_is_dropped_at_it() {
     let rt = setup();
     let (deal_id, proposal) = publish_and_activate(&rt, START_EPOCH);
