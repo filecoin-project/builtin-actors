@@ -351,7 +351,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // deals ops by epoch
     let (mut deal_op_epoch_count, mut deal_op_count) = (0, 0);
-    let mut deal_ops_by_id = BTreeMap::<DealID, Vec<ChainEpoch>>::new();
+    let mut deal_ops_by_id = BTreeMap::<DealID, (ChainEpoch, usize)>::new();
     match DealOpsByEpoch::load(
         store,
         &state.deal_ops_by_epoch,
@@ -362,7 +362,8 @@ pub fn check_state_invariants<BS: Blockstore>(
             let ret = deal_ops.for_each(|epoch: ChainEpoch, _| {
                 deal_op_epoch_count += 1;
                 deal_ops.for_each_in(&epoch, |deal_id: DealID| {
-                    deal_ops_by_id.entry(deal_id).or_default().push(epoch);
+                    let (_, count) = deal_ops_by_id.entry(deal_id).or_insert((epoch, 0));
+                    *count += 1;
                     deal_op_count += 1;
                     Ok(())
                 })
@@ -374,14 +375,14 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     for (deal_id, stats) in &proposal_stats {
         let first_visit = next_update_epoch(*deal_id, deal_updates_interval, stats.start_epoch);
-        let scheduled_epochs = deal_ops_by_id.get(deal_id).map(Vec::as_slice).unwrap_or_default();
+        let scheduled = deal_ops_by_id.get(deal_id).copied();
         // Legacy deals have passed first_visit; never-updated deals before it remain queued there.
         if state.last_cron < first_visit && stats.last_update_epoch == EPOCH_UNDEFINED {
             acc.require(
-                scheduled_epochs == [first_visit],
+                scheduled == Some((first_visit, 1)),
                 format!(
                     "never-visited deal {deal_id} must have exactly one deal op at epoch \
-                     {first_visit}, found {scheduled_epochs:?}"
+                     {first_visit}, found {scheduled:?} (epoch, count)"
                 ),
             );
         }

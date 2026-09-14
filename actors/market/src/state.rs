@@ -640,9 +640,9 @@ impl State {
         Ok(())
     }
 
-    /// Given a DealProposal, checks that the corresponding deal has activated
-    /// If not, checks that the deal is past its activation epoch and performs cleanup
-    pub fn get_active_deal_or_process_timeout<BS>(
+    /// Loads an activated deal at or after its start epoch, or cleans up an unactivated deal.
+    /// Returns `TooEarly` before the start epoch, including for activated deals.
+    pub fn get_started_deal_or_process_timeout<BS>(
         &mut self,
         store: &BS,
         curr_epoch: ChainEpoch,
@@ -653,9 +653,10 @@ impl State {
     where
         BS: Blockstore,
     {
+        // Cron may visit at the start epoch (the == case here) and treats TooEarly as an error.
         if curr_epoch < deal_proposal.start_epoch {
             return Ok(LoadDealState::TooEarly);
-        } // else if ==, continue because cron may call at the start epoch and would abort on TooEarly.
+        }
 
         let deal_state = self.find_deal_state(store, deal_id)?;
 
