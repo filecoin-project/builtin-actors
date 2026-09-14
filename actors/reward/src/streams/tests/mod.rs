@@ -12,9 +12,11 @@ use crate::streams::weights::compute_weight;
 use crate::types::*;
 
 mod award;
+mod bootstrap;
 mod distribution;
 mod invariants;
 mod queue;
+mod state_machine;
 mod weights;
 
 fn pct(value: u64) -> u64 {

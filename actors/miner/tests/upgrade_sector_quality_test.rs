@@ -781,6 +781,44 @@ fn terminates_upgraded_sector_at_upgraded_pledge_and_power() {
 }
 
 #[test]
+fn upgraded_sector_faults_and_recovers_at_full_power() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_cc_sector(&mut h, &rt);
+    let upgraded = upgrade_one(&h, &rt, &legacy, None);
+    let (deadline_index, partition_index) = sector_location(&rt, upgraded.sector_number);
+    let full_power = power_for_sectors(h.sector_size, std::slice::from_ref(&upgraded));
+
+    assert_eq!((&full_power).neg(), h.declare_faults(&rt, std::slice::from_ref(&upgraded)));
+    h.declare_recoveries(
+        &rt,
+        deadline_index,
+        partition_index,
+        make_bitfield(&[upgraded.sector_number]),
+        TokenAmount::zero(),
+    )
+    .unwrap();
+    let (_, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+    assert_eq!(full_power, partition.faulty_power);
+    assert_eq!(full_power, partition.recovering_power);
+
+    let dlinfo = h.advance_to_deadline(&rt, deadline_index);
+    h.submit_window_post(
+        &rt,
+        &dlinfo,
+        vec![PoStPartition { index: partition_index, skipped: BitField::new() }],
+        vec![upgraded.clone()],
+        PoStConfig::with_expected_power_delta(&full_power),
+    );
+    let (_, partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+    assert!(partition.faults.is_empty());
+    assert!(partition.recoveries.is_empty());
+    assert_eq!(full_power, partition.live_power);
+    assert!(partition.faulty_power.is_zero());
+    assert!(partition.recovering_power.is_zero());
+    h.check_state(&rt);
+}
+
+#[test]
 fn extend2_after_upgrade_keeps_full_power_and_pledge() {
     let (mut h, rt) = setup();
     let legacy = commit_legacy_cc_sector(&mut h, &rt);
@@ -1226,5 +1264,70 @@ fn rejects_unauthorized_caller() {
         IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort(ExitCode::USR_FORBIDDEN, res);
+    h.check_state(&rt);
+}
+
+#[test]
+fn declaration_at_a_selected_sectors_expiration_aborts_the_whole_batch() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_sectors(&mut h, &rt, 2, SectorOnChainInfoFlags::SIMPLE_QA_POWER, 0);
+    let shared_expiration = legacy[0].expiration;
+    assert_eq!(shared_expiration, legacy[1].expiration);
+
+    // A uniform target that one selected sector already expires at is a strict violation, so
+    // the batch fails rather than silently rewriting that sector in place. Operators batching a
+    // partition to a common expiration have to exclude sectors already there.
+    let mut declarations = upgrade_only_declarations(&rt, &legacy);
+    for declaration in &mut declarations {
+        declaration.new_expiration = Some(shared_expiration);
+    }
+    expect_upgrade_abort(
+        &h,
+        &rt,
+        UpgradeSectorQualityParams { upgrades: declarations },
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "must be after sector",
+    );
+    for sector in &legacy {
+        assert_eq!(*sector, h.get_sector(&rt, sector.sector_number));
+    }
+    h.check_state(&rt);
+}
+
+#[test]
+fn duplicate_declarations_in_one_message_upgrade_once() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_cc_sector(&mut h, &rt);
+    let (deadline, partition) = sector_location(&rt, legacy.sector_number);
+    let (power_delta, pledge_delta) =
+        expected_upgrade_deltas(&h, &rt, std::slice::from_ref(&legacy));
+
+    // The second declaration finds the sector already at full power and moves nothing, so the
+    // message charges one pledge delta and adds one power delta.
+    let declaration = declaration(deadline, partition, &[legacy.sector_number], None);
+    h.upgrade_sector_quality(
+        &rt,
+        UpgradeSectorQualityParams { upgrades: vec![declaration.clone(), declaration] },
+        power_delta,
+        pledge_delta,
+    )
+    .unwrap();
+    let upgraded = h.get_sector(&rt, legacy.sector_number);
+    assert_full_power_record(&h, &rt, &legacy, &upgraded);
+    h.check_state(&rt);
+}
+
+#[test]
+fn upgrade_is_permitted_during_the_sectors_own_proving_deadline() {
+    let (mut h, rt) = setup();
+    let legacy = commit_legacy_cc_sector(&mut h, &rt);
+    let (deadline, _) = sector_location(&rt, legacy.sector_number);
+
+    // Quality upgrades are permitted while the deadline is open: they leave the sector set
+    // and sealed CIDs unchanged.
+    let open = h.advance_to_deadline(&rt, deadline);
+    assert_eq!(deadline, open.index);
+    let upgraded = upgrade_one(&h, &rt, &legacy, None);
+    assert_full_power_record(&h, &rt, &legacy, &upgraded);
     h.check_state(&rt);
 }

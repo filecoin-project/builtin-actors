@@ -343,6 +343,32 @@ fn rejects_a_new_call_that_strands_an_existing_call() {
 }
 
 #[test]
+fn rejects_an_earlier_schedule_write_that_strands_a_far_future_registration() {
+    let (mut streams, accruals) = base_state();
+    queue_register_stream(
+        &mut streams,
+        &accruals,
+        0,
+        10,
+        stream(3, pct(10), Some(explicit(203, shares(&[(103, DENOM)])))),
+        100,
+    )
+    .unwrap();
+
+    let before = streams.clone();
+    queue_weight_records(
+        &mut streams,
+        &accruals,
+        20,
+        10,
+        PendingWriteOp::StepWeightRecords,
+        &[WeightRecordUpdate { id: 1, weight: constant_weight(pct(75)) }],
+    )
+    .expect_err("an earlier write must preserve the admitted future registration");
+    assert_eq!(before, streams);
+}
+
+#[test]
 fn removal_rejects_stranding_an_inflight_gate_write() {
     let (mut streams, mut accruals) = base_state();
     queue_weight_records(

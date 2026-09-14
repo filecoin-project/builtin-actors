@@ -1568,7 +1568,11 @@ fn zero_explicit_streams_are_a_stable_award_and_claim_state() {
 }
 
 #[test]
-fn consensus_stream_removal_uses_the_normal_queue_and_award_paths() {
+fn consensus_stream_can_be_removed_and_restored_with_timelocked_writes() {
+    // This test is _not_ an intended consequence of FIP-0118 but since it delegates all stream
+    // weight setting to the SWA ("Stream Weights Actor") it therefore delegates the implementation
+    // and setting of guards and policy over the consensus stream to the SWA, so this is not gated
+    // within the reward actor itself.
     let rt = base_runtime();
     let mut state: State = rt.get_state();
     let mut streams = load_streams(&rt);
@@ -1603,6 +1607,52 @@ fn consensus_stream_removal_uses_the_normal_queue_and_award_paths() {
     assert_eq!(TokenAmount::from_atto(5), state.total_minted_reward);
     assert_eq!(TokenAmount::from_atto(5), state.total_burn_minted);
     assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
+    assert_eq!(TokenAmount::zero(), liability(&rt));
+    assert_state_invariants(&rt);
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, swa_actor());
+    let registration = PendingWrite {
+        id: Some(1),
+        op: PendingWriteOp::RegisterStream,
+        payload: RawBytes::serialize(&RegisterStreamPayload {
+            weight: weight(DENOM),
+            distribution: None,
+        })
+        .unwrap(),
+        effective_epoch: 4,
+    };
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
+    expect_write_event(&rt, "write-queued", &registration, true);
+    call(
+        &rt,
+        Method::RegisterStreamExported,
+        &RegisterStreamParams {
+            id: 1,
+            weight: weight(DENOM),
+            distribution: None,
+            activation_epoch: 4,
+        },
+    )
+    .unwrap();
+    rt.verify();
+
+    rt.epoch.replace(3);
+    rt.add_balance(TokenAmount::from_atto(2));
+    expect_miner_reward(&rt, TokenAmount::from_atto(2), TokenAmount::zero(), ExitCode::OK);
+    expect_burn(&rt, TokenAmount::from_atto(5), ExitCode::OK);
+    award(&rt, TokenAmount::from_atto(2), TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    rt.epoch.replace(4);
+    rt.add_balance(TokenAmount::from_atto(2));
+    expect_write_event(&rt, "write-applied", &registration, false);
+    expect_miner_reward(&rt, TokenAmount::from_atto(7), TokenAmount::zero(), ExitCode::OK);
+    award(&rt, TokenAmount::from_atto(2), TokenAmount::zero(), 1).unwrap();
+    rt.verify();
+
+    let state: State = rt.get_state();
+    assert_eq!(TokenAmount::from_atto(15), state.total_minted_reward);
+    assert_eq!(TokenAmount::from_atto(10), state.total_burn_minted);
     assert_eq!(TokenAmount::zero(), liability(&rt));
     assert_state_invariants(&rt);
 }

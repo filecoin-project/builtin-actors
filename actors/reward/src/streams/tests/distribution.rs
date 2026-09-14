@@ -406,3 +406,27 @@ fn claims_tombstones_and_deletes_them_when_drained() {
     assert_eq!(vec![TokenAmount::zero(), TokenAmount::zero()], result);
     assert_eq!(before, streams);
 }
+
+#[test]
+fn claim_isolated_to_the_named_stream_when_wallets_overlap() {
+    let mut first = explicit(200, shares(&[(101, DENOM)]));
+    first.payable.add(Address::new_id(101), TokenAmount::from_atto(2));
+    let mut second = explicit(201, shares(&[(101, DENOM)]));
+    second.payable.add(Address::new_id(101), TokenAmount::from_atto(4));
+    let mut streams = StreamsState {
+        streams: vec![stream(2, pct(20), Some(first)), stream(3, pct(20), Some(second))],
+        ..Default::default()
+    };
+    let accruals = vec![
+        StreamAccrual { id: 2, amount: TokenAmount::from_atto(6) },
+        StreamAccrual { id: 3, amount: TokenAmount::from_atto(8) },
+    ];
+
+    let result = claim(&mut streams, &accruals, 2, &[Address::new_id(101)]).unwrap();
+
+    assert_eq!(vec![TokenAmount::from_atto(8)], result);
+    let result = claim(&mut streams, &accruals, 3, &[Address::new_id(101)]).unwrap();
+    assert_eq!(vec![TokenAmount::from_atto(12)], result);
+    let result = claim(&mut streams, &accruals, 2, &[Address::new_id(101)]).unwrap();
+    assert_eq!(vec![TokenAmount::zero()], result);
+}
