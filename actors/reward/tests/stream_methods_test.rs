@@ -10,8 +10,8 @@ use fil_actor_reward::{
     Stream, StreamAccrual, StreamsState, WeightRecord, WeightRecordUpdate, explicit_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
-    ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, SYSTEM_ACTOR_CODE_ID, expect_abort,
-    expect_abort_contains_message,
+    ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, PAYCH_ACTOR_CODE_ID,
+    SYSTEM_ACTOR_CODE_ID, expect_abort, expect_abort_contains_message,
 };
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, EventBuilder, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -239,6 +239,106 @@ fn enforces_caller_boundaries_and_existing_share_recipients() {
         ),
     );
     rt.verify();
+}
+
+#[test]
+fn existing_payment_channel_entitlements_remain_claimable_after_replacement() {
+    let rt = base_runtime();
+    let old = Address::new_id(RECIPIENT_A);
+    let new = Address::new_id(RECIPIENT_B);
+    rt.set_address_actor_type(old, *PAYCH_ACTOR_CODE_ID);
+    let mut state: State = rt.get_state();
+    state.accrued[0].amount = TokenAmount::from_atto(4);
+    state.total_minted_reward = TokenAmount::from_atto(4);
+    state.total_explicit_minted = TokenAmount::from_atto(4);
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_atto(4));
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    rt.expect_validate_caller_any();
+    call(
+        &rt,
+        Method::ReplaceAddressExported,
+        &ReplaceAddressParams { id: 2, old_address: old, new_address: new },
+    )
+    .unwrap();
+    rt.verify();
+
+    rt.expect_validate_caller_any();
+    rt.expect_send_simple(old, METHOD_SEND, None, TokenAmount::from_atto(4), None, ExitCode::OK);
+    expect_claim_event(&rt, 2, old, &TokenAmount::from_atto(4));
+    let result: ClaimReturn =
+        call(&rt, Method::ClaimExported, &ClaimParams { id: 2, wallets: vec![old, new] })
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+    rt.verify();
+    assert_eq!(vec![TokenAmount::from_atto(4), TokenAmount::zero()], result.amounts);
+    assert_eq!(TokenAmount::zero(), liability(&rt));
+}
+
+#[test]
+fn payment_channels_cannot_be_admitted_as_recipients() {
+    let paych = Address::new_id(300);
+    let alias = Address::new_actor(b"payment channel recipient");
+    let requests = [
+        (
+            Address::new_id(WRITER),
+            Method::SetSharesExported,
+            IpldBlock::serialize_cbor(&SetSharesParams {
+                id: 2,
+                shares: vec![RecipientShare { recipient: paych, share: DENOM }],
+            })
+            .unwrap(),
+        ),
+        (
+            swa_actor(),
+            Method::RegisterStreamExported,
+            IpldBlock::serialize_cbor(&RegisterStreamParams {
+                id: 3,
+                weight: weight(pct(10)),
+                distribution: Some(DistributionInit {
+                    writer: Address::new_id(WRITER),
+                    shares: vec![RecipientShare { recipient: alias, share: DENOM }],
+                }),
+                activation_epoch: 2,
+            })
+            .unwrap(),
+        ),
+        (
+            Address::new_id(WRITER),
+            Method::ReplaceAddressExported,
+            IpldBlock::serialize_cbor(&ReplaceAddressParams {
+                id: 2,
+                old_address: Address::new_id(RECIPIENT_A),
+                new_address: alias,
+            })
+            .unwrap(),
+        ),
+    ];
+
+    for (caller, method, params) in requests {
+        let rt = base_runtime();
+        rt.set_address_actor_type(paych, *PAYCH_ACTOR_CODE_ID);
+        rt.id_addresses.borrow_mut().insert(alias, paych);
+        let mut before: State = rt.get_state();
+        before.accrued[0].amount = TokenAmount::from_atto(10);
+        rt.replace_state(&before);
+        rt.set_caller(*EVM_ACTOR_CODE_ID, caller);
+        if caller == swa_actor() {
+            rt.expect_validate_caller_addr(vec![swa_actor()]);
+        } else {
+            rt.expect_validate_caller_any();
+        }
+
+        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, rt.call::<RewardActor>(method as u64, params));
+        rt.verify();
+        let after: State = rt.get_state();
+        assert_eq!(before.streams_root, after.streams_root);
+        assert_eq!(before.accrued, after.accrued);
+        assert_eq!(TokenAmount::from_atto(10), liability(&rt));
+    }
 }
 
 #[test]

@@ -1,6 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use cid::Cid;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
@@ -13,7 +15,7 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, warn};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
@@ -264,7 +266,7 @@ impl Actor {
                 ));
             }
             let old = resolve_required(rt, &params.old_address, "old recipient address")?;
-            let new = resolve_required(rt, &params.new_address, "new recipient address")?;
+            let new = resolve_recipient(rt, &params.new_address, "new recipient address")?;
             ledger
                 .replace_address(params.id, old, new)
                 .map_err(|e| illegal_argument(e, "failed to replace stream recipient address"))
@@ -518,18 +520,41 @@ fn validate_swa(rt: &impl Runtime) -> Result<(), ActorError> {
     rt.validate_immediate_caller_is(std::iter::once(&state.swa_actor))
 }
 
+fn resolve_existing(
+    rt: &impl Runtime,
+    address: &Address,
+    label: &str,
+) -> Result<(ActorID, Cid), ActorError> {
+    let id = rt
+        .resolve_address(address)
+        .ok_or_else(|| actor_error!(not_found, "failed to resolve {} {}", label, address))?;
+    let code = rt
+        .get_actor_code_cid(&id)
+        .ok_or_else(|| actor_error!(not_found, "{} {} does not exist", label, address))?;
+    Ok((id, code))
+}
+
 fn resolve_required(
     rt: &impl Runtime,
     address: &Address,
     label: &str,
 ) -> Result<Address, ActorError> {
-    let id = rt
-        .resolve_address(address)
-        .ok_or_else(|| actor_error!(not_found, "failed to resolve {} {}", label, address))?;
-    if rt.get_actor_code_cid(&id).is_none() {
-        return Err(actor_error!(not_found, "{} {} does not exist", label, address));
+    resolve_existing(rt, address, label).map(|(id, _)| Address::new_id(id))
+}
+
+fn resolve_recipient(
+    rt: &impl Runtime,
+    address: &Address,
+    label: &str,
+) -> Result<Address, ActorError> {
+    let (id, code) = resolve_existing(rt, address, label)?;
+    let address = Address::new_id(id);
+    // `Collect`` deletes payment channels, which can strand unpaid rewards, so they're disallowed
+    // as recipients.
+    if rt.resolve_builtin_actor_type(&code) == Some(Type::PaymentChannel) {
+        return Err(actor_error!(illegal_argument, "{} {} is a payment channel", label, address));
     }
-    Ok(Address::new_id(id))
+    Ok(address)
 }
 
 fn resolve_shares(
@@ -540,7 +565,7 @@ fn resolve_shares(
         .into_iter()
         .map(|share| {
             Ok(RecipientShare {
-                recipient: resolve_required(rt, &share.recipient, "share recipient")?,
+                recipient: resolve_recipient(rt, &share.recipient, "share recipient")?,
                 share: share.share,
             })
         })
