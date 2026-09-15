@@ -140,7 +140,9 @@ pub struct DealState {
     pub sector_number: SectorNumber,
     // -1 if not yet included in proven sector
     pub sector_start_epoch: ChainEpoch,
-    // -1 if deal state never updated
+    // Last settlement epoch, or -1 if never settled.
+    // Modern deal first-visit cron doesn't advance this. This can't be used to distinguish modern
+    // from legacy deals.
     pub last_updated_epoch: ChainEpoch,
     // -1 if deal never slashed
     pub slash_epoch: ChainEpoch,

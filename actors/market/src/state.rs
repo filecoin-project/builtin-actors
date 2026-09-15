@@ -738,7 +738,8 @@ impl State {
             ));
         }
 
-        // Keep pending through the start epoch and remove it on the first later update.
+        // At start_epoch, a later explicit message could still republish the proposal.
+        // Keep pending until start_epoch has passed and publish's time check prevents replay.
         let pending_cleanup_due = epoch > deal.start_epoch
             && (!ever_updated || state.last_updated_epoch <= deal.start_epoch);
         if pending_cleanup_due {

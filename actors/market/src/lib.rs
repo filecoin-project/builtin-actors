@@ -619,7 +619,8 @@ impl Actor {
                     warn!("deal {}, already slashed, terminating now anyway", id);
                 }
 
-                // Settlement at the start epoch retains pending; later settlement clears it.
+                // Deleting the deal needs no replay guard, even before or at start_epoch.
+                // Pending might still exist, unless settlement has advanced past start_epoch.
                 if state.last_updated_epoch == EPOCH_UNDEFINED
                     || state.last_updated_epoch <= deal.start_epoch
                 {
@@ -700,15 +701,19 @@ impl Actor {
                         }
                     };
 
-                    // A deal should get just one cron visit, scheduled at publish. Anything queued
-                    // later was rescheduled by cron itself, which only applies to legacy deals
-                    // which get continued cron handling (See FIP-0074).
+                    // Publish schedules one quantized visit at or after start_epoch. We can look
+                    // for that queued epoch regardless of settlement history. Later visits belong
+                    // would be for deals already rescheduled for legacy automatic settlement
+                    // (i.e. pre-FIP-0074).
                     let first_visit = next_update_epoch(
                         deal_id,
                         rt.policy().deal_updates_interval,
                         deal_proposal.start_epoch,
                     );
-                    // Cron follows explicit messages, so even a start-epoch first visit can clear pending.
+                    // Cron runs after all explicit messages in the tipset (unlike manual
+                    // settlement). Even if we're at start_epoch, no same-epoch publish can follow
+                    // this pending removal so there's no replay gap after this; later epochs would
+                    // reject publication because the start epoch has passed.
                     if i == first_visit {
                         st.remove_pending_deal(rt.store(), dcid)?;
                         continue;

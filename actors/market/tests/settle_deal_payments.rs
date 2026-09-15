@@ -220,10 +220,10 @@ fn start_epoch_settlement_then_cron_closes_the_replay_window() {
     activate_deals(&rt, end_epoch, addrs.provider, 60, sector_number, &[deal_id]);
 
     rt.set_epoch(start_epoch);
-    publish_deals_expect_abort(&rt, &addrs, proposal.clone(), ExitCode::USR_ILLEGAL_ARGUMENT);
     let settlement = settle_deal_payments(&rt, addrs.owner, &[deal_id], &[], &[]);
     assert!(settlement.results.all_ok());
     assert_deal_pending(&rt, &proposal, true);
+    publish_deals_expect_abort(&rt, &addrs, proposal.clone(), ExitCode::USR_ILLEGAL_ARGUMENT);
 
     cron_tick(&rt);
     assert_deal_pending(&rt, &proposal, false);
