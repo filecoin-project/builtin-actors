@@ -1,22 +1,19 @@
 use cid::Cid;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::deal::DealID;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
-use multihash_codetable::{Code::Sha2_256, MultihashDigest};
-use num_traits::Zero;
-
 use fil_actor_market::ext::miner::{
     PieceChange, PieceReturn, SectorChanges, SectorContentChangedParams,
 };
-use fil_actor_market::{DealProposal, Method, NO_ALLOCATION_ID};
+use fil_actor_market::{DealProposal, Method};
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, MockRuntime, expect_abort};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::deal::DealID;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
 use harness::*;
+use multihash_codetable::{Code::Sha2_256, MultihashDigest};
 
 mod harness;
 
@@ -28,9 +25,6 @@ const MINER_ADDRESSES: MinerAddresses = MinerAddresses {
     provider: PROVIDER_ADDR,
     control: vec![],
 };
-
-// These tests share a lot in common with those for BatchActivateDeals,
-// as they perform similar functions.
 
 #[test]
 fn empty_params() {
@@ -57,11 +51,8 @@ fn simple_one_sector() {
     let mut deals = create_deals(&rt, 3);
     deals[2].verified_deal = true;
 
-    let next_allocation_id = 1;
-    let datacap_required = TokenAmount::from_whole(deals[2].piece_size.0);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &deals, datacap_required, next_allocation_id);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
 
     let mut pieces = pieces_from_deals(&deal_ids, &deals);
     pieces.reverse();
@@ -103,8 +94,7 @@ fn simple_multiple_sectors() {
     let rt = setup();
     let deals = create_deals(&rt, 3);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), NO_ALLOCATION_ID);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
     let pieces = pieces_from_deals(&deal_ids, &deals);
 
     let changes = vec![
@@ -150,8 +140,7 @@ fn new_deal_existing_sector() {
     let rt = setup();
     let deals = create_deals(&rt, 3);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), NO_ALLOCATION_ID);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
     let pieces = pieces_from_deals(&deal_ids, &deals);
 
     let changes = vec![SectorChanges {
@@ -196,8 +185,7 @@ fn piece_must_match_deal() {
     let deals = create_deals(&rt, 2);
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), NO_ALLOCATION_ID);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
     let mut pieces = pieces_from_deals(&deal_ids, &deals);
     // Wrong CID
     pieces[0].data = Cid::new_v1(0, Sha2_256.digest(&[1, 2, 3, 4]));
@@ -232,8 +220,7 @@ fn invalid_deal_id_rejected() {
     let deals = create_deals(&rt, 1);
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), NO_ALLOCATION_ID);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
     let mut pieces = pieces_from_deals(&deal_ids, &deals);
     // Append a byte to the deal ID.
     let mut buf = pieces[0].payload.to_vec();
@@ -254,8 +241,7 @@ fn failures_isolated() {
     let rt = setup();
     let deals = create_deals(&rt, 4);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), NO_ALLOCATION_ID);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
     let mut pieces = pieces_from_deals(&deal_ids, &deals);
 
     // Break second and third pieces.
@@ -311,8 +297,7 @@ fn rejects_duplicates_in_same_sector() {
     let rt = setup();
     let deals = create_deals(&rt, 2);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), NO_ALLOCATION_ID);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
     let pieces = pieces_from_deals(&deal_ids, &deals);
 
     let changes = vec![
@@ -354,8 +339,7 @@ fn rejects_duplicates_across_sectors() {
     let rt = setup();
     let deals = create_deals(&rt, 3);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), NO_ALLOCATION_ID);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals);
     let pieces = pieces_from_deals(&deal_ids, &deals);
 
     let changes = vec![

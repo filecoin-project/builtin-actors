@@ -1,5 +1,7 @@
 use fil_actor_account::State as AccountState;
+use fil_actor_reward::{Method as RewardMethod, SetWeightRecordsParams, State as RewardState};
 use fil_actors_integration_tests::util::{assert_invariants, check_invariants};
+use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{EMPTY_ARR_CID, Policy};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID};
@@ -8,8 +10,8 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use num_traits::Zero;
-use test_vm::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, TestVM};
-use vm_api::util::{get_state, pk_addrs_from};
+use test_vm::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, TEST_SWA_ACTOR_ID, TEST_SWA_KEY, TestVM};
+use vm_api::util::{get_state, pk_addrs_from, serialize_ok};
 use vm_api::{VM, new_actor};
 
 #[test]
@@ -40,6 +42,29 @@ fn state_control() {
     let invariants_check = check_invariants(&v, &Policy::default(), Some(TokenAmount::zero()));
     let err = invariants_check.unwrap_err();
     assert!(err.to_string().contains("AccountState is empty"), "unexpected error: {err}");
+}
+
+#[test]
+fn singleton_reward_state_has_usable_test_swa_identity() {
+    let v = TestVM::new_with_singletons(MemoryBlockstore::new());
+    let swa = Address::new_id(TEST_SWA_ACTOR_ID);
+    let state: RewardState = get_state(&v, &REWARD_ACTOR_ADDR).unwrap();
+    assert_eq!(swa, state.swa_actor);
+
+    // Production uses an EVM actor; account code suffices because f02 authorizes only this ID.
+    let swa_state: AccountState = get_state(&v, &swa).unwrap();
+    assert_eq!(Address::new_bls(TEST_SWA_KEY).unwrap(), swa_state.address);
+
+    let result = v
+        .execute_message(
+            &swa,
+            &REWARD_ACTOR_ADDR,
+            &TokenAmount::zero(),
+            RewardMethod::SetWeightRecordsExported as u64,
+            Some(serialize_ok(&SetWeightRecordsParams { updates: Vec::new() })),
+        )
+        .unwrap();
+    assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, result.code);
 }
 
 fn assert_account_actor(

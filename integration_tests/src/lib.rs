@@ -55,7 +55,7 @@ pub struct NetworkStats {
     pub this_epoch_reward: TokenAmount,
     pub this_epoch_reward_smoothed: FilterEstimate,
     pub this_epoch_baseline_power: StoragePower,
-    pub total_storage_power_reward: TokenAmount,
+    pub total_minted_reward: TokenAmount,
     pub total_client_locked_collateral: TokenAmount,
     pub total_provider_locked_collateral: TokenAmount,
     pub total_client_storage_fee: TokenAmount,

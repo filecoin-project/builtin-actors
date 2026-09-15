@@ -1,8 +1,7 @@
 //! TODO: remove tests for legacy behaviour by deleting this file:
 //! https://github.com/filecoin-project/builtin-actors/issues/1389
-//! For now these tests preserve the behaviour of deals that are already (and will continue to be) handled by cron
-//! The test fixtures replicate this behaviour by adding them explicitly to the deal_op queue upon activation and setting
-//! last_updated to the deal_start epoch.
+//! For now these tests preserve the behaviour of deals that are already (and will continue to be)
+//! handled by cron. The fixtures simulate a completed first cron visit and queue the next one.
 
 use fil_actor_market::{State, next_update_epoch};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -54,7 +53,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     );
 
     // slash deal1
-    let slash_epoch = process_epoch(start_epoch, deal_id2) + ChainEpoch::from(100);
+    let slash_epoch = legacy_process_epoch(start_epoch, deal_id2) + ChainEpoch::from(100);
     rt.set_epoch(slash_epoch);
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_1], &[deal_id1]);
     cron_tick(&rt);
@@ -254,24 +253,26 @@ fn cron_reschedules_many_updates() {
     }
 
     let st: State = rt.get_state();
-    // Confirm two deals are scheduled for each epoch from start_epoch.
-    let first_updates = st.get_deals_for_epoch(rt.store(), start_epoch).unwrap();
-    for epoch in start_epoch..(start_epoch + update_interval) {
+    // Legacy deals are queued one interval past their first visits.
+    // Confirm two deals are scheduled for each epoch from first_epoch.
+    let first_epoch = start_epoch + update_interval;
+    let first_updates = st.get_deals_for_epoch(rt.store(), first_epoch).unwrap();
+    for epoch in first_epoch..(first_epoch + update_interval) {
         assert_eq!(2, st.get_deals_for_epoch(rt.store(), epoch).unwrap().len());
     }
 
-    rt.set_epoch(start_epoch);
+    rt.set_epoch(first_epoch);
     cron_tick(&rt);
 
     let st: State = rt.get_state();
-    // Two deals removed from start_epoch
-    assert_eq!(0, st.get_deals_for_epoch(rt.store(), start_epoch).unwrap().len());
+    // Two deals removed from first_epoch
+    assert_eq!(0, st.get_deals_for_epoch(rt.store(), first_epoch).unwrap().len());
 
     // Same two deals scheduled one interval later
-    let rescheduled = st.get_deals_for_epoch(rt.store(), start_epoch + update_interval).unwrap();
+    let rescheduled = st.get_deals_for_epoch(rt.store(), first_epoch + update_interval).unwrap();
     assert_eq!(first_updates, rescheduled);
 
-    for epoch in (start_epoch + 1)..(start_epoch + update_interval) {
+    for epoch in (first_epoch + 1)..(first_epoch + update_interval) {
         rt.set_epoch(epoch);
         cron_tick(&rt);
         let st: State = rt.get_state();
@@ -332,22 +333,27 @@ fn locked_fund_tracking_states() {
 
     let (deal_id3, d3) = generate_and_publish_deal(&rt, c3, &m3, start_epoch, end_epoch);
 
-    let csf = d1.total_storage_fee() + d2.total_storage_fee() + d3.total_storage_fee();
+    let mut csf = d1.total_storage_fee() + d2.total_storage_fee() + d3.total_storage_fee();
     let plc = &d1.provider_collateral + d2.provider_collateral + &d3.provider_collateral;
     let clc = d1.client_collateral + d2.client_collateral + &d3.client_collateral;
 
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
-    // activation doesn't change anything
+    // Simulating the first cron visits pays each deal from start to its first visit.
     let curr = rt.set_epoch(start_epoch - 1);
     activate_deals_legacy(&rt, sector_expiry, p1, curr, sector_number, &[deal_id1]);
     activate_deals_legacy(&rt, sector_expiry, p2, curr, sector_number, &[deal_id2]);
+    let first_visit1 = process_epoch(start_epoch, deal_id1);
+    let first_visit2 = process_epoch(start_epoch, deal_id2);
+    let simulated_payment =
+        &d1.storage_price_per_epoch * ((first_visit1 - start_epoch) + (first_visit2 - start_epoch));
+    csf -= simulated_payment;
 
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
-    // make payment for p1 and p2, p3 times out as it has not been activated
-    let curr = rt.set_epoch(process_epoch(start_epoch, deal_id3));
-    let last_payment_epoch = curr;
+    // p3 times out at its first visit as it has not been activated; the legacy deals 1 & 2
+    // are not due until an interval after theirs
+    rt.set_epoch(process_epoch(start_epoch, deal_id3));
     rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
@@ -357,22 +363,29 @@ fn locked_fund_tracking_states() {
         ExitCode::OK,
     );
     cron_tick(&rt);
-    let duration = curr - start_epoch;
-    let payment: TokenAmount = 2 * &d1.storage_price_per_epoch * duration;
-    let mut csf = (csf - payment) - d3.total_storage_fee();
+    let mut csf = csf - d3.total_storage_fee();
     let mut plc = plc - d3.provider_collateral;
     let mut clc = clc - d3.client_collateral;
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
     // Advance to just before the process epochs for deal 1 & 2, nothing changes before that.
-    let curr = rt.set_epoch(process_epoch(curr, deal_id1) - 1);
+    let curr = rt.set_epoch(legacy_process_epoch(start_epoch, deal_id1) - 1);
+    cron_tick(&rt);
+    assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
+
+    // make payment for p1 and p2 from their distinct simulated first visits
+    let curr = rt.set_epoch(process_epoch(curr, deal_id2));
+    let last_payment_epoch = curr;
+    let duration = (curr - first_visit1) + (curr - first_visit2);
+    let payment = &d1.storage_price_per_epoch * duration;
+    csf -= payment;
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
     // one more round of payment for deal1 and deal2
-    let curr = rt.set_epoch(process_epoch(curr, deal_id2));
+    let curr = rt.set_epoch(process_epoch(curr + 1, deal_id2));
     let duration = curr - last_payment_epoch;
-    let payment = 2 * d1.storage_price_per_epoch * duration;
+    let payment = 2 * &d1.storage_price_per_epoch * duration;
     csf -= payment;
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
@@ -386,7 +399,6 @@ fn locked_fund_tracking_states() {
     csf = TokenAmount::zero();
     clc = TokenAmount::zero();
     plc = TokenAmount::zero();
-
     expect_emitted(&rt, "deal-completed", deal_id2, d2.client.id().unwrap(), p2.id().unwrap());
 
     cron_tick(&rt);

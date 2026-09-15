@@ -113,49 +113,6 @@ impl State {
         .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")
     }
 
-    pub fn save_allocs<BS: Blockstore>(
-        &mut self,
-        allocs: &mut MapMap<'_, BS, Allocation, ActorID, AllocationID>,
-    ) -> Result<(), ActorError> {
-        self.allocations = allocs
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocations table")?;
-        Ok(())
-    }
-
-    /// Inserts a batch of allocations under a single client address.
-    /// The allocations are assigned sequential IDs starting from the next available.
-    pub fn insert_allocations<BS: Blockstore>(
-        &mut self,
-        store: &BS,
-        client: ActorID,
-        new_allocs: Vec<Allocation>,
-    ) -> Result<Vec<AllocationID>, ActorError> {
-        if new_allocs.is_empty() {
-            return Ok(vec![]);
-        }
-        let mut allocs = self.load_allocs(store)?;
-        // These local variables allow the id-associating map closure to move the allocations
-        // from the iterator rather than clone, without moving self.
-        let first_id = self.next_allocation_id;
-        let mut count = 0;
-        let count_ref = &mut count;
-        allocs
-            .put_many(
-                client,
-                new_allocs.into_iter().map(move |a| {
-                    let id = first_id + *count_ref;
-                    *count_ref += 1;
-                    (id, a)
-                }),
-            )
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to put allocations")?;
-        self.save_allocs(&mut allocs)?;
-        self.next_allocation_id += count;
-        let allocated_ids = (first_id..first_id + count).collect();
-        Ok(allocated_ids)
-    }
-
     pub fn load_claims<'a, BS: Blockstore>(
         &self,
         store: &'a BS,
@@ -176,24 +133,6 @@ impl State {
         self.claims = claims
             .flush()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims table")?;
-        Ok(())
-    }
-
-    pub fn put_claims<BS: Blockstore>(
-        &mut self,
-        store: &BS,
-        claims: Vec<(ClaimID, Claim)>,
-    ) -> Result<(), ActorError> {
-        if claims.is_empty() {
-            return Ok(());
-        }
-        let mut st_claims = self.load_claims(store)?;
-        for (id, claim) in claims.into_iter() {
-            st_claims
-                .put(claim.provider, id, claim)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to put claim")?;
-        }
-        self.save_claims(&mut st_claims)?;
         Ok(())
     }
 }
@@ -235,19 +174,6 @@ pub struct Allocation {
     pub term_max: ChainEpoch,
     // The latest epoch by which a provider must commit data before the allocation expires.
     pub expiration: ChainEpoch,
-}
-
-pub fn get_allocation<'a, BS>(
-    allocations: &'a mut MapMap<BS, Allocation, ActorID, AllocationID>,
-    client: ActorID,
-    id: AllocationID,
-) -> Result<Option<&'a Allocation>, ActorError>
-where
-    BS: Blockstore,
-{
-    allocations
-        .get(client, id)
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "HAMT lookup failure getting allocation")
 }
 
 pub fn get_claim<'a, BS>(

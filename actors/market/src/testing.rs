@@ -16,21 +16,16 @@ use fvm_shared::{
     deal::DealID,
     econ::TokenAmount,
 };
-use integer_encoding::VarInt;
 use multihash_codetable::{Code, MultihashDigest};
 use num_traits::Zero;
 
-use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::{
-    ActorError, AsActorError, MessageAccumulator, make_map_with_root_and_bitwidth,
-};
+use fil_actors_runtime::{ActorError, AsActorError, MessageAccumulator};
 
-use crate::ext::verifreg::AllocationID;
 use crate::{
     DEAL_OPS_BY_EPOCH_CONFIG, DealArray, DealMetaArray, DealOpsByEpoch, DealProposal,
     PENDING_PROPOSALS_CONFIG, PROVIDER_SECTORS_CONFIG, PendingProposalsSet, ProviderSectorsMap,
-    SECTOR_DEALS_CONFIG, SectorDealsMap, State, balance_table::BalanceTable,
+    SECTOR_DEALS_CONFIG, SectorDealsMap, State, balance_table::BalanceTable, next_update_epoch,
 };
 
 #[derive(Clone)]
@@ -64,7 +59,6 @@ impl Default for DealSummary {
 pub struct StateSummary {
     pub deals: BTreeMap<DealID, DealSummary>,
     pub provider_sector_deals: HashMap<ActorID, HashMap<SectorNumber, Vec<DealID>>>,
-    pub alloc_id_to_deal_id: BTreeMap<u64, DealID>,
     pub pending_proposal_count: u64,
     pub deal_state_count: u64,
     pub lock_table_count: u64,
@@ -78,6 +72,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     store: &BS,
     balance: &TokenAmount,
     current_epoch: ChainEpoch,
+    deal_updates_interval: i64,
 ) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
 
@@ -102,9 +97,9 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // Proposals
     let mut proposal_cids = BTreeSet::<Cid>::new();
+    let mut proposal_cids_by_id = BTreeMap::<DealID, Cid>::new();
     let mut max_deal_id = -1;
     let mut proposal_stats = BTreeMap::<DealID, DealSummary>::new();
-    let mut expected_deal_ops = BTreeSet::<DealID>::new();
     let mut total_proposal_collateral = TokenAmount::zero();
 
     match DealArray::load(&state.proposals, store) {
@@ -112,12 +107,9 @@ pub fn check_state_invariants<BS: Blockstore>(
             let ret = proposals.for_each(|deal_id, proposal| {
                 let proposal_cid = deal_cid(proposal)?;
 
-                if proposal.start_epoch >= current_epoch {
-                    expected_deal_ops.insert(deal_id);
-                }
-
                 // keep some state
                 proposal_cids.insert(proposal_cid);
+                proposal_cids_by_id.insert(deal_id, proposal_cid);
                 max_deal_id = max_deal_id.max(deal_id as i64);
 
                 proposal_stats.insert(
@@ -158,28 +150,6 @@ pub fn check_state_invariants<BS: Blockstore>(
         ),
     );
 
-    let mut pending_allocations = BTreeMap::<DealID, AllocationID>::new();
-    let mut alloc_id_to_deal_id = BTreeMap::<AllocationID, DealID>::new();
-    match make_map_with_root_and_bitwidth(&state.pending_deal_allocation_ids, store, HAMT_BIT_WIDTH)
-    {
-        Ok(pending_allocations_hamt) => {
-            let ret = pending_allocations_hamt.for_each(|key, allocation_id| {
-                let deal_id: u64 = u64::decode_var(key.0.as_slice()).unwrap().0;
-
-                acc.require(
-                    proposal_stats.contains_key(&deal_id),
-                    format!("pending deal allocation {} not found in proposals", deal_id),
-                );
-
-                pending_allocations.insert(deal_id, *allocation_id);
-                alloc_id_to_deal_id.insert(*allocation_id, deal_id);
-                Ok(())
-            });
-            acc.require_no_error(ret, "error iterating pending allocations");
-        }
-        Err(e) => acc.add(format!("error loading pending allocations: {e}")),
-    };
-
     // deal states
     let mut deal_state_count = 0;
     match DealMetaArray::load(&state.states, store) {
@@ -215,8 +185,6 @@ pub fn check_state_invariants<BS: Blockstore>(
                 } else {
                     acc.add(format!("no deal proposal for deal state {deal_id}"));
                 }
-                acc.require(!pending_allocations.contains_key(&deal_id), format!("deal {deal_id} has pending allocation"));
-
                 deal_state_count += 1;
                 Ok(())
             });
@@ -293,6 +261,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     }
 
     // pending proposals
+    let mut pending_proposal_cids = BTreeSet::<Cid>::new();
     let mut pending_proposal_count = 0;
     match PendingProposalsSet::load(
         store,
@@ -308,6 +277,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                     proposal_cids.contains(&proposal_cid),
                     format!("pending proposal with cid {proposal_cid} not found within proposals"),
                 );
+                pending_proposal_cids.insert(proposal_cid);
 
                 pending_proposal_count += 1;
                 Ok(())
@@ -316,6 +286,20 @@ pub fn check_state_invariants<BS: Blockstore>(
         }
         Err(e) => acc.add(format!("error loading pending proposals: {e}")),
     };
+
+    for (deal_id, stats) in &proposal_stats {
+        if stats.sector_start_epoch == EPOCH_UNDEFINED && current_epoch < stats.start_epoch {
+            let proposal_cid =
+                proposal_cids_by_id.get(deal_id).expect("every proposal has a computed CID");
+            acc.require(
+                pending_proposal_cids.contains(proposal_cid),
+                format!(
+                    "unactivated proposal {deal_id} before start epoch {} is not pending",
+                    stats.start_epoch
+                ),
+            );
+        }
+    }
 
     // escrow table and locked table
     let mut lock_table_count = 0;
@@ -367,6 +351,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // deals ops by epoch
     let (mut deal_op_epoch_count, mut deal_op_count) = (0, 0);
+    let mut deal_ops_by_id = BTreeMap::<DealID, (ChainEpoch, usize)>::new();
     match DealOpsByEpoch::load(
         store,
         &state.deal_ops_by_epoch,
@@ -377,7 +362,8 @@ pub fn check_state_invariants<BS: Blockstore>(
             let ret = deal_ops.for_each(|epoch: ChainEpoch, _| {
                 deal_op_epoch_count += 1;
                 deal_ops.for_each_in(&epoch, |deal_id: DealID| {
-                    expected_deal_ops.remove(&deal_id);
+                    let (_, count) = deal_ops_by_id.entry(deal_id).or_insert((epoch, 0));
+                    *count += 1;
                     deal_op_count += 1;
                     Ok(())
                 })
@@ -387,10 +373,20 @@ pub fn check_state_invariants<BS: Blockstore>(
         Err(e) => acc.add(format!("error loading deal ops: {e}")),
     };
 
-    acc.require(
-        expected_deal_ops.is_empty(),
-        format!("missing deal ops for proposals: {expected_deal_ops:?}"),
-    );
+    for (deal_id, stats) in &proposal_stats {
+        let first_visit = next_update_epoch(*deal_id, deal_updates_interval, stats.start_epoch);
+        let scheduled = deal_ops_by_id.get(deal_id).copied();
+        // Legacy deals have passed first_visit; never-updated deals before it remain queued there.
+        if state.last_cron < first_visit && stats.last_update_epoch == EPOCH_UNDEFINED {
+            acc.require(
+                scheduled == Some((first_visit, 1)),
+                format!(
+                    "never-visited deal {deal_id} must have exactly one deal op at epoch \
+                     {first_visit}, found {scheduled:?} (epoch, count)"
+                ),
+            );
+        }
+    }
 
     (
         StateSummary {
@@ -401,7 +397,6 @@ pub fn check_state_invariants<BS: Blockstore>(
             lock_table_count,
             deal_op_epoch_count,
             deal_op_count,
-            alloc_id_to_deal_id,
         },
         acc,
     )

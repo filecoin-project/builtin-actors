@@ -3,8 +3,7 @@ use std::ops::Neg;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredSealProof, StoragePower};
-use num_traits::cast::FromPrimitive;
+use fvm_shared::sector::RegisteredSealProof;
 
 use export_macro::vm_test;
 use fil_actor_market::{
@@ -15,12 +14,10 @@ use fil_actor_miner::{
     power_for_sector,
 };
 use fil_actor_power::State as PowerState;
-use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_shared::ActorID;
 use fvm_shared::deal::DealID;
@@ -34,13 +31,13 @@ use crate::util::{
     advance_to_proving_deadline, assert_invariants, create_accounts, create_miner, cron_tick,
     deal_cid_for_testing, make_bitfield, make_piece_manifests_from_deal_ids, market_publish_deal,
     miner_balance, miner_precommit_one_sector_v2, miner_prove_sector,
-    precommit_meta_data_from_deals, submit_windowed_post, verifreg_add_verifier,
+    precommit_meta_data_from_deals, submit_windowed_post,
 };
 
 #[vm_test]
 pub fn terminate_sectors_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
-    let (owner, verifier, unverified_client, verified_client) =
+    let (owner, _verifier, unverified_client, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3]);
     let worker = owner;
     let worker_id = worker.id().unwrap();
@@ -59,21 +56,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     );
     let miner_id = miner_id_addr.id().unwrap();
 
-    // publish verified and unverified deals
-    verifreg_add_verifier(v, &verifier, StoragePower::from_i64(32 << 40_i64).unwrap());
-
-    let add_client_params = VerifierParams {
-        address: verified_client,
-        allowance: StoragePower::from_i64(32 << 40_i64).unwrap(),
-    };
-    apply_ok(
-        v,
-        &verifier,
-        &VERIFIED_REGISTRY_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        VerifregMethod::AddVerifiedClient as u64,
-        Some(add_client_params),
-    );
+    // FIP-0118: verifreg minting deprecated, no need to set up verifier/verified client
 
     // add market collateral
     let collateral = TokenAmount::from_whole(3);
