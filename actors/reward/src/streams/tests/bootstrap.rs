@@ -1,7 +1,7 @@
 //! Mainnet boostratp activation according to FIP-0118, modelled here as it's intended to be
 //! implemented.
 
-use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime::{EPOCHS_IN_DAY, EPOCHS_IN_YEAR};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -13,7 +13,7 @@ use crate::streams::invariants::{schedule, structure};
 
 const ACTIVATION: ChainEpoch = 6_400_000; // Not exact, estimate at time of writing
 const TIMELOCK: ChainEpoch = 7 * EPOCHS_IN_DAY;
-const QUARTER_EPOCHS: ChainEpoch = 262_800; // 91.25 days
+const QUARTER_EPOCHS: ChainEpoch = EPOCHS_IN_YEAR / 4; // 262_974 epochs, 91.3104 days
 const RAMP_EPOCHS: ChainEpoch = 9 * QUARTER_EPOCHS;
 const CONSENSUS: (u64, u64, u64) = (95, 50, 95);
 const SERVICE: (u64, u64, u64) = (5, 5, 10);
