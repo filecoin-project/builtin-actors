@@ -81,11 +81,15 @@ pub fn check_state_invariants<BS: Blockstore>(
                         DataSummary {
                             sector_start: sector.activation,
                             sector_expiration: sector.expiration,
+                            power_base_epoch: sector.power_base_epoch,
                             deal_weight: sector.deal_weight.clone(),
                             verified_deal_weight: sector.verified_deal_weight.clone(),
                             legacy_qap: !sector
                                 .flags
                                 .contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER),
+                            full_qa_power: sector
+                                .flags
+                                .contains(SectorOnChainInfoFlags::FULL_QA_POWER),
                         },
                     );
                 }
@@ -148,9 +152,11 @@ pub fn check_state_invariants<BS: Blockstore>(
 pub struct DataSummary {
     pub sector_start: ChainEpoch,
     pub sector_expiration: ChainEpoch,
+    pub power_base_epoch: ChainEpoch,
     pub deal_weight: DealWeight,
     pub verified_deal_weight: DealWeight,
     pub legacy_qap: bool,
+    pub full_qa_power: bool,
 }
 
 pub struct StateSummary {

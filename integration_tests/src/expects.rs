@@ -15,10 +15,7 @@ use num_traits::Zero;
 
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_datacap::BalanceParams;
-use fil_actor_market::{
-    OnMinerSectorsTerminateParams, SectorDeals, VerifyDealsForActivationParams,
-};
-use fil_actor_miner::ext::verifreg::ClaimID;
+use fil_actor_market::OnMinerSectorsTerminateParams;
 use fil_actor_miner::{IsControllingAddressParam, PowerPair};
 use fil_actor_miner::{PieceChange, SectorChanges, SectorContentChangedParams};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
@@ -101,19 +98,6 @@ impl Expect {
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![Expect::burn(STORAGE_MARKET_ACTOR_ID, None)]),
             events: Some(events),
-            ..Default::default()
-        }
-    }
-    pub fn market_verify_deals(from: ActorID, sectors: Vec<SectorDeals>) -> ExpectInvocation {
-        let params =
-            IpldBlock::serialize_cbor(&VerifyDealsForActivationParams { sectors }).unwrap();
-        ExpectInvocation {
-            from,
-            to: STORAGE_MARKET_ACTOR_ADDR,
-            method: fil_actor_market::Method::VerifyDealsForActivation as u64,
-            params: Some(params),
-            value: Some(TokenAmount::zero()),
-            subinvocs: Some(vec![]),
             ..Default::default()
         }
     }
@@ -260,11 +244,7 @@ impl Expect {
         }
     }
 
-    pub fn verifreg_get_claims(
-        from: ActorID,
-        miner: ActorID,
-        ids: Vec<ClaimID>,
-    ) -> ExpectInvocation {
+    pub fn verifreg_get_claims(from: ActorID, miner: ActorID, ids: Vec<u64>) -> ExpectInvocation {
         let params =
             IpldBlock::serialize_cbor(&GetClaimsParams { provider: miner, claim_ids: ids })
                 .unwrap();

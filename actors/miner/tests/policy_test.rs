@@ -1,7 +1,8 @@
+use fil_actor_miner::{MAX_QUALITY_MULTIPLIER, QUALITY_BASE_MULTIPLIER, SECTOR_QUALITY_PRECISION};
 use fil_actor_miner::{
-    QUALITY_BASE_MULTIPLIER, SECTOR_QUALITY_PRECISION, VERIFIED_DEAL_WEIGHT_MULTIPLIER,
+    SectorOnChainInfo, SectorOnChainInfoFlags, qa_power_for_sector, qa_power_max,
 };
-use fil_actor_miner::{daily_proof_fee, qa_power_for_weight, quality_for_weight};
+use fil_actor_miner::{daily_proof_fee, quality_for_weight};
 use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{EPOCHS_IN_DAY, SECONDS_IN_DAY};
@@ -17,8 +18,8 @@ fn quality_is_independent_of_size_and_duration() {
     // Quality of space with no deals. This doesn't depend on either the sector size or duration.
     let empty_quality = BigInt::from(1 << SECTOR_QUALITY_PRECISION);
     // Quality space filled with verified deals.
-    let verified_quality = &empty_quality
-        * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
+    let verified_quality =
+        &empty_quality * (MAX_QUALITY_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
     // Quality space half filled with verified deals.
     let half_verified_quality =
         &empty_quality / BigInt::from(2) + &verified_quality / BigInt::from(2);
@@ -90,8 +91,8 @@ fn quality_scales_with_verified_weight_proportion() {
     // Quality of space with no deals. This doesn't depend on either the sector size or duration.
     let empty_quality = BigInt::from(1 << SECTOR_QUALITY_PRECISION);
     // Quality space filled with verified deals.
-    let verified_quality = &empty_quality
-        * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
+    let verified_quality =
+        &empty_quality * (MAX_QUALITY_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
 
     let sector_size = SectorSize::_64GiB;
     let sector_duration = ChainEpoch::from(1_000_000); // ~350 days
@@ -142,15 +143,14 @@ fn empty_sector_has_power_equal_to_size() {
     for size in size_range {
         for duration in &duration_range {
             let expected_power = BigInt::from(size as i64);
-            assert_eq!(expected_power, qa_power_for_weight(size, *duration, &BigInt::zero()));
+            assert_eq!(expected_power, power_for_weight(size, *duration, &BigInt::zero()));
         }
     }
 }
 
 #[test]
 fn verified_sector_has_power_a_multiple_of_size() {
-    let verified_multiplier =
-        VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone();
+    let verified_multiplier = MAX_QUALITY_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone();
     let size_range: Vec<SectorSize> = vec![
         SectorSize::_2KiB,
         SectorSize::_8MiB,
@@ -168,7 +168,7 @@ fn verified_sector_has_power_a_multiple_of_size() {
         for duration in &duration_range {
             let verified_weight = weight(size, *duration);
             let expected_power = size as i64 * &verified_multiplier;
-            assert_eq!(expected_power, qa_power_for_weight(size, *duration, &verified_weight));
+            assert_eq!(expected_power, power_for_weight(size, *duration, &verified_weight));
         }
     }
 }
@@ -180,8 +180,7 @@ fn verified_weight_adds_proportional_power() {
     let sector_weight = weight(sector_size, sector_duration);
 
     let fully_empty_power = BigInt::from(sector_size as i64);
-    let fully_verified_power = (BigInt::from(sector_size as i64)
-        * VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone())
+    let fully_verified_power = (BigInt::from(sector_size as i64) * MAX_QUALITY_MULTIPLIER.clone())
         / QUALITY_BASE_MULTIPLIER.clone();
 
     let max_error = BigInt::from(1 << SECTOR_QUALITY_PRECISION);
@@ -213,7 +212,7 @@ fn verified_weight_adds_proportional_power() {
             let ep = empty_weight * &fully_empty_power;
             let vp = &verified_weight * &fully_verified_power;
             let expected_power = (ep + vp) / &sector_weight;
-            let power = qa_power_for_weight(sector_size, sector_duration, &verified_weight);
+            let power = power_for_weight(sector_size, sector_duration, &verified_weight);
             let power_error = expected_power - power;
             assert!(power_error <= max_error);
         }
@@ -223,7 +222,7 @@ fn verified_weight_adds_proportional_power() {
 #[test]
 fn demonstrate_standard_sectors() {
     let sector_duration = 180 * EPOCHS_IN_DAY;
-    let vmul = VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone();
+    let vmul = MAX_QUALITY_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone();
 
     // 32 GiB
     let sector_size = SectorSize::_32GiB;
@@ -231,16 +230,16 @@ fn demonstrate_standard_sectors() {
 
     assert_eq!(
         BigInt::from(sector_size as u64),
-        qa_power_for_weight(sector_size, sector_duration, &BigInt::zero())
+        power_for_weight(sector_size, sector_duration, &BigInt::zero())
     );
     assert_eq!(
         &vmul * sector_size as u64,
-        qa_power_for_weight(sector_size, sector_duration, &sector_weight)
+        power_for_weight(sector_size, sector_duration, &sector_weight)
     );
     let half_verified_power = ((sector_size as u64) / 2) + (&vmul * (sector_size as u64) / 2);
     assert_eq!(
         half_verified_power,
-        qa_power_for_weight(sector_size, sector_duration, &(sector_weight / 2))
+        power_for_weight(sector_size, sector_duration, &(sector_weight / 2))
     );
 
     // 64GiB
@@ -249,17 +248,32 @@ fn demonstrate_standard_sectors() {
 
     assert_eq!(
         BigInt::from(sector_size as u64),
-        qa_power_for_weight(sector_size, sector_duration, &BigInt::zero())
+        power_for_weight(sector_size, sector_duration, &BigInt::zero())
     );
     assert_eq!(
         &vmul * sector_size as u64,
-        qa_power_for_weight(sector_size, sector_duration, &sector_weight)
+        power_for_weight(sector_size, sector_duration, &sector_weight)
     );
     let half_verified_power = ((sector_size as u64) / 2) + (&vmul * (sector_size as u64) / 2);
     assert_eq!(
         half_verified_power,
-        qa_power_for_weight(sector_size, sector_duration, &(sector_weight / 2))
+        power_for_weight(sector_size, sector_duration, &(sector_weight / 2))
     );
+}
+
+fn power_for_weight(
+    size: SectorSize,
+    duration: ChainEpoch,
+    verified_weight: &DealWeight,
+) -> BigInt {
+    qa_power_for_sector(
+        size,
+        &SectorOnChainInfo {
+            expiration: duration,
+            verified_deal_weight: verified_weight.clone(),
+            ..Default::default()
+        },
+    )
 }
 
 fn weight(size: SectorSize, duration: ChainEpoch) -> BigInt {
@@ -285,7 +299,7 @@ fn original_quality_for_weight(
     let weighted_base_space_time =
         (&sector_space_time - total_deal_space_time) * &*QUALITY_BASE_MULTIPLIER;
     let weighted_deal_space_time = deal_weight * BigInt::from(10);
-    let weighted_verified_space_time = verified_weight * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER;
+    let weighted_verified_space_time = verified_weight * &*MAX_QUALITY_MULTIPLIER;
     let weighted_sum_space_time =
         weighted_base_space_time + weighted_deal_space_time + weighted_verified_space_time;
     let scaled_up_weighted_sum_space_time: BigInt =
@@ -329,4 +343,157 @@ fn daily_proof_fee_calc() {
             expected_fee
         );
     });
+}
+
+// --- FULL_QA_POWER flag tests ---
+
+#[test]
+fn full_qa_power_flag_gives_10x() {
+    // A sector with FULL_QA_POWER and zero deal weights should get qa_power_max (10x raw power).
+    let sizes = vec![SectorSize::_2KiB, SectorSize::_32GiB];
+    for size in sizes {
+        let sector = SectorOnChainInfo {
+            sector_number: 1,
+            flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER | SectorOnChainInfoFlags::FULL_QA_POWER,
+            expiration: 1000,
+            power_base_epoch: 0,
+            ..Default::default()
+        };
+        let power = qa_power_for_sector(size, &sector);
+        let expected = qa_power_max(size);
+        assert_eq!(
+            power, expected,
+            "FULL_QA_POWER sector of size {:?} should get qa_power_max",
+            size
+        );
+        // Verify it's exactly 10x raw power.
+        assert_eq!(expected, BigInt::from(size as u64) * 10);
+    }
+}
+
+#[test]
+fn full_qa_power_ignores_deal_weights() {
+    // FULL_QA_POWER ignores both deal weight fields.
+    let size = SectorSize::_32GiB;
+    let duration: ChainEpoch = 1000;
+    let full_weight = weight(size, duration);
+
+    let sector = SectorOnChainInfo {
+        sector_number: 1,
+        flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER | SectorOnChainInfoFlags::FULL_QA_POWER,
+        expiration: duration,
+        power_base_epoch: 0,
+        deal_weight: full_weight.clone(),
+        verified_deal_weight: full_weight,
+        ..Default::default()
+    };
+    let power = qa_power_for_sector(size, &sector);
+    assert_eq!(
+        power,
+        qa_power_max(size),
+        "FULL_QA_POWER should produce qa_power_max regardless of deal weights"
+    );
+}
+
+#[test]
+fn full_qa_power_ignores_partial_verified() {
+    // A sector with FULL_QA_POWER and partial verified weight (half the sector) should still
+    // get qa_power_max.
+    let size = SectorSize::_32GiB;
+    let duration: ChainEpoch = 2000;
+    let half_verified_weight = weight(size, duration) / 2;
+
+    let sector = SectorOnChainInfo {
+        sector_number: 1,
+        flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER | SectorOnChainInfoFlags::FULL_QA_POWER,
+        expiration: duration,
+        power_base_epoch: 0,
+        verified_deal_weight: half_verified_weight,
+        ..Default::default()
+    };
+    let power = qa_power_for_sector(size, &sector);
+    assert_eq!(
+        power,
+        qa_power_max(size),
+        "FULL_QA_POWER should produce qa_power_max even with partial verified weight"
+    );
+}
+
+#[test]
+fn legacy_sector_without_flag_uses_old_formula() {
+    // A sector WITHOUT FULL_QA_POWER should still use the old quality_for_weight formula:
+    // 1x for CC, 10x for fully verified, proportional for partial.
+    let size = SectorSize::_32GiB;
+    let duration: ChainEpoch = 1000;
+    let full_weight = weight(size, duration);
+
+    // CC sector (no verified weight) -> 1x raw power
+    let cc_sector = SectorOnChainInfo {
+        sector_number: 1,
+        flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER, // no FULL_QA_POWER
+        expiration: duration,
+        power_base_epoch: 0,
+        verified_deal_weight: BigInt::zero(),
+        ..Default::default()
+    };
+    assert_eq!(
+        qa_power_for_sector(size, &cc_sector),
+        BigInt::from(size as u64),
+        "Legacy CC sector should have 1x raw power"
+    );
+
+    // Fully verified sector -> 10x raw power
+    let verified_sector = SectorOnChainInfo {
+        sector_number: 2,
+        flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
+        expiration: duration,
+        power_base_epoch: 0,
+        verified_deal_weight: full_weight.clone(),
+        ..Default::default()
+    };
+    assert_eq!(
+        qa_power_for_sector(size, &verified_sector),
+        qa_power_max(size),
+        "Legacy fully verified sector should have 10x raw power"
+    );
+
+    // Half verified sector -> proportional (midpoint between 1x and 10x)
+    let half_verified_sector = SectorOnChainInfo {
+        sector_number: 3,
+        flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
+        expiration: duration,
+        power_base_epoch: 0,
+        verified_deal_weight: full_weight / 2,
+        ..Default::default()
+    };
+    let half_power = qa_power_for_sector(size, &half_verified_sector);
+    let expected_half = BigInt::from(size as u64) / 2 + qa_power_max(size) / 2;
+    assert_eq!(
+        half_power, expected_half,
+        "Legacy half-verified sector should have proportional power"
+    );
+}
+
+#[test]
+fn full_qa_power_independent_of_duration() {
+    // FULL_QA_POWER power should be the same regardless of sector duration/expiration.
+    let size = SectorSize::_32GiB;
+    let durations: Vec<ChainEpoch> = vec![1, 100, 1000, 180 * EPOCHS_IN_DAY, 540 * EPOCHS_IN_DAY];
+    let expected = qa_power_max(size);
+
+    for duration in durations {
+        let sector = SectorOnChainInfo {
+            sector_number: 1,
+            flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER | SectorOnChainInfoFlags::FULL_QA_POWER,
+            expiration: duration,
+            power_base_epoch: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            qa_power_for_sector(size, &sector),
+            expected,
+            "FULL_QA_POWER power should be identical for duration {}",
+            duration
+        );
+    }
 }

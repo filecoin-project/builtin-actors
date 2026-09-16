@@ -7,7 +7,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 
-use fil_actor_market::EX_DEAL_EXPIRED;
+use fil_actor_market::ext::miner::PieceReturn;
 use fil_actor_market::{State, deal_cid};
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -94,7 +94,7 @@ fn deal_is_processed_after_its_end_epoch_should_expire_correctly() {
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, END_EPOCH + 100, deal_id);
     assert!(slashed.is_zero());
-    let duration = END_EPOCH - START_EPOCH;
+    let duration = END_EPOCH - process_epoch(START_EPOCH, deal_id);
     assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
     assert_deal_deleted(&rt, deal_id, &deal_proposal, SECTOR_NUMBER, true);
     check_state(&rt);
@@ -124,7 +124,7 @@ fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
         &[deal_id],
         &[],
     );
-    assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED]);
+    assert_eq!(vec![PieceReturn { accepted: false }], res.sectors[0].added);
     check_state(&rt);
 }
 

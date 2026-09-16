@@ -1,6 +1,5 @@
 use cid::Cid;
 use fil_actor_market::{DealProposal, DealState, State as MarketState, load_provider_sector_deals};
-use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
     CompactCommD, Deadline, DeadlineInfo, GetBeneficiaryReturn, Method as MinerMethod, MinerInfo,
     PieceChange, PowerPair, SectorOnChainInfo, State as MinerState, initial_pledge_for_power,
@@ -8,8 +7,7 @@ use fil_actor_miner::{
 };
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
-use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
-use fil_actors_runtime::ActorError;
+use fil_actor_verifreg::{Claim, State as VerifregState};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::CREATE_MINER_DEPOSIT_POWER;
 use fil_actors_runtime::test_utils::make_piece_cid;
@@ -177,25 +175,6 @@ pub fn get_beneficiary(v: &dyn VM, from: &Address, m_addr: &Address) -> GetBenef
     .unwrap()
 }
 
-pub fn market_pending_deal_allocations_raw(
-    v: &dyn VM,
-    deals: &[DealID],
-) -> Result<Vec<AllocationID>, ActorError> {
-    let mut st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let bs = &DynBlockstore::wrap(v.blockstore());
-    st.get_pending_deal_allocation_ids(bs, deals)
-}
-
-pub fn market_pending_deal_allocations(v: &dyn VM, deals: &[DealID]) -> Vec<AllocationID> {
-    market_pending_deal_allocations_raw(v, deals).unwrap()
-}
-
-pub fn market_maybe_pending_deal_allocations(v: &dyn VM, deals: &[DealID]) -> Vec<AllocationID> {
-    let mut st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let bs = &DynBlockstore::wrap(v.blockstore());
-    st.get_pending_deal_allocation_ids(bs, deals).unwrap()
-}
-
 pub fn market_list_deals(v: &dyn VM) -> HashMap<DealID, (DealProposal, Option<DealState>)> {
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let bs = &DynBlockstore::wrap(v.blockstore());
@@ -230,11 +209,11 @@ pub fn market_list_sectors_deals(
     found
 }
 
-pub fn verifreg_list_claims(v: &dyn VM, provider: ActorID) -> HashMap<ClaimID, Claim> {
+pub fn verifreg_list_claims(v: &dyn VM, provider: ActorID) -> HashMap<u64, Claim> {
     let st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let bs = &DynBlockstore::wrap(v.blockstore());
     let mut claims = st.load_claims(bs).unwrap();
-    let mut found: HashMap<ClaimID, Claim> = HashMap::new();
+    let mut found: HashMap<u64, Claim> = HashMap::new();
     claims
         .for_each_in(provider, |id, claim| {
             found.insert(parse_uint_key(id).unwrap(), claim.clone());
@@ -281,7 +260,7 @@ pub fn get_network_stats(vm: &dyn VM) -> NetworkStats {
         this_epoch_reward: reward_state.this_epoch_reward,
         this_epoch_reward_smoothed: reward_state.this_epoch_reward_smoothed,
         this_epoch_baseline_power: reward_state.this_epoch_baseline_power,
-        total_storage_power_reward: reward_state.total_storage_power_reward,
+        total_minted_reward: reward_state.total_minted_reward,
         total_client_locked_collateral: market_state.total_client_locked_collateral,
         total_provider_locked_collateral: market_state.total_provider_locked_collateral,
         total_client_storage_fee: market_state.total_client_storage_fee,

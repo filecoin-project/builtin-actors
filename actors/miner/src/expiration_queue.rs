@@ -478,10 +478,10 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     /// The sectors being replaced must not be faulty, so must be scheduled for on-time rather than early expiration.
     /// The sectors added are assumed to be not faulty.
     /// Returns the old a new sector number bitfields, and delta to power and pledge, new minus old.
-    pub fn replace_sectors(
+    pub fn replace_sectors<'a, 'b>(
         &mut self,
-        old_sectors: &[SectorOnChainInfo],
-        new_sectors: &[SectorOnChainInfo],
+        old_sectors: impl IntoIterator<Item = &'a SectorOnChainInfo>,
+        new_sectors: impl IntoIterator<Item = &'b SectorOnChainInfo>,
         sector_size: SectorSize,
     ) -> anyhow::Result<(
         BitField,    // old sector numbers
@@ -734,9 +734,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         Ok(())
     }
 
-    fn remove_active_sectors(
+    fn remove_active_sectors<'a>(
         &mut self,
-        sectors: &[SectorOnChainInfo],
+        sectors: impl IntoIterator<Item = &'a SectorOnChainInfo>,
         sector_size: SectorSize,
     ) -> anyhow::Result<(
         BitField,    // sector numbers
@@ -849,10 +849,10 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     /// (i.e. they have been rescheduled) traverse expiration sets for groups where these
     /// sectors actually expire.
     /// Groups will be returned in expiration order, earliest first.
-    fn find_sectors_by_expiration(
+    fn find_sectors_by_expiration<'a>(
         &self,
         sector_size: SectorSize,
-        sectors: &[SectorOnChainInfo],
+        sectors: impl IntoIterator<Item = &'a SectorOnChainInfo>,
     ) -> anyhow::Result<Vec<SectorExpirationSet>> {
         let mut declared_expirations = BTreeMap::<ChainEpoch, bool>::new();
         let mut sectors_by_number = BTreeMap::<u64, &SectorOnChainInfo>::new();

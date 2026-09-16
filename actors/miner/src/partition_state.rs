@@ -15,6 +15,7 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{SectorSize, StoragePower};
 use num_traits::{Signed, Zero};
 
@@ -100,6 +101,14 @@ impl Partition {
     pub fn active_sectors(&self) -> BitField {
         let non_faulty = &self.live_sectors() - &self.faults;
         &non_faulty - &self.unproven
+    }
+
+    /// Whether one sector is active (see `active_sectors`), without building the set.
+    pub fn is_active(&self, sector_number: SectorNumber) -> bool {
+        self.sectors.get(sector_number)
+            && !self.terminated.get(sector_number)
+            && !self.faults.get(sector_number)
+            && !self.unproven.get(sector_number)
     }
 
     /// Active power is power of non-faulty sectors.
@@ -407,11 +416,11 @@ impl Partition {
     /// If the same sector is both removed and added, this permits rescheduling *with a change in power*,
     /// unlike RescheduleExpirations.
     /// Returns the delta to power and pledge requirement.
-    pub fn replace_sectors<BS: Blockstore>(
+    pub fn replace_sectors<'a, 'b, BS: Blockstore>(
         &mut self,
         store: &BS,
-        old_sectors: &[SectorOnChainInfo],
-        new_sectors: &[SectorOnChainInfo],
+        old_sectors: impl IntoIterator<Item = &'a SectorOnChainInfo>,
+        new_sectors: impl IntoIterator<Item = &'b SectorOnChainInfo>,
         sector_size: SectorSize,
         quant: QuantSpec,
     ) -> anyhow::Result<(PowerPair, TokenAmount, TokenAmount)> {
