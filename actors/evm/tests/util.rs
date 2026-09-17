@@ -388,7 +388,7 @@ p_staticcall:
     # gas
     push1 0x00
 
-    delegatecall
+    staticcall
 
     # return
 
