@@ -209,7 +209,7 @@ impl Walk {
     fn commit(&mut self, ledger: Ledger, applied: &ApplyResult) {
         self.coverage.add("applied writes", applied.applied.len());
         self.coverage.add("dropped writes", applied.dropped.len());
-        self.tally.dust += &applied.fold_dust;
+        self.tally.dust += applied.fold_dust();
         self.streams = ledger.streams;
         self.accrued = ledger.accrued;
     }
@@ -346,8 +346,8 @@ impl Walk {
                 let Some(id) = random.pick(&self.explicit_ids()).copied() else { return };
                 let map = random.share_map();
                 let sentinel = map.iter().any(|row| row.recipient == BURNT_FUNDS_ACTOR_ADDR);
-                if let Some(dust) = self.method(|ledger, _| ledger.set_shares(id, map)) {
-                    self.tally.dust += &dust;
+                if let Some((fold, _)) = self.method(|ledger, _| ledger.set_shares(id, map)) {
+                    self.tally.dust += &fold.dust;
                     self.coverage.hit("share installs");
                     self.coverage.hit_if("sentinel share maps", sentinel);
                 }
@@ -357,8 +357,8 @@ impl Walk {
                 let Some(id) = random.pick(&self.explicit_ids()).copied() else { return };
                 let old = random.wallet();
                 let new = if random.chance(5) { BURNT_FUNDS_ACTOR_ADDR } else { random.wallet() };
-                if let Some(dust) = self.method(|ledger, _| ledger.replace_address(id, old, new)) {
-                    self.tally.dust += &dust;
+                if let Some(fold) = self.method(|ledger, _| ledger.replace_address(id, old, new)) {
+                    self.tally.dust += &fold.dust;
                     self.coverage.hit("address swaps");
                 }
             }

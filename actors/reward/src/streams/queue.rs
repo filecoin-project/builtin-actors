@@ -66,10 +66,9 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use log::info;
-use num_traits::Zero;
 
 use super::Ledger;
-use super::distribution::{validate_distribution_init, validate_id_address};
+use super::distribution::{Fold, SharesInstalled, validate_distribution_init, validate_id_address};
 use super::invariants::{schedule, validate_tombstone_capacity};
 use super::weights::{validate_weight_record, validate_weight_updates};
 use crate::state::{
@@ -309,27 +308,45 @@ impl QueuedCall {
     }
 }
 
-/// The effects of applying due writes, for the actor layer to settle after the transaction.
-///
-/// This crosses Rust call boundaries only so doesn't need to be encodable.
+/// The effects of a call, for the actor layer to announce and settle after the transaction: the due
+/// writes it applied, and the periods and share maps they mutated. A method that folds or installs
+/// something itself appends to the same lists, so events are emitted from one place.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ApplyResult {
-    pub fold_dust: TokenAmount,
     /// Successful writes, for actor-layer events after a committed application.
     pub applied: Vec<PendingWrite>,
     /// Removed writes, for actor-layer events after a committed application.
     pub dropped: Vec<PendingWrite>,
+    /// Periods closed, in the order they closed.
+    pub folds: Vec<Fold>,
+    /// Share maps installed, in install order.
+    pub installed: Vec<SharesInstalled>,
+}
+
+impl ApplyResult {
+    /// The dust every fold left, burnt in one send.
+    pub(crate) fn fold_dust(&self) -> TokenAmount {
+        self.folds.iter().map(|fold| &fold.dust).sum()
+    }
+}
+
+/// What applying one queued call moved, beyond the schedule itself.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Effects {
+    pub fold: Option<Fold>,
+    pub installed: Option<SharesInstalled>,
 }
 
 impl Ledger {
     /// Applies one queued call in the state its predecessors left, from the epoch it becomes
     /// effective.
     ///
-    /// Returns the fold dust for the caller to burn, or the one prerequisite the call is missing.
+    /// Returns what the call changed so the actor layer can announce it.
     /// Only `RemoveStream` and `SetDistribution` fold, closing the explicit stream's period before
-    /// it is tombstoned or re-pointed, so only they can leave dust; the other calls return zero.
-    fn apply(&mut self, call: &QueuedCall, effective: ChainEpoch) -> Result<TokenAmount, Stranded> {
-        let dust = match call {
+    /// it is tombstoned or re-pointed, so only they can leave dust; and only `RegisterStream`
+    /// installs a share map.
+    fn apply(&mut self, call: &QueuedCall, effective: ChainEpoch) -> Result<Effects, Stranded> {
+        let effects = match call {
             QueuedCall::Weights { updates, .. } => {
                 for update in updates {
                     let stream = self
@@ -338,7 +355,7 @@ impl Ledger {
                         .ok_or(Stranded::MissingStream(update.id))?;
                     stream.weight = update.weight.clone();
                 }
-                TokenAmount::zero()
+                Effects::default()
             }
             QueuedCall::Register { id, weight, distribution, .. } => {
                 let id = *id;
@@ -354,6 +371,10 @@ impl Ledger {
                 if distribution.is_none() && self.streams.streams.iter().any(Stream::is_implicit) {
                     return Err(Stranded::SecondImplicit);
                 }
+                let installed = distribution.as_ref().map(|distribution| SharesInstalled {
+                    id,
+                    shares: distribution.shares.clone(),
+                });
                 let distribution = distribution.as_ref().map(|distribution| ExplicitDistribution {
                     writer: distribution.writer,
                     shares: distribution.shares.clone(),
@@ -364,17 +385,21 @@ impl Ledger {
                     self.insert_accrual(id);
                 }
                 self.streams.insert_stream(Stream { id, weight: weight.clone(), distribution });
-                TokenAmount::zero()
+                Effects { fold: None, installed }
             }
-            QueuedCall::Remove { id } => self.remove_stream(*id)?,
-            QueuedCall::SetDistribution { id, writer } => self.replace_writer(*id, *writer)?,
+            QueuedCall::Remove { id } => {
+                Effects { fold: self.remove_stream(*id)?, installed: None }
+            }
+            QueuedCall::SetDistribution { id, writer } => {
+                Effects { fold: Some(self.replace_writer(*id, *writer)?), installed: None }
+            }
         };
         // Only the weight envelope needs checking here. The stream table is guarded by the
         // registration preconditions above, a fold only moves value between existing recipients,
         // inserts stay sorted and positive, and tombstone room was charged when the removal was
         // admitted.
         schedule(&self.streams.streams, effective).map_err(Stranded::Schedule)?;
-        Ok(dust)
+        Ok(effects)
     }
 
     /// Applies every write due through `epoch`, each validated from its own effective epoch just
@@ -397,9 +422,10 @@ impl Ledger {
             // if it's dropped, the copy is thrown away and the ledger is as the last write left it.
             let mut next = self.clone();
             match next.apply(&call, write.effective_epoch) {
-                Ok(dust) => {
+                Ok(effects) => {
                     *self = next;
-                    result.fold_dust += dust;
+                    result.folds.extend(effects.fold);
+                    result.installed.extend(effects.installed);
                     result.applied.push(write);
                 }
                 Err(stranded) => {

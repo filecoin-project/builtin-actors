@@ -171,10 +171,10 @@ fn set_shares(
     shares: Vec<RecipientShare>,
 ) -> anyhow::Result<TokenAmount> {
     let mut ledger = ledger(streams, accruals);
-    let dust = ledger.set_shares(id, shares)?;
+    let (fold, _) = ledger.set_shares(id, shares)?;
     *streams = ledger.streams;
     *accruals = ledger.accrued;
-    Ok(dust)
+    Ok(fold.dust)
 }
 
 /// The recipient-address swap as the actor drives it, keeping what the ledger holds only on
@@ -187,10 +187,10 @@ fn replace_address(
     new: Address,
 ) -> anyhow::Result<TokenAmount> {
     let mut ledger = ledger(streams, accruals);
-    let dust = ledger.replace_address(id, old, new)?;
+    let fold = ledger.replace_address(id, old, new)?;
     *streams = ledger.streams;
     *accruals = ledger.accrued;
-    Ok(dust)
+    Ok(fold.dust)
 }
 
 /// One due removal, driven straight through the transition the queue applies.
@@ -200,10 +200,10 @@ fn remove_stream(
     id: StreamId,
 ) -> Result<TokenAmount, Stranded> {
     let mut ledger = ledger(streams, accruals);
-    let dust = ledger.remove_stream(id)?;
+    let fold = ledger.remove_stream(id)?;
     *streams = ledger.streams;
     *accruals = ledger.accrued;
-    Ok(dust)
+    Ok(fold.map(|fold| fold.dust).unwrap_or_default())
 }
 
 /// One due writer change, driven straight through the transition the queue applies.
@@ -214,10 +214,10 @@ fn replace_writer(
     writer: Address,
 ) -> Result<TokenAmount, Stranded> {
     let mut ledger = ledger(streams, accruals);
-    let dust = ledger.replace_writer(id, writer)?;
+    let fold = ledger.replace_writer(id, writer)?;
     *streams = ledger.streams;
     *accruals = ledger.accrued;
-    Ok(dust)
+    Ok(fold.dust)
 }
 
 /// A claim over wallets the actor layer has already resolved.

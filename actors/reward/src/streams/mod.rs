@@ -23,7 +23,7 @@ mod weights;
 
 pub use self::award::explicit_liability;
 pub(crate) use self::award::{FullAward, plan_award};
-pub(crate) use self::distribution::admit_shares;
+pub(crate) use self::distribution::{Fold, FoldCause, SharesInstalled, admit_shares};
 pub(crate) use self::invariants::validate_streams_state;
 pub(crate) use self::queue::{ApplyResult, QueuedCall, WriteKey};
 

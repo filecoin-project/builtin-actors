@@ -68,12 +68,12 @@ pub(crate) fn plan_award(
     let liability = ledger.liability();
     // A committed fold's dust belongs to f099, and the send that does that comes _after_ the
     // transaction, so the reserve still holds it here.
-    let reserve = gas_reward + &liability + &applied.fold_dust;
+    let fold_dust = applied.fold_dust();
+    let reserve = gas_reward + &liability + &fold_dust;
     if *balance <= reserve {
         warn!(
             "reward balance {balance} does not exceed gas {gas_reward}, explicit-stream \
-             liabilities {liability} and pending dust {}; paying gas reward only",
-            applied.fold_dust
+             liabilities {liability} and pending dust {fold_dust}; paying gas reward only"
         );
         return None;
     }
