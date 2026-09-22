@@ -16,7 +16,8 @@
 //! it has claimed this period, plus its payable balance from previously closed periods. A
 //! tombstoned id pays the payable balance alone.
 //!
-//! `fold` consolidates a period into payable rows and returns the residue for the caller to burn.
+//! `fold` consolidates a period into payable rows, reporting what it divided and the residue for
+//! the caller to burn.
 //!
 //! - `set_shares` and `replace_address` wrap it with the map they install.
 //! - `remove_stream` folds, then moves unpaid rows into a tombstone under the stream's ID, which
@@ -52,6 +53,44 @@ use crate::types::DistributionInit;
 
 /// One claimed amount for each requested wallet, preserving request order.
 pub(crate) type ClaimResult = Vec<TokenAmount>;
+
+/// What closing a period moved, for the `period-folded` event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Fold {
+    pub id: StreamId,
+    pub cause: FoldCause,
+    /// The period's accrual, before it was divided.
+    pub accrued: TokenAmount,
+    /// The remainder the division left, which the caller burns.
+    pub dust: TokenAmount,
+}
+
+/// The call that closed a period.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FoldCause {
+    SetShares,
+    ReplaceAddress,
+    RemoveStream,
+    SetDistribution,
+}
+
+impl FoldCause {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            FoldCause::SetShares => "SetShares",
+            FoldCause::ReplaceAddress => "ReplaceAddress",
+            FoldCause::RemoveStream => "RemoveStream",
+            FoldCause::SetDistribution => "SetDistribution",
+        }
+    }
+}
+
+/// A share map now in force, for the `shares-set` event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SharesInstalled {
+    pub id: StreamId,
+    pub shares: Vec<RecipientShare>,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ShareForm {
@@ -119,27 +158,28 @@ pub(crate) fn admit_shares(mut shares: Vec<RecipientShare>) -> Result<Vec<Recipi
 
 impl Ledger {
     /// Closes the current period, preserves unclaimed earnings, and installs new shares.
-    /// Returns indivisible rounding dust for burning.
+    /// Returns the closed period and the map now in force.
     pub(crate) fn set_shares(
         &mut self,
         id: StreamId,
         shares: Vec<RecipientShare>,
-    ) -> Result<TokenAmount> {
+    ) -> Result<(Fold, SharesInstalled)> {
         // Admit the incoming map, which is what turns caller rows into storable ones.
         let shares = admit_shares(shares)?;
-        self.install_shares(id, shares)
+        let fold = self.install_shares(id, shares.clone(), FoldCause::SetShares)?;
+        Ok((fold, SharesInstalled { id, shares }))
     }
 
     /// Moves one recipient's future share to `new`, or drops it when `new` is f099. The old wallet
     /// keeps its payable balance and the new wallet starts a fresh tally. Because this is
     /// a `SetShares` on the stored map with one row changed, the fold and other `SetShares` checks
-    /// apply. Returns rounding dust.
+    /// apply. Returns the closed period.
     pub(crate) fn replace_address(
         &mut self,
         id: StreamId,
         old: Address,
         new: Address,
-    ) -> Result<TokenAmount> {
+    ) -> Result<Fold> {
         validate_id_address(&old, "old recipient address")?;
         validate_id_address(&new, "new recipient address")?;
         ensure!(self.streams.has_stream(id), "stream {id} not found");
@@ -168,13 +208,18 @@ impl Ledger {
             }
             shares.sort_by_key(|row| row.recipient);
         }
-        self.install_shares(id, shares)
+        self.install_shares(id, shares, FoldCause::ReplaceAddress)
     }
 
     /// Closes the current period and installs `shares`, already in stored form. The fold leaves
     /// each wallet's earnings in `payable` under the wallet that earned them, so the installed map
-    /// can add a row to that table. Returns indivisible rounding dust for burning.
-    fn install_shares(&mut self, id: StreamId, shares: Vec<RecipientShare>) -> Result<TokenAmount> {
+    /// can add a row to that table. Returns the closed period; the caller burns its dust.
+    fn install_shares(
+        &mut self,
+        id: StreamId,
+        shares: Vec<RecipientShare>,
+        cause: FoldCause,
+    ) -> Result<Fold> {
         // Read before the period borrow, for the tombstone recharge at the end.
         let removal_pending = self
             .streams
@@ -189,7 +234,7 @@ impl Ledger {
 
         let mut next_distribution = period.distribution.clone();
         let mut next_pool = period.pool.clone();
-        let burn = fold(&mut next_distribution, &mut next_pool);
+        let folded = fold(id, cause, &mut next_distribution, &mut next_pool);
         let reserved_rows = next_distribution.payable.union_len(&shares);
         ensure!(
             reserved_rows <= MAX_PAYABLE_ROWS_PER_STREAM,
@@ -205,23 +250,23 @@ impl Ledger {
         if removal_pending {
             validate_tombstone_capacity(&self.streams)?;
         }
-        Ok(burn)
+        Ok(folded)
     }
 
     /// Removes a live stream, folding its closing period into a tombstone when anything is unpaid.
-    pub(super) fn remove_stream(&mut self, id: StreamId) -> Result<TokenAmount, Stranded> {
+    pub(super) fn remove_stream(&mut self, id: StreamId) -> Result<Option<Fold>, Stranded> {
         let mut stream = self.streams.take_stream(id).ok_or(Stranded::MissingStream(id))?;
         let Some(distribution) = stream.explicit_mut() else {
-            return Ok(TokenAmount::zero());
+            return Ok(None);
         };
         let mut accrual = self
             .take_accrual(id)
             .expect("accounting invariants: every explicit stream has an accrual row");
-        let burn = fold(distribution, &mut accrual);
+        let folded = fold(id, FoldCause::RemoveStream, distribution, &mut accrual);
         if !distribution.payable.is_empty() {
             self.streams.insert_tombstone(id, std::mem::take(&mut distribution.payable));
         }
-        Ok(burn)
+        Ok(Some(folded))
     }
 
     /// Closes an explicit stream's period and points it at a new designated writer.
@@ -229,16 +274,16 @@ impl Ledger {
         &mut self,
         id: StreamId,
         writer: Address,
-    ) -> Result<TokenAmount, Stranded> {
+    ) -> Result<Fold, Stranded> {
         if !self.streams.has_stream(id) {
             return Err(Stranded::MissingStream(id));
         }
         let Some(period) = self.period_mut(id) else {
             return Err(Stranded::NotExplicit(id));
         };
-        let burn = fold(period.distribution, period.pool);
+        let folded = fold(id, FoldCause::SetDistribution, period.distribution, period.pool);
         period.distribution.writer = writer;
-        Ok(burn)
+        Ok(folded)
     }
 
     /// Claims live and carried earnings from either a registered stream or its tombstone.
@@ -284,8 +329,13 @@ impl Ledger {
 }
 
 /// Closes a period. Its earnings move into the payable balances, the pool it divided empties, and
-/// the rounding dust the division left comes back for the caller to burn.
-fn fold(distribution: &mut ExplicitDistribution, pool: &mut TokenAmount) -> TokenAmount {
+/// the report identifies that pool and the rounding dust the division left for the caller to burn.
+fn fold(
+    id: StreamId,
+    cause: FoldCause,
+    distribution: &mut ExplicitDistribution,
+    pool: &mut TokenAmount,
+) -> Fold {
     // Structure invariant: no stored share is zero, so a zero total means an empty map and no
     // division below.
     let denom = BigInt::from(distribution.share_total());
@@ -298,8 +348,8 @@ fn fold(distribution: &mut ExplicitDistribution, pool: &mut TokenAmount) -> Toke
     }
     distribution.claimed_period.clear();
     let dust = &*pool - allocated;
-    *pool = TokenAmount::zero();
-    dust
+    let accrued = std::mem::replace(pool, TokenAmount::zero());
+    Fold { id, cause, accrued, dust }
 }
 
 /// Claims live earnings for each wallet, returning the entitlements in request order, including

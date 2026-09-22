@@ -135,6 +135,49 @@ fn expect_claim_event(rt: &MockRuntime, stream_id: u64, recipient: Address, amou
     );
 }
 
+fn expect_fold_event(
+    rt: &MockRuntime,
+    stream_id: u64,
+    cause: &str,
+    accrued: &TokenAmount,
+    dust: &TokenAmount,
+) {
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("period-folded")
+            .field_indexed("stream-id", &stream_id)
+            .field("cause", cause)
+            .field("accrued", accrued)
+            .field("dust", dust)
+            .build()
+            .unwrap(),
+    );
+}
+
+/// The share map as the event states it: actor IDs, in stored order.
+fn expect_shares_event(rt: &MockRuntime, stream_id: u64, shares: &[(u64, u64)]) {
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("shares-set")
+            .field_indexed("stream-id", &stream_id)
+            .field("shares", &shares)
+            .build()
+            .unwrap(),
+    );
+}
+
+fn expect_address_replaced_event(rt: &MockRuntime, stream_id: u64, old: u64, new: u64) {
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("address-replaced")
+            .field_indexed("stream-id", &stream_id)
+            .field_indexed("old-recipient", &old)
+            .field_indexed("new-recipient", &new)
+            .build()
+            .unwrap(),
+    );
+}
+
 fn expect_miner_reward(
     rt: &MockRuntime,
     reward: TokenAmount,
@@ -256,6 +299,8 @@ fn existing_payment_channel_entitlements_remain_claimable_after_replacement() {
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
     rt.expect_validate_caller_any();
+    expect_fold_event(&rt, 2, "ReplaceAddress", &TokenAmount::from_atto(4), &TokenAmount::zero());
+    expect_address_replaced_event(&rt, 2, RECIPIENT_A, RECIPIENT_B);
     call(
         &rt,
         Method::ReplaceAddressExported,
@@ -649,6 +694,8 @@ fn set_shares_folds_liabilities_and_burns_dust() {
         None,
         ExitCode::OK,
     );
+    expect_fold_event(&rt, 2, "SetShares", &TokenAmount::from_atto(5), &TokenAmount::from_atto(1));
+    expect_shares_event(&rt, 2, &[(RECIPIENT_A, DENOM)]);
 
     call(
         &rt,
@@ -708,6 +755,8 @@ fn replace_address_moves_the_future_share_and_leaves_the_balance() {
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
     rt.expect_validate_caller_any();
+    expect_fold_event(&rt, 2, "ReplaceAddress", &TokenAmount::from_atto(4), &TokenAmount::zero());
+    expect_address_replaced_event(&rt, 2, RECIPIENT_A, RECIPIENT_B);
     call(
         &rt,
         Method::ReplaceAddressExported,
@@ -774,6 +823,9 @@ fn replace_address_reads_the_writer_a_due_change_installs() {
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(RECIPIENT_B));
     rt.expect_validate_caller_any();
     expect_write_event(&rt, "write-applied", &write, false);
+    expect_fold_event(&rt, 2, "SetDistribution", &TokenAmount::zero(), &TokenAmount::zero());
+    expect_fold_event(&rt, 2, "ReplaceAddress", &TokenAmount::zero(), &TokenAmount::zero());
+    expect_address_replaced_event(&rt, 2, RECIPIENT_A, WRITER);
     call(&rt, Method::ReplaceAddressExported, &params).unwrap();
     rt.verify();
 
@@ -798,6 +850,8 @@ fn replace_address_with_burn_sentinel_ends_a_recipients_future_share() {
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
     rt.expect_validate_caller_any();
+    expect_fold_event(&rt, 2, "ReplaceAddress", &TokenAmount::from_atto(4), &TokenAmount::zero());
+    expect_address_replaced_event(&rt, 2, RECIPIENT_A, BURNT_FUNDS_ACTOR_ADDR.id().unwrap());
     call(
         &rt,
         Method::ReplaceAddressExported,
@@ -1041,6 +1095,8 @@ fn settlement_remains_live_while_the_weight_envelope_is_invalid() {
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
     rt.expect_validate_caller_any();
+    expect_fold_event(&rt, 2, "SetShares", &TokenAmount::from_atto(10), &TokenAmount::zero());
+    expect_shares_event(&rt, 2, &[(RECIPIENT_A, DENOM)]);
     call(
         &rt,
         Method::SetSharesExported,
@@ -1140,10 +1196,71 @@ fn cancellation_strands_a_call_and_emits_drop_on_next_mutation() {
 }
 
 #[test]
+fn an_applied_registration_announces_its_initial_map() {
+    let rt = base_runtime();
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
+    let distribution = DistributionInit {
+        writer: Address::new_id(WRITER),
+        shares: vec![
+            RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: pct(40) },
+            RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: pct(60) },
+        ],
+    };
+    let registration = PendingWrite {
+        id: Some(3),
+        op: PendingWriteOp::RegisterStream,
+        payload: RawBytes::serialize(&RegisterStreamPayload {
+            weight: weight(0),
+            distribution: Some(distribution.clone()),
+        })
+        .unwrap(),
+        effective_epoch: 2,
+    };
+    rt.expect_validate_caller_addr(vec![swa_actor()]);
+    expect_write_event(&rt, "write-queued", &registration, true);
+    call(
+        &rt,
+        Method::RegisterStreamExported,
+        &RegisterStreamParams {
+            id: 3,
+            weight: weight(0),
+            distribution: Some(distribution),
+            activation_epoch: 2,
+        },
+    )
+    .unwrap();
+    rt.verify();
+
+    // A new stream opens a period rather than closing one, so the registration announces its map
+    // and nothing folds.
+    rt.epoch.replace(2);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(300));
+    rt.expect_validate_caller_any();
+    expect_write_event(&rt, "write-applied", &registration, false);
+    expect_shares_event(&rt, 3, &[(RECIPIENT_A, pct(40)), (RECIPIENT_B, pct(60))]);
+    call(&rt, Method::ClaimExported, &ClaimParams { id: 999, wallets: Vec::new() }).unwrap();
+    rt.verify();
+
+    let streams = load_streams(&rt);
+    assert!(streams.pending_writes_queue.is_empty());
+    let installed = streams.streams[2].distribution.as_ref().unwrap();
+    assert_eq!(
+        vec![
+            RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: pct(40) },
+            RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: pct(60) },
+        ],
+        installed.shares
+    );
+    assert_state_invariants(&rt);
+}
+
+#[test]
 fn award_burns_sentinel_share_immediately_and_counts_it() {
     let rt = base_runtime();
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
     rt.expect_validate_caller_any();
+    expect_fold_event(&rt, 2, "SetShares", &TokenAmount::zero(), &TokenAmount::zero());
+    expect_shares_event(&rt, 2, &[(RECIPIENT_A, pct(25)), (RECIPIENT_B, pct(25))]);
     call(
         &rt,
         Method::SetSharesExported,
@@ -1211,6 +1328,8 @@ fn award_burns_sentinel_share_immediately_and_counts_it() {
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
     rt.expect_validate_caller_any();
+    expect_fold_event(&rt, 2, "SetShares", &TokenAmount::from_atto(10), &TokenAmount::zero());
+    expect_shares_event(&rt, 2, &[]);
     call(
         &rt,
         Method::SetSharesExported,
@@ -1519,6 +1638,7 @@ fn full_explicit_stream_decommission_preserves_and_drains_liabilities() {
 
     rt.epoch.replace(2);
     expect_write_event(&rt, "write-applied", &removal, false);
+    expect_fold_event(&rt, 2, "RemoveStream", &TokenAmount::from_atto(11), &TokenAmount::zero());
     expect_miner_reward(&rt, TokenAmount::from_atto(3), TokenAmount::zero(), ExitCode::OK);
     expect_burn(&rt, TokenAmount::from_atto(2), ExitCode::OK);
     award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();
@@ -1601,6 +1721,7 @@ fn gate_write_for_a_removed_stream_reverts_at_admission() {
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(999));
     rt.expect_validate_caller_any();
     expect_write_event(&rt, "write-applied", &removal, false);
+    expect_fold_event(&rt, 2, "RemoveStream", &TokenAmount::zero(), &TokenAmount::zero());
     call(&rt, Method::ClaimExported, &ClaimParams { id: 999, wallets: Vec::new() }).unwrap();
     rt.verify();
     assert_eq!(
@@ -1784,6 +1905,13 @@ fn award_burns_transition_dust_without_counting_it_as_reward_residual() {
     rt.set_balance(TokenAmount::from_atto(100));
 
     expect_write_event(&rt, "write-applied", &removal, false);
+    expect_fold_event(
+        &rt,
+        2,
+        "RemoveStream",
+        &TokenAmount::from_atto(5),
+        &TokenAmount::from_atto(1),
+    );
     expect_miner_reward(&rt, TokenAmount::from_atto(3), TokenAmount::zero(), ExitCode::OK);
     expect_burn(&rt, TokenAmount::from_atto(3), ExitCode::OK);
     award(&rt, TokenAmount::zero(), TokenAmount::zero(), 1).unwrap();

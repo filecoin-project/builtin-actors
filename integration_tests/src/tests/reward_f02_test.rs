@@ -2,10 +2,11 @@ use cid::Cid;
 use export_macro::vm_test;
 use fil_actor_reward::{
     AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn, DENOM, DistributionInit,
-    ExplicitDistribution, Method as RewardMethod, PendingWrite, PendingWriteOp, RecipientShare,
-    RecipientTable, RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams,
-    SetDistributionParams, SetDistributionPayload, SetWeightRecordsParams, State as RewardState,
-    Stream, StreamAccrual, StreamsState, WeightRecord, WeightRecordUpdate,
+    ExplicitDistribution, MAX_RECIPIENTS, Method as RewardMethod, PendingWrite, PendingWriteOp,
+    RecipientShare, RecipientTable, RegisterStreamParams, RegisterStreamPayload,
+    RemoveStreamParams, ReplaceAddressParams, SetDistributionParams, SetDistributionPayload,
+    SetSharesParams, SetWeightRecordsParams, State as RewardState, Stream, StreamAccrual,
+    StreamsState, WeightRecord, WeightRecordUpdate,
 };
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, EventBuilder, REWARD_ACTOR_ADDR, REWARD_ACTOR_ID, SYSTEM_ACTOR_ADDR,
@@ -82,6 +83,52 @@ fn write_event(kind: &'static str, write: &PendingWrite, include_payload: bool) 
         event = event.field("payload", &write.payload);
     }
     EmittedEvent { emitter: REWARD_ACTOR_ID, event: event.build().unwrap() }
+}
+
+fn fold_event(
+    stream_id: u64,
+    cause: &str,
+    accrued: &TokenAmount,
+    dust: &TokenAmount,
+) -> EmittedEvent {
+    EmittedEvent {
+        emitter: REWARD_ACTOR_ID,
+        event: EventBuilder::new()
+            .typ("period-folded")
+            .field_indexed("stream-id", &stream_id)
+            .field("cause", cause)
+            .field("accrued", accrued)
+            .field("dust", dust)
+            .build()
+            .unwrap(),
+    }
+}
+
+fn shares_event(stream_id: u64, shares: &[RecipientShare]) -> EmittedEvent {
+    let rows: Vec<(u64, u64)> =
+        shares.iter().map(|row| (row.recipient.id().unwrap(), row.share)).collect();
+    EmittedEvent {
+        emitter: REWARD_ACTOR_ID,
+        event: EventBuilder::new()
+            .typ("shares-set")
+            .field_indexed("stream-id", &stream_id)
+            .field("shares", &rows)
+            .build()
+            .unwrap(),
+    }
+}
+
+fn address_replaced_event(stream_id: u64, old: Address, new: Address) -> EmittedEvent {
+    EmittedEvent {
+        emitter: REWARD_ACTOR_ID,
+        event: EventBuilder::new()
+            .typ("address-replaced")
+            .field_indexed("stream-id", &stream_id)
+            .field_indexed("old-recipient", &old.id().unwrap())
+            .field_indexed("new-recipient", &new.id().unwrap())
+            .build()
+            .unwrap(),
+    }
 }
 
 fn claim_event(recipient: Address, amount: &TokenAmount) -> EmittedEvent {
@@ -185,6 +232,7 @@ pub fn reward_f02_award_and_claim(v: &dyn VM) {
     assert_eq!(
         vec![
             write_event("write-applied", &removal, false),
+            fold_event(SERVICE_STREAM_ID, "RemoveStream", &service_reward, &TokenAmount::zero(),),
             claim_event(recipient, &service_reward),
         ],
         take_last_events(v)
@@ -314,6 +362,12 @@ pub fn reward_f02_queued_apply_and_drop(v: &dyn VM) {
         vec![
             write_event("write-applied", &distribution_write, false),
             write_event("write-dropped", &stranded, false),
+            fold_event(
+                SERVICE_STREAM_ID,
+                "SetDistribution",
+                &TokenAmount::zero(),
+                &TokenAmount::zero(),
+            ),
         ],
         take_last_events(v)
     );
@@ -325,5 +379,90 @@ pub fn reward_f02_queued_apply_and_drop(v: &dyn VM) {
     assert_eq!(TokenAmount::zero(), state.total_burn_minted);
     assert_eq!(TokenAmount::zero(), state.total_explicit_minted);
     assert_eq!(TokenAmount::zero(), state.accrued[0].amount);
+    assert_invariants(v, &Policy::default(), None);
+}
+
+/// A full share map installed and then amended, so the widest `shares-set` the actor can build
+/// goes through the queue, the ledger and the actor layer end to end. The size bound itself is
+/// proven in `emit.rs`; this VM does not enforce the event limits.
+#[vm_test]
+pub fn reward_f02_full_share_map_events(v: &dyn VM) {
+    let accounts = create_accounts(v, MAX_RECIPIENTS as u64 + 3, &TokenAmount::from_whole(10_000));
+    let swa = accounts[0];
+    let writer = accounts[1];
+    let spare = accounts[2];
+    let recipients = &accounts[3..];
+    install_stream_state(v, swa, writer, recipients[0]);
+
+    let share = DENOM / MAX_RECIPIENTS as u64;
+    assert_eq!(DENOM, share * MAX_RECIPIENTS as u64, "the map must sum to DENOM exactly");
+    let mut shares: Vec<RecipientShare> = recipients
+        .iter()
+        .map(|recipient| RecipientShare { recipient: *recipient, share })
+        .collect();
+    apply_ok(
+        v,
+        &writer,
+        &REWARD_ACTOR_ADDR,
+        &TokenAmount::zero(),
+        RewardMethod::SetSharesExported as u64,
+        Some(SetSharesParams { id: SERVICE_STREAM_ID, shares: shares.clone() }),
+    );
+    shares.sort_by_key(|row| row.recipient);
+    assert_eq!(
+        vec![
+            fold_event(SERVICE_STREAM_ID, "SetShares", &TokenAmount::zero(), &TokenAmount::zero(),),
+            shares_event(SERVICE_STREAM_ID, &shares),
+        ],
+        take_last_events(v)
+    );
+
+    let (_, streams) = load_reward_state(v);
+    assert_eq!(shares, streams.streams[1].distribution.as_ref().unwrap().shares);
+
+    // Accrue a pool the 64-way split cannot divide evenly, so the next fold reports real dust and
+    // sends it to f099.
+    let accrued = TokenAmount::from_atto(100);
+    mutate_state(v, &REWARD_ACTOR_ADDR, |state: &mut RewardState| {
+        state.accrued[0].amount = accrued.clone();
+        state.total_explicit_minted = accrued.clone();
+        state.total_minted_reward = accrued.clone();
+    });
+    let allocated = TokenAmount::from_atto(100 / MAX_RECIPIENTS as u64 * MAX_RECIPIENTS as u64);
+    let dust = &accrued - &allocated;
+
+    let replaced = shares[0].recipient;
+    let burnt_before = v.balance(&BURNT_FUNDS_ACTOR_ADDR);
+    apply_ok(
+        v,
+        &writer,
+        &REWARD_ACTOR_ADDR,
+        &TokenAmount::zero(),
+        RewardMethod::ReplaceAddressExported as u64,
+        Some(ReplaceAddressParams {
+            id: SERVICE_STREAM_ID,
+            old_address: replaced,
+            new_address: spare,
+        }),
+    );
+    assert_eq!(
+        vec![
+            fold_event(SERVICE_STREAM_ID, "ReplaceAddress", &accrued, &dust),
+            address_replaced_event(SERVICE_STREAM_ID, replaced, spare),
+        ],
+        take_last_events(v)
+    );
+    assert_eq!(burnt_before + &dust, v.balance(&BURNT_FUNDS_ACTOR_ADDR));
+
+    let (_, streams) = load_reward_state(v);
+    let installed = &streams.streams[1].distribution.as_ref().unwrap().shares;
+    assert_eq!(MAX_RECIPIENTS, installed.len());
+    assert!(installed.iter().any(|row| row.recipient == spare));
+    assert!(installed.iter().all(|row| row.recipient != replaced));
+    // The fold paid the map in force, so the replaced address keeps what it earned and the
+    // address that took its share starts from zero.
+    let distribution = streams.streams[1].distribution.as_ref().unwrap();
+    assert_eq!(TokenAmount::from_atto(1), distribution.payable.get(&replaced));
+    assert_eq!(TokenAmount::zero(), distribution.payable.get(&spare));
     assert_invariants(v, &Policy::default(), None);
 }

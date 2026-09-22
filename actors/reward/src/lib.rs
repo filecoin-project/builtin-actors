@@ -209,7 +209,7 @@ impl Actor {
             ));
         }
         let caller = rt.message().caller();
-        let (mut applied, fold_dust) = run_mutation(rt, |ledger, _, _| {
+        let (mut applied, (fold, installed)) = run_mutation(rt, |ledger, _, _| {
             // A due SetDistribution may have replaced the writer, so the check reads the ledger
             // the due writes left rather than the one this method loaded.
             let writer = ledger
@@ -236,7 +236,8 @@ impl Actor {
                 .map_err(|e| illegal_argument(e, "failed to set stream shares"))
         })?;
         // One burn send carries the immediate fold's dust with any the due writes left.
-        applied.fold_dust += fold_dust;
+        applied.folds.push(fold);
+        applied.installed.push(installed);
         settle_applied(rt, &applied)
     }
 
@@ -248,7 +249,7 @@ impl Actor {
     fn replace_address(rt: &impl Runtime, params: ReplaceAddressParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let caller = rt.message().caller();
-        let (mut applied, fold_dust) = run_mutation(rt, |ledger, _, _| {
+        let (mut applied, (fold, old, new)) = run_mutation(rt, |ledger, _, _| {
             let writer = ledger
                 .streams()
                 .explicit(params.id)
@@ -267,12 +268,14 @@ impl Actor {
             }
             let old = resolve_required(rt, &params.old_address, "old recipient address")?;
             let new = resolve_recipient(rt, &params.new_address, "new recipient address")?;
-            ledger
+            let fold = ledger
                 .replace_address(params.id, old, new)
-                .map_err(|e| illegal_argument(e, "failed to replace stream recipient address"))
+                .map_err(|e| illegal_argument(e, "failed to replace stream recipient address"))?;
+            Ok((fold, old, new))
         })?;
-        applied.fold_dust += fold_dust;
-        settle_applied(rt, &applied)
+        applied.folds.push(fold);
+        settle_applied(rt, &applied)?;
+        emit::address_replaced(rt, params.id, &old, &new)
     }
 
     /// Pays the named wallets' live and carried entitlements for one explicit stream.
@@ -409,7 +412,7 @@ impl Actor {
 
             let FullAward { block_reward, allocation, applied } = award;
             let miner_reward = &params.gas_reward + &allocation.miner;
-            let burn = &applied.fold_dust + &allocation.burn;
+            let burn = &applied.fold_dust() + &allocation.burn;
             // BR is capped to what remains after the gas reward, the streams' unclaimed balances
             // and the fold dust are set aside, and the split pays out exactly BR, so the outflow
             // should fit the balance and we shouldn't encounter this case.
@@ -601,25 +604,28 @@ fn run_mutation<T>(
 /// Emits an event for every write, then sends the fold dust it left to f099.
 fn settle_applied(rt: &impl Runtime, applied: &ApplyResult) -> Result<(), ActorError> {
     emit_apply(rt, applied)?;
-    if applied.fold_dust > TokenAmount::zero() {
-        extract_send_result(rt.send_simple(
-            &BURNT_FUNDS_ACTOR_ADDR,
-            METHOD_SEND,
-            None,
-            applied.fold_dust.clone(),
-        ))?;
+    let dust = applied.fold_dust();
+    if dust > TokenAmount::zero() {
+        extract_send_result(rt.send_simple(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, dust))?;
     }
     Ok(())
 }
 
-/// Announces the writes an application moved. The award calls this on its own, because its burn
-/// carries the fold dust with the block reward's residual.
+/// Announces the writes an application moved, then the periods it closed and the share maps it
+/// installed. The award calls this on its own, because its burn includes the fold dust with the
+/// block reward's residual.
 fn emit_apply(rt: &impl Runtime, result: &ApplyResult) -> Result<(), ActorError> {
     for write in &result.applied {
         emit::write_applied(rt, write)?;
     }
     for write in &result.dropped {
         emit::write_dropped(rt, write)?;
+    }
+    for fold in &result.folds {
+        emit::period_folded(rt, fold)?;
+    }
+    for installed in &result.installed {
+        emit::shares_set(rt, installed)?;
     }
     Ok(())
 }
