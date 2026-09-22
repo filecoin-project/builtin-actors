@@ -704,7 +704,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_account"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "fil_actors_runtime",
@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_cron"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -752,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_datacap"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "cid",
  "fil_actors_runtime",
@@ -772,7 +772,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_eam"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -793,7 +793,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_ethaccount"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "fil_actors_runtime",
  "frc42_dispatch",
@@ -808,7 +808,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_evm"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "alloy-core",
  "anyhow",
@@ -841,7 +841,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_init"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_market"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -887,7 +887,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_miner"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -922,7 +922,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_multisig"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -943,7 +943,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_paych"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -962,11 +962,11 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_placeholder"
-version = "19.0.0"
+version = "19.0.1"
 
 [[package]]
 name = "fil_actor_power"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -989,7 +989,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_reward"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -1011,7 +1011,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_system"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -1027,7 +1027,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_verifreg"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -1049,7 +1049,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_evm_shared"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_encoding",
@@ -1117,7 +1117,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_runtime"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -1159,7 +1159,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_bundle"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "cid",
  "clap",
@@ -1186,7 +1186,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_state"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "bimap",
@@ -2642,7 +2642,7 @@ dependencies = [
 
 [[package]]
 name = "test_vm"
-version = "19.0.0"
+version = "19.0.1"
 dependencies = [
  "anyhow",
  "blake2b_simd",
