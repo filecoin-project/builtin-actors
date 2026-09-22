@@ -7,9 +7,9 @@ mod serialization {
         AwardBlockRewardParams, CancelPendingParams, ClaimParams, ClaimReturn, ConstructorParams,
         DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, PendingWrite,
         PendingWriteOp, RecipientAmount, RecipientShare, RegisterStreamParams,
-        RegisterStreamPayload, RemoveStreamParams, ReplaceAddressParams, SetDistributionParams,
-        SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State,
-        StepWeightRecordsParams, Stream, StreamAccrual, StreamsState, ThisEpochRewardReturn,
+        RegisterStreamPayload, RemoveStreamParams, ReplaceAddressParams, ReplaceAddressReturn,
+        SetDistributionParams, SetDistributionPayload, SetSharesParams, SetWeightRecordsParams,
+        State, StepWeightRecordsParams, Stream, StreamAccrual, StreamsState, ThisEpochRewardReturn,
         Tombstone, UpdateNetworkKPIParams, WeightRecord, WeightRecordUpdate, WeightRecordsPayload,
     };
     use fil_actors_runtime::reward::FilterEstimate;
@@ -706,6 +706,21 @@ mod serialization {
             assert_eq!(encoded.data, expected_hex);
             let decoded: ReplaceAddressParams = IpldBlock::deserialize(&encoded).unwrap();
             assert_eq!(params, decoded);
+        }
+    }
+
+    #[test]
+    fn replace_address_return() {
+        let test_cases = [
+            (ReplaceAddressReturn::AddressReplaced, &hex!("00")[..]),
+            (ReplaceAddressReturn::OldAddressNotInLedger, &hex!("01")[..]),
+        ];
+
+        for (result, expected_hex) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&result).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex);
+            let decoded: ReplaceAddressReturn = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(result, decoded);
         }
     }
 

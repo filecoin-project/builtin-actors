@@ -22,6 +22,7 @@ num-derive = { workspace = true }
 log = { workspace = true }
 lazy_static = { workspace = true }
 serde = { workspace = true }
+serde_repr = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 multihash-codetable = { workspace = true }

@@ -6,8 +6,9 @@ use fil_actor_reward::{
     DENOM, DistributionInit, ExplicitDistribution, MAX_RECIPIENTS, Method, PENALTY_MULTIPLIER,
     PendingWrite, PendingWriteOp, RecipientAmount, RecipientShare, RecipientTable,
     RegisterStreamParams, RegisterStreamPayload, RemoveStreamParams, ReplaceAddressParams,
-    SetDistributionParams, SetDistributionPayload, SetSharesParams, SetWeightRecordsParams, State,
-    Stream, StreamAccrual, StreamsState, WeightRecord, WeightRecordUpdate, explicit_liability, ext,
+    ReplaceAddressReturn, SetDistributionParams, SetDistributionPayload, SetSharesParams,
+    SetWeightRecordsParams, State, Stream, StreamAccrual, StreamsState, WeightRecord,
+    WeightRecordUpdate, explicit_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
     ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, PAYCH_ACTOR_CODE_ID,
@@ -757,7 +758,7 @@ fn replace_address_moves_the_future_share_and_leaves_the_balance() {
     rt.expect_validate_caller_any();
     expect_fold_event(&rt, 2, "ReplaceAddress", &TokenAmount::from_atto(4), &TokenAmount::zero());
     expect_address_replaced_event(&rt, 2, RECIPIENT_A, RECIPIENT_B);
-    call(
+    let result: ReplaceAddressReturn = call(
         &rt,
         Method::ReplaceAddressExported,
         &ReplaceAddressParams {
@@ -766,7 +767,11 @@ fn replace_address_moves_the_future_share_and_leaves_the_balance() {
             new_address: Address::new_id(RECIPIENT_B),
         },
     )
+    .unwrap()
+    .unwrap()
+    .deserialize()
     .unwrap();
+    assert_eq!(ReplaceAddressReturn::AddressReplaced, result);
     rt.verify();
 
     let state: State = rt.get_state();
@@ -872,6 +877,102 @@ fn replace_address_with_burn_sentinel_ends_a_recipients_future_share() {
 }
 
 #[test]
+fn replace_address_missing_recipient_leaves_shares_unchanged() {
+    let rt = base_runtime();
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    // A missing old address is a successful no-op. The new address is deliberately unresolvable:
+    // it is irrelevant when there is no ledger row to replace.
+    let streams_root = rt.get_state::<State>().streams_root;
+    rt.expect_validate_caller_any();
+    let result: ReplaceAddressReturn = call(
+        &rt,
+        Method::ReplaceAddressExported,
+        &ReplaceAddressParams {
+            id: 2,
+            old_address: Address::new_id(RECIPIENT_B),
+            new_address: Address::new_id(909_090),
+        },
+    )
+    .unwrap()
+    .unwrap()
+    .deserialize()
+    .unwrap();
+    assert_eq!(ReplaceAddressReturn::OldAddressNotInLedger, result);
+    rt.verify();
+    assert_eq!(streams_root, rt.get_state::<State>().streams_root);
+    assert_state_invariants(&rt);
+}
+
+#[test]
+fn replace_address_missing_recipient_settles_due_writes() {
+    let rt = base_runtime();
+    let mut state: State = rt.get_state();
+    state.accrued[0].amount = TokenAmount::from_atto(5);
+    state.total_explicit_minted = TokenAmount::from_atto(5);
+    state.total_minted_reward = TokenAmount::from_atto(5);
+    let mut streams = load_streams(&rt);
+    streams.streams[1].distribution.as_mut().unwrap().shares = vec![
+        RecipientShare { recipient: Address::new_id(RECIPIENT_A), share: DENOM / 2 },
+        RecipientShare { recipient: Address::new_id(RECIPIENT_B), share: DENOM - DENOM / 2 },
+    ];
+    let write = PendingWrite {
+        id: Some(2),
+        op: PendingWriteOp::SetDistribution,
+        payload: RawBytes::serialize(&SetDistributionPayload {
+            writer: Address::new_id(RECIPIENT_B),
+        })
+        .unwrap(),
+        effective_epoch: 5,
+    };
+    streams.pending_writes_queue.push(write.clone());
+    state.streams_root = rt.store.put_cbor(&streams, Code::Blake2b256).unwrap();
+    rt.replace_state(&state);
+    rt.set_balance(TokenAmount::from_whole(1_100_000_000));
+    rt.epoch.replace(10);
+
+    // The incoming writer is authorized, but the old address has no share to replace.
+    // Only the due write folds the period; its dust must still be burnt, with no replacement event.
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(RECIPIENT_B));
+    rt.expect_validate_caller_any();
+    expect_write_event(&rt, "write-applied", &write, false);
+    expect_fold_event(
+        &rt,
+        2,
+        "SetDistribution",
+        &TokenAmount::from_atto(5),
+        &TokenAmount::from_atto(1),
+    );
+    expect_burn(&rt, TokenAmount::from_atto(1), ExitCode::OK);
+    let result: ReplaceAddressReturn = call(
+        &rt,
+        Method::ReplaceAddressExported,
+        &ReplaceAddressParams {
+            id: 2,
+            old_address: Address::new_id(WRITER),
+            new_address: Address::new_id(909_090),
+        },
+    )
+    .unwrap()
+    .unwrap()
+    .deserialize()
+    .unwrap();
+    assert_eq!(ReplaceAddressReturn::OldAddressNotInLedger, result);
+    rt.verify();
+
+    let updated = load_streams(&rt);
+    assert!(updated.pending_writes_queue.is_empty());
+    let distribution = updated.streams[1].distribution.as_ref().unwrap();
+    assert_eq!(Address::new_id(RECIPIENT_B), distribution.writer);
+    assert_eq!(streams.streams[1].distribution.as_ref().unwrap().shares, distribution.shares);
+    assert_eq!(TokenAmount::from_atto(2), distribution.payable.get(&Address::new_id(RECIPIENT_A)));
+    assert_eq!(TokenAmount::from_atto(2), distribution.payable.get(&Address::new_id(RECIPIENT_B)));
+    assert_eq!(TokenAmount::zero(), rt.get_state::<State>().accrued[0].amount);
+    assert_eq!(TokenAmount::from_atto(4), liability(&rt));
+    assert_state_invariants(&rt);
+}
+
+#[test]
 fn replace_address_rejects_bad_targets() {
     let rt = base_runtime();
     rt.set_balance(TokenAmount::from_whole(1_100_000_000));
@@ -888,23 +989,6 @@ fn replace_address_rejects_bad_targets() {
                 id: 1,
                 old_address: Address::new_id(RECIPIENT_A),
                 new_address: Address::new_id(RECIPIENT_B),
-            },
-        ),
-    );
-    rt.verify();
-    assert_state_invariants(&rt);
-
-    // Old address not a current recipient.
-    rt.expect_validate_caller_any();
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        call(
-            &rt,
-            Method::ReplaceAddressExported,
-            &ReplaceAddressParams {
-                id: 2,
-                old_address: Address::new_id(RECIPIENT_B),
-                new_address: Address::new_id(WRITER),
             },
         ),
     );

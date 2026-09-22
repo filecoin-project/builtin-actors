@@ -246,36 +246,51 @@ impl Actor {
     /// in `SetShares`. The old wallet keeps its payable balance and the new wallet starts a fresh
     /// tally. This is `SetShares` on the stored map with one row changed, so the fold and every
     /// `SetShares` check apply. Either address may be given in any form that resolves.
-    fn replace_address(rt: &impl Runtime, params: ReplaceAddressParams) -> Result<(), ActorError> {
+    ///
+    /// If the resolved old address is absent from the current shares, returns
+    /// `OldAddressNotInLedger` without replacing a share. Due writes are still applied and settled.
+    fn replace_address(
+        rt: &impl Runtime,
+        params: ReplaceAddressParams,
+    ) -> Result<ReplaceAddressReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let caller = rt.message().caller();
-        let (mut applied, (fold, old, new)) = run_mutation(rt, |ledger, _, _| {
-            let writer = ledger
-                .streams()
-                .explicit(params.id)
-                .map(|distribution| distribution.writer)
-                .ok_or_else(|| {
-                    actor_error!(illegal_argument, "stream {} is not explicit", params.id)
-                })?;
-            if caller != writer {
+        let (mut applied, replacement) = run_mutation(rt, |ledger, _, _| {
+            let distribution = ledger.streams().explicit(params.id).ok_or_else(|| {
+                actor_error!(illegal_argument, "stream {} is not explicit", params.id)
+            })?;
+            if caller != distribution.writer {
                 return Err(actor_error!(
                     forbidden,
                     "caller {} is not stream {} writer {}",
                     caller,
                     params.id,
-                    writer
+                    distribution.writer
                 ));
             }
             let old = resolve_required(rt, &params.old_address, "old recipient address")?;
+            if !distribution.shares.iter().any(|row| row.recipient == old) {
+                return Ok(None);
+            }
+
             let new = resolve_recipient(rt, &params.new_address, "new recipient address")?;
             let fold = ledger
                 .replace_address(params.id, old, new)
                 .map_err(|e| illegal_argument(e, "failed to replace stream recipient address"))?;
-            Ok((fold, old, new))
+            Ok(Some((fold, old, new)))
         })?;
-        applied.folds.push(fold);
-        settle_applied(rt, &applied)?;
-        emit::address_replaced(rt, params.id, &old, &new)
+        match replacement {
+            None => {
+                settle_applied(rt, &applied)?;
+                Ok(ReplaceAddressReturn::OldAddressNotInLedger)
+            }
+            Some((fold, old, new)) => {
+                applied.folds.push(fold);
+                settle_applied(rt, &applied)?;
+                emit::address_replaced(rt, params.id, &old, &new)?;
+                Ok(ReplaceAddressReturn::AddressReplaced)
+            }
+        }
     }
 
     /// Pays the named wallets' live and carried entitlements for one explicit stream.
