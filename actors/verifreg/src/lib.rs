@@ -115,8 +115,6 @@ impl Actor {
         _params: RemoveExpiredAllocationsParams,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        // FIP-0118: the network upgrade migration clears all pending allocations, so
-        // there is nothing left to ever expire.
         datacap_deprecated("removing expired allocations")
     }
 
