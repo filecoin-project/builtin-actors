@@ -9,6 +9,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::state::{PendingWriteOp, RecipientShare, StreamId, WeightRecord};
 
@@ -71,6 +72,16 @@ pub struct ReplaceAddressParams {
     pub id: StreamId,
     pub old_address: Address,
     pub new_address: Address,
+}
+
+/// Outcome of replacing a stream recipient address.
+///
+/// This is encoded as a CBOR unsigned integer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
+#[repr(u8)]
+pub enum ReplaceAddressReturn {
+    AddressReplaced = 0,
+    OldAddressNotInLedger = 1,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
