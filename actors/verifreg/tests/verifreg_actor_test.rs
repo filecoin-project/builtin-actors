@@ -457,9 +457,6 @@ mod allocs_claims {
 
     #[test]
     fn expire_allocs_disabled() {
-        // FIP-0118: the network upgrade migration clears all pending allocations, so
-        // there is nothing left to ever expire; RemoveExpiredAllocations always returns
-        // forbidden regardless of params.
         let (h, rt) = new_harness();
 
         let params = RemoveExpiredAllocationsParams { client: CLIENT1, allocation_ids: vec![] };
