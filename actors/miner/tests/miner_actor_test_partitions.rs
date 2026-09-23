@@ -605,7 +605,7 @@ mod miner_actor_test_partitions {
         // now terminate 1, 3, 5, and 7
         let terminations = make_bitfield(&[1, 3, 5, 7]);
         let termination_epoch = 3;
-        let (removed, removed_unproven) = partition
+        let (removed, removed_unproven, _) = partition
             .terminate_sectors(
                 &Policy::default(),
                 &rt.store,
@@ -614,6 +614,7 @@ mod miner_actor_test_partitions {
                 &terminations,
                 SECTOR_SIZE,
                 QUANT_SPEC,
+                true,
             )
             .unwrap();
 
@@ -671,6 +672,7 @@ mod miner_actor_test_partitions {
             &terminations,
             SECTOR_SIZE,
             QUANT_SPEC,
+            true,
         );
 
         let err = res.expect_err("expected error, but call succeeded");
@@ -688,7 +690,7 @@ mod miner_actor_test_partitions {
         let termination_epoch = 3;
 
         // First termination works.
-        let (removed, unproven_power) = partition
+        let (removed, unproven_power, _) = partition
             .terminate_sectors(
                 &Policy::default(),
                 &rt.store,
@@ -697,6 +699,7 @@ mod miner_actor_test_partitions {
                 &terminations,
                 SECTOR_SIZE,
                 QUANT_SPEC,
+                true,
             )
             .unwrap();
         let expected_active_power =
@@ -716,6 +719,7 @@ mod miner_actor_test_partitions {
             &terminations,
             SECTOR_SIZE,
             QUANT_SPEC,
+            true,
         );
 
         let err = res.expect_err("expected error, but call succeeded");
@@ -742,6 +746,7 @@ mod miner_actor_test_partitions {
                 &terminations,
                 SECTOR_SIZE,
                 QUANT_SPEC,
+                true,
             )
             .unwrap();
 
@@ -942,6 +947,7 @@ mod miner_actor_test_partitions {
                 &terminations,
                 SECTOR_SIZE,
                 QUANT_SPEC,
+                true,
             )
             .unwrap();
 
