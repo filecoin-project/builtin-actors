@@ -291,10 +291,6 @@ impl<'r, RT: Runtime> System<'r, RT> {
             return Ok(());
         }
 
-        if self.readonly {
-            return Err(ActorError::forbidden("contract invocation is read only".to_string()));
-        }
-
         let EvmBytecode { cid, evm_hash } = match self.bytecode {
             Some(cid) => cid,
             // set empty bytecode hashes
