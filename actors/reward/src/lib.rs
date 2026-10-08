@@ -567,12 +567,26 @@ fn resolve_recipient(
 ) -> Result<Address, ActorError> {
     let (id, code) = resolve_existing(rt, address, label)?;
     let address = Address::new_id(id);
-    // `Collect`` deletes payment channels, which can strand unpaid rewards, so they're disallowed
-    // as recipients.
-    if rt.resolve_builtin_actor_type(&code) == Some(Type::PaymentChannel) {
-        return Err(actor_error!(illegal_argument, "{} {} is a payment channel", label, address));
+    // Payment channels and builtin singletons strand claimed rewards: `Collect` deletes a payment
+    // channel, a claim to this actor is a self-send after the payable row is dropped, and any
+    // other singleton holds the FIL with no way to spend it.
+    match rt.resolve_builtin_actor_type(&code) {
+        Some(Type::PaymentChannel) => {
+            Err(actor_error!(illegal_argument, "{} {} is a payment channel", label, address))
+        }
+        Some(
+            Type::System
+            | Type::Init
+            | Type::Reward
+            | Type::Cron
+            | Type::Power
+            | Type::Market
+            | Type::VerifiedRegistry
+            | Type::DataCap
+            | Type::EAM,
+        ) => Err(actor_error!(illegal_argument, "{} {} is a builtin system actor", label, address)),
+        _ => Ok(address),
     }
-    Ok(address)
 }
 
 fn resolve_shares(
