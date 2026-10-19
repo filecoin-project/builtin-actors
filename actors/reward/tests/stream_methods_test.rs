@@ -11,11 +11,15 @@ use fil_actor_reward::{
     WeightRecordUpdate, explicit_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
-    ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MockRuntime, PAYCH_ACTOR_CODE_ID,
-    SYSTEM_ACTOR_CODE_ID, expect_abort, expect_abort_contains_message,
+    ACCOUNT_ACTOR_CODE_ID, CRON_ACTOR_CODE_ID, DATACAP_TOKEN_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID,
+    EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID, MARKET_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
+    MockRuntime, PAYCH_ACTOR_CODE_ID, POWER_ACTOR_CODE_ID, REWARD_ACTOR_CODE_ID,
+    SYSTEM_ACTOR_CODE_ID, VERIFREG_ACTOR_CODE_ID, expect_abort, expect_abort_contains_message,
 };
 use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, EventBuilder, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, EAM_ACTOR_ADDR,
+    EventBuilder, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::{CBOR, CborStore, RawBytes, ipld_block::IpldBlock};
 use fvm_shared::METHOD_SEND;
@@ -325,66 +329,112 @@ fn existing_payment_channel_entitlements_remain_claimable_after_replacement() {
 }
 
 #[test]
-fn payment_channels_cannot_be_admitted_as_recipients() {
-    let paych = Address::new_id(300);
-    let alias = Address::new_actor(b"payment channel recipient");
-    let requests = [
-        (
-            Address::new_id(WRITER),
-            Method::SetSharesExported,
-            IpldBlock::serialize_cbor(&SetSharesParams {
-                id: 2,
-                shares: vec![RecipientShare { recipient: paych, share: DENOM }],
-            })
-            .unwrap(),
-        ),
-        (
-            swa_actor(),
-            Method::RegisterStreamExported,
-            IpldBlock::serialize_cbor(&RegisterStreamParams {
-                id: 3,
-                weight: weight(pct(10)),
-                distribution: Some(DistributionInit {
-                    writer: Address::new_id(WRITER),
-                    shares: vec![RecipientShare { recipient: alias, share: DENOM }],
-                }),
-                activation_epoch: 2,
-            })
-            .unwrap(),
-        ),
-        (
-            Address::new_id(WRITER),
-            Method::ReplaceAddressExported,
-            IpldBlock::serialize_cbor(&ReplaceAddressParams {
-                id: 2,
-                old_address: Address::new_id(RECIPIENT_A),
-                new_address: alias,
-            })
-            .unwrap(),
-        ),
+fn unpayable_actors_cannot_be_admitted_as_recipients() {
+    let system_actor = "is a builtin system actor";
+    let targets = [
+        (Address::new_id(300), *PAYCH_ACTOR_CODE_ID, "is a payment channel"),
+        (SYSTEM_ACTOR_ADDR, *SYSTEM_ACTOR_CODE_ID, system_actor),
+        (INIT_ACTOR_ADDR, *INIT_ACTOR_CODE_ID, system_actor),
+        (REWARD_ACTOR_ADDR, *REWARD_ACTOR_CODE_ID, system_actor),
+        (CRON_ACTOR_ADDR, *CRON_ACTOR_CODE_ID, system_actor),
+        (STORAGE_POWER_ACTOR_ADDR, *POWER_ACTOR_CODE_ID, system_actor),
+        (STORAGE_MARKET_ACTOR_ADDR, *MARKET_ACTOR_CODE_ID, system_actor),
+        (VERIFIED_REGISTRY_ACTOR_ADDR, *VERIFREG_ACTOR_CODE_ID, system_actor),
+        (DATACAP_TOKEN_ACTOR_ADDR, *DATACAP_TOKEN_ACTOR_CODE_ID, system_actor),
+        (EAM_ACTOR_ADDR, *EAM_ACTOR_CODE_ID, system_actor),
     ];
+    let alias = Address::new_actor(b"unpayable recipient");
 
-    for (caller, method, params) in requests {
-        let rt = base_runtime();
-        rt.set_address_actor_type(paych, *PAYCH_ACTOR_CODE_ID);
-        rt.id_addresses.borrow_mut().insert(alias, paych);
-        let mut before: State = rt.get_state();
-        before.accrued[0].amount = TokenAmount::from_atto(10);
-        rt.replace_state(&before);
-        rt.set_caller(*EVM_ACTOR_CODE_ID, caller);
-        if caller == swa_actor() {
-            rt.expect_validate_caller_addr(vec![swa_actor()]);
-        } else {
-            rt.expect_validate_caller_any();
+    for (target, code, message) in targets {
+        let requests = [
+            (
+                Address::new_id(WRITER),
+                Method::SetSharesExported,
+                IpldBlock::serialize_cbor(&SetSharesParams {
+                    id: 2,
+                    shares: vec![RecipientShare { recipient: target, share: DENOM }],
+                })
+                .unwrap(),
+            ),
+            (
+                swa_actor(),
+                Method::RegisterStreamExported,
+                IpldBlock::serialize_cbor(&RegisterStreamParams {
+                    id: 3,
+                    weight: weight(pct(10)),
+                    distribution: Some(DistributionInit {
+                        writer: Address::new_id(WRITER),
+                        shares: vec![RecipientShare { recipient: alias, share: DENOM }],
+                    }),
+                    activation_epoch: 2,
+                })
+                .unwrap(),
+            ),
+            (
+                Address::new_id(WRITER),
+                Method::ReplaceAddressExported,
+                IpldBlock::serialize_cbor(&ReplaceAddressParams {
+                    id: 2,
+                    old_address: Address::new_id(RECIPIENT_A),
+                    new_address: alias,
+                })
+                .unwrap(),
+            ),
+        ];
+
+        for (caller, method, params) in requests {
+            let rt = base_runtime();
+            rt.set_address_actor_type(target, code);
+            rt.id_addresses.borrow_mut().insert(alias, target);
+            let mut before: State = rt.get_state();
+            before.accrued[0].amount = TokenAmount::from_atto(10);
+            rt.replace_state(&before);
+            rt.set_caller(*EVM_ACTOR_CODE_ID, caller);
+            if caller == swa_actor() {
+                rt.expect_validate_caller_addr(vec![swa_actor()]);
+            } else {
+                rt.expect_validate_caller_any();
+            }
+
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                message,
+                rt.call::<RewardActor>(method as u64, params),
+            );
+            rt.verify();
+            let after: State = rt.get_state();
+            assert_eq!(before.streams_root, after.streams_root);
+            assert_eq!(before.accrued, after.accrued);
+            assert_eq!(TokenAmount::from_atto(10), liability(&rt));
         }
-
-        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, rt.call::<RewardActor>(method as u64, params));
-        rt.verify();
-        let after: State = rt.get_state();
-        assert_eq!(before.streams_root, after.streams_root);
-        assert_eq!(before.accrued, after.accrued);
-        assert_eq!(TokenAmount::from_atto(10), liability(&rt));
     }
+}
+
+#[test]
+fn low_id_wallets_remain_admissible_recipients() {
+    let rt = base_runtime();
+    rt.set_address_actor_type(Address::new_id(80), *MULTISIG_ACTOR_CODE_ID);
+    rt.set_address_actor_type(Address::new_id(90), *ACCOUNT_ACTOR_CODE_ID);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(WRITER));
+    rt.expect_validate_caller_any();
+    expect_fold_event(&rt, 2, "SetShares", &TokenAmount::zero(), &TokenAmount::zero());
+    expect_shares_event(&rt, 2, &[(80, pct(50)), (90, pct(50))]);
+    call(
+        &rt,
+        Method::SetSharesExported,
+        &SetSharesParams {
+            id: 2,
+            shares: vec![
+                RecipientShare { recipient: Address::new_id(80), share: pct(50) },
+                RecipientShare { recipient: Address::new_id(90), share: pct(50) },
+            ],
+        },
+    )
+    .unwrap();
+    rt.verify();
+    let installed = load_streams(&rt).streams[1].distribution.clone().unwrap();
+    let recipients: Vec<_> = installed.shares.iter().map(|row| row.recipient).collect();
+    assert_eq!(vec![Address::new_id(80), Address::new_id(90)], recipients);
 }
 
 #[test]
