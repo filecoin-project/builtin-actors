@@ -164,6 +164,7 @@ pub struct MockRuntime {
 
     // VM Impl
     pub in_call: RefCell<bool>,
+    pub read_only: RefCell<bool>,
     pub store: Rc<MemoryBlockstore>,
     pub in_transaction: RefCell<bool>,
 
@@ -349,6 +350,7 @@ impl MockRuntime {
             state: Default::default(),
             balance: Default::default(),
             in_call: Default::default(),
+            read_only: Default::default(),
             store: Rc::new(Default::default()),
             in_transaction: Default::default(),
             expectations: Default::default(),
@@ -578,6 +580,10 @@ impl MockRuntime {
     /// Clears all mock expectations.
     pub fn reset(&self) {
         self.expectations.borrow_mut().reset();
+    }
+
+    pub fn set_read_only(&self, read_only: bool) {
+        self.read_only.replace(read_only);
     }
 
     ///// Mock expectations /////
@@ -1168,6 +1174,8 @@ impl Runtime for MockRuntime {
         send_flags: SendFlags,
     ) -> Result<Response, SendError> {
         self.require_in_call();
+        let send_flags =
+            if self.read_only() { send_flags | SendFlags::READ_ONLY } else { send_flags };
         if *self.in_transaction.borrow() {
             return Ok(Response { exit_code: ExitCode::USR_ASSERTION_FAILED, return_data: None });
         }
@@ -1342,7 +1350,7 @@ impl Runtime for MockRuntime {
     }
 
     fn read_only(&self) -> bool {
-        false
+        *self.read_only.borrow()
     }
 }
 
