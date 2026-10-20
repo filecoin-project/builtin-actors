@@ -597,6 +597,7 @@ impl Deadline {
         Ok((popped, modified))
     }
 
+    /// Fast path when `record_termination` is false -- see `Partition::terminate_sectors`.
     #[allow(clippy::too_many_arguments)]
     pub fn terminate_sectors<BS: Blockstore>(
         &mut self,
@@ -607,10 +608,12 @@ impl Deadline {
         partition_sectors: &mut PartitionSectorMap,
         sector_size: SectorSize,
         quant: QuantSpec,
-    ) -> anyhow::Result<PowerPair> {
+        record_termination: bool,
+    ) -> anyhow::Result<(PowerPair, Vec<SectorOnChainInfo>)> {
         let mut partitions = self.partitions_amt(store)?;
 
         let mut power_lost = PowerPair::zero();
+        let mut terminated_sector_infos = Vec::new();
         for (partition_idx, sector_numbers) in partition_sectors.iter() {
             let mut partition = partitions
                 .get(partition_idx)
@@ -622,7 +625,7 @@ impl Deadline {
                 )?
                 .clone();
 
-            let (removed, removed_unproven) = partition
+            let (removed, removed_unproven, sector_infos) = partition
                 .terminate_sectors(
                     policy,
                     store,
@@ -631,6 +634,7 @@ impl Deadline {
                     sector_numbers,
                     sector_size,
                     quant,
+                    record_termination,
                 )
                 .map_err(|e| {
                     e.downcast_wrap(format!(
@@ -644,12 +648,14 @@ impl Deadline {
             })?;
 
             if !removed.is_empty() {
-                // Record that partition now has pending early terminations.
-                self.early_terminations.set(partition_idx);
+                if record_termination {
+                    // Record that partition now has pending early terminations.
+                    self.early_terminations.set(partition_idx);
+                } // else: fast path -- the caller settles fees itself, so no queue entry is recorded.
 
                 // Record change to sectors and power
                 self.live_sectors -= removed.len();
-            } // note: we should _always_ have early terminations, unless the early termination bitfield is empty.
+            }
 
             self.faulty_power -= &removed.faulty_power;
             self.live_power -= &removed.active_power;
@@ -659,13 +665,15 @@ impl Deadline {
 
             // Aggregate power lost from active sectors
             power_lost += &removed.active_power;
+
+            terminated_sector_infos.extend(sector_infos);
         }
 
         // save partitions back
         self.partitions =
             partitions.flush().map_err(|e| e.downcast_wrap("failed to persist partitions"))?;
 
-        Ok(power_lost)
+        Ok((power_lost, terminated_sector_infos))
     }
 
     /// RemovePartitions removes the specified partitions, shifting the remaining
