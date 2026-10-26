@@ -574,17 +574,9 @@ fn resolve_recipient(
         Some(Type::PaymentChannel) => {
             Err(actor_error!(illegal_argument, "{} {} is a payment channel", label, address))
         }
-        Some(
-            Type::System
-            | Type::Init
-            | Type::Reward
-            | Type::Cron
-            | Type::Power
-            | Type::Market
-            | Type::VerifiedRegistry
-            | Type::DataCap
-            | Type::EAM,
-        ) => Err(actor_error!(illegal_argument, "{} {} is a builtin system actor", label, address)),
+        Some(t) if t.is_singleton() => {
+            Err(actor_error!(illegal_argument, "{} {} is a builtin system actor", label, address))
+        }
         _ => Ok(address),
     }
 }

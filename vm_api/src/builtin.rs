@@ -47,4 +47,21 @@ impl Type {
             Type::EthAccount => "ethaccount",
         }
     }
+
+    /// Whether this code is only ever instantiated as a singleton system actor. The burnt funds
+    /// singleton (f099) is a plain account, so it is identified by address, not by type.
+    pub fn is_singleton(&self) -> bool {
+        matches!(
+            self,
+            Type::System
+                | Type::Init
+                | Type::Reward
+                | Type::Cron
+                | Type::Power
+                | Type::Market
+                | Type::VerifiedRegistry
+                | Type::DataCap
+                | Type::EAM
+        )
+    }
 }
