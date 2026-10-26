@@ -1600,10 +1600,10 @@ pub fn recover_secp_public_key(
     signature: &[u8; SECP_SIG_LEN],
 ) -> Result<[u8; SECP_PUB_LEN], ()> {
     use k256::ecdsa::{RecoveryId, Signature as EcdsaSignature, VerifyingKey};
-    let sig_bytes = signature[..64].into();
     let mut rec_id = signature[64];
-    let mut signature = EcdsaSignature::from_bytes(sig_bytes).map_err(|_| ())?;
-    if let Some(normalized) = signature.normalize_s() {
+    let mut signature = EcdsaSignature::from_slice(&signature[..64]).map_err(|_| ())?;
+    let normalized = signature.normalize_s();
+    if normalized != signature {
         signature = normalized;
         rec_id ^= 1;
     }
@@ -1613,7 +1613,7 @@ pub fn recover_secp_public_key(
 
     let pk = VerifyingKey::recover_from_prehash(&hash[..], &signature, rec_id).map_err(|_| ())?;
 
-    Ok(pk.to_encoded_point(false).as_bytes().try_into().expect("expected the key to be 65 bytes"))
+    Ok(pk.to_sec1_point(false).as_bytes().try_into().expect("expected the key to be 65 bytes"))
 }
 
 // multihash library doesn't support poseidon hashing, so we fake it
