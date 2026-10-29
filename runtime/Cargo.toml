@@ -9,11 +9,9 @@ authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin C
 
 [dependencies]
 anyhow = { workspace = true }
-byteorder = { workspace = true }
 castaway = { workspace = true }
 cid = { workspace = true }
 fvm_ipld_amt = { workspace = true }
-fvm_ipld_bitfield = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
@@ -52,7 +50,6 @@ optional = true
 
 [dev-dependencies]
 base64 = "0.22.1"
-derive_builder = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 hex-literal = { workspace = true }
