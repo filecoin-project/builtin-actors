@@ -24,7 +24,6 @@ rand_chacha = { workspace = true }
 serde = { workspace = true }
 
 multihash-codetable = { workspace = true }
-multihash-derive = { workspace = true, optional = true }
 
 [features]
-testing = ["multihash-derive"]
+testing = []

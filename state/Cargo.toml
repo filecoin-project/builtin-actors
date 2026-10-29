@@ -24,7 +24,6 @@ fil_actor_paych = { workspace = true}
 fil_actor_power = { workspace = true}
 fil_actor_miner = { workspace = true}
 fil_actor_reward = { workspace = true}
-fil_actor_system = { workspace = true}
 fil_actor_init = { workspace = true}
 fil_actors_runtime = { workspace = true}
 fvm_shared = { workspace = true }
@@ -34,9 +33,6 @@ vm_api = { workspace = true }
 
 num-traits = { workspace = true }
 anyhow = { workspace = true }
-bimap = { workspace = true }
-num-derive = { workspace = true }
-serde = { workspace = true }
 cid = { workspace = true }
 
 [dev-dependencies]
