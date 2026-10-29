@@ -21,7 +21,6 @@ num-traits = { workspace = true }
 num-derive = { workspace = true }
 serde = { workspace = true }
 cid = { workspace = true }
-anyhow = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 
