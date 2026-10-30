@@ -9,7 +9,7 @@
 //! precompile.
 use fil_actors_runtime::runtime::Runtime;
 use p256::{
-    EncodedPoint,
+    Sec1Point,
     ecdsa::{Signature, VerifyingKey, signature::hazmat::PrehashVerifier},
 };
 
@@ -62,10 +62,10 @@ pub fn verify_impl(input: &[u8]) -> bool {
 pub(crate) fn verify_signature(msg: [u8; 32], sig: [u8; 64], pk: [u8; 64]) -> Option<()> {
     // Can fail only if the input is not exact length.
     let signature = Signature::from_slice(&sig).ok()?;
-    // Decode the public key bytes (x,y coordinates) using EncodedPoint
-    let encoded_point = EncodedPoint::from_untagged_bytes(&pk.into());
+    // Decode the public key bytes (x,y coordinates) as an uncompressed SEC1 point
+    let encoded_point = Sec1Point::from_untagged_bytes(&pk.into());
     // Create VerifyingKey from the encoded point
-    let public_key = VerifyingKey::from_encoded_point(&encoded_point).ok()?;
+    let public_key = VerifyingKey::from_sec1_point(&encoded_point).ok()?;
 
     public_key.verify_prehash(&msg, &signature).ok()
 }
