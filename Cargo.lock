@@ -457,7 +457,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -713,7 +713,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
 ]
@@ -745,7 +745,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "log",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
 ]
@@ -765,7 +765,7 @@ dependencies = [
  "fvm_shared",
  "lazy_static",
  "log",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
 ]
@@ -785,7 +785,7 @@ dependencies = [
  "hex-literal",
  "log",
  "multihash",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "rlp",
  "serde",
@@ -801,7 +801,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "hex-literal",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
 ]
@@ -827,7 +827,7 @@ dependencies = [
  "lazy_static",
  "log",
  "multihash-codetable",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "once_cell",
  "p256",
@@ -852,7 +852,7 @@ dependencies = [
  "fvm_ipld_hamt",
  "fvm_shared",
  "log",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
 ]
@@ -879,7 +879,7 @@ dependencies = [
  "lazy_static",
  "log",
  "multihash-codetable",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "regex",
  "serde",
@@ -912,7 +912,7 @@ dependencies = [
  "multihash",
  "multihash-codetable",
  "multihash-derive",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "rand 0.9.5",
  "serde",
@@ -936,7 +936,7 @@ dependencies = [
  "indexmap 2.14.2",
  "integer-encoding",
  "lazy_static",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
 ]
@@ -955,7 +955,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "lazy_static",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
 ]
@@ -982,7 +982,7 @@ dependencies = [
  "integer-encoding",
  "lazy_static",
  "log",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
 ]
@@ -1003,7 +1003,7 @@ dependencies = [
  "log",
  "multihash-codetable",
  "num",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
  "serde_repr",
@@ -1020,7 +1020,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_shared",
  "multihash-codetable",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
 ]
@@ -1042,7 +1042,7 @@ dependencies = [
  "hex-literal",
  "lazy_static",
  "log",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
 ]
@@ -1104,7 +1104,7 @@ dependencies = [
  "lazy_static",
  "log",
  "multihash-codetable",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "rand 0.9.5",
  "rand_chacha 0.9.0",
@@ -1144,7 +1144,7 @@ dependencies = [
  "multihash-codetable",
  "multihash-derive",
  "num",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "pretty_env_logger",
  "rand 0.9.5",
@@ -1207,7 +1207,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "serde",
  "vm_api",
@@ -1488,7 +1488,7 @@ dependencies = [
  "data-encoding-macro",
  "fvm_ipld_encoding",
  "num-bigint",
- "num-derive",
+ "num-derive 0.4.2",
  "num-integer",
  "num-traits",
  "serde",
@@ -1869,6 +1869,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.106",
+]
+
+[[package]]
+name = "num-derive"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4e98dc3b890f6c23a0f9d3d491a2823d0dea0fa656302a13dd225fa924112a8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -2805,7 +2816,7 @@ dependencies = [
  "fvm_shared",
  "multihash-codetable",
  "multihash-derive",
- "num-derive",
+ "num-derive 0.5.1",
  "num-traits",
  "rand 0.9.5",
  "rand_chacha 0.9.0",
