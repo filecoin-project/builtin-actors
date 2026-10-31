@@ -525,7 +525,7 @@ fn terminate_sectors(
         partition_sector_map.add(partition, sectors).unwrap();
     }
 
-    deadline.terminate_sectors(
+    let (power, _) = deadline.terminate_sectors(
         &Policy::default(),
         &store,
         &sectors_array,
@@ -533,7 +533,9 @@ fn terminate_sectors(
         &mut partition_sector_map,
         SECTOR_SIZE,
         QUANT_SPEC,
-    )
+        true,
+    )?;
+    Ok(power)
 }
 
 #[test]
