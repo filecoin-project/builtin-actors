@@ -868,7 +868,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut expiration_groups =
             Vec::<SectorExpirationSet>::with_capacity(declared_expirations.len());
 
-        for (&expiration, _) in declared_expirations.iter() {
+        for &expiration in declared_expirations.keys() {
             let es = self.may_get(expiration)?;
 
             let group = group_expiration_set(

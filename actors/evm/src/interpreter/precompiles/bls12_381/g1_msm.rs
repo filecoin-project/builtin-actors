@@ -40,7 +40,7 @@ pub fn bls12_g1msm<RT: Runtime>(
     let mut scalars: Vec<blst_scalar> = Vec::with_capacity(k);
 
     // Process each (point, scalar) pair.
-    for chunk in input.chunks_exact(G1_MSM_INPUT_LENGTH) {
+    for chunk in input.as_chunks::<G1_MSM_INPUT_LENGTH>().0 {
         let (encoded_point, encoded_scalar) = chunk.split_at(PADDED_G1_LENGTH);
 
         // Deserialize the point (performing subgroup check).

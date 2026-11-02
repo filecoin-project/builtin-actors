@@ -676,8 +676,7 @@ pub fn publish_deals(
         );
     }
 
-    let mut deal_id = next_deal_id;
-    for deal in publish_deals {
+    for (deal_id, deal) in (next_deal_id..).zip(publish_deals) {
         let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
         let notify_params =
             IpldBlock::serialize_cbor(&MarketNotifyDealParams { proposal: buf.to_vec(), deal_id })
@@ -697,7 +696,6 @@ pub fn publish_deals(
             deal.client.id().unwrap(),
             deal.provider.id().unwrap(),
         );
-        deal_id += 1;
     }
 
     let ret: PublishStorageDealsReturn = rt

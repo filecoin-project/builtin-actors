@@ -58,7 +58,7 @@ fn expect_abort(rt: &MockRuntime, method_num: u64, ser: Option<IpldBlock>, exp: 
 
 fn construct_lane_state_amt(rt: &MockRuntime, lss: Vec<LaneState>) -> Cid {
     let mut arr = Amt::new(&rt.store);
-    for (i, ls) in (0..).zip(lss.into_iter()) {
+    for (i, ls) in (0..).zip(lss) {
         arr.set(i, ls).unwrap();
     }
     arr.flush().unwrap()

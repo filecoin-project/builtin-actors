@@ -897,7 +897,7 @@ impl Runtime for MockRuntime {
         assert_eq!(
             &addrs, expected_addrs,
             "unexpected validate caller addrs {:?}, expected {:?}",
-            addrs, &expectations.expect_validate_caller_addr
+            addrs, expectations.expect_validate_caller_addr
         );
 
         for expected in &addrs {
@@ -933,7 +933,7 @@ impl Runtime for MockRuntime {
         assert_eq!(
             &namespaces, expected_namespaces,
             "unexpected validate caller namespace {:?}, expected {:?}",
-            namespaces, &expectations.expect_validate_caller_f4_namespace
+            namespaces, expectations.expect_validate_caller_f4_namespace
         );
 
         let caller_f4 = self.lookup_delegated_address(self.caller().id().unwrap());

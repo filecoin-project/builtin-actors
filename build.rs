@@ -116,7 +116,7 @@ fn check_c_compiler_does_wasm() {
 fn main() -> Result<(), Box<dyn Error>> {
     // Cargo executable location.
     let cargo = std::env::var_os("CARGO").expect("no CARGO env var");
-    println!("cargo:warning=cargo: {:?}", &cargo);
+    println!("cargo:warning=cargo: {:?}", cargo);
     check_c_compiler_does_wasm();
 
     let out_dir = std::env::var_os("OUT_DIR")
@@ -124,7 +124,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map(Path::new)
         .map(|p| p.join("bundle"))
         .expect("no OUT_DIR env var");
-    println!("cargo:warning=out_dir: {:?}", &out_dir);
+    println!("cargo:warning=out_dir: {:?}", out_dir);
 
     // Compute the package names.
     let packages =
@@ -133,7 +133,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let manifest_path =
         Path::new(&std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR unset"))
             .join("Cargo.toml");
-    println!("cargo:warning=manifest_path={:?}", &manifest_path);
+    println!("cargo:warning=manifest_path={:?}", manifest_path);
 
     // Determine the network name.
     let network_name = network_name();
@@ -173,7 +173,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .env_remove("CARGO_ENCODED_RUSTFLAGS");
 
     // Print out the command line we're about to run.
-    println!("cargo:warning=cmd={:?}", &cmd);
+    println!("cargo:warning=cmd={:?}", cmd);
 
     // Launch the command.
     let mut child = cmd.spawn().expect("failed to launch cargo build");

@@ -8,7 +8,7 @@ use fvm_shared::clock::ChainEpoch;
 fn test_termination_result() {
     let mut result = TerminationResult::new();
     assert!(result.is_empty());
-    result.iter().for_each(|(_epoch, _sectors)| unreachable!());
+    assert!(result.iter().next().is_none());
 
     let mut result_a_sectors: BTreeMap<i64, BitField> = BTreeMap::new();
 

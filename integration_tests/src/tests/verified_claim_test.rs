@@ -212,7 +212,7 @@ pub fn verified_deal_sector_lifecycle_test(v: &dyn VM) {
     expect_invariants(
         v,
         &Policy::default(),
-        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        std::slice::from_ref(&*invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH),
         None,
     );
 }
@@ -272,7 +272,7 @@ pub fn unactivated_verified_deal_expires_test(v: &dyn VM) {
     expect_invariants(
         v,
         &Policy::default(),
-        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        std::slice::from_ref(&*invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH),
         None,
     );
 }
