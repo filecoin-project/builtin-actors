@@ -290,7 +290,7 @@ fn check_deal_states_against_sectors(
         } else {
             acc.add(format!(
                 "provider {} for deal {} not found among miners",
-                deal.provider, &deal_id
+                deal.provider, deal_id
             ));
             continue;
         };

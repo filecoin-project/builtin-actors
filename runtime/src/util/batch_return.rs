@@ -126,7 +126,7 @@ pub fn stack(batch_returns: &[BatchReturn]) -> BatchReturn {
             })
             .collect();
         base.fail_codes.extend(new_fail_codes);
-        base.fail_codes.sort_by(|a, b| a.idx.cmp(&b.idx));
+        base.fail_codes.sort_by_key(|a| a.idx);
         base.success_count = nxt.success_count;
     }
     assert_eq!(base.size(), batch_returns[0].size());

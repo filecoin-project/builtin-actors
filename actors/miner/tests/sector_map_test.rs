@@ -184,9 +184,7 @@ fn deadline_sector_map_empty() {
     assert_eq!(0, partitions);
     assert_eq!(0, sectors);
 
-    deadline_sector_map.iter().for_each(|_| {
-        panic!("should not iterate over an empty map");
-    });
+    assert!(deadline_sector_map.iter().next().is_none(), "should not iterate over an empty map");
 
     assert_eq!(0, deadline_sector_map.deadlines().count());
 }
@@ -199,9 +197,7 @@ fn partition_sector_map_empty() {
     assert_eq!(0, partitions);
     assert_eq!(0, sectors);
 
-    partition_sector_map.iter().for_each(|_| {
-        panic!("should not iterate over an empty map");
-    });
+    assert!(partition_sector_map.iter().next().is_none(), "should not iterate over an empty map");
 
     assert_eq!(0, partition_sector_map.partitions().count());
 }

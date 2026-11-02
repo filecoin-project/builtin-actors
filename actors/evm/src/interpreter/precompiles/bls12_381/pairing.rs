@@ -33,7 +33,7 @@ pub fn bls12_pairing<RT: Runtime>(
     // Collect pairs of points for the pairing check
     let mut pairs = Vec::with_capacity(k);
 
-    for chunk in input.chunks_exact(PAIRING_INPUT_LENGTH) {
+    for chunk in input.as_chunks::<PAIRING_INPUT_LENGTH>().0 {
         let (encoded_g1_element, encoded_g2_element) = chunk.split_at(PADDED_G1_LENGTH);
 
         // If either the G1 or G2 element is the encoded representation

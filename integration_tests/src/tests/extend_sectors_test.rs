@@ -269,7 +269,7 @@ pub fn extend_sector_with_deals_extend2(v: &dyn VM) {
     expect_invariants(
         v,
         &Policy::default(),
-        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        std::slice::from_ref(&*invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH),
         None,
     );
 }

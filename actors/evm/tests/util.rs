@@ -208,7 +208,7 @@ impl Debug for PrecompileTest {
 impl PrecompileTest {
     #[allow(dead_code)]
     pub fn run_test(&self, rt: &MockRuntime) {
-        log::trace!("{:#?}", &self);
+        log::trace!("{:#?}", self);
         // first byte is precompile number, second is output buffer size, rest is input to precompile
         let result = invoke_contract(
             rt,

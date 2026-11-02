@@ -264,8 +264,8 @@ pub fn check_receiver_notification_at(
         received_payload.as_ref(),
         expected_payload_bytes.as_slice(),
         "Payload mismatch: expected 0x{:x?}, got 0x{:x?}",
-        &expected_payload_bytes,
-        &received_payload.as_ref()
+        expected_payload_bytes,
+        received_payload.as_ref()
     );
 
     // Check the piece CID data is present
@@ -279,7 +279,7 @@ pub fn check_receiver_notification_at(
         &data_cid_bytes[1..],
         expected_cid_bytes,
         "Piece CID data mismatch: expected {:x?}, got {:x?}",
-        &expected_cid_bytes,
+        expected_cid_bytes,
         &data_cid_bytes[1..]
     );
 

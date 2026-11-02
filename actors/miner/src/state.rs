@@ -1009,7 +1009,7 @@ impl State {
             super::BitFieldQueue::new(store, &self.pre_committed_sectors_cleanup, quant)
                 .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))?;
 
-        queue.add_many_to_queue_values(cleanup_events.into_iter())?;
+        queue.add_many_to_queue_values(cleanup_events)?;
         self.pre_committed_sectors_cleanup = queue.amt.flush()?;
         Ok(())
     }

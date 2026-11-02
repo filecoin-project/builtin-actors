@@ -51,14 +51,14 @@ impl Actor {
     pub fn exec(rt: &impl Runtime, params: ExecParams) -> Result<ExecReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
 
-        log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
+        log::trace!("called exec; params.code_cid: {:?}", params.code_cid);
 
         let caller_code =
             rt.get_actor_code_cid(&rt.message().caller().id().unwrap()).ok_or_else(|| {
                 actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
             })?;
 
-        log::trace!("caller code CID: {:?}", &caller_code);
+        log::trace!("caller code CID: {:?}", caller_code);
 
         if !can_exec(rt, &caller_code, &params.code_cid) {
             return Err(actor_error!(forbidden;
@@ -73,7 +73,7 @@ impl Actor {
         // a different ID.
         let robust_address = rt.new_actor_address()?;
 
-        log::trace!("robust address: {:?}", &robust_address);
+        log::trace!("robust address: {:?}", robust_address);
 
         // Allocate an ID for this actor.
         // Store mapping of actor addresses to the actor ID.
@@ -117,7 +117,7 @@ impl Actor {
                 ActorError::illegal_argument(format!("invalid delegated address: {}", e))
             })?;
 
-        log::trace!("delegated address: {:?}", &delegated_address);
+        log::trace!("delegated address: {:?}", delegated_address);
 
         // Compute a re-org-stable address.
         // This address exists for use by messages coming from outside the system, in order to
@@ -125,7 +125,7 @@ impl Actor {
         // a different ID.
         let robust_address = rt.new_actor_address()?;
 
-        log::trace!("robust address: {:?}", &robust_address);
+        log::trace!("robust address: {:?}", robust_address);
 
         // Allocate an ID for this actor.
         // Store mapping of actor addresses to the actor ID.
