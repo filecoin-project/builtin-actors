@@ -37,7 +37,7 @@ pub fn vm_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let registry_code = quote! {
         #input_fn
-        #[ctor::ctor]
+        #[ctor::ctor(unsafe)]
         fn #register_fn_name() {
             // Registry key needs to be globally unique so we include module name
             let registry_key = concat!(module_path!(), "::", stringify!(#fn_name));
