@@ -8,6 +8,10 @@ edition.workspace = true
 keywords = ["filecoin", "web3", "wasm"]
 publish = false
 
+[package.metadata.cargo-shear]
+# Emitted as `#[ctor::ctor]` by `export_macro`.
+ignored = ["ctor"]
+
 [lib]
 
 [dependencies]

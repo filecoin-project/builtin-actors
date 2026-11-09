@@ -7,6 +7,10 @@ edition.workspace = true
 repository.workspace = true
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 
+[package.metadata.cargo-shear]
+# Not imported; enables the `serde` feature of `num-bigint` for `BigInt` fields in `Policy`.
+ignored = ["num"]
+
 [dependencies]
 anyhow = { workspace = true }
 castaway = { workspace = true }

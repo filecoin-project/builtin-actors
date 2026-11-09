@@ -9,6 +9,10 @@ members = [
      "integration_tests",
 ]
 
+[workspace.metadata.cargo-shear]
+# Referenced only from derive-macro expansions (serde derives, `Serialize_tuple`, `FromPrimitive`), which cargo-shear does not expand.
+ignored = ["serde", "num-traits"]
+
 [workspace.package]
 version = "19.0.1"
 license = "MIT OR Apache-2.0"
@@ -29,27 +33,8 @@ exclude = ["examples", ".github"]
 # We don't publish the bundle to crates.io anymore. Instead, we build in CI.
 publish = false
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-fil_actor_account = { workspace = true, features = ["fil-actor"] }
-fil_actor_cron = { workspace = true, features = ["fil-actor"] }
-fil_actor_datacap = { workspace = true, features = ["fil-actor"] }
-fil_actor_ethaccount = { workspace = true, features = ["fil-actor"] }
-fil_actor_eam = { workspace = true, features = ["fil-actor"] }
-fil_actor_evm = { workspace = true, features = ["fil-actor"] }
-fil_actor_init = { workspace = true, features = ["fil-actor"] }
-fil_actor_market = { workspace = true, features = ["fil-actor"] }
-fil_actor_miner = { workspace = true, features = ["fil-actor"] }
-fil_actor_multisig = { workspace = true, features = ["fil-actor"] }
-fil_actor_paych = { workspace = true, features = ["fil-actor"] }
-fil_actor_placeholder = { workspace = true, features = ["fil-actor"] }
-fil_actor_power = { workspace = true, features = ["fil-actor"] }
-fil_actor_reward = { workspace = true, features = ["fil-actor"] }
-fil_actor_system = { workspace = true, features = ["fil-actor"] }
-fil_actor_verifreg = { workspace = true, features = ["fil-actor"] }
-
 [build-dependencies]
 fil_actor_bundler = "8.1.0"
-cid = { workspace = true }
 fil_actors_runtime = { workspace = true }
 num-traits = { workspace = true }
 
@@ -148,7 +133,6 @@ fil_actor_market = { path = "actors/market" }
 fil_actor_miner = { path = "actors/miner" }
 fil_actor_multisig = { path = "actors/multisig" }
 fil_actor_paych = { path = "actors/paych" }
-fil_actor_placeholder = { path = "actors/placeholder" }
 fil_actor_power = { path = "actors/power" }
 fil_actor_reward = { path = "actors/reward" }
 fil_actor_system = { path = "actors/system" }
@@ -158,7 +142,6 @@ fil_actors_runtime = { path = "runtime" }
 fil_builtin_actors_state = { path = "state" }
 fil_actors_integration_tests = { version = "1.0.0", path = "integration_tests" }
 vm_api = { version = "1.0.0", path = "vm_api" }
-test_vm = { path = "test_vm" }
 
 #[patch.crates-io]
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
