@@ -26,6 +26,10 @@ updates:
           - "frc42_*"
           - "frc46_*"
           - "fvm_actor_utils"
+      rand:
+        patterns:
+          - "rand"
+          - "rand_*"
       patch-versions:
         update-types:
           - "patch"
