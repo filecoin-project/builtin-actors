@@ -163,7 +163,7 @@ pub fn pledge_penalty_for_continued_fault(
         qa_sector_power,
         CONTINUED_FAULT_PROJECTION_PERIOD,
     );
-    return (reward * implicit_stream_weight).div_floor(WEIGHT_DENOM);
+    (reward * implicit_stream_weight).div_floor(WEIGHT_DENOM)
 }
 
 /// This is the SP(t) penalty for a newly faulty sector that has not been declared.
@@ -224,7 +224,7 @@ pub fn pledge_penalty_for_invalid_windowpost(
     );
 
     let scaled_reward = (reward * implicit_stream_weight).div_floor(WEIGHT_DENOM);
-    return scaled_reward + &*BASE_PENALTY_FOR_DISPUTED_WINDOW_POST;
+    scaled_reward + &*BASE_PENALTY_FOR_DISPUTED_WINDOW_POST
 }
 
 /// Computes the PreCommit deposit given sector qa weight and current network conditions.
