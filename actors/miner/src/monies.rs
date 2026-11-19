@@ -87,7 +87,9 @@ pub const TERMINATION_LIFETIME_CAP: ChainEpoch = 140;
 // Multiplier of whole per-winner rewards for a consensus fault penalty.
 const CONSENSUS_FAULT_FACTOR: u64 = 5;
 
-const GAMMA_FIXED_POINT_FACTOR: u64 = 1000; // 3 decimal places
+const PLEDGE_SHARE_PERMILLE: u64 = 1000;
+const BASELINE_PLEDGE_PERMILLE: u64 = 700;
+const SIMPLE_PLEDGE_PERMILLE: u64 = PLEDGE_SHARE_PERMILLE - BASELINE_PLEDGE_PERMILLE;
 
 /// The projected block reward a sector would earn over some period.
 /// Also known as "BR(t)".
@@ -265,11 +267,6 @@ pub fn initial_pledge_for_power(
     let pledge_share_num = qa_power;
     let network_qa_power = network_qa_power_estimate.estimate();
 
-    // The FIP-0081 ramp is complete: additional pledge is 70% baseline pledge
-    // and 30% simple pledge, with each contribution rounded down separately.
-    const BASELINE_PLEDGE_WEIGHT_PERMILLE: u64 = 700;
-    let gamma = BASELINE_PLEDGE_WEIGHT_PERMILLE;
-
     let additional_ip_num = lock_target_num * pledge_share_num;
 
     let pledge_share_denom_baseline =
@@ -277,12 +274,11 @@ pub fn initial_pledge_for_power(
     let pledge_share_denom_simple = cmp::max(&network_qa_power, qa_power);
 
     let additional_ip_denom_baseline = pledge_share_denom_baseline * lock_target_denom;
-    let additional_ip_baseline = (gamma * &additional_ip_num)
-        .div_floor(&(additional_ip_denom_baseline * GAMMA_FIXED_POINT_FACTOR));
+    let additional_ip_baseline = (BASELINE_PLEDGE_PERMILLE * &additional_ip_num)
+        .div_floor(&(additional_ip_denom_baseline * PLEDGE_SHARE_PERMILLE));
     let additional_ip_denom_simple = pledge_share_denom_simple * lock_target_denom;
-    let additional_ip_simple = ((GAMMA_FIXED_POINT_FACTOR - gamma) * &additional_ip_num)
-        .div_floor(&(additional_ip_denom_simple * GAMMA_FIXED_POINT_FACTOR));
-
+    let additional_ip_simple = (SIMPLE_PLEDGE_PERMILLE * &additional_ip_num)
+        .div_floor(&(additional_ip_denom_simple * PLEDGE_SHARE_PERMILLE));
     // convex combination of simple and baseline pledge
     let additional_ip = additional_ip_baseline + additional_ip_simple;
 

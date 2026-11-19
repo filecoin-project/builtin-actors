@@ -28,9 +28,9 @@ my_const!(
 );
 my_const!(circulating_supply, TokenAmount, TokenAmount::from_whole(1));
 
-// After-ramp where 'baseline power' is at 70% and `simple power` is at 30%.
+// Additional pledge combines 70% baseline share and 30% simple share.
 #[test]
-fn initial_pledge_after_ramp() {
+fn initial_pledge_baseline_and_simple_shares() {
     let initial_pledge = initial_pledge_for_power(
         &qa_sector_power(),
         &StoragePower::from(1u64 << 37),
