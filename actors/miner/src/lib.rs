@@ -1126,6 +1126,7 @@ impl Actor {
                     &epoch_reward.this_epoch_reward_smoothed,
                     &power_total.quality_adj_power_smoothed,
                     &penalised_power.qa,
+                    epoch_reward.this_epoch_implicit_stream_weight,
                 );
 
                 // Calculate the target reward.
@@ -1827,13 +1828,15 @@ impl Actor {
         params: MaxTerminationFeeParams,
     ) -> Result<MaxTerminationFeeReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let reward_smoothed = request_current_epoch_block_reward(rt)?.this_epoch_reward_smoothed;
+        let reward = request_current_epoch_block_reward(rt)?;
+        let reward_smoothed = reward.this_epoch_reward_smoothed;
         let quality_adj_power_smoothed =
             request_current_total_power(rt)?.quality_adj_power_smoothed;
         let fault_fee = pledge_penalty_for_continued_fault(
             &reward_smoothed,
             &quality_adj_power_smoothed,
             &params.power,
+            reward.this_epoch_implicit_stream_weight,
         );
 
         let max_fee = pledge_penalty_for_termination(
@@ -2342,6 +2345,7 @@ impl Actor {
             rt,
             &epoch_reward.this_epoch_reward_smoothed,
             &pwr_total.quality_adj_power_smoothed,
+            epoch_reward.this_epoch_implicit_stream_weight,
         )?;
 
         if more && !had_early_terminations {
@@ -3244,12 +3248,14 @@ impl Actor {
                 rt,
                 &params.reward_smoothed,
                 &params.quality_adj_power_smoothed,
+                params.implicit_stream_weight,
             )?,
             CRON_EVENT_PROCESS_EARLY_TERMINATIONS => {
                 if process_early_terminations(
                     rt,
                     &params.reward_smoothed,
                     &params.quality_adj_power_smoothed,
+                    params.implicit_stream_weight,
                 )? {
                     schedule_early_termination_work(rt)?
                 }
@@ -4079,6 +4085,7 @@ fn process_early_terminations(
     rt: &impl Runtime,
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
+    implicit_stream_weight: u64,
 ) -> Result<
     bool, // has more
     ActorError,
@@ -4128,6 +4135,7 @@ fn process_early_terminations(
                     reward_smoothed,
                     quality_adj_power_smoothed,
                     &sector_power,
+                    implicit_stream_weight,
                 );
                 total_penalty +=
                     pledge_penalty_for_termination(&sector.initial_pledge, sector_age, &fault_fee);
@@ -4199,6 +4207,7 @@ fn handle_proving_deadline(
     rt: &impl Runtime,
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
+    implicit_stream_weight: u64,
 ) -> Result<(), ActorError> {
     let curr_epoch = rt.curr_epoch();
 
@@ -4248,6 +4257,7 @@ fn handle_proving_deadline(
             reward_smoothed,
             quality_adj_power_smoothed,
             &result.previously_faulty_power.qa,
+            implicit_stream_weight,
         );
 
         power_delta_total += &result.power_delta;
@@ -4340,7 +4350,12 @@ fn handle_proving_deadline(
     // handle them at the next epoch.
     if !had_early_terminations && has_early_terminations {
         // First, try to process some of these terminations.
-        if process_early_terminations(rt, reward_smoothed, quality_adj_power_smoothed)? {
+        if process_early_terminations(
+            rt,
+            reward_smoothed,
+            quality_adj_power_smoothed,
+            implicit_stream_weight,
+        )? {
             // If that doesn't work, just defer till the next epoch.
             schedule_early_termination_work(rt)?;
         }

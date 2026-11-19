@@ -22,13 +22,16 @@ use util::*;
 // between pre and prove commit
 const DEFAULT_SECTOR_EXPIRATION: u64 = 220;
 
-#[test]
-fn basic_post_and_dispute() {
+#[test_case::test_case(fil_actor_reward::DENOM; "full weight")]
+#[test_case::test_case(fil_actor_reward::DENOM / 2; "half weight")]
+#[test_case::test_case(0; "zero weight")]
+fn basic_post_and_dispute(implicit_stream_weight: u64) {
     let period_offset = ChainEpoch::from(100);
     let precommit_epoch = ChainEpoch::from(1);
 
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
+    h.implicit_stream_weight = implicit_stream_weight;
 
     let rt = h.new_runtime();
     rt.epoch.replace(precommit_epoch);
@@ -83,11 +86,17 @@ fn basic_post_and_dispute() {
     h.dispute_window_post(&rt, &dlinfo, 0, &dispute_sectors, None);
 
     // Now a successful dispute.
-    let expected_fee = miner::pledge_penalty_for_invalid_windowpost(
+    // Compute the expected amount independently of the weighted penalty helper.
+    let projected_reward = miner::expected_reward_for_power(
         &h.epoch_reward_smooth,
         &h.epoch_qa_power_smooth,
         &pwr.qa,
+        fil_actors_runtime::EPOCHS_IN_DAY * 551 / 100,
     );
+    assert!(projected_reward.is_positive());
+    let expected_fee = (projected_reward * implicit_stream_weight)
+        .div_floor(fil_actor_reward::DENOM)
+        + &*miner::BASE_PENALTY_FOR_DISPUTED_WINDOW_POST;
     let expected_result = PoStDisputeResult {
         expected_power_delta: Some(-pwr),
         expected_penalty: Some(expected_fee),
@@ -1232,6 +1241,7 @@ fn can_dispute_test_after_proving_period_changes() {
         &h.epoch_reward_smooth,
         &h.epoch_qa_power_smooth,
         &pwr.qa,
+        h.implicit_stream_weight,
     );
     let post_dispute_result = PoStDisputeResult {
         expected_power_delta: Some(-pwr),
@@ -1333,6 +1343,7 @@ fn dispute_at_current_power(
         &h.epoch_reward_smooth,
         &h.epoch_qa_power_smooth,
         &claimed_power.qa,
+        h.implicit_stream_weight,
     );
     h.dispute_window_post(
         rt,

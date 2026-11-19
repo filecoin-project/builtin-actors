@@ -102,6 +102,7 @@ pub struct DeferredCronEventParams {
     pub event_payload: Vec<u8>,
     pub reward_smoothed: FilterEstimate,
     pub quality_adj_power_smoothed: FilterEstimate,
+    pub implicit_stream_weight: u64,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

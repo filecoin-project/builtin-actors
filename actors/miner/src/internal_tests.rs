@@ -194,20 +194,27 @@ fn declared_and_undeclared_fault_penalties_are_linear_over_sector_qa_power_term(
         &reward_estimate,
         &power_estimate,
         &faulty_sector_a_power,
+        fil_actor_reward::DENOM,
     );
     let ff_b = pledge_penalty_for_continued_fault(
         &reward_estimate,
         &power_estimate,
         &faulty_sector_b_power,
+        fil_actor_reward::DENOM,
     );
     let ff_c = pledge_penalty_for_continued_fault(
         &reward_estimate,
         &power_estimate,
         &faulty_sector_c_power,
+        fil_actor_reward::DENOM,
     );
 
-    let ff_all =
-        pledge_penalty_for_continued_fault(&reward_estimate, &power_estimate, &total_fault_power);
+    let ff_all = pledge_penalty_for_continued_fault(
+        &reward_estimate,
+        &power_estimate,
+        &total_fault_power,
+        fil_actor_reward::DENOM,
+    );
 
     // Because we can introduce rounding error between 1 and zero for every penalty calculation
     // we can at best expect n calculations of 1 power to be within n of 1 calculation of n powers.

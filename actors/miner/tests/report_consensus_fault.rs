@@ -84,9 +84,12 @@ fn mistargeted_report_rejected() {
     check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
 
-#[test]
-fn report_consensus_fault_pays_reward_and_charges_fee() {
-    let (h, rt) = setup();
+#[test_case::test_case(fil_actor_reward::DENOM; "full weight")]
+#[test_case::test_case(fil_actor_reward::DENOM / 2; "half weight")]
+#[test_case::test_case(0; "zero weight")]
+fn report_consensus_fault_pays_reward_and_charges_fee(implicit_stream_weight: u64) {
+    let (mut h, rt) = setup();
+    h.implicit_stream_weight = implicit_stream_weight;
     rt.set_epoch(1);
 
     let test_addr = Address::new_id(1234);

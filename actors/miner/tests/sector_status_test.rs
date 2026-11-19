@@ -202,6 +202,7 @@ fn generate_sector_location_compacted_terminated() {
         &h.epoch_reward_smooth,
         &h.epoch_qa_power_smooth,
         &qa_power_for_sector(sector_size, &sectors_info[0]),
+        h.implicit_stream_weight,
     );
     let expected_fee =
         pledge_penalty_for_termination(&sectors_info[0].initial_pledge, sector_age, &fault_fee);

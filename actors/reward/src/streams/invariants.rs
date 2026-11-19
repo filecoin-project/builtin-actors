@@ -125,7 +125,7 @@ pub(super) fn schedule(streams: &[Stream], from: ChainEpoch) -> Result<()> {
 /// The award pays this block and nothing later, so a schedule that holds now and breaks at some
 /// future epoch still pays now. [`schedule`] is the stronger property that admission and
 /// application require, since a queued write has to hold from its effective epoch onward.
-pub(super) fn schedule_at(streams: &[Stream], epoch: ChainEpoch) -> Result<Vec<u64>> {
+pub(crate) fn schedule_at(streams: &[Stream], epoch: ChainEpoch) -> Result<Vec<u64>> {
     for stream in streams {
         validate_weight_record(&stream.weight)?;
     }

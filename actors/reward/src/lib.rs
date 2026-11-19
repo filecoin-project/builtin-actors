@@ -10,6 +10,7 @@ use fil_actors_runtime::{
 };
 
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::from_slice;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
@@ -498,9 +499,57 @@ impl Actor {
     fn this_epoch_reward(rt: &impl Runtime) -> Result<ThisEpochRewardReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
+
+        let stream_bytes = rt
+            .store()
+            .get(&st.streams_root)
+            .map_err(|error| {
+                actor_error!(
+                    illegal_state,
+                    "failed to load streams state {}: {}",
+                    st.streams_root,
+                    error
+                )
+            })?
+            .ok_or_else(|| {
+                actor_error!(illegal_state, "streams state root {} not found", st.streams_root)
+            })?;
+
+        let implicit_stream_weight = match from_slice::<StreamsState>(&stream_bytes) {
+            Ok(streams_state) => {
+                let validated_weights = streams::invariants::structure(&streams_state)
+                    .and_then(|()| streams::invariants::accounting(&streams_state, &st.accrued))
+                    .and_then(|()| {
+                        streams::invariants::schedule_at(&streams_state.streams, rt.curr_epoch())
+                    });
+
+                match validated_weights {
+                    Ok(weights) => {
+                        let mut implicit_weight = 0;
+                        for (stream, weight) in streams_state.streams.iter().zip(weights) {
+                            if stream.is_implicit() {
+                                implicit_weight = weight;
+                                break;
+                            }
+                        }
+                        implicit_weight
+                    }
+                    Err(error) => {
+                        error!("invalid streams state: {}", error);
+                        0
+                    }
+                }
+            }
+            Err(error) => {
+                error!("failed to decode streams state: {}", error);
+                0
+            }
+        };
+
         Ok(ThisEpochRewardReturn {
             this_epoch_baseline_power: st.this_epoch_baseline_power,
             this_epoch_reward_smoothed: st.this_epoch_reward_smoothed,
+            this_epoch_implicit_stream_weight: implicit_stream_weight,
         })
     }
 
