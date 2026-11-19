@@ -1551,8 +1551,6 @@ impl Actor {
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
-            epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
-            ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
         activate_new_sector_infos(rt, successful_precommits, sector_spaces, &pledge_inputs, &info)?;
 
@@ -1601,8 +1599,6 @@ impl Actor {
             network_baseline: params.reward_baseline_power,
             circulating_supply: rt.total_fil_circ_supply(),
             epoch_reward: params.reward_smoothed,
-            epochs_since_ramp_start: 0,
-            ramp_duration_epochs: 0,
         };
         activate_new_sector_infos(
             rt,
@@ -1714,8 +1710,6 @@ impl Actor {
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply,
             epoch_reward: rew.this_epoch_reward_smoothed,
-            epochs_since_ramp_start: rt.curr_epoch() - pwr.ramp_start_epoch,
-            ramp_duration_epochs: pwr.ramp_duration_epochs,
         };
 
         let sector_initial_pledge = pledge_inputs.initial_pledge_for_power(&qa_sector_power);
@@ -2123,8 +2117,6 @@ impl Actor {
             network_baseline: rew.this_epoch_baseline_power,
             circulating_supply: rt.total_fil_circ_supply(),
             epoch_reward: rew.this_epoch_reward_smoothed,
-            epochs_since_ramp_start: curr_epoch - pow.ramp_start_epoch,
-            ramp_duration_epochs: pow.ramp_duration_epochs,
         };
 
         let full_qa_power = qa_power_max(info.sector_size);
@@ -3946,8 +3938,6 @@ fn update_replica_states<R: Runtime>(
         network_baseline: rew.this_epoch_baseline_power,
         circulating_supply,
         epoch_reward: rew.this_epoch_reward_smoothed,
-        epochs_since_ramp_start: rt.curr_epoch() - pow.ramp_start_epoch,
-        ramp_duration_epochs: pow.ramp_duration_epochs,
     };
 
     // FIP-0118: all sectors get maximum QA power (10x); same for every update in this batch.
@@ -5331,8 +5321,6 @@ pub fn calculate_create_miner_deposit(rt: &impl Runtime) -> Result<TokenAmount, 
         &rew.this_epoch_reward_smoothed,
         &pwr.quality_adj_power_smoothed,
         &rt.total_fil_circ_supply(),
-        rt.curr_epoch() - pwr.ramp_start_epoch,
-        pwr.ramp_duration_epochs,
     ))
 }
 
@@ -5401,8 +5389,6 @@ struct NetworkPledgeInputs {
     pub network_baseline: StoragePower,
     pub circulating_supply: TokenAmount,
     pub epoch_reward: FilterEstimate,
-    pub epochs_since_ramp_start: i64,
-    pub ramp_duration_epochs: u64,
 }
 
 impl NetworkPledgeInputs {
@@ -5413,8 +5399,6 @@ impl NetworkPledgeInputs {
             &self.epoch_reward,
             &self.network_qap,
             &self.circulating_supply,
-            self.epochs_since_ramp_start,
-            self.ramp_duration_epochs,
         )
     }
 }

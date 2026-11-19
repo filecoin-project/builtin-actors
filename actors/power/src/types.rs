@@ -68,8 +68,6 @@ pub struct CurrentTotalPowerReturn {
     pub quality_adj_power: StoragePower,
     pub pledge_collateral: TokenAmount,
     pub quality_adj_power_smoothed: FilterEstimate,
-    pub ramp_start_epoch: i64,
-    pub ramp_duration_epochs: u64,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]

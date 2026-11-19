@@ -242,17 +242,16 @@ pub fn pre_commit_deposit_for_power(
 ///
 /// IP = IPBase(t) + AdditionalIP(t)
 /// IPBase(t) = BR(t, InitialPledgeProjectionPeriod)
-/// AdditionalIP(t) = LockTarget(t)*PledgeShare(t)
+/// AdditionalIP(t) = floor(0.7*LockTarget(t)*BaselinePledgeShare(t)) + floor(0.3*LockTarget(t)*SimplePledgeShare(t))
 /// LockTarget = (LockTargetFactorNum / LockTargetFactorDenom) * FILCirculatingSupply(t)
-/// PledgeShare(t) = sectorQAPower / max(BaselinePower(t), NetworkQAPower(t))
+/// BaselinePledgeShare(t) = sectorQAPower / max(BaselinePower(t), NetworkQAPower(t), sectorQAPower)
+/// SimplePledgeShare(t) = sectorQAPower / max(NetworkQAPower(t), sectorQAPower)
 pub fn initial_pledge_for_power(
     qa_power: &StoragePower,
     baseline_power: &StoragePower,
     reward_estimate: &FilterEstimate,
     network_qa_power_estimate: &FilterEstimate,
     circulating_supply: &TokenAmount,
-    epochs_since_ramp_start: i64,
-    ramp_duration_epochs: u64,
 ) -> TokenAmount {
     let ip_base = expected_reward_for_power_clamped_at_atto_fil(
         reward_estimate,
@@ -266,24 +265,10 @@ pub fn initial_pledge_for_power(
     let pledge_share_num = qa_power;
     let network_qa_power = network_qa_power_estimate.estimate();
 
-    // Once FIP-0081 has fully activated, additional pledge will be 70% baseline
-    // pledge + 30% simple pledge.
-    const FIP_0081_ACTIVATION_PERMILLE: i64 = 300;
-    // Gamma/GAMMA_FIXED_POINT_FACTOR is the share of pledge coming from the
-    // baseline formulation, with 1-(gamma/GAMMA_FIXED_POINT_FACTOR) coming from
-    // simple pledge.
-    // gamma = 1000 - 300 * (epochs_since_ramp_start / ramp_duration_epochs).max(0).min(1)
-    let skew = if epochs_since_ramp_start < 0 {
-        // No skew before ramp start
-        0
-    } else if ramp_duration_epochs == 0 || epochs_since_ramp_start >= ramp_duration_epochs as i64 {
-        // 100% skew after ramp end
-        FIP_0081_ACTIVATION_PERMILLE as u64
-    } else {
-        ((epochs_since_ramp_start * FIP_0081_ACTIVATION_PERMILLE) / ramp_duration_epochs as i64)
-            as u64
-    };
-    let gamma = GAMMA_FIXED_POINT_FACTOR - skew;
+    // The FIP-0081 ramp is complete: additional pledge is 70% baseline pledge
+    // and 30% simple pledge, with each contribution rounded down separately.
+    const BASELINE_PLEDGE_WEIGHT_PERMILLE: u64 = 700;
+    let gamma = BASELINE_PLEDGE_WEIGHT_PERMILLE;
 
     let additional_ip_num = lock_target_num * pledge_share_num;
 
