@@ -238,3 +238,45 @@ pub(super) fn get_randomness<RT: Runtime>(
     let randomness = system.rt.get_beacon_randomness(randomness_epoch);
     randomness.map(|r| r.to_vec()).map_err(|_| PrecompileError::InvalidInput)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::call_actor_shared;
+    use crate::interpreter::precompiles::PrecompileContext;
+    use crate::interpreter::{CallKind, System};
+    use fil_actors_evm_shared::uints::U256;
+    use fil_actors_runtime::test_utils::MockRuntime;
+    use fvm_shared::sys::SendFlags;
+    use fvm_shared::{METHOD_SEND, address::Address, econ::TokenAmount, error::ExitCode};
+
+    #[test]
+    fn call_actor_id_precompile_allows_readonly_delegatecall() {
+        let rt = MockRuntime::default();
+        rt.in_call.replace(true);
+        rt.set_read_only(true);
+        rt.expect_gas_available(10_000_000_000);
+        // Empty input → method=METHOD_SEND (0), no params, addr_id=0 (f00).
+        // The mock adds READ_ONLY to the effective flags, matching this expectation.
+        let gas_limit = (63 * 10_000_000_000_u64) / 64;
+        rt.expect_send(
+            Address::new_id(0),
+            METHOD_SEND,
+            None,
+            TokenAmount::from_atto(0),
+            Some(gas_limit),
+            SendFlags::READ_ONLY,
+            None,
+            ExitCode::OK,
+            None,
+        );
+        let mut system = System::new(&rt, true);
+        let ctx = PrecompileContext {
+            call_type: CallKind::DelegateCall,
+            gas: U256::MAX,
+            value: U256::ZERO,
+        };
+        let result = call_actor_shared(&mut system, &[], ctx, true);
+        assert!(result.is_ok(), "readonly delegatecall must be allowed, got: {:?}", result);
+        rt.verify();
+    }
+}
