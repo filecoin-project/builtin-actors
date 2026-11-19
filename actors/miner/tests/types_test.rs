@@ -8,10 +8,11 @@ mod serialization {
     use hex_literal::hex;
 
     use fil_actor_miner::{
-        Deadline, ExpirationSet, PowerPair, ProveCommitSectorsNIParams, SectorNIActivationInfo,
-        SectorOnChainInfo, SectorOnChainInfoFlags, UpgradeSectorQuality,
+        Deadline, DeferredCronEventParams, ExpirationSet, PowerPair, ProveCommitSectorsNIParams,
+        SectorNIActivationInfo, SectorOnChainInfo, SectorOnChainInfoFlags, UpgradeSectorQuality,
         UpgradeSectorQualityParams,
     };
+    use fil_actors_runtime::reward::FilterEstimate;
     use fvm_ipld_bitfield::BitField;
     use fvm_ipld_bitfield::iter::Ranges;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -19,6 +20,58 @@ mod serialization {
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::sector::{RegisteredAggregateProof, RegisteredSealProof};
     use num_traits::Zero;
+
+    #[test]
+    fn deferred_cron_event_params() {
+        let test_cases = vec![
+            (
+                DeferredCronEventParams {
+                    event_payload: vec![],
+                    reward_smoothed: FilterEstimate::default(),
+                    quality_adj_power_smoothed: FilterEstimate::default(),
+                    implicit_stream_weight: 0,
+                },
+                // [byte[],[byte[],byte[]],[byte[],byte[]],0]
+                &hex!("844082404082404000")[..],
+            ),
+            (
+                DeferredCronEventParams {
+                    event_payload: vec![0xde, 0xad],
+                    reward_smoothed: FilterEstimate {
+                        position: BigInt::from(1),
+                        velocity: BigInt::from(-2),
+                    },
+                    quality_adj_power_smoothed: FilterEstimate {
+                        position: BigInt::from(3),
+                        velocity: BigInt::from(-4),
+                    },
+                    implicit_stream_weight: 1_000_000_000_000_000_000,
+                },
+                // [byte[dead],[byte[0001],byte[0102]],[byte[0003],byte[0104]],10^18]
+                &hex!("8442dead82420001420102824200034201041b0de0b6b3a7640000")[..],
+            ),
+        ];
+
+        for (params, expected) in test_cases {
+            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
+            assert_eq!(encoded.data, expected);
+
+            // Power emits this tuple and miner consumes it.
+            let power_params = fil_actor_power::ext::miner::DeferredCronEventParams {
+                event_payload: params.event_payload.clone(),
+                reward_smoothed: params.reward_smoothed.clone(),
+                quality_adj_power_smoothed: params.quality_adj_power_smoothed.clone(),
+                implicit_stream_weight: params.implicit_stream_weight,
+            };
+            let power_encoded = IpldBlock::serialize_cbor(&power_params).unwrap().unwrap();
+            assert_eq!(encoded.data, power_encoded.data);
+            let decoded: DeferredCronEventParams = IpldBlock::deserialize(&power_encoded).unwrap();
+            assert_eq!(params.event_payload, decoded.event_payload);
+            assert_eq!(params.reward_smoothed, decoded.reward_smoothed);
+            assert_eq!(params.quality_adj_power_smoothed, decoded.quality_adj_power_smoothed);
+            assert_eq!(params.implicit_stream_weight, decoded.implicit_stream_weight);
+        }
+    }
 
     #[test]
     fn prove_commit_sectors_ni_params() {

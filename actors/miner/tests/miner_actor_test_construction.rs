@@ -90,6 +90,7 @@ fn simple_construction() {
     let current_reward = ThisEpochRewardReturn {
         this_epoch_baseline_power: env.power.clone(),
         this_epoch_reward_smoothed: env.epoch_reward_smooth.clone(),
+        this_epoch_implicit_stream_weight: fil_actor_reward::DENOM,
     };
     let current_total_power = CurrentTotalPowerReturn::default();
 
@@ -191,6 +192,7 @@ fn fails_if_insufficient_to_cover_the_miner_creation_deposit() {
     let current_reward = ThisEpochRewardReturn {
         this_epoch_baseline_power: env.power.clone(),
         this_epoch_reward_smoothed: env.epoch_reward_smooth.clone(),
+        this_epoch_implicit_stream_weight: fil_actor_reward::DENOM,
     };
     let current_total_power = CurrentTotalPowerReturn::default();
 
@@ -229,6 +231,7 @@ fn control_addresses_are_resolved_during_construction() {
     let current_reward = ThisEpochRewardReturn {
         this_epoch_baseline_power: env.power.clone(),
         this_epoch_reward_smoothed: env.epoch_reward_smooth.clone(),
+        this_epoch_implicit_stream_weight: fil_actor_reward::DENOM,
     };
     let current_total_power = CurrentTotalPowerReturn::default();
 

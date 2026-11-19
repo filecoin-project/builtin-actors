@@ -1,7 +1,7 @@
 use fil_actor_miner::testing::{DeadlineStateSummary, check_deadline_state_invariants};
 use fil_actor_miner::{
     Deadline, PowerPair, QuantSpec, REWARD_VESTING_SPEC, SectorOnChainInfo, daily_fee_for_sectors,
-    pledge_penalty_for_continued_fault, power_for_sectors,
+    power_for_sectors,
 };
 use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::MockRuntime;
@@ -218,9 +218,12 @@ fn sector_expires_and_repays_fee_debt() {
     h.check_state(&rt);
 }
 
-#[test]
-fn detects_and_penalizes_faults() {
+#[test_case::test_case(fil_actor_reward::DENOM; "full weight")]
+#[test_case::test_case(fil_actor_reward::DENOM / 2; "half weight")]
+#[test_case::test_case(0; "zero weight")]
+fn detects_and_penalizes_faults(implicit_stream_weight: u64) {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
+    h.implicit_stream_weight = implicit_stream_weight;
     let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&rt);
@@ -288,11 +291,15 @@ fn detects_and_penalizes_faults() {
 
     // Un-recovered faults (incl failed recovery) are charged as ongoing faults
     let ongoing_pwr = power_for_sectors(h.sector_size, &all_sectors);
-    let ongoing_penalty = pledge_penalty_for_continued_fault(
+    let projected_reward = fil_actor_miner::expected_reward_for_power(
         &h.epoch_reward_smooth,
         &h.epoch_qa_power_smooth,
         &ongoing_pwr.qa,
+        fil_actor_miner::CONTINUED_FAULT_PROJECTION_PERIOD,
     );
+    assert!(projected_reward.is_positive());
+    let ongoing_penalty =
+        (projected_reward * implicit_stream_weight).div_floor(fil_actor_reward::DENOM);
     fee_payable += ongoing_penalty;
 
     h.advance_deadline(

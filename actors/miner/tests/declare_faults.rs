@@ -58,6 +58,7 @@ fn declare_fault_pays_fee_at_window_post() {
         &h.epoch_reward_smooth,
         &h.epoch_qa_power_smooth,
         &ongoing_pwr.qa,
+        h.implicit_stream_weight,
     );
     let burnt_funds = daily_fee_for_sectors(&all_sectors) + ongoing_penalty;
     h.advance_deadline(

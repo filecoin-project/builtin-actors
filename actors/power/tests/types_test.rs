@@ -3,6 +3,7 @@ mod serialization {
     use hex_literal::hex;
 
     use fil_actor_power::CurrentTotalPowerReturn;
+    use fil_actor_power::ext::miner::DeferredCronEventParams;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
 
     use fil_actors_runtime::reward::FilterEstimate;
@@ -50,6 +51,44 @@ mod serialization {
             assert_eq!(encoded.data, expected_hex);
             let decoded: CurrentTotalPowerReturn = IpldBlock::deserialize(&encoded).unwrap();
             assert_eq!(params, decoded);
+        }
+    }
+
+    #[test]
+    fn deferred_cron_event_params_append_implicit_stream_weight() {
+        let test_cases = [
+            (0, &hex!("84420102824200014201028242000342010400")[..]),
+            (
+                500_000_000_000_000_000,
+                &hex!("8442010282420001420102824200034201041b06f05b59d3b20000")[..],
+            ),
+            (
+                1_000_000_000_000_000_000,
+                &hex!("8442010282420001420102824200034201041b0de0b6b3a7640000")[..],
+            ),
+        ];
+
+        for (implicit_stream_weight, expected_hex) in test_cases {
+            let params = DeferredCronEventParams {
+                event_payload: vec![0x01, 0x02],
+                reward_smoothed: FilterEstimate {
+                    position: BigInt::from(1),
+                    velocity: BigInt::from(-2),
+                },
+                quality_adj_power_smoothed: FilterEstimate {
+                    position: BigInt::from(3),
+                    velocity: BigInt::from(-4),
+                },
+                implicit_stream_weight,
+            };
+            // [payload, [reward position, velocity], [power position, velocity], weight]
+            let encoded = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex);
+            let decoded: DeferredCronEventParams = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(params.event_payload, decoded.event_payload);
+            assert_eq!(params.reward_smoothed, decoded.reward_smoothed);
+            assert_eq!(params.quality_adj_power_smoothed, decoded.quality_adj_power_smoothed);
+            assert_eq!(params.implicit_stream_weight, decoded.implicit_stream_weight);
         }
     }
 }

@@ -15,4 +15,5 @@ pub struct ThisEpochRewardReturn {
     pub this_epoch_reward_smoothed: FilterEstimate,
     #[serde(with = "bigint_ser")]
     pub this_epoch_baseline_power: StoragePower,
+    pub this_epoch_implicit_stream_weight: u64,
 }

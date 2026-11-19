@@ -120,17 +120,25 @@ fn fee_paid_at_deadline() {
     h.check_state(&rt);
 }
 
-#[test_case(true, 1; "capped upfront, single sector")]
-#[test_case(true, 55; "capped upfront, many sectors")]
-#[test_case(false, 1; "capped later, single sector")]
-#[test_case(false, 55; "capped later, many sectors")]
-fn test_fee_capped_by_reward(capped_upfront: bool, num_sectors: usize) {
+#[test_case(true, 1, fil_actor_reward::DENOM; "capped upfront, single sector")]
+#[test_case(true, 55, fil_actor_reward::DENOM; "capped upfront, many sectors")]
+#[test_case(false, 1, fil_actor_reward::DENOM; "capped later, single sector")]
+#[test_case(false, 55, fil_actor_reward::DENOM; "capped later, many sectors")]
+#[test_case(true, 1, 0; "daily fee cap ignores zero weight")]
+#[test_case(false, 1, fil_actor_reward::DENOM / 2; "daily fee cap ignores half weight")]
+fn test_fee_capped_by_reward(
+    capped_upfront: bool,
+    num_sectors: usize,
+    implicit_stream_weight: u64,
+) {
     // This tests that the miner's daily fee is capped by the reward for the day. We work through
     // various sector lifecycle scenarios to ensure that the fee is correctly calculated and paid.
     //  - capped_upfront: whether the capped reward is set before sector commitment
     //  - num_sectors: number of sectors to commit
 
     let (mut h, rt) = setup();
+
+    h.implicit_stream_weight = implicit_stream_weight;
 
     let original_epoch_reward_smooth = h.epoch_reward_smooth.clone();
     rt.set_circulating_supply(TokenAmount::from_whole(500_000_000));
@@ -271,6 +279,7 @@ fn test_fee_capped_by_reward(capped_upfront: bool, num_sectors: usize) {
             &h.epoch_reward_smooth,
             &h.epoch_qa_power_smooth,
             &sector_power,
+            h.implicit_stream_weight,
         );
 
         let expected_fee = pledge_penalty_for_termination(

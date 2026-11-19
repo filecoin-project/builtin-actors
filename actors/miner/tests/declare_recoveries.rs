@@ -74,6 +74,7 @@ fn recovery_must_pay_back_fee_debt() {
         &h.epoch_reward_smooth,
         &h.epoch_qa_power_smooth,
         &ongoing_pwr.qa,
+        h.implicit_stream_weight,
     );
     h.advance_deadline(&rt, CronConfig { burnt_funds: daily_fee, ..Default::default() });
 
