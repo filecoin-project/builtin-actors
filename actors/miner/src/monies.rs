@@ -87,6 +87,8 @@ pub const TERMINATION_LIFETIME_CAP: ChainEpoch = 140;
 // Multiplier of whole per-winner rewards for a consensus fault penalty.
 const CONSENSUS_FAULT_FACTOR: u64 = 5;
 
+// FIP-0081 splits the additional pledge between the baseline and simple formulations,
+// as permille shares.
 const PLEDGE_SHARE_PERMILLE: u64 = 1000;
 const BASELINE_PLEDGE_PERMILLE: u64 = 700;
 const SIMPLE_PLEDGE_PERMILLE: u64 = PLEDGE_SHARE_PERMILLE - BASELINE_PLEDGE_PERMILLE;
