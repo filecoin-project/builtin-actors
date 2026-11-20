@@ -508,8 +508,6 @@ pub fn current_initial_pledge(v: &dyn VM, qa_power: &StoragePower) -> TokenAmoun
         &reward.this_epoch_reward_smoothed,
         &power.this_epoch_qa_power_smoothed,
         &v.circulating_supply(),
-        v.epoch() - power.ramp_start_epoch,
-        power.ramp_duration_epochs,
     )
 }
 
