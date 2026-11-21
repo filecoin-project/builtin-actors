@@ -18,7 +18,6 @@ fil_actors_runtime = { workspace = true}
 
 anyhow = { workspace = true }
 cid = { workspace = true }
-frc42_dispatch = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_shared = { workspace = true }
@@ -30,6 +29,7 @@ serde = { workspace = true }
 [dev-dependencies]
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
 lazy_static = { workspace = true }
+frc42_dispatch = { workspace = true }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]
