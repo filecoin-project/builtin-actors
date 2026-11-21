@@ -8,16 +8,15 @@ use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
-use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{CBOR, RawBytes};
+use fvm_shared::METHOD_SEND;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{METHOD_SEND, MethodNum};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -2438,18 +2437,20 @@ fn token_receiver() {
     let h = util::ActorHarness::new();
     h.construct_and_verify(&rt, 2, 0, 0, vec![anne, bob]);
 
-    rt.expect_validate_caller_any();
-    let ret = rt
-        .call::<MultisigActor>(
-            Method::UniversalReceiverHook as MethodNum,
-            IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                type_: 0,
-                payload: RawBytes::new(vec![1, 2, 3]),
-            })
-            .unwrap(),
-        )
-        .unwrap();
-    assert!(ret.is_none());
+    let valid_params = IpldBlock::serialize_cbor(&(0u32, RawBytes::new(vec![1, 2, 3]))).unwrap();
+
+    let malformed_params = Some(IpldBlock { codec: CBOR, data: vec![0xff] });
+
+    // Try no parameters, valid parameters, and malformed parameters.
+    for params in [None, valid_params, malformed_params] {
+        rt.expect_validate_caller_any();
+
+        let ret =
+            rt.call::<MultisigActor>(frc42_dispatch::method_hash!("Receive"), params).unwrap();
+
+        assert!(ret.is_none());
+        rt.verify();
+    }
 }
 
 fn to_ipld_block(p: RawBytes) -> Option<IpldBlock> {

@@ -3,7 +3,6 @@
 
 use std::collections::BTreeSet;
 
-use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -46,8 +45,6 @@ pub enum Method {
     SwapSigner = 7,
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
-    // Method numbers derived from FRC-0042 standards
-    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 /// Multisig Actor
@@ -427,15 +424,6 @@ impl Actor {
         execute_transaction_if_approved(rt, &st, tx_id, &txn)
     }
 
-    // Always succeeds, accepting any transfers, so long as the params are valid `UniversalReceiverParams`.
-    pub fn universal_receiver_hook(
-        rt: &impl Runtime,
-        _params: UniversalReceiverParams,
-    ) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        Ok(())
-    }
-
     pub fn fallback(
         rt: &impl Runtime,
         method: MethodNum,
@@ -561,7 +549,6 @@ impl ActorCode for Actor {
       SwapSigner => swap_signer,
       ChangeNumApprovalsThreshold => change_num_approvals_threshold,
       LockBalance => lock_balance,
-      UniversalReceiverHook => universal_receiver_hook,
       _ => fallback,
     }
 }

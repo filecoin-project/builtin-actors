@@ -340,18 +340,6 @@ pub mod policy_constants {
     pub const DAILY_FEE_BLOCK_REWARD_CAP_DENOM: i64 = 2;
 
     //
-    // --- verifreg policy ---
-    //
-
-    #[cfg(not(feature = "small-deals"))]
-    pub const MINIMUM_VERIFIED_ALLOCATION_SIZE: i32 = 1 << 20;
-    #[cfg(feature = "small-deals")]
-    pub const MINIMUM_VERIFIED_ALLOCATION_SIZE: i32 = 256;
-    pub const MINIMUM_VERIFIED_ALLOCATION_TERM: i64 = 180 * EPOCHS_IN_DAY;
-    pub const MAXIMUM_VERIFIED_ALLOCATION_TERM: i64 = 5 * EPOCHS_IN_YEAR;
-    pub const MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION: i64 = 60 * EPOCHS_IN_DAY;
-
-    //
     // --- market policy ---
     //
 

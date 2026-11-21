@@ -1,10 +1,10 @@
 use crate::{
     BitFieldQueue, Deadline, ExpirationQueue, MinerInfo, NO_QUANTIZATION, PRECOMMIT_CONFIG,
-    Partition, PowerPair, PreCommitMap, QuantSpec, SectorOnChainInfo, SectorOnChainInfoFlags,
-    Sectors, State, daily_fee_for_sectors, power_for_sectors,
+    Partition, PowerPair, PreCommitMap, QuantSpec, SectorOnChainInfo, Sectors, State,
+    daily_fee_for_sectors, power_for_sectors,
 };
+use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{DealWeight, MessageAccumulator};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
@@ -75,24 +75,6 @@ pub fn check_state_invariants<BS: Blockstore>(
                         "on chain sector's sector number has not been allocated {sector_number}"
                     ),
                 );
-                if !sector.deal_weight.is_zero() || !sector.verified_deal_weight.is_zero() {
-                    miner_summary.live_data_sectors.insert(
-                        sector_number,
-                        DataSummary {
-                            sector_start: sector.activation,
-                            sector_expiration: sector.expiration,
-                            power_base_epoch: sector.power_base_epoch,
-                            deal_weight: sector.deal_weight.clone(),
-                            verified_deal_weight: sector.verified_deal_weight.clone(),
-                            legacy_qap: !sector
-                                .flags
-                                .contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER),
-                            full_qa_power: sector
-                                .flags
-                                .contains(SectorOnChainInfoFlags::FULL_QA_POWER),
-                        },
-                    );
-                }
                 acc.require(
                     sector.activation <= sector.power_base_epoch,
                     format!("invalid power base for {sector_number}"),
@@ -149,24 +131,12 @@ pub fn check_state_invariants<BS: Blockstore>(
     (miner_summary, acc)
 }
 
-pub struct DataSummary {
-    pub sector_start: ChainEpoch,
-    pub sector_expiration: ChainEpoch,
-    pub power_base_epoch: ChainEpoch,
-    pub deal_weight: DealWeight,
-    pub verified_deal_weight: DealWeight,
-    pub legacy_qap: bool,
-    pub full_qa_power: bool,
-}
-
 pub struct StateSummary {
     pub live_power: PowerPair,
     pub active_power: PowerPair,
     pub faulty_power: PowerPair,
     pub window_post_proof_type: RegisteredPoStProof,
     pub deadline_cron_active: bool,
-    // sectors with non zero (verified) deal weight that may carry deals
-    pub live_data_sectors: BTreeMap<SectorNumber, DataSummary>,
     pub daily_fee: TokenAmount,
 }
 
@@ -178,7 +148,6 @@ impl Default for StateSummary {
             faulty_power: PowerPair::zero(),
             window_post_proof_type: RegisteredPoStProof::Invalid(0),
             deadline_cron_active: false,
-            live_data_sectors: BTreeMap::new(),
             daily_fee: TokenAmount::zero(),
         }
     }

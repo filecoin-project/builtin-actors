@@ -1,22 +1,17 @@
 use cid::Cid;
 use fil_actor_account::State as AccountState;
 use fil_actor_cron::{Entry as CronEntry, State as CronState};
-use fil_actor_datacap::State as DataCapState;
-use fil_actor_init::{ExecReturn, State as InitState};
+use fil_actor_init::State as InitState;
 use fil_actor_market::{Method as MarketMethod, State as MarketState};
 use fil_actor_power::{Method as MethodPower, State as PowerState};
 use fil_actor_reward::State as RewardState;
 use fil_actor_system::State as SystemState;
-use fil_actor_verifreg::State as VerifRegState;
-use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{EMPTY_ARR_CID, Policy, Primitives};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{DEFAULT_HAMT_CONFIG, Map2, test_utils::*};
 use fvm_ipld_blockstore::Blockstore;
@@ -40,7 +35,7 @@ use std::rc::Rc;
 use vm_api::trace::InvocationTrace;
 use vm_api::{ActorState, MessageResult, MockPrimitives, VM, VMError, new_actor};
 
-use vm_api::util::{get_state, serialize_ok};
+use vm_api::util::get_state;
 
 mod constants;
 pub use constants::*;
@@ -164,67 +159,10 @@ impl TestVM {
             new_actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero(), None),
         );
 
-        // verifreg
-        // initialize verifreg root signer
-        v.execute_message(
-            &INIT_ACTOR_ADDR,
-            &Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
-            &TokenAmount::zero(),
-            METHOD_SEND,
-            None,
-        )
-        .unwrap();
-        let verifreg_root_signer =
-            v.resolve_id_address(&Address::new_bls(VERIFREG_ROOT_KEY).unwrap()).unwrap();
-        assert_eq!(TEST_VERIFREG_ROOT_SIGNER_ADDR, verifreg_root_signer);
-        // verifreg root msig
-        let msig_ctor_params = serialize(
-            &fil_actor_multisig::ConstructorParams {
-                signers: vec![verifreg_root_signer],
-                num_approvals_threshold: 1,
-                unlock_duration: 0,
-                start_epoch: 0,
-            },
-            "multisig ctor params",
-        )
-        .unwrap();
-        let msig_ctor_ret: ExecReturn = v
-            .execute_message(
-                &SYSTEM_ACTOR_ADDR,
-                &INIT_ACTOR_ADDR,
-                &TokenAmount::zero(),
-                fil_actor_init::Method::Exec as u64,
-                Some(serialize_ok(&fil_actor_init::ExecParams {
-                    code_cid: *MULTISIG_ACTOR_CODE_ID,
-                    constructor_params: msig_ctor_params,
-                })),
-            )
-            .unwrap()
-            .ret
-            .unwrap()
-            .deserialize()
-            .unwrap();
-        let root_msig_addr = msig_ctor_ret.id_address;
-        assert_eq!(TEST_VERIFREG_ROOT_ADDR, root_msig_addr);
-        // verifreg
-        let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
-        v.set_actor(
-            &VERIFIED_REGISTRY_ACTOR_ADDR,
-            new_actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
-        );
-
         // Ethereum Address Manager
         v.set_actor(
             &EAM_ACTOR_ADDR,
             new_actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
-        );
-
-        // datacap
-        let datacap_head =
-            v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
-        v.set_actor(
-            &DATACAP_TOKEN_ACTOR_ADDR,
-            new_actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
         );
 
         // burnt funds

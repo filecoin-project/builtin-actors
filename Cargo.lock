@@ -713,7 +713,6 @@ dependencies = [
  "anyhow",
  "fil_actors_runtime",
  "frc42_dispatch",
- "fvm_actor_utils",
  "fvm_ipld_encoding",
  "fvm_shared",
  "num-derive 0.5.1",
@@ -753,25 +752,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fil_actor_datacap"
-version = "19.0.1"
-dependencies = [
- "cid",
- "fil_actors_runtime",
- "frc42_dispatch",
- "frc46_token",
- "fvm_actor_utils",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "fvm_shared",
- "lazy_static",
- "log",
- "num-derive 0.5.1",
- "num-traits",
- "serde",
-]
-
-[[package]]
 name = "fil_actor_eam"
 version = "19.0.1"
 dependencies = [
@@ -793,7 +773,6 @@ version = "19.0.1"
 dependencies = [
  "fil_actors_runtime",
  "frc42_dispatch",
- "fvm_actor_utils",
  "fvm_ipld_encoding",
  "fvm_shared",
  "hex-literal",
@@ -913,7 +892,6 @@ dependencies = [
  "cid",
  "fil_actors_runtime",
  "frc42_dispatch",
- "fvm_actor_utils",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -1005,26 +983,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fil_actor_verifreg"
-version = "19.0.1"
-dependencies = [
- "cid",
- "fil_actors_runtime",
- "frc42_dispatch",
- "frc46_token",
- "fvm_actor_utils",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "fvm_shared",
- "hex-literal",
- "lazy_static",
- "log",
- "num-derive 0.5.1",
- "num-traits",
- "serde",
-]
-
-[[package]]
 name = "fil_actors_evm_shared"
 version = "19.0.1"
 dependencies = [
@@ -1047,7 +1005,6 @@ dependencies = [
  "export_macro",
  "fil_actor_account",
  "fil_actor_cron",
- "fil_actor_datacap",
  "fil_actor_eam",
  "fil_actor_evm",
  "fil_actor_init",
@@ -1056,13 +1013,10 @@ dependencies = [
  "fil_actor_multisig",
  "fil_actor_power",
  "fil_actor_reward",
- "fil_actor_verifreg",
  "fil_actors_evm_shared",
  "fil_actors_runtime",
  "fil_builtin_actors_state",
  "frc42_dispatch",
- "frc46_token",
- "fvm_actor_utils",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -1135,7 +1089,6 @@ dependencies = [
  "cid",
  "fil_actor_account",
  "fil_actor_cron",
- "fil_actor_datacap",
  "fil_actor_init",
  "fil_actor_market",
  "fil_actor_miner",
@@ -1143,7 +1096,6 @@ dependencies = [
  "fil_actor_paych",
  "fil_actor_power",
  "fil_actor_reward",
- "fil_actor_verifreg",
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -1204,46 +1156,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.106",
-]
-
-[[package]]
-name = "frc46_token"
-version = "15.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d916a9e49951ff90d124cbb4e61306bb4012ef6dbda39628684e1cfecd2ed5b"
-dependencies = [
- "cid",
- "frc42_dispatch",
- "fvm_actor_utils",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "fvm_ipld_hamt",
- "fvm_sdk",
- "fvm_shared",
- "integer-encoding",
- "multihash-codetable",
- "num-traits",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "fvm_actor_utils"
-version = "15.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e02939b3f50b030941710c3609fa8296d88cfde3793a973184fdafacc0262f0b"
-dependencies = [
- "anyhow",
- "cid",
- "frc42_dispatch",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "fvm_sdk",
- "fvm_shared",
- "multihash-codetable",
- "num-traits",
- "serde",
- "thiserror",
 ]
 
 [[package]]
@@ -2549,7 +2461,6 @@ dependencies = [
  "cid",
  "fil_actor_account",
  "fil_actor_cron",
- "fil_actor_datacap",
  "fil_actor_eam",
  "fil_actor_ethaccount",
  "fil_actor_evm",
@@ -2561,7 +2472,6 @@ dependencies = [
  "fil_actor_power",
  "fil_actor_reward",
  "fil_actor_system",
- "fil_actor_verifreg",
  "fil_actors_integration_tests",
  "fil_actors_runtime",
  "fvm_ipld_blockstore",

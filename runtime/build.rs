@@ -2,18 +2,11 @@ static NETWORKS: &[(&str, &[&str])] = &[
     ("mainnet", &["sector-32g", "sector-64g"]),
     (
         "caterpillarnet",
-        &[
-            "sector-512m",
-            "sector-32g",
-            "sector-64g",
-            "small-deals",
-            "short-precommit",
-            "min-power-2k",
-        ],
+        &["sector-512m", "sector-32g", "sector-64g", "short-precommit", "min-power-2k"],
     ),
     ("butterflynet", &["sector-512m", "sector-32g", "sector-64g", "min-power-2g"]),
     ("calibrationnet", &["sector-32g", "sector-64g", "min-power-32g"]),
-    ("devnet", &["sector-2k", "sector-8m", "small-deals", "short-precommit", "min-power-2k"]),
+    ("devnet", &["sector-2k", "sector-8m", "short-precommit", "min-power-2k"]),
     (
         "testing",
         &[
@@ -22,7 +15,6 @@ static NETWORKS: &[(&str, &[&str])] = &[
             "sector-512m",
             "sector-32g",
             "sector-64g",
-            "small-deals",
             "short-precommit",
             "min-power-2k",
             "no-provider-deal-collateral",
@@ -36,7 +28,6 @@ static NETWORKS: &[(&str, &[&str])] = &[
             "sector-512m",
             "sector-32g",
             "sector-64g",
-            "small-deals",
             "short-precommit",
             "min-power-2k",
             "no-provider-deal-collateral",

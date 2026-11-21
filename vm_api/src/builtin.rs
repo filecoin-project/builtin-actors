@@ -18,12 +18,10 @@ pub enum Type {
     PaymentChannel = 8,
     Multisig = 9,
     Reward = 10,
-    VerifiedRegistry = 11,
-    DataCap = 12,
-    Placeholder = 13,
-    EVM = 14,
-    EAM = 15,
-    EthAccount = 16,
+    Placeholder = 11,
+    EVM = 12,
+    EAM = 13,
+    EthAccount = 14,
 }
 
 impl Type {
@@ -39,8 +37,6 @@ impl Type {
             Type::PaymentChannel => "paymentchannel",
             Type::Multisig => "multisig",
             Type::Reward => "reward",
-            Type::VerifiedRegistry => "verifiedregistry",
-            Type::DataCap => "datacap",
             Type::Placeholder => "placeholder",
             Type::EVM => "evm",
             Type::EAM => "eam",
@@ -59,8 +55,6 @@ impl Type {
                 | Type::Cron
                 | Type::Power
                 | Type::Market
-                | Type::VerifiedRegistry
-                | Type::DataCap
                 | Type::EAM
         )
     }
