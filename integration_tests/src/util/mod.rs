@@ -7,17 +7,17 @@ use fil_actor_miner::{
 };
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
-use fil_actor_verifreg::{Claim, State as VerifregState};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::CREATE_MINER_DEPOSIT_POWER;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
     MessageAccumulator, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR, parse_uint_key, runtime::Policy,
+    runtime::Policy,
 };
 use fil_builtin_actors_state::check::check_state_invariants;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{CborStore, DAG_CBOR, RawBytes};
+use fvm_shared::METHOD_SEND;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::deal::DealID;
@@ -25,7 +25,6 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
-use fvm_shared::{ActorID, METHOD_SEND};
 use integer_encoding::VarInt;
 use multihash_codetable::{Code, MultihashDigest};
 use num_traits::Zero;
@@ -203,20 +202,6 @@ pub fn market_list_sectors_deals(
     sector_deals
         .for_each(|sno, deal_ids| {
             found.insert(sno, deal_ids.clone());
-            Ok(())
-        })
-        .unwrap();
-    found
-}
-
-pub fn verifreg_list_claims(v: &dyn VM, provider: ActorID) -> HashMap<u64, Claim> {
-    let st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let bs = &DynBlockstore::wrap(v.blockstore());
-    let mut claims = st.load_claims(bs).unwrap();
-    let mut found: HashMap<u64, Claim> = HashMap::new();
-    claims
-        .for_each_in(provider, |id, claim| {
-            found.insert(parse_uint_key(id).unwrap(), claim.clone());
             Ok(())
         })
         .unwrap();

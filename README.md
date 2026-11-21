@@ -66,8 +66,6 @@ type ManifestPayload struct {
   paymentchannel &ActorBytecode
   multisig &ActorBytecode
   reward &ActorBytecode
-  verifiedregistry &ActorBytecode
-  datacap &ActorBytecode
   placeholder &ActorBytecode
   evm &ActorBytecode
   eam &ActorBytecode

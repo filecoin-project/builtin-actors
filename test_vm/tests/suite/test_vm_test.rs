@@ -141,3 +141,31 @@ fn test_pk_gen() {
     let first_addr_seeded_six = addrs[0];
     assert_ne!(second_addr_seeded_five, first_addr_seeded_six);
 }
+
+#[test]
+fn retired_actors_are_absent() {
+    let v = TestVM::new_with_singletons(MemoryBlockstore::new());
+
+    for id in [6, 7, 80] {
+        let address = Address::new_id(id);
+        assert!(v.actor(&address).is_none());
+
+        let result = v
+            .execute_message(
+                &TEST_FAUCET_ADDR,
+                &address,
+                &TokenAmount::from_atto(1u8),
+                METHOD_SEND,
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(ExitCode::SYS_INVALID_RECEIVER, result.code);
+        assert!(v.actor(&address).is_none());
+    }
+
+    // The burnt-funds actor must still exist.
+    assert!(v.actor(&Address::new_id(99)).is_some());
+
+    assert_invariants(&v, &Policy::default(), None);
+}

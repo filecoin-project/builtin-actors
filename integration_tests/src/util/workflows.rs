@@ -24,7 +24,6 @@ use fvm_shared::sector::SectorNumber;
 use num_traits::Zero;
 
 use fil_actor_cron::Method as CronMethod;
-use fil_actor_datacap::Method as DataCapMethod;
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, MARKET_NOTIFY_DEAL_METHOD, Method as MarketMethod,
     PublishStorageDealsParams, PublishStorageDealsReturn, State as MarketState,
@@ -40,13 +39,11 @@ use fil_actor_miner::{
 };
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actors_runtime::CRON_ACTOR_ADDR;
-use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ID;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
-use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
@@ -762,18 +759,6 @@ pub fn submit_invalid_post(
         MinerMethod::SubmitWindowedPoSt as u64,
         Some(params),
     );
-}
-
-pub fn datacap_get_balance(v: &dyn VM, address: &Address) -> TokenAmount {
-    let ret = apply_ok(
-        v,
-        address,
-        &DATACAP_TOKEN_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        DataCapMethod::BalanceExported as u64,
-        Some(address),
-    );
-    deserialize(&ret, "balance of return value").unwrap()
 }
 
 pub fn market_add_balance(

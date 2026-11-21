@@ -4,7 +4,7 @@ use fil_actors_integration_tests::tests::{
     legacy_extension_decays_deal_weight_and_restates_verified_weight_test,
     legacy_sector_termination_removes_its_own_power_test, new_cc_sector_gets_10x_test,
     ni_sector_gets_10x_test, simple_qap_sector_extends_without_power_change_test,
-    verified_deal_gets_10x_without_datacap_test, verifreg_minting_disabled_test,
+    verified_deal_gets_10x_without_datacap_test,
 };
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
@@ -21,13 +21,6 @@ fn ni_sector_gets_10x() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     ni_sector_gets_10x_test(&v);
-}
-
-#[test]
-fn verifreg_minting_disabled() {
-    let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
-    verifreg_minting_disabled_test(&v);
 }
 
 #[test]

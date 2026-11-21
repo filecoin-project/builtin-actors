@@ -16,7 +16,6 @@
 /// - "power"
 /// - "reward"
 /// - "system"
-/// - "verifreg"
 /// - "evm"
 /// - "eam"
 /// - "ethaccount"
