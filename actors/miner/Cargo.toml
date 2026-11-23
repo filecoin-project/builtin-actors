@@ -44,5 +44,9 @@ test-case = { workspace = true }
 hex-literal = { workspace = true }
 multihash-derive = { workspace = true }
 
+[package.metadata.cargo-shear]
+# Used through the `MultihashDigest` derive in tests.
+ignored = ["multihash-derive"]
+
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]
