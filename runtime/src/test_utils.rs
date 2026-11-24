@@ -128,7 +128,7 @@ pub fn make_identity_cid(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, Multihash::wrap(0, bz).expect("name too long"))
 }
 
-/// Enable logging to enviornment. Returns error if already init.
+/// Enable logging to environment. Returns error if already init.
 pub fn init_logging() -> Result<(), log::SetLoggerError> {
     env_logger::try_init()
 }
