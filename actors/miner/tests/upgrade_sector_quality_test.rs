@@ -5,7 +5,7 @@ use fil_actor_miner::{
     pledge_penalty_for_termination, power_for_sectors, qa_power_for_sector, qa_power_max,
 };
 use fil_actors_runtime::{
-    EPOCHS_IN_DAY,
+    EPOCHS_IN_DAY, EPOCHS_IN_YEAR,
     reward::FilterEstimate,
     runtime::{Runtime, RuntimePolicy},
     test_utils::{ACCOUNT_ACTOR_CODE_ID, MockRuntime, expect_abort, expect_abort_contains_message},
@@ -28,12 +28,7 @@ mod util;
 use util::*;
 
 fn setup() -> (ActorHarness, MockRuntime) {
-    let mut h = ActorHarness::new(100);
-    h.set_proof_type(RegisteredSealProof::StackedDRG512MiBV1);
-    let rt = h.new_runtime();
-    rt.balance.replace(BIG_BALANCE.clone());
-    rt.set_epoch(1);
-    (h, rt)
+    setup_with_proof(RegisteredSealProof::StackedDRG512MiBV1)
 }
 
 /// Rewrites proven sectors as pre-FIP-0118 sectors: the given flags (never `FULL_QA_POWER`),
@@ -1029,6 +1024,30 @@ fn rejects_out_of_range_expirations() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         &format!("must be after sector {} expiration", legacy.sector_number),
     );
+    h.check_state(&rt);
+}
+
+/// FIP-0119 test case: an expiration set through `UpgradeSectorQuality` is bounded by the same ten-year ceiling as `ExtendSectorExpiration2`.
+#[test]
+fn upgrade_bounds_v1p1_sector_at_ten_year_lifetime() {
+    let (mut h, rt) = setup_with_proof(RegisteredSealProof::StackedDRG2KiBV1P1);
+    let legacy = commit_legacy_cc_sector(&mut h, &rt);
+    let max_expiration = legacy.activation + 10 * EPOCHS_IN_YEAR;
+    h.rewrite_sectors(&rt, &[legacy.sector_number], |s| s.expiration = max_expiration - 1);
+    let legacy = h.get_sector(&rt, legacy.sector_number);
+    rt.set_epoch(max_expiration - 2);
+
+    expect_upgrade_abort(
+        &h,
+        &rt,
+        upgrade_params(&rt, legacy.sector_number, Some(max_expiration + 1)),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        &format!("cannot exceed {} after activation", 10 * EPOCHS_IN_YEAR),
+    );
+
+    let upgraded = upgrade_one(&h, &rt, &legacy, Some(max_expiration));
+    assert_full_power_record(&h, &rt, &legacy, &upgraded);
+    assert_eq!(max_expiration, upgraded.expiration);
     h.check_state(&rt);
 }
 

@@ -2,14 +2,14 @@ use fil_actor_miner::{MAX_QUALITY_MULTIPLIER, QUALITY_BASE_MULTIPLIER, SECTOR_QU
 use fil_actor_miner::{
     SectorOnChainInfo, SectorOnChainInfoFlags, qa_power_for_sector, qa_power_max,
 };
-use fil_actor_miner::{daily_proof_fee, quality_for_weight};
+use fil_actor_miner::{daily_proof_fee, quality_for_weight, seal_proof_sector_maximum_lifetime};
 use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{EPOCHS_IN_DAY, SECONDS_IN_DAY};
+use fil_actors_runtime::{EPOCHS_IN_DAY, EPOCHS_IN_YEAR, SECONDS_IN_DAY};
 use fvm_shared::bigint::{BigInt, Integer, Zero};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::SectorSize;
+use fvm_shared::sector::{RegisteredSealProof, SectorSize};
 
 use num_traits::Signed;
 
@@ -496,4 +496,51 @@ fn full_qa_power_independent_of_duration() {
             duration
         );
     }
+}
+
+/// FIP-0119: ten years for V1P1, SyntheticPoRep and NI-PoRep; V1 keeps FIP-0014's 540 days.
+#[test]
+fn seal_proof_sector_maximum_lifetimes() {
+    use RegisteredSealProof::*;
+    let ten_years = [
+        StackedDRG2KiBV1P1,
+        StackedDRG8MiBV1P1,
+        StackedDRG512MiBV1P1,
+        StackedDRG32GiBV1P1,
+        StackedDRG64GiBV1P1,
+        StackedDRG2KiBV1P1_Feat_SyntheticPoRep,
+        StackedDRG8MiBV1P1_Feat_SyntheticPoRep,
+        StackedDRG512MiBV1P1_Feat_SyntheticPoRep,
+        StackedDRG32GiBV1P1_Feat_SyntheticPoRep,
+        StackedDRG64GiBV1P1_Feat_SyntheticPoRep,
+        StackedDRG2KiBV1P2_Feat_NiPoRep,
+        StackedDRG8MiBV1P2_Feat_NiPoRep,
+        StackedDRG512MiBV1P2_Feat_NiPoRep,
+        StackedDRG32GiBV1P2_Feat_NiPoRep,
+        StackedDRG64GiBV1P2_Feat_NiPoRep,
+    ];
+    for proof in ten_years {
+        assert_eq!(
+            Some(10 * EPOCHS_IN_YEAR),
+            seal_proof_sector_maximum_lifetime(proof),
+            "{proof:?}"
+        );
+    }
+
+    let v1 = [
+        StackedDRG2KiBV1,
+        StackedDRG8MiBV1,
+        StackedDRG512MiBV1,
+        StackedDRG32GiBV1,
+        StackedDRG64GiBV1,
+    ];
+    for proof in v1 {
+        assert_eq!(
+            Some(540 * EPOCHS_IN_DAY),
+            seal_proof_sector_maximum_lifetime(proof),
+            "{proof:?}"
+        );
+    }
+
+    assert_eq!(None, seal_proof_sector_maximum_lifetime(Invalid(42)));
 }
