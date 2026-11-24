@@ -130,7 +130,7 @@ pub fn make_identity_cid(bz: &[u8]) -> Cid {
 
 /// Enable logging to enviornment. Returns error if already init.
 pub fn init_logging() -> Result<(), log::SetLoggerError> {
-    pretty_env_logger::try_init()
+    env_logger::try_init()
 }
 
 pub struct MockRuntime {

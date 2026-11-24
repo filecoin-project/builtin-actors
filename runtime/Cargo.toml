@@ -43,7 +43,7 @@ sha2 = { workspace = true }
 # test_util
 blake2b_simd = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
-pretty_env_logger = { workspace = true, optional = true }
+env_logger = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 multihash-derive = { workspace = true, optional = true }
 
@@ -96,4 +96,4 @@ no-provider-deal-collateral = []
 fake-proofs = []
 
 
-test_utils = ["hex", "multihash-derive", "multihash-codetable/sha2", "multihash-codetable/sha3", "multihash-codetable/ripemd", "k256", "blake2b_simd", "rand", "rand/std_rng", "pretty_env_logger"]
+test_utils = ["hex", "multihash-derive", "multihash-codetable/sha2", "multihash-codetable/sha3", "multihash-codetable/ripemd", "k256", "blake2b_simd", "rand", "rand/std_rng", "env_logger"]
