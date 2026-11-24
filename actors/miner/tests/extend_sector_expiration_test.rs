@@ -4,7 +4,7 @@ use fil_actor_miner::{
     pledge_penalty_for_termination, power_for_sector, seal_proof_sector_maximum_lifetime,
 };
 use fil_actors_runtime::{
-    EPOCHS_IN_DAY,
+    EPOCHS_IN_DAY, EPOCHS_IN_YEAR,
     runtime::{Runtime, RuntimePolicy},
     test_utils::{ACCOUNT_ACTOR_CODE_ID, MockRuntime, expect_abort_contains_message},
 };
@@ -33,18 +33,9 @@ use util::*;
 const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
 fn setup() -> (ActorHarness, MockRuntime) {
-    let period_offset = 100;
-    let precommit_epoch = 1;
-
-    let mut h = ActorHarness::new(period_offset);
     // reduce the partition size
     // if changed to V1P1 the rejects_extension_past_max_for_seal_proof test fails
-    h.set_proof_type(RegisteredSealProof::StackedDRG512MiBV1);
-    let rt = h.new_runtime();
-    rt.balance.replace(BIG_BALANCE.clone());
-    rt.set_epoch(precommit_epoch);
-
-    (h, rt)
+    setup_with_proof(RegisteredSealProof::StackedDRG512MiBV1)
 }
 
 fn commit_sector(h: &mut ActorHarness, rt: &MockRuntime) -> SectorOnChainInfo {
@@ -293,6 +284,51 @@ fn rejects_extension_past_max_for_seal_proof() {
 
     let res = h.extend_sectors2(&rt, params);
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "total sector lifetime", res);
+    h.check_state(&rt);
+}
+
+/// FIP-0119 test cases: a sector at the old five-year ceiling can be extended under the new ten-year one, reaching it takes at least two extensions, and the sector can end exactly on it.
+#[test]
+fn extends_v1p1_sector_to_ten_year_lifetime() {
+    let (mut h, rt) = setup_with_proof(RegisteredSealProof::StackedDRG2KiBV1P1);
+    let sector = commit_sector(&mut h, &rt);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&sector));
+    let max_expiration = sector.activation + 10 * EPOCHS_IN_YEAR;
+    let old_ceiling = sector.activation + 5 * EPOCHS_IN_YEAR;
+    h.rewrite_sectors(&rt, &[sector.sector_number], |s| s.expiration = old_ceiling);
+    rt.set_epoch(old_ceiling - 1);
+
+    let params = h.single_sector_extension(&rt, sector.sector_number, max_expiration);
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "past current epoch",
+        h.extend_sectors2(&rt, params),
+    );
+    rt.reset();
+
+    h.extend_sector_in_steps(&rt, sector.sector_number, max_expiration);
+
+    assert_eq!(max_expiration, h.get_sector(&rt, sector.sector_number).expiration);
+    h.check_state(&rt);
+}
+
+/// FIP-0119 test case: an extension one epoch past `activation + 10 * EPOCHS_IN_YEAR` is rejected.
+#[test]
+fn rejects_v1p1_extension_past_ten_year_lifetime() {
+    let (mut h, rt) = setup_with_proof(RegisteredSealProof::StackedDRG2KiBV1P1);
+    let sector = commit_sector(&mut h, &rt);
+    h.advance_and_submit_posts(&rt, std::slice::from_ref(&sector));
+    let max_expiration = sector.activation + 10 * EPOCHS_IN_YEAR;
+    h.rewrite_sectors(&rt, &[sector.sector_number], |s| s.expiration = max_expiration - 1);
+    rt.set_epoch(max_expiration - 2);
+
+    let params = h.single_sector_extension(&rt, sector.sector_number, max_expiration + 1);
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        &format!("cannot exceed {} after activation", 10 * EPOCHS_IN_YEAR),
+        h.extend_sectors2(&rt, params),
+    );
+    rt.reset();
     h.check_state(&rt);
 }
 

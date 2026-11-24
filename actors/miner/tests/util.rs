@@ -50,22 +50,22 @@ use fil_actor_miner::{
     CompactPartitionsParams, CompactSectorNumbersParams, CronEventPayload,
     DataActivationNotification, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
-    ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, FaultDeclaration,
-    GenerateSectorLocationParams, GenerateSectorLocationReturn, GetAvailableBalanceReturn,
-    GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn,
-    GetNominalSectorExpirationReturn, GetPeerIDReturn, InternalSectorSetupForPresealParams, Method,
-    Method as MinerMethod, MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION,
-    Partition, PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn,
-    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
-    PreCommitSectorParams, ProveCommitSectorParams, ProveCommitSectors3Params,
-    ProveCommitSectors3Return, QuantSpec, RecoveryDeclaration, ReportConsensusFaultParams,
-    SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH, SectorActivationManifest, SectorChanges,
-    SectorContentChangedParams, SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, SectorReturn, SectorStatusCode, SectorUpdateManifest, Sectors,
-    State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
-    UpgradeSectorQualityParams, ValidateSectorStatusParams, ValidateSectorStatusReturn,
-    VerifiedAllocationKey, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
-    consensus_fault_penalty, ext,
+    ExpirationExtension2, ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params,
+    FaultDeclaration, GenerateSectorLocationParams, GenerateSectorLocationReturn,
+    GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
+    GetMultiaddrsReturn, GetNominalSectorExpirationReturn, GetPeerIDReturn,
+    InternalSectorSetupForPresealParams, Method, Method as MinerMethod,
+    MinerConstructorParams as ConstructorParams, MinerInfo, NO_QUANTIZATION, Partition,
+    PendingBeneficiaryChange, PieceActivationManifest, PieceChange, PieceReturn, PoStPartition,
+    PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
+    ProveCommitSectorParams, ProveCommitSectors3Params, ProveCommitSectors3Return, QuantSpec,
+    RecoveryDeclaration, ReportConsensusFaultParams, SECTOR_CONTENT_CHANGED, SECTORS_AMT_BITWIDTH,
+    SectorActivationManifest, SectorChanges, SectorContentChangedParams,
+    SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
+    SectorReturn, SectorStatusCode, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
+    TerminateSectorsParams, TerminationDeclaration, UpgradeSectorQualityParams,
+    ValidateSectorStatusParams, ValidateSectorStatusReturn, VerifiedAllocationKey, WindowedPoSt,
+    WithdrawBalanceParams, WithdrawBalanceReturn, consensus_fault_penalty, ext,
     ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
     ext::power::UPDATE_CLAIMED_POWER_METHOD,
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
@@ -124,6 +124,19 @@ pub fn setup() -> (ActorHarness, MockRuntime) {
     let h = ActorHarness::new(0);
 
     h.construct_and_verify(&rt);
+    (h, rt)
+}
+
+/// A funded, unconstructed miner at epoch 1 with proving period offset 100, sealing with
+/// `seal_proof`. The proof type must be set before the runtime is built, which registers it in
+/// the runtime's policy.
+#[allow(dead_code)]
+pub fn setup_with_proof(seal_proof: RegisteredSealProof) -> (ActorHarness, MockRuntime) {
+    let mut h = ActorHarness::new(100);
+    h.set_proof_type(seal_proof);
+    let rt = h.new_runtime();
+    rt.balance.replace(BIG_BALANCE.clone());
+    rt.set_epoch(1);
     (h, rt)
 }
 
@@ -2457,6 +2470,48 @@ impl ActorHarness {
         Ok(ret)
     }
 
+    /// Params extending one sector, located from current state, to `new_expiration`.
+    pub fn single_sector_extension(
+        &self,
+        rt: &MockRuntime,
+        sector_number: SectorNumber,
+        new_expiration: ChainEpoch,
+    ) -> ExtendSectorExpiration2Params {
+        let (deadline, partition) =
+            self.get_state(rt).find_sector(rt.store(), sector_number).unwrap();
+        ExtendSectorExpiration2Params {
+            extensions: vec![ExpirationExtension2 {
+                deadline,
+                partition,
+                sectors: make_bitfield(&[sector_number]),
+                sectors_with_claims: vec![],
+                new_expiration,
+            }],
+        }
+    }
+
+    /// Extends a sector to `target` with as many `ExtendSectorExpiration2` calls as
+    /// `max_sector_expiration_extension` requires, each made one epoch before the sector's current
+    /// expiration. Advances the epoch without running deadline cron.
+    pub fn extend_sector_in_steps(
+        &self,
+        rt: &MockRuntime,
+        sector_number: SectorNumber,
+        target: ChainEpoch,
+    ) {
+        let mut expiration = self.get_sector(rt, sector_number).expiration;
+        assert!(expiration <= target, "sector already expires after {target}");
+        while expiration < target {
+            let curr_epoch = expiration - 1;
+            rt.set_epoch(curr_epoch);
+            let new_expiration =
+                target.min(curr_epoch + rt.policy().max_sector_expiration_extension);
+            let params = self.single_sector_extension(rt, sector_number, new_expiration);
+            self.extend_sectors2(rt, params).unwrap();
+            expiration = self.get_sector(rt, sector_number).expiration;
+        }
+    }
+
     /// Calls `UpgradeSectorQuality` as the worker, expecting the pledge-input
     /// queries, a burn of any outstanding fee debt, and the given power and
     /// pledge deltas (no sends for zero deltas).
@@ -2484,10 +2539,11 @@ impl ActorHarness {
         Ok(ret)
     }
 
-    /// Rewrites the given sectors' on-chain records with `edit`, moving the
-    /// partition expiration queue, deadline power and fee books, and the miner's
+    /// Rewrites the given sectors' on-chain records with `edit`, updating the
+    /// partition and deadline expiration queues, deadline power and fee books, and the miner's
     /// pledge total along with the change. Simulates cohorts no onboarding path
-    /// can produce anymore, e.g. pre-FIP-0118 sectors without `FULL_QA_POWER`.
+    /// can produce anymore, e.g. pre-FIP-0118 sectors without `FULL_QA_POWER`, or places a
+    /// sector's expiration directly, skipping the extensions that would get it there.
     pub fn rewrite_sectors(
         &self,
         rt: &MockRuntime,
@@ -2524,6 +2580,11 @@ impl ActorHarness {
             deadline.live_power += &power_delta;
             deadline.daily_fee += &fee_delta;
             pledge_delta += partition_pledge_delta;
+            if new_sector.expiration != old_sector.expiration {
+                deadline
+                    .add_expiration_partitions(store, new_sector.expiration, &[p_idx], quant)
+                    .unwrap();
+            }
 
             sectors.store(vec![new_sector]).unwrap();
             partitions.set(p_idx, partition).unwrap();

@@ -84,8 +84,8 @@ pub fn max_prove_commit_duration(
     }
 }
 
-/// Maximum duration to allow for the sealing process for seal algorithms.
-/// Dependent on algorithm and sector size
+/// Maximum total lifetime of a sector, from activation to expiration, for its seal proof type.
+/// 540 days for V1 proofs (FIP-0014) and ten years for all later ones (FIP-0119).
 pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<ChainEpoch> {
     use RegisteredSealProof::*;
     match proof {
@@ -105,7 +105,7 @@ pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<
         | StackedDRG2KiBV1P2_Feat_NiPoRep
         | StackedDRG8MiBV1P2_Feat_NiPoRep
         | StackedDRG512MiBV1P2_Feat_NiPoRep
-        | StackedDRG64GiBV1P2_Feat_NiPoRep => Some(EPOCHS_IN_YEAR * 5),
+        | StackedDRG64GiBV1P2_Feat_NiPoRep => Some(EPOCHS_IN_YEAR * 10),
         _ => None,
     }
 }
