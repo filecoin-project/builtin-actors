@@ -78,6 +78,7 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
             &terminations,
             SECTOR_SIZE,
             QUANT_SPEC,
+            true,
         )
         .unwrap();
     assert_partition_state(
