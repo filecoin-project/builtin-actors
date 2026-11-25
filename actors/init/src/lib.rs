@@ -181,7 +181,7 @@ impl ActorCode for Actor {
 fn can_exec(rt: &impl Runtime, caller: &Cid, exec: &Cid) -> bool {
     rt.resolve_builtin_actor_type(exec)
         .map(|typ| match typ {
-            Type::Multisig | Type::PaymentChannel => true,
+            Type::Multisig => true,
             Type::Miner if rt.resolve_builtin_actor_type(caller) == Some(Type::Power) => true,
             _ => false,
         })
