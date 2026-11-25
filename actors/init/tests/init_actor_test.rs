@@ -476,3 +476,36 @@ where
     check_state(rt);
     ret.and_then(|v| v.unwrap().deserialize().map_err(|e| e.into()))
 }
+
+#[test]
+fn check_state_invariants_retained_genesis_mappings() {
+    use fil_actors_runtime::{DEFAULT_HAMT_CONFIG, Map2};
+
+    for (id, permitted) in
+        [(6, false), (7, false), (80, true), (81, true), (82, false), (100, true)]
+    {
+        let rt = construct_runtime();
+        construct_and_verify(&rt);
+        let mut state: State = rt.get_state();
+        state.next_id = 101;
+        let key = Address::new_bls(&[id as u8; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+        let mut map = Map2::<_, Address, ActorID>::load(
+            rt.store(),
+            &state.address_map,
+            DEFAULT_HAMT_CONFIG,
+            "addresses",
+        )
+        .unwrap();
+        map.set(&key, id).unwrap();
+        state.address_map = map.flush().unwrap();
+
+        let (summary, acc) = check_state_invariants(&state, rt.store());
+        assert_eq!(Some(&id), summary.ids_by_address.get(&key));
+        assert_eq!(Some(Address::new_id(id)), state.resolve_address(rt.store(), &key).unwrap());
+        if permitted {
+            acc.assert_empty();
+        } else {
+            assert_eq!(vec![format!("unexpected singleton ID value {id}")], acc.messages());
+        }
+    }
+}

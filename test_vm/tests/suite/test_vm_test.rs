@@ -146,7 +146,7 @@ fn test_pk_gen() {
 fn retired_actors_are_absent() {
     let v = TestVM::new_with_singletons(MemoryBlockstore::new());
 
-    for id in [6, 7, 80] {
+    for id in [6, 7, 80, 81] {
         let address = Address::new_id(id);
         assert!(v.actor(&address).is_none());
 
