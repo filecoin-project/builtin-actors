@@ -596,6 +596,7 @@ mod test_this_epoch_reward {
 
         assert_eq!(state.this_epoch_baseline_power, resp.this_epoch_baseline_power);
         assert_eq!(state.this_epoch_reward_smoothed, resp.this_epoch_reward_smoothed);
+        assert_eq!(DENOM, resp.this_epoch_implicit_stream_weight);
     }
 }
 

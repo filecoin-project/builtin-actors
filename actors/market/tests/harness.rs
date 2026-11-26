@@ -981,6 +981,7 @@ pub fn expect_query_network_info(rt: &MockRuntime) {
     let current_reward = ThisEpochRewardReturn {
         this_epoch_baseline_power: power,
         this_epoch_reward_smoothed: epoch_reward_smooth,
+        this_epoch_implicit_stream_weight: 1_000_000_000_000_000_000,
     };
     rt.expect_send_simple(
         REWARD_ACTOR_ADDR,

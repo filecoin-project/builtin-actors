@@ -79,6 +79,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
         &h.epoch_reward_smooth,
         &h.epoch_qa_power_smooth,
         &qa_power_for_sector(sector_size, terminated_sector),
+        h.implicit_stream_weight,
     );
     let expected_fee = pledge_penalty_for_termination(initial_pledge, sector_age, &fault_fee);
 

@@ -1,11 +1,12 @@
 use fil_actor_miner::{
-    Actor, CRON_EVENT_PROCESS_EARLY_TERMINATIONS, CronEventPayload, DeferredCronEventParams,
-    ExpirationExtension2, ExtendSectorExpiration2Params, MaxTerminationFeeParams,
-    MaxTerminationFeeReturn, Method, SectorOnChainInfo, State,
-    TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM,
-    TERM_FEE_PLEDGE_MULTIPLE_DENOM, TERM_FEE_PLEDGE_MULTIPLE_NUM, TerminateSectorsParams,
-    TerminationDeclaration, pledge_penalty_for_continued_fault, pledge_penalty_for_termination,
-    power_for_sector, qa_power_for_sector,
+    Actor, CONTINUED_FAULT_PROJECTION_PERIOD, CRON_EVENT_PROCESS_EARLY_TERMINATIONS,
+    CRON_EVENT_PROVING_DEADLINE, CronEventPayload, DeferredCronEventParams, ExpirationExtension2,
+    ExtendSectorExpiration2Params, MaxTerminationFeeParams, MaxTerminationFeeReturn, Method,
+    SectorOnChainInfo, State, TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM,
+    TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM, TERM_FEE_PLEDGE_MULTIPLE_DENOM,
+    TERM_FEE_PLEDGE_MULTIPLE_NUM, TerminateSectorsParams, TerminationDeclaration,
+    expected_reward_for_power, pledge_penalty_for_termination, power_for_sector,
+    qa_power_for_sector,
 };
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, BatchReturn, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -27,7 +28,8 @@ mod util;
 use fil_actor_miner::ext::market::{
     ON_MINER_SECTORS_TERMINATE_METHOD, OnMinerSectorsTerminateParams,
 };
-use fil_actor_miner::ext::power::UPDATE_PLEDGE_TOTAL_METHOD;
+use fil_actor_miner::ext::power::{UPDATE_PLEDGE_TOTAL_METHOD, UpdateClaimedPowerParams};
+use fil_actor_reward::DENOM;
 use fil_actors_runtime::test_utils::POWER_ACTOR_CODE_ID;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -326,6 +328,7 @@ fn system_can_terminate_if_market_cron_fails() {
                 event_payload: Vec::from(RawBytes::serialize(payload).unwrap().bytes()),
                 reward_smoothed: h.epoch_reward_smooth.clone(),
                 quality_adj_power_smoothed: h.epoch_qa_power_smooth.clone(),
+                implicit_stream_weight: h.implicit_stream_weight,
             })
             .unwrap(),
         )
@@ -346,11 +349,7 @@ fn calc_expected_fee_for_termination(
     let sector_power = qa_power_for_sector(sector.seal_proof.sector_size().unwrap(), sector);
     let sector_age = *rt.epoch.borrow() - sector.activation;
     let initial_pledge = &sector.initial_pledge;
-    let fault_fee = pledge_penalty_for_continued_fault(
-        &h.epoch_reward_smooth,
-        &h.epoch_qa_power_smooth,
-        &sector_power,
-    );
+    let fault_fee = expected_scaled_fault_fee(h, &sector_power);
     pledge_penalty_for_termination(initial_pledge, sector_age, &fault_fee)
 }
 
@@ -369,48 +368,230 @@ fn max_termination_fee_returns_correct_results() {
     let initial_pledge = sector.initial_pledge.clone();
     let qa_sector_power = power_for_sector(sector.seal_proof.sector_size().unwrap(), &sector).qa;
 
-    let cases = [
-        // low power resulting in low fault fee => termination fee should be pledge multiple *
-        // initial pledge
-        (
-            StoragePower::zero(),
-            (initial_pledge.clone() * TERM_FEE_PLEDGE_MULTIPLE_NUM)
-                .div_floor(TERM_FEE_PLEDGE_MULTIPLE_DENOM),
-        ),
-        // high power resulting in high fault fee => termination fee should be fault fee * max
-        // fault fee multiple
-        (
-            qa_sector_power.clone(),
-            (pledge_penalty_for_continued_fault(
-                &h.epoch_reward_smooth,
-                &h.epoch_qa_power_smooth,
-                &qa_sector_power,
-            ) * TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM)
-                .div_floor(TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM),
-        ),
-    ];
+    let pledge_floor = (initial_pledge.clone() * TERM_FEE_PLEDGE_MULTIPLE_NUM)
+        .div_floor(TERM_FEE_PLEDGE_MULTIPLE_DENOM);
+    for weight in [DENOM, DENOM / 2, 0] {
+        h.implicit_stream_weight = weight;
+        let fault_fee_bound = (expected_scaled_fault_fee(&h, &qa_sector_power)
+            * TERM_FEE_MAX_FAULT_FEE_MULTIPLE_NUM)
+            .div_floor(TERM_FEE_MAX_FAULT_FEE_MULTIPLE_DENOM);
+        if weight > 0 {
+            assert!(fault_fee_bound > pledge_floor);
+        } else {
+            assert!(fault_fee_bound.is_zero());
+        }
+        let cases = [
+            // With no power, only the pledge-based maximum remains.
+            (StoragePower::zero(), pledge_floor.clone()),
+            // The fault-fee bound scales, while the pledge-based floor stays fixed.
+            (qa_sector_power.clone(), std::cmp::max(pledge_floor.clone(), fault_fee_bound)),
+        ];
 
-    for (quality_adj_power, expected) in cases {
-        let params = MaxTerminationFeeParams {
-            initial_pledge: initial_pledge.clone(),
-            power: quality_adj_power,
-        };
+        for (quality_adj_power, expected) in cases {
+            let params = MaxTerminationFeeParams {
+                initial_pledge: initial_pledge.clone(),
+                power: quality_adj_power,
+            };
 
-        h.expect_query_network_info(&rt);
-        rt.expect_validate_caller_any();
-        let res = rt
-            .call::<Actor>(
-                Method::MaxTerminationFeeExported as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            )
-            .unwrap()
-            .unwrap()
-            .deserialize::<MaxTerminationFeeReturn>()
-            .unwrap();
-        rt.verify();
+            h.expect_query_network_info(&rt);
+            rt.expect_validate_caller_any();
+            let res = rt
+                .call::<Actor>(
+                    Method::MaxTerminationFeeExported as MethodNum,
+                    IpldBlock::serialize_cbor(&params).unwrap(),
+                )
+                .unwrap()
+                .unwrap()
+                .deserialize::<MaxTerminationFeeReturn>()
+                .unwrap();
+            rt.verify();
 
-        assert_eq!(expected, res.max_fee);
+            assert_eq!(expected, res.max_fee, "implicit stream weight {weight}");
+        }
     }
 
     h.check_state(&rt);
+}
+
+// Calculate the expected scaling independently of the weighted fault-penalty helper.
+fn expected_scaled_fault_fee(h: &ActorHarness, qa_power: &StoragePower) -> TokenAmount {
+    let unscaled = expected_reward_for_power(
+        &h.epoch_reward_smooth,
+        &h.epoch_qa_power_smooth,
+        qa_power,
+        CONTINUED_FAULT_PROJECTION_PERIOD,
+    );
+    (unscaled * h.implicit_stream_weight).div_floor(DENOM)
+}
+
+#[test]
+fn direct_termination_uses_implicit_stream_weight() {
+    for weight in [DENOM, DENOM / 2, 0] {
+        let (mut h, rt) = setup();
+        let sectors =
+            h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, Vec::new(), true);
+        h.advance_and_submit_posts(&rt, &sectors);
+        h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+        h.implicit_stream_weight = weight;
+
+        let before = h.get_state(&rt);
+        let expected = calc_expected_fee_for_termination(&h, &rt, &sectors[0]);
+        assert!(expected.is_positive()); // Pledge-based fees remain even at zero weight.
+        let pledge_only_fee = pledge_penalty_for_termination(
+            &sectors[0].initial_pledge,
+            *rt.epoch.borrow() - sectors[0].activation,
+            &TokenAmount::zero(),
+        );
+        if weight > 0 {
+            assert!(expected > pledge_only_fee, "fault fee must determine the termination fee");
+        } else {
+            assert_eq!(expected, pledge_only_fee);
+        }
+        h.terminate_sectors(
+            &rt,
+            &bitfield_from_slice(&[sectors[0].sector_number]),
+            expected.clone(),
+        );
+        let after = h.get_state(&rt);
+        assert_eq!(before.locked_funds - expected, after.locked_funds);
+        assert!(after.initial_pledge.is_zero());
+        assert!(after.early_terminations.is_empty());
+        h.check_state(&rt);
+    }
+}
+
+#[test]
+fn termination_cron_uses_implicit_stream_weight() {
+    for from_proving_deadline in [false, true] {
+        for weight in [DENOM, DENOM / 2, 0] {
+            let (mut h, mut rt) = setup();
+            let sectors =
+                h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, Vec::new(), true);
+            h.advance_and_submit_posts(&rt, &sectors);
+            let sector = &sectors[0];
+            let (deadline_index, _) =
+                h.get_state(&rt).find_sector(rt.store(), sector.sector_number).unwrap();
+            let deadline = h.advance_to_deadline(&rt, deadline_index);
+            rt.set_epoch(deadline.last());
+            h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+            h.implicit_stream_weight = weight;
+
+            // Expire a newly detected fault at this deadline, so cron must process a
+            // real early termination without waiting through the fault maximum age.
+            rt.policy.fault_max_age = 0;
+            let before = h.get_state(&rt);
+            assert!(before.early_terminations.is_empty());
+            let expected_fee = calc_expected_fee_for_termination(&h, &rt, sector);
+            assert!(expected_fee.is_positive());
+            let pledge_only_fee = pledge_penalty_for_termination(
+                &sector.initial_pledge,
+                *rt.epoch.borrow() - sector.activation,
+                &TokenAmount::zero(),
+            );
+            if weight > 0 {
+                assert!(
+                    expected_fee > pledge_only_fee,
+                    "fault fee must determine the termination fee"
+                );
+            } else {
+                assert_eq!(expected_fee, pledge_only_fee);
+            }
+
+            if !from_proving_deadline {
+                // Seed the deferred callback with exactly the state produced by deadline
+                // expiration. Retain the pledge until the callback charges its penalty.
+                let mut state = before.clone();
+                let expired =
+                    state.advance_deadline(&rt.policy, rt.store(), *rt.epoch.borrow()).unwrap();
+                assert!(expired.previously_faulty_power.qa.is_zero());
+                assert!(expired.daily_fee.is_zero());
+                assert!(expired.pledge_delta.is_zero());
+                assert_eq!(before.initial_pledge, state.initial_pledge);
+                assert!(state.early_terminations.get(deadline_index));
+                rt.replace_state(&state);
+            }
+
+            rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
+            if from_proving_deadline {
+                // Newly detected faults lose power but incur no continued-fault fee.
+                // The subsequent burn therefore comes from nested termination processing.
+                let power = power_for_sector(h.sector_size, sector);
+                rt.expect_send_simple(
+                    STORAGE_POWER_ACTOR_ADDR,
+                    fil_actor_power::Method::UpdateClaimedPower as u64,
+                    IpldBlock::serialize_cbor(&UpdateClaimedPowerParams {
+                        raw_byte_delta: -power.raw,
+                        quality_adjusted_delta: -power.qa,
+                    })
+                    .unwrap(),
+                    TokenAmount::zero(),
+                    None,
+                    ExitCode::OK,
+                );
+                rt.expect_send_simple(
+                    STORAGE_POWER_ACTOR_ADDR,
+                    fil_actor_power::Method::EnrollCronEvent as u64,
+                    IpldBlock::serialize_cbor(&make_deadline_cron_event_params(
+                        deadline.last() + rt.policy.wpost_challenge_window,
+                    ))
+                    .unwrap(),
+                    TokenAmount::zero(),
+                    None,
+                    ExitCode::OK,
+                );
+            }
+            rt.expect_send_simple(
+                BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                expected_fee.clone(),
+                None,
+                ExitCode::OK,
+            );
+            rt.expect_send_simple(
+                STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_PLEDGE_TOTAL_METHOD,
+                IpldBlock::serialize_cbor(&(-sector.initial_pledge.clone() - &expected_fee))
+                    .unwrap(),
+                TokenAmount::zero(),
+                None,
+                ExitCode::OK,
+            );
+            expect_event(&rt, "sector-terminated", &sector.sector_number);
+
+            rt.set_origin(SYSTEM_ACTOR_ADDR);
+            rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
+            let payload = CronEventPayload {
+                event_type: if from_proving_deadline {
+                    CRON_EVENT_PROVING_DEADLINE
+                } else {
+                    CRON_EVENT_PROCESS_EARLY_TERMINATIONS
+                },
+            };
+            let params = DeferredCronEventParams {
+                event_payload: Vec::from(RawBytes::serialize(payload).unwrap().bytes()),
+                reward_smoothed: h.epoch_reward_smooth.clone(),
+                quality_adj_power_smoothed: h.epoch_qa_power_smooth.clone(),
+                implicit_stream_weight: weight,
+            };
+            assert!(
+                rt.call::<Actor>(
+                    Method::OnDeferredCronEvent as u64,
+                    IpldBlock::serialize_cbor(&params).unwrap(),
+                )
+                .unwrap()
+                .is_none()
+            );
+            rt.verify();
+
+            let after = h.get_state(&rt);
+            assert_eq!(before.locked_funds - expected_fee, after.locked_funds);
+            assert!(after.initial_pledge.is_zero());
+            assert!(after.early_terminations.is_empty());
+            assert!(
+                h.find_sector(&rt, sector.sector_number).1.terminated.get(sector.sector_number)
+            );
+            h.check_state(&rt);
+        }
+    }
 }

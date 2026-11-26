@@ -165,6 +165,7 @@ pub struct ActorHarness {
     pub network_qa_power: StoragePower,
     pub baseline_power: StoragePower,
 
+    pub implicit_stream_weight: u64,
     pub epoch_reward_smooth: FilterEstimate,
     pub epoch_qa_power_smooth: FilterEstimate,
 
@@ -214,6 +215,7 @@ impl ActorHarness {
             network_qa_power: pwr.clone(),
             baseline_power: pwr.clone(),
 
+            implicit_stream_weight: fil_actor_reward::DENOM,
             epoch_reward_smooth: FilterEstimate::new(rwd.atto().clone(), BigInt::from(0)),
             epoch_qa_power_smooth: FilterEstimate::new(pwr, BigInt::from(0)),
 
@@ -286,6 +288,7 @@ impl ActorHarness {
         let current_reward = ThisEpochRewardReturn {
             this_epoch_baseline_power: self.baseline_power.clone(),
             this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
+            this_epoch_implicit_stream_weight: self.implicit_stream_weight,
         };
 
         let current_total_power = CurrentTotalPowerReturn::default();
@@ -789,6 +792,7 @@ impl ActorHarness {
         let current_reward = ThisEpochRewardReturn {
             this_epoch_baseline_power: self.baseline_power.clone(),
             this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
+            this_epoch_implicit_stream_weight: self.implicit_stream_weight,
         };
         rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
@@ -1448,6 +1452,7 @@ impl ActorHarness {
         let params = make_deferred_cron_event_params(
             self.epoch_reward_smooth.clone(),
             self.epoch_qa_power_smooth.clone(),
+            self.implicit_stream_weight,
         );
         rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
         rt.call::<Actor>(
@@ -1921,6 +1926,7 @@ impl ActorHarness {
             &self.epoch_reward_smooth,
             &self.epoch_qa_power_smooth,
             &pwr.qa,
+            self.implicit_stream_weight,
         )
     }
 
@@ -2011,6 +2017,7 @@ impl ActorHarness {
         let current_reward = ThisEpochRewardReturn {
             this_epoch_baseline_power: self.baseline_power.clone(),
             this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
+            this_epoch_implicit_stream_weight: self.implicit_stream_weight,
         };
         rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
@@ -3172,12 +3179,14 @@ pub fn make_deadline_cron_event_params(epoch: ChainEpoch) -> EnrollCronEventPara
 fn make_deferred_cron_event_params(
     epoch_reward_smooth: FilterEstimate,
     epoch_qa_power_smooth: FilterEstimate,
+    implicit_stream_weight: u64,
 ) -> DeferredCronEventParams {
     let payload = CronEventPayload { event_type: CRON_EVENT_PROVING_DEADLINE };
     DeferredCronEventParams {
         event_payload: Vec::from(RawBytes::serialize(payload).unwrap().bytes()),
         reward_smoothed: epoch_reward_smooth,
         quality_adj_power_smoothed: epoch_qa_power_smooth,
+        implicit_stream_weight,
     }
 }
 

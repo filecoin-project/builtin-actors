@@ -153,19 +153,38 @@ mod serialization {
 
     #[test]
     fn this_epoch_reward_return() {
-        let value = ThisEpochRewardReturn {
-            this_epoch_reward_smoothed: FilterEstimate::new(BigInt::from(1), BigInt::from(-2)),
-            this_epoch_baseline_power: BigInt::from(256),
-        };
-        let encoded = IpldBlock::serialize_cbor(&value).unwrap().unwrap();
-        assert_eq!(
-            encoded.data,
-            hex!(
-                "8282520001000000000000000000000000000000005201020000000000000000000000000000000043000100"
-            )
-        );
-        let decoded: ThisEpochRewardReturn = IpldBlock::deserialize(&encoded).unwrap();
-        assert_eq!(value, decoded);
+        let test_cases = [
+            (
+                0,
+                &hex!(
+                    "838252000100000000000000000000000000000000520102000000000000000000000000000000004300010000"
+                )[..],
+            ),
+            (
+                DENOM / 2,
+                &hex!(
+                    "83825200010000000000000000000000000000000052010200000000000000000000000000000000430001001b06f05b59d3b20000"
+                )[..],
+            ),
+            (
+                DENOM,
+                &hex!(
+                    "83825200010000000000000000000000000000000052010200000000000000000000000000000000430001001b0de0b6b3a7640000"
+                )[..],
+            ),
+        ];
+
+        for (weight, expected_hex) in test_cases {
+            let value = ThisEpochRewardReturn {
+                this_epoch_reward_smoothed: FilterEstimate::new(BigInt::from(1), BigInt::from(-2)),
+                this_epoch_baseline_power: BigInt::from(256),
+                this_epoch_implicit_stream_weight: weight,
+            };
+            let encoded = IpldBlock::serialize_cbor(&value).unwrap().unwrap();
+            assert_eq!(encoded.data, expected_hex, "weight {weight}");
+            let decoded: ThisEpochRewardReturn = IpldBlock::deserialize(&encoded).unwrap();
+            assert_eq!(value, decoded);
+        }
     }
 
     #[test]

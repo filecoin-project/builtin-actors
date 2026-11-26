@@ -661,6 +661,7 @@ mod cron_tests {
         miner::{DeferredCronEventParams, ON_DEFERRED_CRON_EVENT_METHOD},
         reward::UPDATE_NETWORK_KPI,
     };
+    use fil_actors_runtime::reward::FilterEstimate;
     use fil_actors_runtime::{CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, test_utils::CRON_ACTOR_CODE_ID};
     use fvm_shared::bigint::BigInt;
 
@@ -762,6 +763,7 @@ mod cron_tests {
             event_payload: vec![0x01, 0x03],
             reward_smoothed: h.this_epoch_reward_smoothed.clone(),
             quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed.clone(),
+            implicit_stream_weight: h.this_epoch_implicit_stream_weight,
         };
         rt.expect_send_simple(
             miner1,
@@ -776,6 +778,7 @@ mod cron_tests {
             event_payload: vec![0x02, 0x03],
             reward_smoothed: h.this_epoch_reward_smoothed.clone(),
             quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
+            implicit_stream_weight: h.this_epoch_implicit_stream_weight,
         };
         rt.expect_send_simple(
             miner2,
@@ -799,6 +802,70 @@ mod cron_tests {
 
         rt.verify();
         h.check_state(&rt);
+    }
+
+    #[test]
+    fn forwards_current_implicit_weight_to_all_due_cron_events() {
+        for implicit_stream_weight in [350_000_000_000_000_000, 0] {
+            let (mut h, rt) = setup();
+            let miner1 = Address::new_id(101);
+            let miner2 = Address::new_id(102);
+            h.create_miner_basic(&rt, OWNER, OWNER, miner1).unwrap();
+            h.create_miner_basic(&rt, OWNER, OWNER, miner2).unwrap();
+
+            rt.set_epoch(1);
+            let events =
+                [(2, miner1, vec![0x01]), (3, miner2, vec![0x02]), (4, miner1, vec![0x03])];
+            for (epoch, miner, payload) in &events {
+                h.enroll_cron_event(&rt, *epoch, miner, &RawBytes::from(payload.clone())).unwrap();
+            }
+
+            // The weight and reward estimate at execution apply to both the null-round
+            // backlog and the current event, rather than the values at enrollment.
+            h.this_epoch_implicit_stream_weight = implicit_stream_weight;
+            h.this_epoch_reward_smoothed = FilterEstimate::new(BigInt::from(123), BigInt::from(7));
+            let mut state: State = rt.get_state();
+            state.this_epoch_qa_power_smoothed =
+                FilterEstimate::new(BigInt::from(456), BigInt::from(11));
+            rt.replace_state(&state);
+
+            rt.set_epoch(4);
+            rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
+            h.expect_query_network_info(&rt);
+            for (_, miner, payload) in &events {
+                let params = DeferredCronEventParams {
+                    event_payload: payload.clone(),
+                    reward_smoothed: h.this_epoch_reward_smoothed.clone(),
+                    quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed.clone(),
+                    implicit_stream_weight,
+                };
+                // Zero weight still triggers every callback, and neither estimate is scaled.
+                rt.expect_send_simple(
+                    *miner,
+                    ON_DEFERRED_CRON_EVENT_METHOD,
+                    IpldBlock::serialize_cbor(&params).unwrap(),
+                    TokenAmount::zero(),
+                    None,
+                    ExitCode::OK,
+                );
+            }
+            rt.expect_send_simple(
+                REWARD_ACTOR_ADDR,
+                UPDATE_NETWORK_KPI,
+                IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
+                TokenAmount::zero(),
+                None,
+                ExitCode::OK,
+            );
+            rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
+            rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
+
+            rt.verify();
+            let state: State = rt.get_state();
+            assert_eq!(5, state.first_cron_epoch);
+            verify_empty_map(&rt, state.cron_event_queue);
+            h.check_state(&rt);
+        }
     }
 
     #[test]
@@ -841,6 +908,7 @@ mod cron_tests {
             event_payload: payload,
             reward_smoothed: h.this_epoch_reward_smoothed.clone(),
             quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
+            implicit_stream_weight: h.this_epoch_implicit_stream_weight,
         };
         rt.expect_send_simple(
             miner_addr,
@@ -912,6 +980,7 @@ mod cron_tests {
             event_payload: Vec::new(),
             reward_smoothed: h.this_epoch_reward_smoothed.clone(),
             quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
+            implicit_stream_weight: h.this_epoch_implicit_stream_weight,
         };
 
         // only expect second deferred cron event call
@@ -975,6 +1044,7 @@ mod cron_tests {
             event_payload: Vec::new(),
             reward_smoothed: h.this_epoch_reward_smoothed.clone(),
             quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
+            implicit_stream_weight: h.this_epoch_implicit_stream_weight,
         })
         .unwrap();
 

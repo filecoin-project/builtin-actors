@@ -71,6 +71,7 @@ pub fn new_harness() -> Harness {
         window_post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         this_epoch_baseline_power: StoragePower::from(1i64 << 50),
         this_epoch_reward_smoothed: FilterEstimate::new(rwd.atto().clone(), BigInt::zero()),
+        this_epoch_implicit_stream_weight: 1_000_000_000_000_000_000,
     }
 }
 
@@ -88,6 +89,7 @@ pub struct Harness {
     pub window_post_proof: RegisteredPoStProof,
     this_epoch_baseline_power: StoragePower,
     pub this_epoch_reward_smoothed: FilterEstimate,
+    pub this_epoch_implicit_stream_weight: u64,
 }
 
 impl Harness {
@@ -374,6 +376,7 @@ impl Harness {
         let current_reward = ThisEpochRewardReturn {
             this_epoch_baseline_power: self.this_epoch_baseline_power.clone(),
             this_epoch_reward_smoothed: self.this_epoch_reward_smoothed.clone(),
+            this_epoch_implicit_stream_weight: self.this_epoch_implicit_stream_weight,
         };
 
         rt.expect_send_simple(

@@ -89,6 +89,8 @@ const CONSENSUS_FAULT_FACTOR: u64 = 5;
 
 const GAMMA_FIXED_POINT_FACTOR: u64 = 1000; // 3 decimal places
 
+const WEIGHT_DENOM: u64 = 1_000_000_000_000_000_000;
+
 /// The projected block reward a sector would earn over some period.
 /// Also known as "BR(t)".
 /// BR(t) = ProjectedRewardFraction(t) * SectorQualityAdjustedPower
@@ -153,13 +155,15 @@ pub fn pledge_penalty_for_continued_fault(
     reward_estimate: &FilterEstimate,
     network_qa_power_estimate: &FilterEstimate,
     qa_sector_power: &StoragePower,
+    implicit_stream_weight: u64,
 ) -> TokenAmount {
-    expected_reward_for_power(
+    let reward = expected_reward_for_power(
         reward_estimate,
         network_qa_power_estimate,
         qa_sector_power,
         CONTINUED_FAULT_PROJECTION_PERIOD,
-    )
+    );
+    (reward * implicit_stream_weight).div_floor(WEIGHT_DENOM)
 }
 
 /// This is the SP(t) penalty for a newly faulty sector that has not been declared.
@@ -210,13 +214,17 @@ pub fn pledge_penalty_for_invalid_windowpost(
     reward_estimate: &FilterEstimate,
     network_qa_power_estimate: &FilterEstimate,
     qa_sector_power: &StoragePower,
+    implicit_stream_weight: u64,
 ) -> TokenAmount {
-    expected_reward_for_power(
+    let reward = expected_reward_for_power(
         reward_estimate,
         network_qa_power_estimate,
         qa_sector_power,
         INVALID_WINDOW_POST_PROJECTION_PERIOD,
-    ) + &*BASE_PENALTY_FOR_DISPUTED_WINDOW_POST
+    );
+
+    let scaled_reward = (reward * implicit_stream_weight).div_floor(WEIGHT_DENOM);
+    scaled_reward + &*BASE_PENALTY_FOR_DISPUTED_WINDOW_POST
 }
 
 /// Computes the PreCommit deposit given sector qa weight and current network conditions.

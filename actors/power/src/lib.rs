@@ -402,6 +402,7 @@ impl Actor {
                 event_payload: event.callback_payload.bytes().to_owned(),
                 reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
                 quality_adj_power_smoothed: st.this_epoch_qa_power_smoothed.clone(),
+                implicit_stream_weight: rewret.this_epoch_implicit_stream_weight,
             })?;
             let res = extract_send_result(rt.send_simple(
                 &event.miner_addr,

@@ -134,3 +134,110 @@ fn an_award_that_breaks_the_invariants_pays_gas_only() {
     assert_eq!(vec![pending], queued_writes(&rt));
     assert_eq!(TokenAmount::from_atto(98), *rt.balance.borrow());
 }
+
+mod this_epoch_reward_tests {
+    use super::*;
+
+    fn query(rt: &MockRuntime) -> Result<ThisEpochRewardReturn, ActorError> {
+        rt.expect_validate_caller_any();
+        let result = rt.call::<Actor>(Method::ThisEpochReward as u64, None);
+        rt.verify();
+        result.map(|response| response.unwrap().deserialize().unwrap())
+    }
+
+    fn save_streams(rt: &MockRuntime, state: &mut State, streams: &StreamsState) {
+        state.streams_root = rt.store.put_cbor(streams, Code::Blake2b256).unwrap();
+        rt.replace_state(state);
+    }
+
+    #[test]
+    fn uses_call_epoch_without_applying_due_writes_or_future_checks() {
+        let (rt, _) = base_runtime();
+        let mut state: State = rt.get_state();
+        let mut streams: StreamsState = rt.store.get_cbor(&state.streams_root).unwrap().unwrap();
+        let mut implicit = streams.streams.remove(0);
+        implicit.id = 3;
+        implicit.weight = WeightRecord {
+            v_start: DENOM / 100 * 60,
+            slope: (DENOM / 100) as i64,
+            t_start: 0,
+            floor: 0,
+            cap: DENOM,
+        };
+        streams.streams.push(implicit);
+        streams.pending_writes_queue[0].payload = RawBytes::serialize(&SetWeightRecordsParams {
+            updates: vec![WeightRecordUpdate { id: 3, weight: weight(DENOM / 100 * 40) }],
+        })
+        .unwrap();
+        save_streams(&rt, &mut state, &streams);
+        rt.epoch.replace(5);
+
+        let response = query(&rt).unwrap();
+        assert_eq!(DENOM / 100 * 65, response.this_epoch_implicit_stream_weight);
+        assert_eq!(state.this_epoch_baseline_power, response.this_epoch_baseline_power);
+        assert_eq!(state.this_epoch_reward_smoothed, response.this_epoch_reward_smoothed);
+        let after: State = rt.get_state();
+        assert_eq!(
+            fvm_ipld_encoding::to_vec(&state).unwrap(),
+            fvm_ipld_encoding::to_vec(&after).unwrap(),
+        );
+    }
+
+    #[test]
+    fn returns_zero_when_implicit_stream_is_absent_or_zero() {
+        for absent in [false, true] {
+            let (rt, _) = base_runtime();
+            let mut state: State = rt.get_state();
+            let mut streams: StreamsState =
+                rt.store.get_cbor(&state.streams_root).unwrap().unwrap();
+            streams.pending_writes_queue.clear();
+            if absent {
+                streams.streams.remove(0);
+            } else {
+                streams.streams[0].weight = weight(0);
+            }
+            save_streams(&rt, &mut state, &streams);
+            assert_eq!(0, query(&rt).unwrap().this_epoch_implicit_stream_weight);
+        }
+    }
+
+    #[test]
+    fn returns_zero_for_invalid_stored_records_or_current_total() {
+        for case in ["implicit weight", "explicit weight", "total", "recipient", "accrual"] {
+            let (rt, _) = base_runtime();
+            let mut state: State = rt.get_state();
+            let mut streams: StreamsState =
+                rt.store.get_cbor(&state.streams_root).unwrap().unwrap();
+            match case {
+                "implicit weight" => streams.streams[0].weight.cap = DENOM + 1,
+                "explicit weight" => streams.streams[1].weight.cap = DENOM + 1,
+                "total" => streams.streams[0].weight = weight(DENOM / 100 * 90),
+                "recipient" => {
+                    streams.streams[1].distribution.as_mut().unwrap().shares[0].share = DENOM + 1;
+                }
+                "accrual" => state.accrued.clear(),
+                _ => unreachable!(),
+            }
+            save_streams(&rt, &mut state, &streams);
+            assert_eq!(0, query(&rt).unwrap().this_epoch_implicit_stream_weight, "{case}");
+        }
+    }
+
+    #[test]
+    fn returns_zero_for_undecodable_streams() {
+        let (rt, _) = base_runtime();
+        let mut state: State = rt.get_state();
+        state.streams_root = rt.store.put_cbor(&0u64, Code::Blake2b256).unwrap();
+        rt.replace_state(&state);
+        assert_eq!(0, query(&rt).unwrap().this_epoch_implicit_stream_weight);
+    }
+
+    #[test]
+    fn aborts_when_streams_block_is_missing() {
+        let (rt, _) = base_runtime();
+        let mut state: State = rt.get_state();
+        state.streams_root = Cid::default();
+        rt.replace_state(&state);
+        assert_eq!(ExitCode::USR_ILLEGAL_STATE, query(&rt).unwrap_err().exit_code());
+    }
+}
