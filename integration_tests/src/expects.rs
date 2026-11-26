@@ -1,9 +1,5 @@
 use cid::Cid;
-use frc46_token::receiver::{FRC46_TOKEN_TYPE, FRC46TokenReceived};
-use frc46_token::token::types::BurnParams;
-use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
@@ -14,17 +10,13 @@ use fvm_shared::{ActorID, METHOD_SEND};
 use num_traits::Zero;
 
 use fil_actor_account::types::AuthenticateMessageParams;
-use fil_actor_datacap::BalanceParams;
 use fil_actor_market::OnMinerSectorsTerminateParams;
 use fil_actor_miner::{IsControllingAddressParam, PowerPair};
 use fil_actor_miner::{PieceChange, SectorChanges, SectorContentChangedParams};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
-use fil_actor_verifreg::GetClaimsParams;
 use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ID, EventBuilder,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID,
-    STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ID,
+    BURNT_FUNDS_ACTOR_ADDR, EventBuilder, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID,
 };
 
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
@@ -200,76 +192,6 @@ impl Expect {
         }
     }
 
-    pub fn datacap_transfer_to_verifreg(
-        from: ActorID,
-        amount: TokenAmount,
-        operator_data: RawBytes,
-        burn: bool,
-        claim_events: Vec<EmittedEvent>,
-    ) -> ExpectInvocation {
-        let payload = IpldBlock::serialize_cbor(&FRC46TokenReceived {
-            from,
-            to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-            operator: from,
-            amount: amount.clone(),
-            operator_data,
-            token_data: RawBytes::default(),
-        })
-        .unwrap();
-        let burn_invocs = if burn {
-            vec![Expect::frc46_burn(VERIFIED_REGISTRY_ACTOR_ID, DATACAP_TOKEN_ACTOR_ADDR, amount)]
-        } else {
-            vec![]
-        };
-        ExpectInvocation {
-            from,
-            to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: fil_actor_datacap::Method::TransferExported as u64,
-            subinvocs: Some(vec![ExpectInvocation {
-                from: DATACAP_TOKEN_ACTOR_ID,
-                to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                method: fil_actor_verifreg::Method::UniversalReceiverHook as u64,
-                params: Some(
-                    IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                        type_: FRC46_TOKEN_TYPE,
-                        payload: payload.unwrap().data.into(),
-                    })
-                    .unwrap(),
-                ),
-                subinvocs: Some(burn_invocs),
-                events: Some(claim_events),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        }
-    }
-
-    pub fn verifreg_get_claims(from: ActorID, miner: ActorID, ids: Vec<u64>) -> ExpectInvocation {
-        let params =
-            IpldBlock::serialize_cbor(&GetClaimsParams { provider: miner, claim_ids: ids })
-                .unwrap();
-        ExpectInvocation {
-            from,
-            to: VERIFIED_REGISTRY_ACTOR_ADDR,
-            method: fil_actor_verifreg::Method::GetClaims as u64,
-            params: Some(params),
-            value: Some(TokenAmount::zero()),
-            subinvocs: Some(vec![]),
-            ..Default::default()
-        }
-    }
-    pub fn frc42_balance(from: ActorID, to: Address, address: Address) -> ExpectInvocation {
-        let params = Some(IpldBlock::serialize_cbor(&BalanceParams { address }).unwrap());
-        ExpectInvocation {
-            from,
-            to,
-            method: frc42_dispatch::method_hash!("Balance"),
-            params,
-            value: Some(TokenAmount::zero()),
-            subinvocs: Some(vec![]),
-            ..Default::default()
-        }
-    }
     pub fn frc44_authenticate(
         from: ActorID,
         to: Address,
@@ -286,111 +208,6 @@ impl Expect {
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),
             ..Default::default()
-        }
-    }
-    pub fn frc46_burn(from: ActorID, to: Address, amount: TokenAmount) -> ExpectInvocation {
-        let params = IpldBlock::serialize_cbor(&BurnParams { amount }).unwrap();
-        ExpectInvocation {
-            from,
-            to,
-            method: frc42_dispatch::method_hash!("Burn"),
-            params: Some(params),
-            value: Some(TokenAmount::zero()),
-            subinvocs: Some(vec![]),
-            ..Default::default()
-        }
-    }
-    pub fn frc46_receiver(
-        from: ActorID,
-        to: Address,
-        payer: ActorID,
-        beneficiary: ActorID,
-        operator: ActorID,
-        amount: TokenAmount,
-        operator_data: Option<RawBytes>,
-    ) -> ExpectInvocation {
-        let payload = IpldBlock::serialize_cbor(&FRC46TokenReceived {
-            from: payer,
-            to: beneficiary,
-            operator,
-            amount,
-            operator_data: operator_data.unwrap_or_default(),
-            token_data: RawBytes::default(),
-        })
-        .unwrap();
-        let params = IpldBlock::serialize_cbor(&UniversalReceiverParams {
-            type_: FRC46_TOKEN_TYPE,
-            payload: payload.unwrap().data.into(),
-        })
-        .unwrap();
-        ExpectInvocation {
-            from,
-            to,
-            method: frc42_dispatch::method_hash!("Receive"),
-            params: Some(params),
-            value: Some(TokenAmount::zero()),
-            subinvocs: Some(vec![]),
-            ..Default::default()
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn build_verifreg_allocation_event(
-        typ: &str,
-        id: u64,
-        client: ActorID,
-        provider: ActorID,
-        piece_cid: &Cid,
-        piece_size: u64,
-        term_min: ChainEpoch,
-        term_max: ChainEpoch,
-        expiration: ChainEpoch,
-    ) -> EmittedEvent {
-        EmittedEvent {
-            emitter: VERIFIED_REGISTRY_ACTOR_ID,
-            event: EventBuilder::new()
-                .typ(typ)
-                .field_indexed("id", &id)
-                .field_indexed("client", &client)
-                .field_indexed("provider", &provider)
-                .field_indexed("piece-cid", piece_cid)
-                .field("piece-size", &piece_size)
-                .field("term-min", &term_min)
-                .field("term-max", &term_max)
-                .field("expiration", &expiration)
-                .build()
-                .unwrap(),
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn build_verifreg_claim_event(
-        typ: &str,
-        id: u64,
-        client: ActorID,
-        provider: ActorID,
-        piece_cid: &Cid,
-        piece_size: u64,
-        term_min: ChainEpoch,
-        term_max: ChainEpoch,
-        term_start: ChainEpoch,
-        sector: SectorNumber,
-    ) -> EmittedEvent {
-        EmittedEvent {
-            emitter: VERIFIED_REGISTRY_ACTOR_ID,
-            event: EventBuilder::new()
-                .typ(typ)
-                .field_indexed("id", &id)
-                .field_indexed("client", &client)
-                .field_indexed("provider", &provider)
-                .field_indexed("piece-cid", piece_cid)
-                .field("piece-size", &piece_size)
-                .field("term-min", &term_min)
-                .field("term-max", &term_max)
-                .field("term-start", &term_start)
-                .field_indexed("sector", &sector)
-                .build()
-                .unwrap(),
         }
     }
     #[allow(clippy::too_many_arguments)]

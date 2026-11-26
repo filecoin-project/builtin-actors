@@ -39,7 +39,8 @@ pub fn check_state_invariants<BS: Blockstore>(
             let ret = address_map.for_each(|key, actor_id| {
                 acc.require(key.protocol() != Protocol::ID, format!("key {key} is an ID address"));
                 acc.require(
-                    actor_id >= &FIRST_NON_SINGLETON_ADDR,
+                    // Historical key mappings remain after the root and genesis verifier are removed.
+                    *actor_id >= FIRST_NON_SINGLETON_ADDR || matches!(*actor_id, 80 | 81),
                     format!("unexpected singleton ID value {actor_id}"),
                 );
 

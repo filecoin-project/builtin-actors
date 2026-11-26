@@ -11,15 +11,14 @@ use fil_actor_reward::{
     WeightRecordUpdate, explicit_liability, ext,
 };
 use fil_actors_runtime::test_utils::{
-    ACCOUNT_ACTOR_CODE_ID, CRON_ACTOR_CODE_ID, DATACAP_TOKEN_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID,
-    EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID, MARKET_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
-    MockRuntime, PAYCH_ACTOR_CODE_ID, POWER_ACTOR_CODE_ID, REWARD_ACTOR_CODE_ID,
-    SYSTEM_ACTOR_CODE_ID, VERIFREG_ACTOR_CODE_ID, expect_abort, expect_abort_contains_message,
+    ACCOUNT_ACTOR_CODE_ID, CRON_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
+    INIT_ACTOR_CODE_ID, MARKET_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, MockRuntime,
+    PAYCH_ACTOR_CODE_ID, POWER_ACTOR_CODE_ID, REWARD_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message,
 };
 use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, EAM_ACTOR_ADDR,
-    EventBuilder, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, EventBuilder, INIT_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::{CBOR, CborStore, RawBytes, ipld_block::IpldBlock};
 use fvm_shared::METHOD_SEND;
@@ -339,8 +338,6 @@ fn unpayable_actors_cannot_be_admitted_as_recipients() {
         (CRON_ACTOR_ADDR, *CRON_ACTOR_CODE_ID, system_actor),
         (STORAGE_POWER_ACTOR_ADDR, *POWER_ACTOR_CODE_ID, system_actor),
         (STORAGE_MARKET_ACTOR_ADDR, *MARKET_ACTOR_CODE_ID, system_actor),
-        (VERIFIED_REGISTRY_ACTOR_ADDR, *VERIFREG_ACTOR_CODE_ID, system_actor),
-        (DATACAP_TOKEN_ACTOR_ADDR, *DATACAP_TOKEN_ACTOR_CODE_ID, system_actor),
         (EAM_ACTOR_ADDR, *EAM_ACTOR_CODE_ID, system_actor),
     ];
     let alias = Address::new_actor(b"unpayable recipient");

@@ -24,8 +24,6 @@ updates:
         patterns:
           - "fvm_*"
           - "frc42_*"
-          - "frc46_*"
-          - "fvm_actor_utils"
       rand:
         patterns:
           - "rand"

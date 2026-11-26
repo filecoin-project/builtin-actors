@@ -2,7 +2,6 @@ use anyhow::anyhow;
 use cid::Cid;
 use fil_actor_account::Actor as AccountActor;
 use fil_actor_cron::Actor as CronActor;
-use fil_actor_datacap::Actor as DataCapActor;
 use fil_actor_eam::EamActor;
 use fil_actor_ethaccount::EthAccountActor;
 use fil_actor_evm::EvmContractActor;
@@ -14,7 +13,6 @@ use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::Actor as PowerActor;
 use fil_actor_reward::Actor as RewardActor;
 use fil_actor_system::Actor as SystemActor;
-use fil_actor_verifreg::Actor as VerifregActor;
 use multihash_codetable::Code;
 
 use fil_actors_runtime::runtime::builtins::Type;
@@ -283,8 +281,6 @@ impl<'invocation> InvocationCtx<'invocation> {
             Type::Reward => RewardActor::invoke_method(self, self.msg.method, params),
             Type::Power => PowerActor::invoke_method(self, self.msg.method, params),
             Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, params),
-            Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, params),
-            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, params),
             Type::Placeholder => {
                 Err(ActorError::unhandled_message("placeholder actors only handle method 0".into()))
             }

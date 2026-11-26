@@ -4,15 +4,10 @@ use fvm_shared::{ActorID, address::Address};
 // TODO: Deduplicate these constants which currently exist both here and in the integration_tests crate.
 // https://github.com/filecoin-project/builtin-actors/issues/1348
 
-// accounts for verifreg root signer and msig
-pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
-pub const TEST_VERIFREG_ROOT_SIGNER_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
-pub const TEST_VERIFREG_ROOT_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 1);
-
 // account actor seeding funds created by new_with_singletons
 pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
-pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
-pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
+pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
+pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 1;
 
 // account actor installed as the test-network SWA
 pub const TEST_SWA_KEY: &[u8] = &[154; fvm_shared::address::BLS_PUB_LEN];

@@ -77,8 +77,6 @@ sector-64g = []
 # Enable the "default" sectors types.
 sector-default = ["sector-64g", "sector-32g"]
 
-# Reduce min verified deal size from 1MiB to 256B
-small-deals = []
 # Reduce pre-commit delay from 150 epochs, to 10.
 short-precommit = []
 

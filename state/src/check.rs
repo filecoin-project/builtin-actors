@@ -6,7 +6,6 @@ use anyhow::bail;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
 use fil_actor_cron::State as CronState;
-use fil_actor_datacap::State as DataCapState;
 use fil_actor_init::State as InitState;
 use fil_actor_market::State as MarketState;
 use fil_actor_miner::CRON_EVENT_PROCESS_EARLY_TERMINATIONS;
@@ -19,8 +18,6 @@ use fil_actor_paych::State as PaychState;
 use fil_actor_power::State as PowerState;
 use fil_actor_power::testing::MinerCronEvent;
 use fil_actor_reward::State as RewardState;
-use fil_actor_verifreg::State as VerifregState;
-use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::Blockstore;
@@ -30,12 +27,10 @@ use fvm_shared::address::Address;
 use fvm_shared::address::Protocol;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::SectorNumber;
 use num_traits::Zero;
 
 use fil_actor_account::testing as account;
 use fil_actor_cron::testing as cron;
-use fil_actor_datacap::testing as datacap;
 use fil_actor_init::testing as init;
 use fil_actor_market::testing as market;
 use fil_actor_miner::testing as miner;
@@ -43,7 +38,6 @@ use fil_actor_multisig::testing as multisig;
 use fil_actor_paych::testing as paych;
 use fil_actor_power::testing as power;
 use fil_actor_reward::testing as reward;
-use fil_actor_verifreg::testing as verifreg;
 use fil_actors_runtime::runtime::builtins::Type;
 use vm_api::ActorState;
 
@@ -79,7 +73,6 @@ pub fn check_state_invariants<BS: Blockstore>(
     let mut paych_summaries = Vec::<paych::StateSummary>::new();
     let mut multisig_summaries = Vec::<multisig::StateSummary>::new();
     let mut reward_summary: Option<reward::StateSummary> = None;
-    let mut verifreg_summary: Option<verifreg::StateSummary> = None;
 
     tree.iter().try_for_each(|(key, actor)| -> anyhow::Result<()> {
         let acc = acc.with_prefix(format!("{key} "));
@@ -158,17 +151,6 @@ pub fn check_state_invariants<BS: Blockstore>(
                 acc.with_prefix("reward: ").add_all(&msgs);
                 reward_summary = Some(summary);
             }
-            Some(Type::VerifiedRegistry) => {
-                let state = get_state!(store, actor, VerifregState);
-                let (summary, msgs) = verifreg::check_state_invariants(&state, store, prior_epoch);
-                acc.with_prefix("verifreg: ").add_all(&msgs);
-                verifreg_summary = Some(summary);
-            }
-            Some(Type::DataCap) => {
-                let state = get_state!(store, actor, DataCapState);
-                let (_, msgs) = datacap::check_state_invariants(&state, store);
-                acc.with_prefix("datacap: ").add_all(&msgs);
-            }
             Some(Type::Placeholder) => {}
             Some(Type::EVM) => {}
             Some(Type::EAM) => {}
@@ -188,10 +170,6 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     if let Some(market_summary) = market_summary.clone() {
         check_deal_states_against_sectors(&acc, &miner_summaries, &market_summary);
-    }
-
-    if let Some(verifreg_summary) = verifreg_summary {
-        check_verifreg_against_miners(&acc, &verifreg_summary, &miner_summaries);
     }
 
     if let Some(expected_balance_total) = expected_balance_total {
@@ -294,197 +272,5 @@ fn check_deal_states_against_sectors(
             ));
             continue;
         };
-    }
-}
-
-fn check_verifreg_against_miners(
-    acc: &MessageAccumulator,
-    verifreg_summary: &verifreg::StateSummary,
-    miner_summaries: &HashMap<Address, miner::StateSummary>,
-) {
-    // Accumulates the weight of claims for each sector.
-    let mut sector_claim_space: BTreeMap<(Address, SectorNumber), DealWeight> = BTreeMap::new();
-
-    for (id, claim) in &verifreg_summary.claims {
-        // All claims are indexed by valid providers
-        let maddr = Address::new_id(claim.provider);
-        let miner_summary = match miner_summaries.get(&maddr) {
-            None => {
-                acc.add(format!("claim provider {} is not found in miner summaries", maddr));
-                continue;
-            }
-            Some(summary) => summary,
-        };
-
-        // Find sectors associated with claims.
-        // A claim might not have a sector if the sector was terminated and cleaned up.
-        if let Some(sector) = miner_summary.live_data_sectors.get(&claim.sector) {
-            // Sectors with FULL_QA_POWER get 10x QAP regardless of claims,
-            // so skip all claim-to-sector validation for them.
-            if sector.full_qa_power {
-                continue;
-            }
-            acc.require(
-                sector.sector_start <= claim.term_start,
-                format!(
-                    "claim {} sector start {} is after claim term start {} for miner {}",
-                    id, sector.sector_start, claim.term_start, maddr
-                ),
-            );
-            // Legacy QAP sectors can be extended to expire after the associated claim term,
-            // and verified deal weight depends age prior to extension.
-            if !sector.legacy_qap {
-                acc.require(
-                    sector.sector_expiration >= claim.term_start + claim.term_min,
-                    format!(
-                        "claim {} sector expiration {} is before claim min term {} for miner {}",
-                        id,
-                        sector.sector_start,
-                        claim.term_start + claim.term_min,
-                        maddr
-                    ),
-                );
-                // A sector's expiration may exceed claim.term_start + claim.term_max: the
-                // claim term does not bound extension. Space rather than weight, because the
-                // check below applies the sector's current duration.
-                *sector_claim_space.entry((maddr, claim.sector)).or_default() +=
-                    DealWeight::from(claim.size.0);
-            }
-        }
-    }
-    for ((maddr, sector), claim_space) in &sector_claim_space {
-        let miner_summary = miner_summaries.get(maddr).unwrap();
-        let sector = miner_summary.live_data_sectors.get(sector).unwrap();
-        let duration = sector.sector_expiration - sector.power_base_epoch;
-        // Claim rows outlive claims dropped at extension, so they bound the weight from above.
-        let max_weight = claim_space * duration;
-        acc.require(
-            sector.verified_deal_weight <= max_weight,
-            format!(
-                "sector verified weight {} exceeds claimed space {} over duration {} for miner {}",
-                sector.verified_deal_weight, claim_space, duration, maddr
-            ),
-        )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use fil_actor_verifreg::Claim;
-    use fvm_shared::ActorID;
-    use fvm_shared::piece::PaddedPieceSize;
-    use fvm_shared::sector::RegisteredPoStProof;
-
-    const PROVIDER_ID: ActorID = 1000;
-    const SECTOR_NUMBER: SectorNumber = 7;
-    const GIB: u64 = 1 << 30;
-
-    fn claim(size: u64, term_start: ChainEpoch, term_max: ChainEpoch) -> Claim {
-        Claim {
-            provider: PROVIDER_ID,
-            client: 1001,
-            data: Cid::default(),
-            size: PaddedPieceSize(size),
-            term_min: 0,
-            term_max,
-            term_start,
-            sector: SECTOR_NUMBER,
-        }
-    }
-
-    fn verifreg_summary(claims: Vec<Claim>) -> verifreg::StateSummary {
-        verifreg::StateSummary {
-            verifiers: HashMap::new(),
-            allocations: HashMap::new(),
-            claims: claims.into_iter().enumerate().map(|(i, c)| (i as u64 + 1, c)).collect(),
-        }
-    }
-
-    fn data_sector(
-        sector_start: ChainEpoch,
-        sector_expiration: ChainEpoch,
-        power_base_epoch: ChainEpoch,
-        verified_deal_weight: DealWeight,
-    ) -> miner::DataSummary {
-        miner::DataSummary {
-            sector_start,
-            sector_expiration,
-            power_base_epoch,
-            deal_weight: DealWeight::zero(),
-            verified_deal_weight,
-            legacy_qap: false,
-            full_qa_power: false,
-        }
-    }
-
-    fn check(
-        verifreg_summary: &verifreg::StateSummary,
-        sector: miner::DataSummary,
-    ) -> MessageAccumulator {
-        let miner_summary = miner::StateSummary {
-            live_power: PowerPair::zero(),
-            active_power: PowerPair::zero(),
-            faulty_power: PowerPair::zero(),
-            window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
-            deadline_cron_active: true,
-            live_data_sectors: BTreeMap::from([(SECTOR_NUMBER, sector)]),
-            daily_fee: TokenAmount::zero(),
-        };
-        let miner_summaries = HashMap::from([(Address::new_id(PROVIDER_ID), miner_summary)]);
-        let acc = MessageAccumulator::default();
-        check_verifreg_against_miners(&acc, verifreg_summary, &miner_summaries);
-        acc
-    }
-
-    // FIP-0118 dropped claim-term-max enforcement from ExtendSectorExpiration2 for every sector, so a legacy sector past its claim's term_max is now valid and must not be flagged.
-    #[test]
-    fn legacy_sector_extended_past_claim_term_max_is_valid() {
-        let term_start: ChainEpoch = 0;
-        let term_max: ChainEpoch = 100;
-        // Extended well past term_max, permitted since FIP-0118 dropped the check.
-        let sector_expiration: ChainEpoch = 200;
-        // Extension moved the power base, which is what the stored weight is measured over.
-        let power_base_epoch: ChainEpoch = 50;
-        let verifreg_summary = verifreg_summary(vec![claim(GIB, term_start, term_max)]);
-
-        // After an extension, the actor stores claimed space restated over the
-        // sector's current duration, which is measured from power_base_epoch.
-        let stored_weight = DealWeight::from(GIB) * (sector_expiration - power_base_epoch);
-        check(
-            &verifreg_summary,
-            data_sector(term_start, sector_expiration, power_base_epoch, stored_weight),
-        )
-        .assert_empty();
-
-        // Negative case: a weight measured from term_start must be rejected.
-        let stale_weight = DealWeight::from(GIB) * (sector_expiration - term_start);
-        let acc = check(
-            &verifreg_summary,
-            data_sector(term_start, sector_expiration, power_base_epoch, stale_weight),
-        );
-        assert!(!acc.is_empty(), "checker must reject a weight measured from term_start");
-    }
-
-    // ExtendSectorExpiration2 with drop_claims excluded the dropped space from the sector's
-    // weight but left the claim row in verifreg, where it now stays forever.
-    #[test]
-    fn sector_that_dropped_a_claim_is_valid() {
-        let sector_expiration: ChainEpoch = 300;
-        let power_base_epoch: ChainEpoch = 90;
-        let verifreg_summary = verifreg_summary(vec![claim(GIB, 0, 200), claim(GIB, 0, 200)]);
-
-        // Weight restated from the one kept claim.
-        let kept_weight = DealWeight::from(GIB) * (sector_expiration - power_base_epoch);
-        check(&verifreg_summary, data_sector(0, sector_expiration, power_base_epoch, kept_weight))
-            .assert_empty();
-
-        // Negative case: more weight than every surviving claim row accounts for.
-        let excess_weight = DealWeight::from(3 * GIB) * (sector_expiration - power_base_epoch);
-        let acc = check(
-            &verifreg_summary,
-            data_sector(0, sector_expiration, power_base_epoch, excess_weight),
-        );
-        assert!(!acc.is_empty(), "checker must reject weight exceeding the claimed space");
     }
 }

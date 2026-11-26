@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
-use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::MethodNum;
@@ -78,11 +77,7 @@ fn token_receiver() {
     let ret = rt
         .call::<AccountActor>(
             frc42_dispatch::method_hash!("Receive"),
-            IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                type_: 0,
-                payload: RawBytes::new(vec![1, 2, 3]),
-            })
-            .unwrap(),
+            IpldBlock::serialize_cbor(&(0u32, RawBytes::new(vec![1, 2, 3]))).unwrap(),
         )
         .unwrap();
     assert!(ret.is_none());

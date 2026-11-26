@@ -8,42 +8,34 @@ use fil_actor_miner::{
     TerminationDeclaration, daily_proof_fee, daily_proof_fee_adjust, initial_pledge_for_power,
     max_prove_commit_duration, qa_power_for_sector,
 };
-use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_power::{Method as PowerMethod, State as PowerState};
 use fil_actor_reward::State as RewardState;
-use fil_actor_verifreg::{AddVerifiedClientParams, Method as VerifregMethod, VerifierParams};
 use fil_actors_runtime::DealWeight;
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{
-    EPOCHS_IN_DAY, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use fil_actors_runtime::{EPOCHS_IN_DAY, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{
     RegisteredAggregateProof, RegisteredSealProof, SectorNumber, SectorSize, StoragePower,
 };
 use num_traits::{Signed, Zero};
 
-use fil_actor_multisig::ProposeParams;
-use fil_actor_verifreg::State as VerifregState;
 use vm_api::VM;
-use vm_api::util::{DynBlockstore, apply_code, apply_ok, get_state, mutate_state};
+use vm_api::util::{DynBlockstore, apply_ok, get_state, mutate_state};
 
 use crate::tests::{create_deals, create_sector};
 use crate::util::make_bitfield;
 use crate::util::{
     PrecommitMetadata, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, assert_invariants, create_accounts,
-    create_miner, cron_tick, datacap_get_balance, get_network_stats,
-    make_piece_manifests_from_deal_ids, market_add_balance, market_publish_deal, miner_power,
-    miner_precommit_one_sector_v2, miner_prove_sector, override_compute_unsealed_sector_cid,
-    precommit_meta_data_from_deals, sector_info, submit_windowed_post,
+    create_miner, cron_tick, get_network_stats, make_piece_manifests_from_deal_ids,
+    market_add_balance, market_publish_deal, miner_power, miner_precommit_one_sector_v2,
+    miner_prove_sector, override_compute_unsealed_sector_cid, precommit_meta_data_from_deals,
+    sector_info, submit_windowed_post,
 };
 
 /// A new CC sector committed via ProveCommitSectors3 gets 10x QA power.
@@ -228,55 +220,6 @@ pub fn ni_sector_gets_10x_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default(), None);
 }
 
-/// AddVerifier and AddVerifiedClient on the verifreg actor are rejected.
-#[vm_test]
-pub fn verifreg_minting_disabled_test(v: &dyn VM) {
-    let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
-    let (verifier, client) = (addrs[0], addrs[1]);
-    let verifier_allowance = StoragePower::from(2 * 1048576u64);
-
-    // Try to call AddVerifier via the verifreg root msig - should fail with USR_FORBIDDEN
-    let add_verifier_params =
-        VerifierParams { address: verifier, allowance: verifier_allowance.clone() };
-    let proposal = ProposeParams {
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        value: TokenAmount::zero(),
-        method: VerifregMethod::AddVerifier as u64,
-        params: serialize(&add_verifier_params, "verifreg add verifier params").unwrap(),
-    };
-
-    // The multisig Propose itself succeeds, but the inner call to AddVerifier returns USR_FORBIDDEN
-    apply_ok(
-        v,
-        &crate::TEST_VERIFREG_ROOT_SIGNER_ADDR,
-        &crate::TEST_VERIFREG_ROOT_ADDR,
-        &TokenAmount::zero(),
-        MultisigMethod::Propose as u64,
-        Some(proposal),
-    );
-
-    // Verify that the verifier was NOT added
-    let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let store = DynBlockstore::wrap(v.blockstore());
-    let cap = v_st.get_verifier_cap(&store, &verifier).unwrap();
-    assert!(cap.is_none(), "Verifier should not have been added (AddVerifier is deprecated)");
-
-    // Try to call AddVerifiedClient directly - should fail with USR_FORBIDDEN
-    let add_client_params =
-        AddVerifiedClientParams { address: client, allowance: verifier_allowance };
-    apply_code(
-        v,
-        &verifier,
-        &VERIFIED_REGISTRY_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        VerifregMethod::AddVerifiedClient as u64,
-        Some(add_client_params),
-        ExitCode::USR_FORBIDDEN,
-    );
-
-    assert_invariants(v, &Policy::default(), None);
-}
-
 /// Publishing a verified deal transfers no datacap, and the sector reaches 10x like any
 /// other, recording its piece spacetime in `verified_deal_weight`.
 #[vm_test]
@@ -296,9 +239,6 @@ pub fn verified_deal_gets_10x_without_datacap_test(v: &dyn VM) {
     );
 
     v.set_epoch(200);
-
-    // Record the client's datacap balance before publishing
-    let client_datacap_before = datacap_get_balance(v, &client);
 
     // Add market balances for client and provider
     market_add_balance(v, &client, &client, &TokenAmount::from_whole(3));
@@ -322,13 +262,6 @@ pub fn verified_deal_gets_10x_without_datacap_test(v: &dyn VM) {
     // Verify the deal was published successfully
     assert!(!deal_ret.ids.is_empty(), "Deal should have been published");
     let deal_id = deal_ret.ids[0];
-
-    // Verify NO datacap tokens were transferred (client balance unchanged)
-    let client_datacap_after = datacap_get_balance(v, &client);
-    assert_eq!(
-        client_datacap_before, client_datacap_after,
-        "Client datacap balance should be unchanged (no datacap transfer for verified deals)"
-    );
 
     // Commit a sector with this deal
     let sector_number: SectorNumber = 100;

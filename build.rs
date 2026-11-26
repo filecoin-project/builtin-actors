@@ -24,8 +24,6 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("paych", "paymentchannel"),
     ("multisig", "multisig"),
     ("reward", "reward"),
-    ("verifreg", "verifiedregistry"),
-    ("datacap", "datacap"),
     ("placeholder", "placeholder"),
     ("evm", "evm"),
     ("eam", "eam"),
