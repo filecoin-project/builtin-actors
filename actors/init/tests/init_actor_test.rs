@@ -110,53 +110,40 @@ fn repeated_robust_address() {
 }
 
 #[test]
-fn create_2_payment_channels() {
-    let rt = construct_runtime();
-    construct_and_verify(&rt);
-    let anne = Address::new_id(1001);
+fn payment_channel_creation_is_forbidden() {
+    for (&caller_code, caller_type) in ACTOR_TYPES.iter() {
+        for value in [0, 100] {
+            let rt = construct_runtime();
+            construct_and_verify(&rt);
+            rt.set_caller(caller_code, Address::new_id(1001));
+            let funding = TokenAmount::from_atto(value);
+            rt.set_balance(funding.clone());
+            rt.value_received.replace(funding.clone());
+            let before: State = rt.get_state();
 
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+            // EVM callers are already rejected by dispatch's internal-method restriction.
+            // All other builtin callers reach Exec's creation policy.
+            if caller_code != *EVM_ACTOR_CODE_ID {
+                rt.expect_validate_caller_any();
+            }
+            // No address, actor creation, or constructor send is expected. The mock panics
+            // if rejection happens after any of those operations.
+            let params = ExecParams {
+                code_cid: *PAYCH_ACTOR_CODE_ID,
+                constructor_params: RawBytes::default(),
+            };
+            let err = rt
+                .call::<InitActor>(Method::Exec as u64, IpldBlock::serialize_cbor(&params).unwrap())
+                .expect_err("payment channel creation must fail");
+            assert_eq!(err.exit_code(), ExitCode::USR_FORBIDDEN, "caller {caller_type:?}");
+            rt.verify();
 
-    for n in 0..2 {
-        let pay_channel_string = format!("paych_{}", n);
-        let paych = pay_channel_string.as_bytes();
-
-        rt.set_balance(TokenAmount::from_atto(100));
-        rt.value_received.replace(TokenAmount::from_atto(100));
-
-        let unique_address = Address::new_actor(paych);
-        rt.new_actor_addr.replace(Some(Address::new_actor(paych)));
-
-        let expected_id = 100 + n;
-        let expected_id_addr = Address::new_id(expected_id);
-        rt.expect_create_actor(*PAYCH_ACTOR_CODE_ID, expected_id, None);
-
-        let fake_params = ConstructorParams { network_name: String::from("fake_param") };
-
-        // expect anne creating a payment channel to trigger a send to the payment channels constructor
-        let balance = TokenAmount::from_atto(100);
-
-        rt.expect_send_simple(
-            expected_id_addr,
-            METHOD_CONSTRUCTOR,
-            IpldBlock::serialize_cbor(&fake_params).unwrap(),
-            balance,
-            None,
-            ExitCode::OK,
-        );
-
-        let exec_ret = exec_and_verify(&rt, *PAYCH_ACTOR_CODE_ID, &fake_params).unwrap();
-        assert_eq!(unique_address, exec_ret.robust_address, "Robust Address does not match");
-        assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
-
-        let state: State = rt.get_state();
-        let returned_address = state
-            .resolve_address(&rt.store, &unique_address)
-            .expect("Resolve should not error")
-            .expect("Address should be able to be resolved");
-
-        assert_eq!(returned_address, expected_id_addr, "Wrong Address returned");
-        check_state(&rt);
+            let after: State = rt.get_state();
+            assert_eq!(before.next_id, after.next_id);
+            assert_eq!(before.address_map, after.address_map);
+            assert_eq!(&funding, &*rt.balance.borrow());
+            check_state(&rt);
+        }
     }
 }
 
